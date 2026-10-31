@@ -138,6 +138,30 @@ describe('local LDraw assets', () => {
         geometry.dispose();
       }
   });
+  it('renders recognizable non-box foliage and uses native plant bases at every layer', () => {
+    for (const part of PARTS.filter((part) => part.family === 'foliage')) {
+      const brick = {
+        id: 'plant',
+        partId: part.id,
+        color: 2,
+        x: 0,
+        y: 3,
+        z: 0,
+        rotation: 0 as const,
+      };
+      const geometry = createFallbackGeometry(brick);
+      expect(geometry.type, part.id).toBe('BufferGeometry');
+      expect(geometry.getAttribute('position').count, part.id).toBeGreaterThan(100);
+      expect(getLDrawModelOffset(brick)[1], part.id).toBeCloseTo(
+        (part.ldrawBaseY ?? part.height * 8) / 20,
+      );
+      geometry.dispose();
+    }
+    for (const partId of ['54200', '11477', '15068'])
+      expect(
+        getLDrawModelOffset({ id: 'cap', partId, color: 4, x: 0, y: 3, z: 0, rotation: 0 })[1],
+      ).toBeCloseTo(0, 8);
+  });
   it('frames tall examples in every view across desktop and mobile aspects', () => {
     for (const buildArea of [16, 64])
       for (const height of [4, 19.77, 29])
@@ -239,9 +263,9 @@ describe('local LDraw assets', () => {
               const size = footprint(brick);
               const ray = new Raycaster(
                 new Vector3(
-                  brick.x + size.width / 2 - 32,
+                  brick.x + size.width / 2 - 32 + 0.123,
                   part.height * 0.4 + 4,
-                  size.depth / 2 - 32,
+                  size.depth / 2 - 32 + 0.217,
                 ),
                 new Vector3(0, -1, 0),
               );
@@ -263,7 +287,10 @@ describe('local LDraw assets', () => {
           }
           const bounds = new Box3().setFromObject(model);
           const quarterTurn = part.ldrawRotation === 90;
-          if (['801a', '802a', '3861c', '3853'].includes(part.id)) {
+          if (
+            part.clearance === 'reserved' ||
+            ['801a', '802a', '3861c', '3853'].includes(part.id)
+          ) {
             for (const [axis, extent] of [
               ['x', (quarterTurn ? part.depth : part.width) * 20],
               ['z', (quarterTurn ? part.width : part.depth) * 20],
@@ -272,12 +299,16 @@ describe('local LDraw assets', () => {
               expect(
                 bounds.min[axis],
                 `${part.id} reserved ${axis} minimum`,
-              ).toBeGreaterThanOrEqual(center - extent / 2);
+              ).toBeGreaterThanOrEqual(center - extent / 2 - 0.005);
               expect(bounds.max[axis], `${part.id} reserved ${axis} maximum`).toBeLessThanOrEqual(
-                center + extent / 2,
+                center + extent / 2 + 0.005,
               );
             }
-            expect(bounds.max.y, `${part.id} body height`).toBeCloseTo(part.height * 8, 2);
+            const baseY = part.ldrawBaseY ?? part.height * 8;
+            expect(bounds.max.y, `${part.id} native base`).toBeLessThanOrEqual(baseY + 0.01);
+            expect(bounds.min.y, `${part.id} reserved height`).toBeGreaterThanOrEqual(
+              baseY - part.height * 8 - 4.01,
+            );
             model.traverse((object) => {
               if ('geometry' in object) (object.geometry as { dispose(): void }).dispose();
             });

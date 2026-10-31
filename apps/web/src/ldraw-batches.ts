@@ -1,7 +1,7 @@
 import { Group, InstancedMesh, LineSegments, Matrix3, Matrix4, Mesh, Vector3 } from 'three';
 import { MeshBVH, acceleratedRaycast } from 'three-mesh-bvh';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { PLATE_HEIGHT, getLDrawTransform, getPart } from '@lego-builder/brick-engine';
+import { getLDrawTransform } from '@lego-builder/brick-engine';
 import type { Brick } from '@lego-builder/brick-engine';
 import type { BufferAttribute, Material } from 'three';
 
@@ -41,8 +41,7 @@ export function createLDrawBatch(
       .makeRotationY((transform.rotation * Math.PI) / 180)
       .setPosition(
         transform.x - buildArea * 10,
-        -(brick.y + getPart(brick.partId).height) * PLATE_HEIGHT * 20 -
-          (explode ? brick.y * 0.18 * 20 : 0),
+        transform.y - (explode ? brick.y * 0.18 * 20 : 0),
         transform.z - buildArea * 10,
       );
   });

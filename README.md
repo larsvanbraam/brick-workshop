@@ -40,12 +40,11 @@ pnpm build      # Typecheck, web build, standalone engine build
 pnpm fmt       # Format the workspace
 ```
 
-Engine tests also construct mixed-part builds through `placeBrick`, checking
-every intermediate step: the 88-basic-design catalog sampler, a staggered
-wall crossing lower-brick seams, a stepped tower with alternate supports,
-Tile finishes with all 17 rectangular/round tiles, Basic families, and
-Architectural details. These four displays use 64 x 64 boards with every part
-at Y=0, separated by clear packing gaps rather than stacked shelves.
+Engine tests construct the complete 164-design catalogue sampler through
+`placeBrick`, placing every supported part exactly once on a 64 x 64 board at
+Y=0 with half-stud gaps. This includes all supported tiles, architectural
+details and foliage. Focused tests separately cover connection, support-removal
+and part-family behavior.
 Mixed smooth/studded contact and half-unit mounts remain covered by focused tests.
 They cover collisions, floating placements, support removal, top-down disassembly,
 bill-of-materials totals, input-order independence, and layer-based LDraw exports.
@@ -53,15 +52,10 @@ The same definitions are available in the workshop's **Load example** dropdown,
 alongside Courtyard House. Loading an example resets the view and placement
 preview and can be undone. These checks are not physical-strength certification.
 
-| Example               | Pieces | Detail                                                                                                                                                     |
-| --------------------- | ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Courtyard House       | 306    | Two-storey medieval hall, half-timbering, watchtower, stepped slate roof, chimney, well and furnished courtyard; 35 designs, eight colors, 49 plates high. |
-| Catalog sampler       | 88     | All 88 basic designs side by side on a 64 x 64 board.                                                                                                      |
-| Staggered wall        | 15     | Long beams and smooth tiled caps crossing masonry seams.                                                                                                   |
-| Stepped tower         | 24     | Tall-brick upper storey, round finial and alternate supports.                                                                                              |
-| Tile finishes         | 17     | All 17 supported tile designs on one ground level.                                                                                                         |
-| Basic families        | 18     | Tall bricks, slopes, round pieces and large plates.                                                                                                        |
-| Architectural details | 20     | All architectural designs side by side, including both baseplate sizes.                                                                                    |
+| Example         | Pieces | Detail                                                                                                                                                     |
+| --------------- | ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Courtyard House | 306    | Two-storey medieval hall, half-timbering, watchtower, stepped slate roof, chimney, well and furnished courtyard; 35 designs, eight colors, 49 plates high. |
+| Catalog sampler | 164    | Every supported design exactly once, including all architectural details and foliage, on one 64 x 64 ground-level board.                                    |
 
 Examples validate geometry, not every manufacturing combination or physical
 strength requirement. Medieval colors outside the six mapped colors and the
@@ -144,21 +138,30 @@ host's board through a placement tool. Existing models retain their 16 x 16 boar
 without modifying their input. The Claude tool adapter calls these
 same APIs. Removing a piece is rejected if it leaves unsupported pieces.
 
-The catalog currently contains 108 reviewed designs and 320 official LDraw
+The catalog currently contains 164 curated building designs and 320 official LDraw
 colors. If the local library is installed, the viewer uses real LDraw meshes,
 including studs, underside geometry, and edge lines. Otherwise it explicitly
 falls back to simplified bodies and studs. Manufactured combinations are tracked
 separately through inventory evidence; current stock is unknown. Native LDraw axes are mapped to the engine's grid
 by `getLDrawTransform`, shared by rendering and export.
 
-The supported starter range comprises 20 ordinary rectangular bricks, 33
-rectangular plates, 15 rectangular tiles, 10 tall bricks, four conventional
-45-degree slopes, six round bricks/plates/tiles, four arches, two baseplates,
-four cones, five doors/door frames, and five windows/window frames. It is not the
-entire LEGO catalogue: wedges, inverted/curved slopes, loose door leaves/glazing,
-SNOT, Technic and other special connections remain unsupported. `family` identifies these
+The supported range includes the original rectangular bricks, plates and tiles,
+10 tall bricks, 21 roof slopes, eight round parts, six arches, two baseplates,
+four cones, five doors/door frames, six windows/window frames, 24 detail parts
+and ten foliage designs. The 56 additional designs target architectural builds:
+
+- Masonry, grille and log textures; corner and headlight bricks; half-stud jumper plates.
+- Shallow and steep roofs, inverted eaves, cheese slopes, curved caps and roof ridges.
+- Lattice and picket fences, spindled balustrades, wall panels and additional arches/windows.
+- Oval and evergreen trees, bushes, tall grass, leaf canopies, bamboo, sprigs and flowers.
+
+Minifigures and figure accessories are excluded from the supported builder catalogue,
+but remain previewable in the full-library browser. Loose door leaves/glazing,
+sideways SNOT attachment, clips, hinges, Technic and other special connections remain unsupported.
+Side-stud bricks can be placed upright using their vertical connections only;
+their protruding side studs reserve additional clearance. `family` identifies these
 parts independently of the brick/plate/tile `kind`; height is always in plates.
-The picker searches all 108 IDs and has dedicated family filters.
+The picker searches all 164 IDs and has dedicated Details and Foliage filters.
 
 Architectural starter IDs are arches `3659`, `4490`, `6182`, `3307`; baseplates
 `3865` (8 x 16), `3867` (16 x 16); cones `4589`, `3942c`, `3943b`, `6233`;
@@ -171,12 +174,19 @@ hinge doors are closed static pieces, not animated hinges or insert attachments.
 Modern four-wide frames expose only the reviewed two centre top studs where
 applicable. Protruding handles, hinges and sills reserve half-stud margins.
 
-Slopes expose studs only on their high rear row. Round parts use their reviewed
+Ordinary slopes expose studs only on their high rear row; inverted slopes have
+rear underside receivers and top studs, while smooth cheese/curved caps have no
+top studs. Foliage uses explicit underside attachment sites and reserves its full
+canopy envelope. Tree tops are not mounting surfaces; leaf elements expose only
+their reviewed vertical sites. This deliberately disallows leaves or other parts
+interlocking within reserved canopy space. Round parts use their reviewed
 upright grid connections; tiles never support studs on top. Collision checks
 reserve each part's entire rectangular envelope, including unused space around
 round/conical bodies, above slope faces, and inside arch/frame openings. This conservative model does not permit
 interlocking in that empty space. Native slope origins are offset by half a stud;
 the shared render/export transform corrects that offset in all four rotations.
+Native vertical base offsets also keep trees and bottom-origin roof caps aligned
+in individual meshes, instanced batches and exported LDraw files.
 With a local library installed, tests measure every supported mesh's native
 width, depth, body height and centre against the engine definition; hardware
 and sill meshes must remain inside their deliberately larger reserved envelopes.
@@ -209,7 +219,7 @@ A piece spanning a smooth tile and a studded plate can still connect through
 the plate. Removing that plate is rejected if the piece loses its only stud
 connection. This is connection validation, not a ban on physical surface contact
 or a stability calculation. Both real meshes and the procedural fallback show
-smooth tile tops. Choose **Tiles** or load **Tile finishes** in the workshop.
+smooth tile tops. Choose **Tiles** or load **Catalog sampler** in the workshop.
 
 `3023b` is the current LDraw 1 x 2 plate definition; `3023` is a moved alias.
 Native body bounds for all 26 designs were checked against the installed
@@ -249,14 +259,16 @@ supplied centers of mass, and loads propagated through multiple joints.
 ```ts
 import { assessPhysicalFeasibility, createExampleAssembly } from '@lego-builder/brick-engine';
 
-const assessment = assessPhysicalFeasibility(createExampleAssembly('tile-finishes'), {
+const assessment = assessPhysicalFeasibility(createExampleAssembly('catalog-sampler'), {
   estimateMissingMasses: true,
 });
 ```
 
 By default the engine API uses the bundled **catalogue-reported** nominal weights
-for 107 of the 108 supported parts. Tall brick `39266` has no verified bundled
-weight and remains missing unless a host supplies one or enables estimates.
+for 107 of the 164 supported parts. Tall brick `39266` and the 56 new architectural
+and foliage designs have no verified bundled weight and remain missing unless a
+host supplies one or enables estimates. New designs likewise have no bundled
+manufacturing-colour observations; rendering support does not establish availability.
 Lookup order is host-supplied `data.parts` overrides,
 then catalogue weights, then optional estimates. Set `useCatalogMasses: false`
 to disable the catalogue fallback. If no source is enabled for a part, total mass

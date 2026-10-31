@@ -15,9 +15,31 @@ export interface Part {
   depth: number;
   height: number;
   kind: 'brick' | 'plate' | 'tile';
-  family?: 'tall' | 'slope' | 'round' | 'arch' | 'baseplate' | 'cone' | 'door' | 'window';
-  shape?: 'slope' | 'round' | 'arch' | 'baseplate' | 'cone' | 'door' | 'window';
+  family?:
+    | 'tall'
+    | 'slope'
+    | 'round'
+    | 'arch'
+    | 'baseplate'
+    | 'cone'
+    | 'door'
+    | 'window'
+    | 'detail'
+    | 'foliage';
+  shape?:
+    | 'slope'
+    | 'inverted-slope'
+    | 'round'
+    | 'arch'
+    | 'baseplate'
+    | 'cone'
+    | 'door'
+    | 'window'
+    | 'detail'
+    | 'foliage';
   ldrawCenter?: { x: number; z: number };
+  ldrawBaseY?: number;
+  clearance?: 'reserved';
   ldrawRotation: Rotation;
   connections: {
     topStuds: readonly ConnectionSite[];
@@ -50,7 +72,10 @@ function basicPart(
     depth,
     height,
     kind,
-    family: shape ?? (kind === 'brick' && height > 3 ? 'tall' : undefined),
+    family:
+      shape === 'inverted-slope'
+        ? 'slope'
+        : (shape ?? (kind === 'brick' && height > 3 ? 'tall' : undefined)),
     shape,
     ldrawRotation: shape ? 0 : width === depth ? 0 : 90,
     ...(shape === 'slope' ? { ldrawCenter: { x: 0, z: -10 } } : {}),
@@ -103,6 +128,79 @@ function architecturalPart(
     connections,
     ...options,
   };
+}
+
+function detailPart(
+  id: string,
+  name: string,
+  width: number,
+  depth: number,
+  height: number,
+  kind: Part['kind'] = 'brick',
+  connections?: Part['connections'],
+): Part {
+  return {
+    ...basicPart(id, name, width, depth, height, kind),
+    family: 'detail',
+    shape: 'detail',
+    ...(connections ? { connections } : {}),
+  };
+}
+
+function sculptedPart(
+  id: string,
+  name: string,
+  width: number,
+  depth: number,
+  height: number,
+  family: 'detail' | 'foliage' | 'slope',
+  options: Partial<
+    Pick<Part, 'connections' | 'ldrawRotation' | 'ldrawCenter' | 'ldrawBaseY' | 'kind' | 'shape'>
+  > = {},
+): Part {
+  return {
+    id,
+    name,
+    width,
+    depth,
+    height,
+    kind: 'brick',
+    family,
+    shape: family,
+    clearance: 'reserved',
+    ldrawRotation: 0,
+    connections: { topStuds: [], bottomReceivers: [] },
+    ...options,
+  };
+}
+
+function roofPart(
+  id: string,
+  name: string,
+  width: number,
+  depth: number,
+  height: number,
+  inverted = false,
+): Part {
+  const grid = rectangularConnections(width, depth);
+  const rear = grid.topStuds.filter((site) => site.z === depth - 1);
+  return sculptedPart(id, name, width, depth, height, 'slope', {
+    shape: inverted ? 'inverted-slope' : 'slope',
+    ldrawCenter: { x: 0, z: -(depth - 1) * 10 },
+    connections: {
+      topStuds: inverted ? grid.topStuds : rear,
+      bottomReceivers: inverted ? rear : grid.bottomReceivers,
+    },
+  });
+}
+
+function sideStudPart(id: string, name: string, depth: number, height = 3): Part {
+  const sites = rectangularConnections(1, depth).topStuds.map(({ z }) => ({ x: 0.5, z }));
+  return sculptedPart(id, name, 1.5, depth, height, 'detail', {
+    ldrawRotation: 90,
+    ldrawCenter: { x: 0, z: -5 },
+    connections: { topStuds: sites, bottomReceivers: sites },
+  });
 }
 
 function coneConnections(width: number, topWidth: number): Part['connections'] {
@@ -450,10 +548,212 @@ export const PARTS: readonly Part[] = [
   basicPart('4032a', 'Round plate 2 x 2', 2, 2, 1, 'plate', 'round'),
   basicPart('98138', 'Round tile 1 x 1', 1, 1, 1, 'tile', 'round'),
   basicPart('14769', 'Round tile 2 x 2', 2, 2, 1, 'tile', 'round'),
+  detailPart('98283', 'Masonry brick 1 x 2', 1, 2, 3),
+  detailPart('15533', 'Masonry brick 1 x 4', 1, 4, 3),
+  detailPart('2877', 'Brick 1 x 2 with grille', 1, 2, 3),
+  detailPart('4216', 'Brick 1 x 2 with groove', 1, 2, 3),
+  sculptedPart('30136', 'Log brick 1 x 2', 1, 2, 3, 'detail', {
+    ldrawRotation: 90,
+    connections: rectangularConnections(1, 2),
+  }),
+  sculptedPart('30137', 'Log brick 1 x 4', 1, 4, 3, 'detail', {
+    ldrawRotation: 90,
+    connections: rectangularConnections(1, 4),
+  }),
+  detailPart('4070', 'Headlight brick 1 x 1', 1, 1, 3),
+  sculptedPart('2357', 'Corner brick 2 x 2', 2, 2, 3, 'detail', {
+    ldrawCenter: { x: 10, z: 10 },
+    connections: {
+      topStuds: [
+        { x: 0, z: 0 },
+        { x: 1, z: 0 },
+        { x: 0, z: 1 },
+      ],
+      bottomReceivers: [
+        { x: 0, z: 0 },
+        { x: 1, z: 0 },
+        { x: 0, z: 1 },
+      ],
+    },
+  }),
+  sideStudPart('87087', 'Brick 1 x 1 with side stud', 1),
+  sideStudPart('11211', 'Brick 1 x 2 with side studs', 2),
+  sideStudPart('30414', 'Brick 1 x 4 with side studs', 4),
+  sideStudPart('22885', 'Brick 1 x 2 x 1 2/3 with side studs', 2, 5),
+  detailPart('2412b', 'Grille tile 1 x 2', 1, 2, 1, 'tile'),
+  detailPart('3794b', 'Jumper plate 1 x 2', 1, 2, 1, 'plate', {
+    topStuds: [{ x: 0, z: 0.5 }],
+    bottomReceivers: rectangularConnections(1, 2).bottomReceivers,
+  }),
+  detailPart('87580', 'Jumper plate 2 x 2', 2, 2, 1, 'plate', {
+    topStuds: [{ x: 0.5, z: 0.5 }],
+    bottomReceivers: rectangularConnections(2, 2).bottomReceivers,
+  }),
+  detailPart('25269', 'Quarter-round corner tile 1 x 1', 1, 1, 1, 'tile'),
+  detailPart('24246', 'Rounded-end tile 1 x 1', 1, 1, 1, 'tile'),
+  detailPart('60581', 'Wall panel 1 x 4 x 3', 1, 4, 9),
+  detailPart('59349', 'Wall panel 1 x 6 x 5', 1, 6, 15),
+  detailPart('3185', 'Lattice railing 1 x 4 x 2', 1, 4, 6, 'brick', {
+    topStuds: [],
+    bottomReceivers: rectangularConnections(1, 4).bottomReceivers,
+  }),
+  detailPart('3633', 'Lattice railing 1 x 4 x 1', 1, 4, 3, 'brick', {
+    topStuds: [],
+    bottomReceivers: rectangularConnections(1, 4).bottomReceivers,
+  }),
+  detailPart('33303', 'Picket fence 1 x 4 x 2', 1, 4, 6, 'brick', {
+    topStuds: [],
+    bottomReceivers: rectangularConnections(1, 4).bottomReceivers,
+  }),
+  detailPart('30055', 'Spindled balustrade 1 x 4 x 2', 1, 4, 6, 'brick', {
+    topStuds: [
+      { x: 0, z: 0 },
+      { x: 0, z: 3 },
+    ],
+    bottomReceivers: rectangularConnections(1, 4).bottomReceivers,
+  }),
+  roofPart('4286', 'Slope 33 3 x 1', 1, 3, 3),
+  roofPart('3298', 'Slope 33 3 x 2', 2, 3, 3),
+  roofPart('4161', 'Slope 33 3 x 3', 3, 3, 3),
+  roofPart('3297', 'Slope 33 3 x 4', 4, 3, 3),
+  roofPart('30363', 'Slope 18 4 x 2', 2, 4, 3),
+  roofPart('4460b', 'Slope 75 2 x 1 x 3', 1, 2, 9),
+  roofPart('3678b', 'Slope 65 2 x 2 x 2', 2, 2, 6),
+  roofPart('3660a', 'Inverted slope 45 2 x 2', 2, 2, 3, true),
+  roofPart('3665a', 'Inverted slope 45 2 x 1', 1, 2, 3, true),
+  roofPart('3747b', 'Inverted slope 33 3 x 2', 2, 3, 3, true),
+  sculptedPart('54200', 'Cheese slope 1 x 1', 1, 1, 2, 'slope', {
+    ldrawBaseY: 0,
+    connections: { topStuds: [], bottomReceivers: rectangularConnections(1, 1).bottomReceivers },
+  }),
+  sculptedPart('85984', 'Cheese slope 1 x 2', 2, 1, 2, 'slope', {
+    ldrawBaseY: 0,
+    connections: { topStuds: [], bottomReceivers: rectangularConnections(2, 1).bottomReceivers },
+  }),
+  sculptedPart('35464', 'Roof ridge slope 1 x 1 double', 1, 1, 2, 'slope', {
+    ldrawBaseY: 0,
+    connections: { topStuds: [], bottomReceivers: rectangularConnections(1, 1).bottomReceivers },
+  }),
+  sculptedPart('11477', 'Curved slope 2 x 1', 1, 2, 2, 'slope', {
+    ldrawBaseY: 0,
+    connections: { topStuds: [], bottomReceivers: [{ x: 0, z: 1 }] },
+  }),
+  sculptedPart('15068', 'Curved slope 2 x 2', 2, 2, 2, 'slope', {
+    ldrawBaseY: 0,
+    connections: {
+      topStuds: [],
+      bottomReceivers: [
+        { x: 0, z: 1 },
+        { x: 1, z: 1 },
+      ],
+    },
+  }),
+  sculptedPart('50950', 'Curved slope 3 x 1', 1, 3, 3, 'slope', {
+    connections: {
+      topStuds: [],
+      bottomReceivers: [
+        { x: 0, z: 1 },
+        { x: 0, z: 2 },
+      ],
+    },
+  }),
+  sculptedPart('6091', 'Curved-top brick 2 x 1 x 1 1/3', 1, 2, 4, 'slope', {
+    ldrawCenter: { x: 0, z: -10 },
+    connections: { topStuds: [], bottomReceivers: [{ x: 0, z: 1 }] },
+  }),
+  {
+    ...basicPart('60474', 'Round plate 4 x 4 with hole', 4, 4, 1, 'plate', 'round'),
+    clearance: 'reserved',
+    connections: {
+      topStuds: rectangularConnections(4, 4).topStuds.filter(
+        (site) => Math.hypot(site.x - 1.5, site.z - 1.5) < 2,
+      ),
+      bottomReceivers: rectangularConnections(4, 4).bottomReceivers.filter(
+        (site) => Math.hypot(site.x - 1.5, site.z - 1.5) < 2,
+      ),
+    },
+  },
+  basicPart('4150', 'Round tile 2 x 2 with cross underside', 2, 2, 1, 'tile', 'round'),
+  sculptedPart('18674', 'Round jumper plate 2 x 2', 2, 2, 1, 'detail', {
+    kind: 'plate',
+    connections: {
+      topStuds: [{ x: 0.5, z: 0.5 }],
+      bottomReceivers: rectangularConnections(2, 2).bottomReceivers,
+    },
+  }),
+  sculptedPart('3470', 'Foliage: oval tree', 5, 5, 18, 'foliage', {
+    ldrawBaseY: 8,
+    connections: { topStuds: [], bottomReceivers: [{ x: 2, z: 2 }] },
+  }),
+  sculptedPart('3471', 'Foliage: pyramidal evergreen tree', 5, 5, 20, 'foliage', {
+    ldrawBaseY: 8,
+    connections: { topStuds: [], bottomReceivers: [{ x: 2, z: 2 }] },
+  }),
+  sculptedPart('6064', 'Foliage: bush', 4, 4, 14.5, 'foliage', {
+    ldrawBaseY: 0,
+    connections: { topStuds: [], bottomReceivers: [{ x: 1.5, z: 1.5 }] },
+  }),
+  sculptedPart('30093', 'Foliage: tall grass', 4, 1, 14, 'foliage', {
+    ldrawBaseY: 8,
+    connections: { topStuds: [], bottomReceivers: [{ x: 1.5, z: 0 }] },
+  }),
+  sculptedPart('2417', 'Foliage: large leaf canopy 6 x 5', 5, 6, 1, 'foliage', {
+    kind: 'plate',
+    ldrawCenter: { x: 0, z: -10 },
+    connections: {
+      topStuds: [
+        [4, 5],
+        [3, 5],
+        [1, 5],
+        [0, 5],
+        [4, 4],
+        [0, 4],
+        [4, 3],
+        [2, 3],
+        [0, 3],
+        [3, 2],
+        [1, 2],
+        [3, 1],
+        [1, 1],
+        [2, 0],
+      ].map(([x, z]) => ({ x, z })),
+      bottomReceivers: [
+        [4, 5],
+        [0, 5],
+        [4, 3],
+        [2, 3],
+        [0, 3],
+        [2, 0],
+      ].map(([x, z]) => ({ x, z })),
+    },
+  }),
+  sculptedPart('32607', 'Foliage: three-leaf sprig', 2, 2, 1, 'foliage', {
+    kind: 'plate',
+    ldrawCenter: { x: 10, z: -10 },
+    connections: { topStuds: [{ x: 0, z: 1 }], bottomReceivers: [{ x: 0, z: 1 }] },
+  }),
+  sculptedPart('24866', 'Foliage: five-petal flower', 2, 2, 1, 'foliage', {
+    kind: 'plate',
+    connections: { topStuds: [{ x: 0.5, z: 0.5 }], bottomReceivers: [{ x: 0.5, z: 0.5 }] },
+  }),
+  sculptedPart('4727', 'Foliage: flower leaves 2 x 2', 2, 2, 3, 'foliage', {
+    connections: { topStuds: [{ x: 0.5, z: 0.5 }], bottomReceivers: [{ x: 0.5, z: 0.5 }] },
+  }),
+  sculptedPart('30176', 'Foliage: bamboo leaves', 4, 4, 3, 'foliage', {
+    ldrawCenter: { x: 20, z: 0 },
+    connections: { topStuds: [], bottomReceivers: [{ x: 0.5, z: 1.5 }] },
+  }),
+  sculptedPart('6255', 'Foliage: three large leaves', 5, 5, 6, 'foliage', {
+    ldrawBaseY: 16,
+    ldrawCenter: { x: 0, z: 10 },
+    connections: { topStuds: [], bottomReceivers: [{ x: 2, z: 1.5 }] },
+  }),
   architecturalPart('3659', 'Arch 1 x 4', 1, 4, 3, 'arch'),
   architecturalPart('4490', 'Arch 1 x 3', 1, 3, 3, 'arch'),
   architecturalPart('6182', 'Arch 1 x 4 x 2', 1, 4, 6, 'arch'),
   architecturalPart('3307', 'Arch 1 x 6 x 2', 1, 6, 6, 'arch'),
+  architecturalPart('3308', 'Arch 1 x 8 x 2', 1, 8, 6, 'arch'),
+  architecturalPart('92950', 'Raised arch 1 x 6', 1, 6, 3, 'arch'),
   architecturalPart('3865', 'Baseplate 8 x 16', 8, 16, 0.5, 'baseplate'),
   architecturalPart('3867', 'Baseplate 16 x 16', 16, 16, 0.5, 'baseplate'),
   architecturalPart('4589', 'Cone 1 x 1', 1, 1, 3, 'cone', { connections: coneConnections(1, 1) }),
@@ -493,6 +793,7 @@ export const PARTS: readonly Part[] = [
   }),
   architecturalPart('60592', 'Window frame 1 x 2 x 2', 1, 2, 6, 'window'),
   architecturalPart('60593', 'Window frame 1 x 2 x 3', 1, 2, 9, 'window'),
+  architecturalPart('4035', 'Window 1 x 2 x 3', 1, 2, 9, 'window'),
   architecturalPart('60594', 'Window frame 1 x 4 x 3', 1, 4, 9, 'window', {
     connections: {
       topStuds: [
@@ -767,7 +1068,7 @@ export function getLDrawTransform(brick: Brick) {
   const center = part.ldrawCenter ?? { x: 0, z: 0 };
   return {
     x: (brick.x + size.width / 2) * 20 - cosine * center.x - sine * center.z,
-    y: -(brick.y + size.height) * 8,
+    y: -brick.y * 8 - (part.ldrawBaseY ?? size.height * 8),
     z: (brick.z + size.depth / 2) * 20 + sine * center.x - cosine * center.z,
     rotation,
   };

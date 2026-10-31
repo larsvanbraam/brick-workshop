@@ -358,6 +358,17 @@ select {
 .part-visual.slope {
   clip-path: polygon(0 100%, 45% 0, 100% 0, 100% 100%);
 }
+.part-visual.foliage {
+  height: 34px;
+  color: #4c804e;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  transform: none;
+}
+.part-visual.foliage .mini-studs {
+  display: none;
+}
 .mini-studs {
   width: 36px;
   height: 16px;

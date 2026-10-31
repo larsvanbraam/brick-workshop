@@ -44,7 +44,7 @@ export function getLDrawModelOffset(brick: Brick): [number, number, number] {
   const transform = getLDrawTransform(brick);
   return [
     transform.x / 20 - brick.x - size.width / 2,
-    size.height * PLATE_HEIGHT,
+    -transform.y / 20 - brick.y * PLATE_HEIGHT,
     transform.z / 20 - brick.z - size.depth / 2,
   ];
 }
