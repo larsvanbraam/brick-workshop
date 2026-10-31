@@ -7,6 +7,7 @@ import type { LibraryCatalog } from '../tooling/ldraw-library';
 import { COLOR_CONFIG, cloneLDrawModel } from './ldraw-materials';
 
 const modelLoaders = new WeakMap<Group, LDrawLoader>();
+const pendingPartModels = new Map<string, Promise<Group>>();
 
 export function coloredLDrawModel(model: Group, color: number): Group {
   const loader = modelLoaders.get(model);
@@ -88,7 +89,24 @@ export async function loadLDrawModels(): Promise<Record<string, Group>> {
   return Object.fromEntries(entries);
 }
 
-export function useLDrawLibrary(): Library {
+function loadScenePart(id: string): Promise<Group> {
+  let pending = pendingPartModels.get(id);
+  if (!pending) {
+    pending = loadLDrawPart(id).catch((error: unknown) => {
+      pendingPartModels.delete(id);
+      throw error;
+    });
+    pendingPartModels.set(id, pending);
+  }
+  return pending;
+}
+
+export function useLDrawLibrary(extraParts: readonly string[] = []): Library {
+  const additionalKey = [
+    ...new Set(extraParts.filter((id) => !PARTS.some((part) => part.id === id))),
+  ]
+    .sort()
+    .join('\0');
   const [library, setLibrary] = useState<Library>({
     status: 'loading',
     models: {},
@@ -118,5 +136,40 @@ export function useLDrawLibrary(): Library {
       cancelled = true;
     };
   }, []);
+  useEffect(() => {
+    let cancelled = false;
+    if (library.status === 'loading')
+      return () => {
+        cancelled = true;
+      };
+    const additionalIds = additionalKey ? additionalKey.split('\0') : [];
+    const missing = additionalIds.filter((id) => !library.models[id]);
+    if (!missing.length)
+      return () => {
+        cancelled = true;
+      };
+    Promise.all(missing.map(async (id) => [id, await loadScenePart(id)] as const))
+      .then((entries) => {
+        if (!cancelled)
+          setLibrary((current) => ({
+            ...current,
+            models: { ...current.models, ...Object.fromEntries(entries) },
+            message:
+              current.status === 'fallback'
+                ? `Prototype fallback / ${Object.keys(current.models).length + entries.length} native LDraw parts`
+                : `LDraw geometry / ${Object.keys(current.models).length + entries.length} parts`,
+          }));
+      })
+      .catch((error: unknown) => {
+        if (!cancelled)
+          setLibrary((current) => ({
+            ...current,
+            message: error instanceof Error ? error.message : 'LDraw loading failed.',
+          }));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [additionalKey, library.status, library.models]);
   return library;
 }

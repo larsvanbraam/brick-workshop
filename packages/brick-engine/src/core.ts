@@ -98,7 +98,7 @@ function architecturalPart(
   depth: number,
   height: number,
   family: 'arch' | 'baseplate' | 'cone' | 'door' | 'window',
-  options: Partial<Pick<Part, 'connections' | 'ldrawRotation' | 'ldrawCenter'>> = {},
+  options: Partial<Pick<Part, 'connections' | 'ldrawRotation' | 'ldrawCenter' | 'ldrawBaseY'>> = {},
 ): Part {
   const grid =
     Number.isInteger(width) && Number.isInteger(depth)
@@ -766,9 +766,10 @@ export const PARTS: readonly Part[] = [
   architecturalPart('6233', 'Cone 3 x 3 x 2', 3, 3, 6, 'cone', {
     connections: coneConnections(3, 2),
   }),
-  architecturalPart('801a', 'Door 1 x 3 x 3, left hinge', 1.5, 3, 9, 'door', {
+  architecturalPart('801a', 'Door 1 x 3 x 3, left hinge', 1.5, 3, 10.5, 'door', {
     ldrawRotation: 0,
     ldrawCenter: { x: 5, z: 20 },
+    ldrawBaseY: 84,
     connections: { topStuds: [{ x: 0, z: 0 }], bottomReceivers: [{ x: 0, z: 0 }] },
   }),
   architecturalPart('802a', 'Door 1 x 3 x 3, right hinge', 1.5, 3, 9, 'door', {
@@ -816,6 +817,34 @@ export const PARTS: readonly Part[] = [
   }),
 ];
 
+const RUNTIME_PARTS = new Map<string, Part>();
+
+export function registerPart(part: Part): void {
+  if (PARTS.some((candidate) => candidate.id === part.id)) return;
+  if (
+    !/^[a-z0-9_-]+$/i.test(part.id) ||
+    !part.name.trim() ||
+    ![part.width, part.depth, part.height].every((value) => Number.isFinite(value) && value > 0) ||
+    ![0, 90, 180, 270].includes(part.ldrawRotation) ||
+    !part.connections ||
+    ![...part.connections.topStuds, ...part.connections.bottomReceivers].every(
+      (site) =>
+        Number.isFinite(site.x) &&
+        Number.isFinite(site.z) &&
+        site.x >= 0 &&
+        site.x < part.width &&
+        site.z >= 0 &&
+        site.z < part.depth,
+    )
+  )
+    throw new Error(`Invalid runtime part definition: ${part.id}`);
+  RUNTIME_PARTS.set(part.id, part);
+}
+
+export function isRuntimePart(partId: string): boolean {
+  return RUNTIME_PARTS.has(partId);
+}
+
 export interface Brick {
   id: string;
   partId: string;
@@ -850,7 +879,7 @@ export function getBuildArea(assembly: Assembly): number {
 }
 
 export function getPart(partId: string): Part {
-  const part = PARTS.find((candidate) => candidate.id === partId);
+  const part = PARTS.find((candidate) => candidate.id === partId) ?? RUNTIME_PARTS.get(partId);
   if (!part) throw new Error(`Unknown part: ${partId}`);
   return part;
 }
@@ -908,7 +937,7 @@ export function hasStudConnection(
 function isValid(brick: Brick, buildArea: number): boolean {
   if (
     !brick.id.trim() ||
-    !PARTS.some((part) => part.id === brick.partId) ||
+    (!PARTS.some((part) => part.id === brick.partId) && !RUNTIME_PARTS.has(brick.partId)) ||
     !COLORS.some((color) => color.id === brick.color) ||
     ![0, 90, 180, 270].includes(brick.rotation) ||
     ![brick.x, brick.y, brick.z].every((value) => Number.isInteger(value * 2) && value >= 0)
@@ -919,6 +948,50 @@ function isValid(brick: Brick, buildArea: number): boolean {
     brick.x + size.width <= buildArea &&
     brick.z + size.depth <= buildArea &&
     brick.y + size.height <= MAX_HEIGHT
+  );
+}
+
+function isMatchingInsertFrame(insert: Brick, frame: Brick): boolean {
+  const framePartId =
+    insert.partId === '4035'
+      ? '60593'
+      : insert.partId === '3853'
+        ? '60594'
+        : insert.partId === '801a' || insert.partId === '802a'
+          ? '3579'
+          : null;
+  if (
+    !framePartId ||
+    frame.partId !== framePartId ||
+    frame.y !== insert.y ||
+    frame.rotation !== insert.rotation
+  )
+    return false;
+
+  if (insert.partId === '801a' || insert.partId === '802a')
+    return frame.x === insert.x && frame.z === insert.z + 0.5;
+
+  const frameSize = footprint(frame);
+  const insertSize = footprint(insert);
+  const alignedAcrossOpening = frame.x + frameSize.width / 2 === insert.x + insertSize.width / 2;
+  return insert.rotation === 90
+    ? alignedAcrossOpening && Math.abs(frame.z - insert.z) === 0.5
+    : frame.z === insert.z && Math.abs(frame.x - insert.x) === 0.5;
+}
+
+function isSupportedInsert(brick: Brick, bricks: readonly Brick[]): boolean {
+  return bricks.some((frame) => isMatchingInsertFrame(brick, frame));
+}
+
+function hasEnvelopeContact(upper: Brick, lower: Brick): boolean {
+  const upperSize = footprint(upper);
+  const lowerSize = footprint(lower);
+  return (
+    lower.y + lowerSize.height === upper.y &&
+    upper.x < lower.x + lowerSize.width &&
+    lower.x < upper.x + upperSize.width &&
+    upper.z < lower.z + lowerSize.depth &&
+    lower.z < upper.z + upperSize.depth
   );
 }
 
@@ -954,15 +1027,33 @@ export function validateAssembly(assembly: Assembly): Issue[] {
     seen.add(brick.id);
   }
   const groundedStuds = new Set<string>();
+  const runtimeBrickIds = new Set(
+    valid.filter((brick) => isRuntimePart(brick.partId)).map((brick) => brick.id),
+  );
+  const groundedByTopHeight = new Map<number, Brick[]>();
   for (const brick of valid.toSorted((first, second) => first.y - second.y)) {
+    const hasStudSupport = getConnectionSites(brick, 'bottom').some((site) =>
+      groundedStuds.has(`${site.y}:${site.x}:${site.z}`),
+    );
+    const hasUnknownEnvelopeSupport =
+      (runtimeBrickIds.has(brick.id) || runtimeBrickIds.size > 0) &&
+      (groundedByTopHeight.get(brick.y) ?? []).some(
+        (support) =>
+          (runtimeBrickIds.has(brick.id) || runtimeBrickIds.has(support.id)) &&
+          hasEnvelopeContact(brick, support),
+      );
     if (
       brick.y === 0 ||
-      getConnectionSites(brick, 'bottom').some((site) =>
-        groundedStuds.has(`${site.y}:${site.x}:${site.z}`),
-      )
+      isSupportedInsert(brick, valid) ||
+      hasStudSupport ||
+      hasUnknownEnvelopeSupport
     ) {
       for (const site of getConnectionSites(brick, 'top'))
         groundedStuds.add(`${site.y}:${site.x}:${site.z}`);
+      const topHeight = brick.y + footprint(brick).height;
+      const groundedAtHeight = groundedByTopHeight.get(topHeight) ?? [];
+      groundedAtHeight.push(brick);
+      groundedByTopHeight.set(topHeight, groundedAtHeight);
     } else {
       issues.push({
         brickId: brick.id,
@@ -1009,6 +1100,7 @@ export function validateAssembly(assembly: Assembly): Issue[] {
     for (const otherIndex of [...candidates].sort((first, second) => first - second)) {
       const other = valid[otherIndex];
       const otherSize = bounds[otherIndex];
+      if (isMatchingInsertFrame(brick, other) || isMatchingInsertFrame(other, brick)) continue;
       if (
         brick.x < other.x + otherSize.width &&
         brick.x + size.width > other.x &&

@@ -19,12 +19,19 @@ export interface CatalogPart {
   category: string;
   keywords: string[];
   supported: boolean;
+  official: boolean;
 }
 
 export interface LibraryCatalog {
   available: boolean;
   parts: CatalogPart[];
   categories: string[];
+}
+
+export function isExcludedCatalogPart(part: Pick<CatalogPart, 'name' | 'category' | 'keywords'>) {
+  return /\b(?:minifig(?:ure)?s?|figure|duplo|electr(?:ic|ical|onic)s?|motor|batter(?:y|ies)|wire|cable|sensor|led|powered up|power functions|mindstorms|rcx)\b/i.test(
+    `${part.category} ${part.name} ${part.keywords.join(' ')}`,
+  );
 }
 
 export function parsePartHeader(id: string, header: string): CatalogPart {
@@ -43,7 +50,14 @@ export function parsePartHeader(id: string, header: string): CatalogPart {
         .map((keyword) => keyword.replace(/\s+/g, ' ').trim()),
     )
     .filter(Boolean);
-  return { id, name, category, keywords, supported: PARTS.some((part) => part.id === id) };
+  return {
+    id,
+    name,
+    category,
+    keywords,
+    supported: PARTS.some((part) => part.id === id),
+    official: lines.some((line) => /^0 !LDRAW_ORG Part(?:\s|$)/i.test(line)),
+  };
 }
 
 export async function indexLibrary(libraryPath: string): Promise<LibraryCatalog> {
@@ -79,7 +93,7 @@ export async function indexLibrary(libraryPath: string): Promise<LibraryCatalog>
         return parsePartHeader(file.name.slice(0, -4), header.join('\n'));
       }),
     );
-    parts.push(...batch);
+    parts.push(...batch.filter((part) => part.official && !isExcludedCatalogPart(part)));
   }
   parts.sort((first, second) => first.id.localeCompare(second.id, 'en', { numeric: true }));
   return {

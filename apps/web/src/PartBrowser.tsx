@@ -1,7 +1,7 @@
-import { useDeferredValue, useEffect, useRef, useState } from "react";
-import { Canvas } from "@react-three/fiber";
-import { Bounds, Center, OrbitControls } from "@react-three/drei";
-import { Box3, Group, LineSegments, Mesh } from "three";
+import { useDeferredValue, useEffect, useRef, useState } from 'react';
+import { Canvas } from '@react-three/fiber';
+import { Bounds, Center, OrbitControls } from '@react-three/drei';
+import { Box3, Group, LineSegments, Mesh } from 'three';
 import {
   Box,
   Check,
@@ -15,13 +15,15 @@ import {
   RotateCw,
   Search,
   X,
-} from "lucide-react";
-import { ColorPicker } from "./ColorPicker";
-import type { CatalogPart, LibraryCatalog } from "../tooling/ldraw-library";
-import { loadLDrawCatalog, loadLDrawPart } from "./ldraw";
-import { LDrawMesh, WorkshopEnvironment } from "./Scene";
-import { searchCatalog } from "./catalog";
-import "./part-browser.css";
+} from 'lucide-react';
+import { ColorPicker } from './ColorPicker';
+import { getPart } from '@lego-builder/brick-engine';
+import type { Part } from '@lego-builder/brick-engine';
+import type { CatalogPart, LibraryCatalog } from '../tooling/ldraw-library';
+import { loadLDrawCatalog, loadLDrawPart } from './ldraw';
+import { LDrawMesh, WorkshopEnvironment } from './Scene';
+import { inferLDrawPartDefinition, searchCatalog } from './catalog';
+import './part-browser.css';
 
 function disposeModel(model: Group) {
   const geometries = new Set();
@@ -32,9 +34,7 @@ function disposeModel(model: Group) {
         object.geometry.dispose();
         geometries.add(object.geometry);
       }
-      for (const material of Array.isArray(object.material)
-        ? object.material
-        : [object.material]) {
+      for (const material of Array.isArray(object.material) ? object.material : [object.material]) {
         if (!materials.has(material)) {
           material.dispose();
           materials.add(material);
@@ -44,21 +44,15 @@ function disposeModel(model: Group) {
   });
 }
 
-function PartPreview({
-  part,
-  onUse,
-}: {
-  part: CatalogPart;
-  onUse: (id: string) => void;
-}) {
+function PartPreview({ part, onUse }: { part: CatalogPart; onUse: (part: Part) => void }) {
   const [preview, setPreview] = useState<{
     id: string;
     model: Group | null;
     error: string;
   }>({
-    id: "",
+    id: '',
     model: null,
-    error: "",
+    error: '',
   });
   const [retry, setRetry] = useState(0);
   const [cameraRevision, setCameraRevision] = useState(0);
@@ -73,15 +67,14 @@ function PartPreview({
           return;
         }
         loaded = model;
-        setPreview({ id: part.id, model, error: "" });
+        setPreview({ id: part.id, model, error: '' });
       })
       .catch((error: unknown) => {
         if (!cancelled)
           setPreview({
             id: part.id,
             model: null,
-            error:
-              error instanceof Error ? error.message : "Part preview failed.",
+            error: error instanceof Error ? error.message : 'Part preview failed.',
           });
       });
     return () => {
@@ -90,21 +83,32 @@ function PartPreview({
     };
   }, [part.id, retry]);
   const model = preview.id === part.id ? preview.model : null;
-  const error = preview.id === part.id ? preview.error : "";
+  const error = preview.id === part.id ? preview.error : '';
   const dimensions = model ? new Box3().setFromObject(model) : null;
+  const inferredPart =
+    !part.supported && dimensions
+      ? inferLDrawPartDefinition(part, { min: dimensions.min, max: dimensions.max })
+      : null;
 
   return (
     <section
       className="catalog-preview"
       aria-label="Part preview"
-      data-preview-state={error ? "error" : model ? "ready" : "loading"}
+      data-preview-state={error ? 'error' : model ? 'ready' : 'loading'}
       data-part-id={part.id}
     >
       <div className="catalog-preview-toolbar">
         <span className="mono">#{part.id}</span>
-        <span className={`support-badge ${part.supported ? "supported" : ""}`}>
+        <span
+          className={`support-badge ${part.supported ? 'supported' : ''}`}
+          title={
+            part.supported
+              ? 'Curated connection and placement rules'
+              : 'Bounding envelope only; connections are unknown'
+          }
+        >
           {part.supported ? <Check size={12} /> : <Eye size={12} />}
-          {part.supported ? "Build supported" : "Preview only"}
+          {part.supported ? 'Grid rules' : 'Envelope only'}
         </span>
         <button
           className="icon-button"
@@ -122,20 +126,14 @@ function PartPreview({
           gl={{ antialias: true, preserveDrawingBuffer: true }}
           aria-label="Interactive LDraw part preview"
         >
-          <color attach="background" args={["#eef0ee"]} />
+          <color attach="background" args={['#eef0ee']} />
           <WorkshopEnvironment />
           <ambientLight intensity={1.1} />
           <directionalLight position={[-8, 12, 10]} intensity={2.5} />
           <directionalLight position={[10, 3, -8]} intensity={0.7} />
           <OrbitControls makeDefault enableDamping />
           {model && (
-            <Bounds
-              key={`${part.id}:${retry}:${cameraRevision}`}
-              fit
-              clip
-              observe
-              margin={1.5}
-            >
+            <Bounds key={`${part.id}:${retry}:${cameraRevision}`} fit clip observe margin={1.5}>
               <Center>
                 <LDrawMesh
                   key={`${part.id}:${retry}:${color}`}
@@ -148,7 +146,7 @@ function PartPreview({
           )}
         </Canvas>
         {!model && (
-          <div className="preview-overlay" role={error ? "alert" : "status"}>
+          <div className="preview-overlay" role={error ? 'alert' : 'status'}>
             {error ? (
               <>
                 <Box size={28} />
@@ -157,7 +155,7 @@ function PartPreview({
                 <button
                   className="secondary"
                   onClick={() => {
-                    setPreview({ id: part.id, model: null, error: "" });
+                    setPreview({ id: part.id, model: null, error: '' });
                     setRetry(retry + 1);
                   }}
                 >
@@ -180,8 +178,8 @@ function PartPreview({
           <span>{part.category}</span>
           {dimensions && (
             <span className="mono">
-              {((dimensions.max.x - dimensions.min.x) * 0.4).toFixed(1)} x{" "}
-              {((dimensions.max.y - dimensions.min.y) * 0.4).toFixed(1)} x{" "}
+              {((dimensions.max.x - dimensions.min.x) * 0.4).toFixed(1)} x{' '}
+              {((dimensions.max.y - dimensions.min.y) * 0.4).toFixed(1)} x{' '}
               {((dimensions.max.z - dimensions.min.z) * 0.4).toFixed(1)} mm
             </span>
           )}
@@ -190,8 +188,8 @@ function PartPreview({
           <ColorPicker color={color} onChange={setColor} />
           <button
             className="primary"
-            disabled={!part.supported}
-            onClick={() => onUse(part.id)}
+            disabled={!part.supported && !inferredPart}
+            onClick={() => onUse(part.supported ? getPart(part.id) : inferredPart!)}
           >
             <Plus size={14} />
             Use in assembly
@@ -215,18 +213,18 @@ export function PartBrowser({
   onUse,
 }: {
   onClose: () => void;
-  onUse: (id: string) => void;
+  onUse: (part: Part) => void;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const [catalog, setCatalog] = useState<LibraryCatalog | null>(null);
-  const [error, setError] = useState("");
+  const [error, setError] = useState('');
   const [retry, setRetry] = useState(0);
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState('');
   const deferredQuery = useDeferredValue(query);
-  const [category, setCategory] = useState("");
+  const [category, setCategory] = useState('');
   const [supportedOnly, setSupportedOnly] = useState(false);
   const [page, setPage] = useState(0);
-  const [selectedId, setSelectedId] = useState("3001");
+  const [selectedId, setSelectedId] = useState('3001');
   useEffect(() => {
     const element = dialog.current;
     const previous = document.activeElement as HTMLElement | null;
@@ -242,20 +240,16 @@ export function PartBrowser({
       .then((result) => {
         if (cancelled) return;
         if (!result.available) {
-          setError("Local LDraw library is unavailable.");
+          setError('Local LDraw library is unavailable.');
           return;
         }
         setCatalog(result);
-        if (!result.parts.some((part) => part.id === "3001"))
-          setSelectedId(result.parts[0]?.id || "");
+        if (!result.parts.some((part) => part.id === '3001'))
+          setSelectedId(result.parts[0]?.id || '');
       })
       .catch((reason: unknown) => {
         if (!cancelled)
-          setError(
-            reason instanceof Error
-              ? reason.message
-              : "Catalog loading failed.",
-          );
+          setError(reason instanceof Error ? reason.message : 'Catalog loading failed.');
       });
     return () => {
       cancelled = true;
@@ -276,7 +270,7 @@ export function PartBrowser({
       aria-labelledby="library-title"
       onCancel={onClose}
       onKeyDown={(event) => {
-        if (event.key === "Escape") {
+        if (event.key === 'Escape') {
           event.preventDefault();
           onClose();
         }
@@ -325,7 +319,7 @@ export function PartBrowser({
                   title="Clear library search"
                   aria-label="Clear library search"
                   onClick={() => {
-                    setQuery("");
+                    setQuery('');
                     setPage(0);
                   }}
                 >
@@ -357,13 +351,13 @@ export function PartBrowser({
                   setPage(0);
                 }}
               />
-              Build-supported only
+              Curated grid rules only
             </label>
             <div className="catalog-result-count">
               <span>{results.length.toLocaleString()} results</span>
               <span>
-                {catalog?.parts.filter((part) => part.supported).length || 0}{" "}
-                build supported
+                {catalog?.parts.filter((part) => part.supported).length || 0} curated with grid
+                rules
               </span>
             </div>
             <div className="catalog-results">
@@ -374,7 +368,7 @@ export function PartBrowser({
                   <button
                     className="secondary"
                     onClick={() => {
-                      setError("");
+                      setError('');
                       setRetry(retry + 1);
                     }}
                   >
@@ -394,8 +388,8 @@ export function PartBrowser({
                   <button
                     className="secondary"
                     onClick={() => {
-                      setQuery("");
-                      setCategory("");
+                      setQuery('');
+                      setCategory('');
                       setSupportedOnly(false);
                       setPage(0);
                     }}
@@ -406,7 +400,7 @@ export function PartBrowser({
               ) : (
                 visible.map((part) => (
                   <button
-                    className={`catalog-result ${selectedId === part.id ? "active" : ""}`}
+                    className={`catalog-result ${selectedId === part.id ? 'active' : ''}`}
                     key={part.id}
                     aria-pressed={selectedId === part.id}
                     aria-label={`${part.id} ${part.name}`}
@@ -420,17 +414,9 @@ export function PartBrowser({
                       </small>
                     </span>
                     {part.supported ? (
-                      <Check
-                        size={14}
-                        className="supported-icon"
-                        aria-label="Build supported"
-                      />
+                      <Check size={14} className="supported-icon" aria-label="Curated grid rules" />
                     ) : (
-                      <Eye
-                        size={14}
-                        className="muted"
-                        aria-label="Preview only"
-                      />
+                      <Eye size={14} className="muted" aria-label="Envelope only" />
                     )}
                   </button>
                 ))

@@ -3,6 +3,7 @@ import type { Assembly } from '../core.ts';
 import type { ExampleDefinition, ExampleMetadata } from './types.ts';
 import { courtyardHouse } from './courtyard-house.ts';
 import { catalogSampler } from './catalog-sampler.ts';
+import { crookedTankard } from './crooked-tankard.ts';
 
 export function createExampleRegistry(definitions: readonly ExampleDefinition[]) {
   const byId = new Map<string, ExampleDefinition>();
@@ -43,7 +44,7 @@ export function createExampleRegistry(definitions: readonly ExampleDefinition[])
         ...(definition.buildArea === undefined ? {} : { buildArea: definition.buildArea }),
       };
       definition.build((partId, color, x, y, z, rotation = 0) => {
-        const result = placeBrick(assembly, {
+        const brick = {
           id: `${definition.brickIdPrefix ?? definition.name}-${assembly.bricks.length + 1}`,
           partId,
           color,
@@ -51,8 +52,10 @@ export function createExampleRegistry(definitions: readonly ExampleDefinition[])
           y,
           z,
           rotation,
-        });
-        if (!result.ok) throw new Error(`${definition.id}: ${JSON.stringify(result.issues)}`);
+        };
+        const result = placeBrick(assembly, brick);
+        if (!result.ok)
+          throw new Error(`${definition.id}: ${JSON.stringify({ brick, issues: result.issues })}`);
         assembly = result.assembly;
       });
       if (assembly.bricks.length !== definition.expectedPieceCount)
@@ -64,7 +67,7 @@ export function createExampleRegistry(definitions: readonly ExampleDefinition[])
   };
 }
 
-const registry = createExampleRegistry([courtyardHouse, catalogSampler]);
+const registry = createExampleRegistry([courtyardHouse, catalogSampler, crookedTankard]);
 export const EXAMPLES = registry.examples;
 export const createExampleAssembly = registry.createAssembly;
 

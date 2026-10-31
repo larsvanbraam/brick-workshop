@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Box,
   Boxes,
@@ -18,7 +18,7 @@ import {
   Undo2,
   Upload,
   X,
-} from "lucide-react";
+} from 'lucide-react';
 import {
   COLORS,
   DEFAULT_PART_COLOR_EVIDENCE,
@@ -37,10 +37,12 @@ import {
   getPartColorStatus,
   importPartColorEvidence,
   importPhysicalData,
+  isRuntimePart,
   placeBrick,
+  registerPart,
   removeBrick,
   validateAssembly,
-} from "@lego-builder/brick-engine";
+} from '@lego-builder/brick-engine';
 import type {
   Assembly,
   Brick,
@@ -48,11 +50,11 @@ import type {
   PhysicalData,
   Part,
   Rotation,
-} from "@lego-builder/brick-engine";
-import { Scene } from "./Scene";
-import { useLDrawLibrary } from "./ldraw";
-import { PartBrowser } from "./PartBrowser";
-import { ColorPicker } from "./ColorPicker";
+} from '@lego-builder/brick-engine';
+import { Scene } from './Scene';
+import { useLDrawLibrary } from './ldraw';
+import { PartBrowser } from './PartBrowser';
+import { ColorPicker } from './ColorPicker';
 
 type History = { past: Assembly[]; present: Assembly; future: Assembly[] };
 
@@ -73,15 +75,15 @@ const PartList = memo(function PartList({
       {parts.map((part) => (
         <button
           key={part.id}
-          className={`part-item ${partId === part.id ? "active" : ""}`}
+          className={`part-item ${partId === part.id ? 'active' : ''}`}
           aria-pressed={partId === part.id}
           onClick={() => {
             onSelect(part.id);
             onPreview(true);
           }}
         >
-          <span className={`part-visual ${part.kind} ${part.family ?? ""}`}>
-            {part.family === "foliage" && <Leaf size={29} aria-hidden="true" />}
+          <span className={`part-visual ${part.kind} ${part.family ?? ''}`}>
+            {part.family === 'foliage' && <Leaf size={29} aria-hidden="true" />}
             <span
               className="mini-studs"
               style={{
@@ -103,9 +105,10 @@ const PartList = memo(function PartList({
           <span className="part-copy">
             <strong>{part.name}</strong>
             <small>
-              {part.id}{" "}
+              {part.id}{' '}
               <span>
-                / {part.height} {part.height === 1 ? "plate" : "plates"} tall
+                / {part.height} {part.height === 1 ? 'plate' : 'plates'} tall
+                {!PARTS.some((candidate) => candidate.id === part.id) && ' / envelope only'}
               </span>
             </small>
           </span>
@@ -119,7 +122,7 @@ const PartList = memo(function PartList({
 
 function download(contents: string, name: string, type: string) {
   const url = URL.createObjectURL(new Blob([contents], { type }));
-  const anchor = document.createElement("a");
+  const anchor = document.createElement('a');
   anchor.href = url;
   anchor.download = name;
   anchor.hidden = true;
@@ -130,32 +133,29 @@ function download(contents: string, name: string, type: string) {
 }
 
 export default function App() {
-  const library = useLDrawLibrary();
+  const [runtimeParts, setRuntimeParts] = useState<Part[]>([]);
+  const library = useLDrawLibrary(runtimeParts.map((part) => part.id));
   const [sceneReady, setSceneReady] = useState(false);
   const onSceneReady = useCallback(() => setSceneReady(true), []);
-  const loading = library.status === "loading" || !sceneReady;
+  const loading = library.status === 'loading' || !sceneReady;
+  const hasNativeModels = Object.keys(library.models).length > 0;
   useEffect(() => {
-    const overlay = document.getElementById("workshop-loading");
+    const overlay = document.getElementById('workshop-loading');
     if (!overlay) return;
     if (!loading) {
       overlay.remove();
       return;
     }
-    const label = overlay.querySelector("[data-loading-message]");
+    const label = overlay.querySelector('[data-loading-message]');
     if (label)
-      label.textContent =
-        library.status === "loading"
-          ? "Loading parts..."
-          : "Preparing scene...";
+      label.textContent = library.status === 'loading' ? 'Loading parts...' : 'Preparing scene...';
   }, [loading, library.status]);
   const evidenceFile = useRef<HTMLInputElement>(null);
   const physicalFile = useRef<HTMLInputElement>(null);
   const [physicalData, setPhysicalData] = useState<PhysicalData>(() => {
     try {
-      const saved = localStorage.getItem("brick-workshop-physical-data-v1");
-      return importPhysicalData(
-        saved ? JSON.parse(saved) : { version: 1, parts: {} },
-      );
+      const saved = localStorage.getItem('brick-workshop-physical-data-v1');
+      return importPhysicalData(saved ? JSON.parse(saved) : { version: 1, parts: {} });
     } catch {
       return { version: 1, parts: {} };
     }
@@ -165,12 +165,8 @@ export default function App() {
   const [rejectInfeasible, setRejectInfeasible] = useState(true);
   const [evidence, setEvidence] = useState<PartColorEvidence>(() => {
     try {
-      const saved = localStorage.getItem(
-        "brick-workshop-part-color-evidence-v1",
-      );
-      return saved
-        ? importPartColorEvidence(JSON.parse(saved))
-        : DEFAULT_PART_COLOR_EVIDENCE;
+      const saved = localStorage.getItem('brick-workshop-part-color-evidence-v1');
+      return saved ? importPartColorEvidence(JSON.parse(saved)) : DEFAULT_PART_COLOR_EVIDENCE;
     } catch {
       return DEFAULT_PART_COLOR_EVIDENCE;
     }
@@ -180,23 +176,21 @@ export default function App() {
     present: createDemoAssembly(),
     future: [],
   }));
-  const [partId, setPartId] = useState("3001");
+  const [partId, setPartId] = useState('3001');
   const [color, setColor] = useState<number>(4);
   const [position, setPosition] = useState({ x: 1, y: 0, z: 1 });
   const [rotation, setRotation] = useState<Rotation>(0);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [search, setSearch] = useState("");
-  const [category, setCategory] = useState("all");
+  const [search, setSearch] = useState('');
+  const [category, setCategory] = useState('all');
   const [preview, setPreview] = useState(false);
   const [explode, setExplode] = useState(false);
   const [layer, setLayer] = useState(MAX_HEIGHT);
-  const [view, setView] = useState<"perspective" | "top" | "front">(
-    "perspective",
-  );
+  const [view, setView] = useState<'perspective' | 'top' | 'front'>('perspective');
   const [cameraRevision, setCameraRevision] = useState(0);
-  const [panel, setPanel] = useState<"inspect" | "parts">("inspect");
-  const [exportFormat, setExportFormat] = useState("ldr");
-  const [message, setMessage] = useState("");
+  const [panel, setPanel] = useState<'inspect' | 'parts'>('inspect');
+  const [exportFormat, setExportFormat] = useState('ldr');
+  const [message, setMessage] = useState('');
   const [browserOpen, setBrowserOpen] = useState(false);
   const assembly = history.present;
   const buildArea = getBuildArea(assembly);
@@ -210,27 +204,19 @@ export default function App() {
     [assembly, physicalData, estimateMissingMasses, useCatalogMasses],
   );
   const selected = assembly.bricks.find((brick) => brick.id === selectedId);
-  const buildability = useMemo(
-    () => getBuildabilityReport(physical),
-    [physical],
-  );
-  const selectedMass = physical.masses.find(
-    (entry) => entry.brickId === selectedId,
-  )?.mass;
+  const buildability = useMemo(() => getBuildabilityReport(physical), [physical]);
+  const selectedMass = physical.masses.find((entry) => entry.brickId === selectedId)?.mass;
   const issues = useMemo(() => validateAssembly(assembly), [assembly]);
+  const hasEnvelopeOnlyParts = assembly.bricks.some((brick) => isRuntimePart(brick.partId));
   const bill = useMemo(() => getBillOfMaterials(assembly), [assembly]);
   const height = useMemo(
-    () =>
-      Math.max(
-        1,
-        ...assembly.bricks.map((brick) => brick.y + footprint(brick).height),
-      ),
+    () => Math.max(1, ...assembly.bricks.map((brick) => brick.y + footprint(brick).height)),
     [assembly],
   );
   const visibleLayer = Math.min(layer, height);
   const ghost: Brick = useMemo(
     () => ({
-      id: "placement-preview",
+      id: 'placement-preview',
       partId,
       color,
       ...position,
@@ -238,26 +224,19 @@ export default function App() {
     }),
     [partId, color, position, rotation],
   );
-  const candidate = useMemo(
-    () => placeBrick(assembly, ghost),
-    [assembly, ghost],
-  );
+  const candidate = useMemo(() => placeBrick(assembly, ghost), [assembly, ghost]);
   const colorStatus = useMemo(
     () => getPartColorStatus(partId, color, evidence),
     [partId, color, evidence],
   );
   const parts = useMemo(
     () =>
-      PARTS.filter(
+      [...PARTS, ...runtimeParts].filter(
         (part) =>
-          (category === "all" ||
-            category === part.kind ||
-            category === part.family) &&
-          `${part.name} ${part.id}`
-            .toLowerCase()
-            .includes(search.toLowerCase()),
+          (category === 'all' || category === part.kind || category === part.family) &&
+          `${part.name} ${part.id}`.toLowerCase().includes(search.toLowerCase()),
       ),
-    [category, search],
+    [category, search, runtimeParts],
   );
   const selectColor = useCallback((id: number) => {
     setColor(id);
@@ -270,10 +249,9 @@ export default function App() {
       present: next,
       future: [],
     });
-    setMessage("");
+    setMessage('');
   }
   function addBrick() {
-    if (!PARTS.some((part) => part.id === partId)) return;
     const result = placeBrick(assembly, { ...ghost, id: crypto.randomUUID() });
     if (result.ok) {
       const assessment = assessPhysicalFeasibility(result.assembly, {
@@ -281,10 +259,8 @@ export default function App() {
         estimateMissingMasses,
         useCatalogMasses,
       });
-      if (rejectInfeasible && assessment.status === "infeasible") {
-        setMessage(
-          `Physical model rejected placement. ${assessment.reasons[0]}`,
-        );
+      if (rejectInfeasible && assessment.status === 'infeasible') {
+        setMessage(`Physical model rejected placement. ${assessment.reasons[0]}`);
         return;
       }
       commit(result.assembly);
@@ -292,7 +268,9 @@ export default function App() {
       setLayer(MAX_HEIGHT);
       setPreview(false);
       setMessage(
-        `Piece added. Geometry passed; physical feasibility ${assessment.status}.`,
+        result.assembly.bricks.some((entry) => isRuntimePart(entry.partId))
+          ? `Piece added. Envelope placement accepted; connector fit is unknown. Physical feasibility ${assessment.status}.`
+          : `Piece added. Geometry passed; physical feasibility ${assessment.status}.`,
       );
     } else setMessage(result.issues[0].message);
   }
@@ -305,7 +283,7 @@ export default function App() {
         estimateMissingMasses,
         useCatalogMasses,
       });
-      if (rejectInfeasible && assessment.status === "infeasible") {
+      if (rejectInfeasible && assessment.status === 'infeasible') {
         setMessage(`Physical model rejected removal. ${assessment.reasons[0]}`);
         return;
       }
@@ -322,7 +300,7 @@ export default function App() {
         future: [assembly, ...history.future],
       });
     setSelectedId(null);
-    setMessage("");
+    setMessage('');
   }
   function redo() {
     const next = history.future[0];
@@ -333,12 +311,11 @@ export default function App() {
         future: history.future.slice(1),
       });
     setSelectedId(null);
-    setMessage("");
+    setMessage('');
   }
   function exportAssembly() {
-    const filename = assembly.name.toLowerCase().replace(/[^a-z0-9]+/g, "-");
-    if (exportFormat === "ldr")
-      download(exportLDraw(assembly), `${filename}.ldr`, "text/plain");
+    const filename = assembly.name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+    if (exportFormat === 'ldr') download(exportLDraw(assembly), `${filename}.ldr`, 'text/plain');
     else
       download(
         JSON.stringify(
@@ -348,7 +325,7 @@ export default function App() {
             billOfMaterials: bill,
             physicalAssessment: physical,
             buildability,
-            exportPurpose: "unverified-draft",
+            exportPurpose: 'unverified-draft',
             physicalData,
             physicalPolicy: {
               rejectInfeasible,
@@ -366,9 +343,9 @@ export default function App() {
           2,
         ),
         `${filename}.json`,
-        "application/json",
+        'application/json',
       );
-    setMessage("Unverified draft exported. Not approved for construction.");
+    setMessage('Unverified draft exported. Not approved for construction.');
   }
   function resetAssembly(next: Assembly) {
     commit(next);
@@ -379,59 +356,47 @@ export default function App() {
     resetAssembly(createExampleAssembly(id));
     setPreview(false);
     setExplode(false);
-    setView("perspective");
+    setView('perspective');
     setCameraRevision((revision) => revision + 1);
   }
 
   async function importPhysics(file?: File) {
     if (!file) return;
     try {
-      if (file.size > 2_000_000)
-        throw new Error("Physical data must be smaller than 2 MB.");
+      if (file.size > 2_000_000) throw new Error('Physical data must be smaller than 2 MB.');
       const next = importPhysicalData(JSON.parse(await file.text()));
       setPhysicalData(next);
       try {
-        localStorage.setItem(
-          "brick-workshop-physical-data-v1",
-          JSON.stringify(next),
-        );
+        localStorage.setItem('brick-workshop-physical-data-v1', JSON.stringify(next));
         setMessage(
-          "Physical data imported. Provenance is supplied by the data owner, not independently verified.",
+          'Physical data imported. Provenance is supplied by the data owner, not independently verified.',
         );
       } catch {
-        setMessage(
-          "Physical data imported for this session; browser storage is unavailable.",
-        );
+        setMessage('Physical data imported for this session; browser storage is unavailable.');
       }
     } catch (error) {
-      setMessage(
-        error instanceof Error ? error.message : "Invalid physical data.",
-      );
+      setMessage(error instanceof Error ? error.message : 'Invalid physical data.');
     }
   }
 
   async function importEvidence(file?: File) {
     if (!file) return;
     try {
-      if (file.size > 2_000_000)
-        throw new Error("Evidence JSON must be smaller than 2 MB.");
+      if (file.size > 2_000_000) throw new Error('Evidence JSON must be smaller than 2 MB.');
       const next = importPartColorEvidence(JSON.parse(await file.text()));
       setEvidence(next);
       let saved = true;
       try {
-        localStorage.setItem(
-          "brick-workshop-part-color-evidence-v1",
-          JSON.stringify(next),
-        );
+        localStorage.setItem('brick-workshop-part-color-evidence-v1', JSON.stringify(next));
       } catch {
         saved = false;
       }
       setMessage(
-        `Imported ${next.observations.length} observed combinations.${saved ? "" : " Available for this session only."}`,
+        `Imported ${next.observations.length} observed combinations.${saved ? '' : ' Available for this session only.'}`,
       );
     } catch (error) {
       setMessage(
-        `Evidence import failed: ${error instanceof Error ? error.message : "Invalid JSON"}`,
+        `Evidence import failed: ${error instanceof Error ? error.message : 'Invalid JSON'}`,
       );
     }
   }
@@ -481,9 +446,7 @@ export default function App() {
         <div className="document-actions">
           <button
             className="quiet"
-            onClick={() =>
-              resetAssembly({ name: "Untitled build", bricks: [] })
-            }
+            onClick={() => resetAssembly({ name: 'Untitled build', bricks: [] })}
           >
             New build
           </button>
@@ -508,12 +471,9 @@ export default function App() {
         <aside className="parts-sidebar">
           <div className="section-heading">
             <h2>Parts library</h2>
-            <span className="count">{PARTS.length}</span>
+            <span className="count">{PARTS.length + runtimeParts.length}</span>
           </div>
-          <button
-            className="secondary browse-library-button"
-            onClick={() => setBrowserOpen(true)}
-          >
+          <button className="secondary browse-library-button" onClick={() => setBrowserOpen(true)}>
             <LibraryBig size={15} />
             Browse full library
           </button>
@@ -528,20 +488,20 @@ export default function App() {
           </label>
           <div className="segmented categories" aria-label="Part category">
             {[
-              ["all", "All"],
-              ["brick", "Bricks"],
-              ["plate", "Plates"],
-              ["tile", "Tiles"],
-              ["tall", "Tall"],
-              ["slope", "Slopes"],
-              ["round", "Round"],
-              ["arch", "Arches"],
-              ["baseplate", "Baseplates"],
-              ["cone", "Cones"],
-              ["door", "Doors"],
-              ["window", "Windows"],
-              ["detail", "Details"],
-              ["foliage", "Foliage"],
+              ['all', 'All'],
+              ['brick', 'Bricks'],
+              ['plate', 'Plates'],
+              ['tile', 'Tiles'],
+              ['tall', 'Tall'],
+              ['slope', 'Slopes'],
+              ['round', 'Round'],
+              ['arch', 'Arches'],
+              ['baseplate', 'Baseplates'],
+              ['cone', 'Cones'],
+              ['door', 'Doors'],
+              ['window', 'Windows'],
+              ['detail', 'Details'],
+              ['foliage', 'Foliage'],
             ].map(([value, label]) => (
               <button
                 key={value}
@@ -552,24 +512,14 @@ export default function App() {
               </button>
             ))}
           </div>
-          <PartList
-            parts={parts}
-            partId={partId}
-            onSelect={setPartId}
-            onPreview={setPreview}
-          />
+          <PartList parts={parts} partId={partId} onSelect={setPartId} onPreview={setPreview} />
           <section className="color-section">
             <div className="section-heading">
               <h2>Color</h2>
-              <span className="muted">
-                {COLORS.find((entry) => entry.id === color)?.name}
-              </span>
+              <span className="muted">{COLORS.find((entry) => entry.id === color)?.name}</span>
             </div>
             <StableColorPicker color={color} onChange={selectColor} />
-            <dl
-              className="measurements color-availability"
-              aria-label="Selected part color status"
-            >
+            <dl className="measurements color-availability" aria-label="Selected part color status">
               <div>
                 <dt>Rendering</dt>
                 <dd>{colorStatus.rendering}</dd>
@@ -577,9 +527,7 @@ export default function App() {
               <div>
                 <dt>Manufacturing</dt>
                 <dd title={colorStatus.reason}>
-                  {colorStatus.manufactured === "observed"
-                    ? "Inventory observed"
-                    : "Unknown"}
+                  {colorStatus.manufactured === 'observed' ? 'Inventory observed' : 'Unknown'}
                 </dd>
               </div>
               <div>
@@ -604,23 +552,21 @@ export default function App() {
               </button>
             </div>
             <div className="coordinate-inputs">
-              {(["x", "y", "z"] as const).map((axis) => (
+              {(['x', 'y', 'z'] as const).map((axis) => (
                 <label key={axis}>
                   <span>
                     {axis.toUpperCase()}
-                    {axis === "y" && <small> / plates</small>}
+                    {axis === 'y' && <small> / plates</small>}
                   </span>
                   <input
                     aria-label={`${axis.toUpperCase()} position`}
                     type="number"
                     min={0}
                     max={
-                      axis === "y"
+                      axis === 'y'
                         ? MAX_HEIGHT - getPart(partId).height
                         : buildArea -
-                          (axis === "x"
-                            ? footprint(ghost).width
-                            : footprint(ghost).depth)
+                          (axis === 'x' ? footprint(ghost).width : footprint(ghost).depth)
                     }
                     step={0.5}
                     value={position[axis]}
@@ -651,24 +597,24 @@ export default function App() {
               Place piece
             </button>
             {preview && (
-              <div
-                className={`placement-status ${candidate.ok ? "valid" : "invalid"}`}
-              >
+              <div className={`placement-status ${candidate.ok ? 'valid' : 'invalid'}`}>
                 <span className="status-dot" />
                 {candidate.ok
-                  ? "Placement available"
-                  : candidate.issues[0].code === "collision"
-                    ? "Collision detected"
-                    : candidate.issues[0].code === "unsupported"
-                      ? "No support below"
-                      : "Outside placement rules"}
+                  ? 'Placement available'
+                  : candidate.issues[0].code === 'collision'
+                    ? 'Collision detected'
+                    : candidate.issues[0].code === 'unsupported'
+                      ? 'No support below'
+                      : 'Outside placement rules'}
               </div>
             )}
           </section>
           <div className="catalog-label">
             <span className="status-dot" />
-            Prototype catalog{" "}
-            <span>{String(PARTS.length).padStart(2, "0")} parts</span>
+            Curated rules{' '}
+            <span>
+              {PARTS.length} / {runtimeParts.length} envelope-only
+            </span>
           </div>
         </aside>
         <section className="viewport-section" aria-label="3D brick assembly">
@@ -698,7 +644,7 @@ export default function App() {
                 title="Reset camera"
                 aria-label="Reset camera"
                 onClick={() => {
-                  setView("perspective");
+                  setView('perspective');
                   setCameraRevision(cameraRevision + 1);
                 }}
               >
@@ -706,17 +652,9 @@ export default function App() {
               </button>
             </div>
             <div className="segmented view-switcher">
-              {(["perspective", "top", "front"] as const).map((entry) => (
-                <button
-                  key={entry}
-                  aria-pressed={view === entry}
-                  onClick={() => setView(entry)}
-                >
-                  {entry === "perspective"
-                    ? "3D"
-                    : entry === "top"
-                      ? "Top"
-                      : "Front"}
+              {(['perspective', 'top', 'front'] as const).map((entry) => (
+                <button key={entry} aria-pressed={view === entry} onClick={() => setView(entry)}>
+                  {entry === 'perspective' ? '3D' : entry === 'top' ? 'Top' : 'Front'}
                 </button>
               ))}
             </div>
@@ -731,7 +669,7 @@ export default function App() {
             </label>
           </div>
           <div className="scene-wrap">
-            {library.status !== "loading" && (
+            {library.status !== 'loading' && (
               <Scene
                 assembly={assembly}
                 selectedId={selectedId}
@@ -746,16 +684,12 @@ export default function App() {
                 onReady={onSceneReady}
               />
             )}
-            <div
-              className="viewport-label"
-              data-geometry={library.status}
-              title={library.message}
-            >
+            <div className="viewport-label" data-geometry={library.status} title={library.message}>
               <span className="status-dot" />
-              {library.status === "fallback"
-                ? "Prototype geometry / LDraw unavailable"
+              {library.status === 'fallback' && !hasNativeModels
+                ? 'Prototype geometry / LDraw unavailable'
                 : library.message}
-              {library.status === "ready" && (
+              {hasNativeModels && (
                 <a href="/ldraw/CAreadme.txt" target="_blank" rel="noreferrer">
                   Attribution
                 </a>
@@ -790,20 +724,14 @@ export default function App() {
         </section>
         <aside className="inspector-sidebar">
           <div className="inspector-tabs">
-            <button
-              aria-pressed={panel === "inspect"}
-              onClick={() => setPanel("inspect")}
-            >
+            <button aria-pressed={panel === 'inspect'} onClick={() => setPanel('inspect')}>
               Inspector
             </button>
-            <button
-              aria-pressed={panel === "parts"}
-              onClick={() => setPanel("parts")}
-            >
+            <button aria-pressed={panel === 'parts'} onClick={() => setPanel('parts')}>
               Parts list<span>{bill.length}</span>
             </button>
           </div>
-          {panel === "inspect" ? (
+          {panel === 'inspect' ? (
             <>
               <section className="assembly-section">
                 <div className="section-heading">
@@ -816,21 +744,11 @@ export default function App() {
                     <span>Pieces</span>
                   </div>
                   <div>
-                    <strong>
-                      {
-                        new Set(assembly.bricks.map((brick) => brick.partId))
-                          .size
-                      }
-                    </strong>
+                    <strong>{new Set(assembly.bricks.map((brick) => brick.partId)).size}</strong>
                     <span>Part types</span>
                   </div>
                   <div>
-                    <strong>
-                      {
-                        new Set(assembly.bricks.map((brick) => brick.color))
-                          .size
-                      }
-                    </strong>
+                    <strong>{new Set(assembly.bricks.map((brick) => brick.color)).size}</strong>
                     <span>Colors</span>
                   </div>
                 </div>
@@ -843,10 +761,7 @@ export default function App() {
                   </div>
                   <div>
                     <dt>Model height</dt>
-                    <dd>
-                      {assembly.bricks.length ? (height * 3.2).toFixed(1) : "0"}{" "}
-                      mm
-                    </dd>
+                    <dd>{assembly.bricks.length ? (height * 3.2).toFixed(1) : '0'} mm</dd>
                   </div>
                   <div>
                     <dt>Orientation</dt>
@@ -859,20 +774,24 @@ export default function App() {
                   <h2>Engine validation</h2>
                   <span className="live-label">LIVE</span>
                 </div>
-                <div
-                  className={`validation-banner ${issues.length ? "failed" : ""}`}
-                >
+                <div className={`validation-banner ${issues.length ? 'failed' : ''}`}>
                   <CheckCheck size={18} />
                   <span>
-                    {issues.length ? "Check failed" : "Geometry checks passed"}
+                    {issues.length
+                      ? 'Check failed'
+                      : hasEnvelopeOnlyParts
+                        ? 'Envelope layout accepted; connectors unknown'
+                        : 'Geometry checks passed'}
                   </span>
                 </div>
                 <div className="check-list">
                   {[
-                    "Supported prototype parts",
-                    "No body collisions",
-                    "Grounded stud connections",
-                    "Half-unit grid alignment",
+                    'Valid part definitions',
+                    'No body collisions',
+                    hasEnvelopeOnlyParts
+                      ? 'Envelope contact; connector fit unknown'
+                      : 'Grounded stud connections',
+                    'Half-unit grid alignment',
                   ].map((label) => (
                     <div key={label}>
                       <Check size={14} />
@@ -903,15 +822,12 @@ export default function App() {
                   <Scale size={16} className="muted" />
                 </div>
                 <div
-                  className={`validation-banner ${buildability.status === "failed" ? "failed" : "physical-warning"}`}
+                  className={`validation-banner ${buildability.status === 'failed' ? 'failed' : 'physical-warning'}`}
                 >
                   <Scale size={18} />
                   <span>{buildability.label}</span>
                 </div>
-                <dl
-                  className="buildability-checks"
-                  aria-label="Required buildability checks"
-                >
+                <dl className="buildability-checks" aria-label="Required buildability checks">
                   {buildability.checks.map((check) => (
                     <div
                       key={check.id}
@@ -921,38 +837,36 @@ export default function App() {
                     >
                       <dt>{check.label}</dt>
                       <dd>
-                        {check.status === "passed"
-                          ? "Passed (model)"
-                          : check.status === "estimated"
-                            ? "Estimated"
-                            : check.status === "reported"
-                              ? "Catalogue-reported"
-                              : check.status === "failed"
-                                ? "Failed"
-                                : "Unknown"}
+                        {check.status === 'passed'
+                          ? 'Passed (model)'
+                          : check.status === 'estimated'
+                            ? 'Estimated'
+                            : check.status === 'reported'
+                              ? 'Catalogue-reported'
+                              : check.status === 'failed'
+                                ? 'Failed'
+                                : 'Unknown'}
                       </dd>
                     </div>
                   ))}
                 </dl>
                 <p className="physical-note">
-                  No 100% buildability guarantee. Physical validation and all
-                  required evidence are still needed.
+                  No 100% buildability guarantee. Physical validation and all required evidence are
+                  still needed.
                 </p>
                 <dl className="measurements">
                   <div>
                     <dt>Total mass</dt>
                     <dd>
                       {physical.totalMassGrams === null
-                        ? "Unknown"
-                        : `${physical.massBasis === "measured" ? "" : "~ "}${physical.totalMassGrams.toFixed(2)} g`}
+                        ? 'Unknown'
+                        : `${physical.massBasis === 'measured' ? '' : '~ '}${physical.totalMassGrams.toFixed(2)} g`}
                     </dd>
                   </div>
                   <div>
                     <dt>Mass basis</dt>
                     <dd>
-                      {physical.massBasis === "catalog"
-                        ? "Catalogue-reported"
-                        : physical.massBasis}
+                      {physical.massBasis === 'catalog' ? 'Catalogue-reported' : physical.massBasis}
                     </dd>
                   </div>
                   <div>
@@ -960,10 +874,10 @@ export default function App() {
                     <dd>
                       {
                         {
-                          "not-assessed": "Unknown",
-                          balanced: "Static balance",
-                          "requires-clutch": "Needs stud tension",
-                          unstable: "No equilibrium",
+                          'not-assessed': 'Unknown',
+                          balanced: 'Static balance',
+                          'requires-clutch': 'Needs stud tension',
+                          unstable: 'No equilibrium',
                         }[physical.gravity]
                       }
                     </dd>
@@ -972,7 +886,7 @@ export default function App() {
                     <dt>Stud tension</dt>
                     <dd>
                       {physical.minimumStudTensionNewtons === null
-                        ? "Unknown"
+                        ? 'Unknown'
                         : `${physical.minimumStudTensionNewtons.toFixed(4)} N`}
                     </dd>
                   </div>
@@ -981,9 +895,9 @@ export default function App() {
                     <dd>
                       {
                         {
-                          unknown: "Unknown",
-                          "within-supplied-limit": "Within supplied limit",
-                          "exceeds-supplied-limit": "Exceeded",
+                          unknown: 'Unknown',
+                          'within-supplied-limit': 'Within supplied limit',
+                          'exceeds-supplied-limit': 'Exceeded',
                         }[physical.connectionStrength]
                       }
                     </dd>
@@ -997,9 +911,7 @@ export default function App() {
                   <input
                     type="checkbox"
                     checked={useCatalogMasses}
-                    onChange={(event) =>
-                      setUseCatalogMasses(event.target.checked)
-                    }
+                    onChange={(event) => setUseCatalogMasses(event.target.checked)}
                   />
                   Use catalogue weights
                 </label>
@@ -1007,9 +919,7 @@ export default function App() {
                   <input
                     type="checkbox"
                     checked={estimateMissingMasses}
-                    onChange={(event) =>
-                      setEstimateMissingMasses(event.target.checked)
-                    }
+                    onChange={(event) => setEstimateMissingMasses(event.target.checked)}
                   />
                   Estimate missing masses
                 </label>
@@ -1017,48 +927,36 @@ export default function App() {
                   <input
                     type="checkbox"
                     checked={rejectInfeasible}
-                    onChange={(event) =>
-                      setRejectInfeasible(event.target.checked)
-                    }
+                    onChange={(event) => setRejectInfeasible(event.target.checked)}
                   />
                   Reject infeasible edits
                 </label>
                 <p className="physical-note">
-                  {physical.masses.some(({ mass }) => mass.kind === "estimated")
-                    ? "Solid-envelope mass estimates are not actual part weights."
-                    : physical.masses.some(
-                          ({ mass }) => mass.kind === "catalog",
-                        )
-                      ? "Catalogue weights are nominal; colour and mould differences are not measured."
+                  {physical.masses.some(({ mass }) => mass.kind === 'estimated')
+                    ? 'Solid-envelope mass estimates are not actual part weights.'
+                    : physical.masses.some(({ mass }) => mass.kind === 'catalog')
+                      ? 'Catalogue weights are nominal; colour and mould differences are not measured.'
                       : (physical.reasons[0] ??
-                        "Static model only; physical strength is not certified.")}
+                        'Static model only; physical strength is not certified.')}
                 </p>
                 <details>
                   <summary>Assumptions and provenance</summary>
                   <ul>
-                    {[...physical.reasons, ...physical.assumptions].map(
-                      (reason) => (
-                        <li key={reason}>{reason}</li>
-                      ),
-                    )}
+                    {[...physical.reasons, ...physical.assumptions].map((reason) => (
+                      <li key={reason}>{reason}</li>
+                    ))}
                   </ul>
                   {[
-                    ...new Map(
-                      physical.masses.map(({ partId, mass }) => [partId, mass]),
-                    ).entries(),
+                    ...new Map(physical.masses.map(({ partId, mass }) => [partId, mass])).entries(),
                   ].map(([id, mass]) => (
                     <p key={id}>
                       {id}: {mass.massGrams} g / {mass.kind} / {mass.source}
                       {mass.catalog && (
                         <>
                           <br />
-                          <a
-                            href={mass.catalog.url}
-                            target="_blank"
-                            rel="noreferrer"
-                          >
+                          <a href={mass.catalog.url} target="_blank" rel="noreferrer">
                             BrickLink {mass.catalog.partId}
-                          </a>{" "}
+                          </a>{' '}
                           / {mass.catalog.retrievedAt}
                           <br />
                           {mass.catalog.mappingNote}
@@ -1068,10 +966,9 @@ export default function App() {
                   ))}
                   {physicalData.studConnection && (
                     <p>
-                      Stud tension source: {physicalData.studConnection.source};{" "}
-                      {physicalData.studConnection.maxTensionPerStudNewtons} N
-                      per stud / safety factor{" "}
-                      {physicalData.studConnection.safetyFactor}.
+                      Stud tension source: {physicalData.studConnection.source};{' '}
+                      {physicalData.studConnection.maxTensionPerStudNewtons} N per stud / safety
+                      factor {physicalData.studConnection.safetyFactor}.
                     </p>
                   )}
                 </details>
@@ -1083,29 +980,23 @@ export default function App() {
                   aria-label="Import physical data"
                   onChange={(event) => {
                     void importPhysics(event.target.files?.[0]);
-                    event.target.value = "";
+                    event.target.value = '';
                   }}
                 />
-                <button
-                  className="secondary"
-                  onClick={() => physicalFile.current?.click()}
-                >
+                <button className="secondary" onClick={() => physicalFile.current?.click()}>
                   <Upload size={15} />
                   Import physical data
                 </button>
-                {(Object.keys(physicalData.parts).length > 0 ||
-                  physicalData.studConnection) && (
+                {(Object.keys(physicalData.parts).length > 0 || physicalData.studConnection) && (
                   <button
                     className="quiet"
                     onClick={() => {
                       setPhysicalData({ version: 1, parts: {} });
                       try {
-                        localStorage.removeItem(
-                          "brick-workshop-physical-data-v1",
-                        );
+                        localStorage.removeItem('brick-workshop-physical-data-v1');
                       } catch {
                         setMessage(
-                          "Physical data cleared for this session; browser storage is unavailable.",
+                          'Physical data cleared for this session; browser storage is unavailable.',
                         );
                       }
                     }}
@@ -1127,8 +1018,7 @@ export default function App() {
                   <div>
                     <dt>Mapped colors</dt>
                     <dd>
-                      {Object.keys(evidence.mappings.colors).length} /{" "}
-                      {COLORS.length}
+                      {Object.keys(evidence.mappings.colors).length} / {COLORS.length}
                     </dd>
                   </div>
                   <div>
@@ -1153,13 +1043,10 @@ export default function App() {
                   aria-label="Import part color evidence"
                   onChange={(event) => {
                     void importEvidence(event.target.files?.[0]);
-                    event.target.value = "";
+                    event.target.value = '';
                   }}
                 />
-                <button
-                  className="secondary"
-                  onClick={() => evidenceFile.current?.click()}
-                >
+                <button className="secondary" onClick={() => evidenceFile.current?.click()}>
                   <Upload size={15} />
                   Import evidence
                 </button>
@@ -1184,9 +1071,7 @@ export default function App() {
                       <span
                         className="selected-color"
                         style={{
-                          backgroundColor: COLORS.find(
-                            (entry) => entry.id === selected.color,
-                          )?.hex,
+                          backgroundColor: COLORS.find((entry) => entry.id === selected.color)?.hex,
                         }}
                       />
                       <div>
@@ -1209,24 +1094,16 @@ export default function App() {
                         <dt>Mass</dt>
                         <dd title={selectedMass?.source}>
                           {selectedMass
-                            ? `${selectedMass.kind === "estimated" ? "~ " : ""}${selectedMass.massGrams.toFixed(2)} g`
-                            : "Unknown"}
+                            ? `${selectedMass.kind === 'estimated' ? '~ ' : ''}${selectedMass.massGrams.toFixed(2)} g`
+                            : 'Unknown'}
                         </dd>
                       </div>
                       <div>
                         <dt>Color</dt>
-                        <dd>
-                          {
-                            COLORS.find((entry) => entry.id === selected.color)
-                              ?.name
-                          }
-                        </dd>
+                        <dd>{COLORS.find((entry) => entry.id === selected.color)?.name}</dd>
                       </div>
                     </dl>
-                    <button
-                      className="secondary delete-button"
-                      onClick={deleteSelected}
-                    >
+                    <button className="secondary delete-button" onClick={deleteSelected}>
                       <Trash2 size={14} />
                       Remove piece
                     </button>
@@ -1247,38 +1124,26 @@ export default function App() {
               </div>
               <div className="bom-list">
                 {bill.map((entry) => (
-                  <div
-                    className="bom-row"
-                    key={`${entry.partId}:${entry.color}`}
-                  >
+                  <div className="bom-row" key={`${entry.partId}:${entry.color}`}>
                     <span
                       className="bom-color"
                       style={{
-                        backgroundColor: COLORS.find(
-                          (item) => item.id === entry.color,
-                        )?.hex,
+                        backgroundColor: COLORS.find((item) => item.id === entry.color)?.hex,
                       }}
                     />
                     <div>
                       <strong>{getPart(entry.partId).name}</strong>
                       <small>
-                        {entry.partId} /{" "}
-                        {COLORS.find((item) => item.id === entry.color)?.name}
+                        {entry.partId} / {COLORS.find((item) => item.id === entry.color)?.name}
                       </small>
                       <small
                         className="bom-availability"
-                        title={
-                          getPartColorStatus(
-                            entry.partId,
-                            entry.color,
-                            evidence,
-                          ).reason
-                        }
+                        title={getPartColorStatus(entry.partId, entry.color, evidence).reason}
                       >
-                        {getPartColorStatus(entry.partId, entry.color, evidence)
-                          .manufactured === "observed"
-                          ? "Inventory observed"
-                          : "Manufacturing unknown"}{" "}
+                        {getPartColorStatus(entry.partId, entry.color, evidence).manufactured ===
+                        'observed'
+                          ? 'Inventory observed'
+                          : 'Manufacturing unknown'}{' '}
                         / stock unknown
                       </small>
                     </div>
@@ -1295,7 +1160,7 @@ export default function App() {
                         billOfMaterials: bill,
                         physicalAssessment: physical,
                         buildability,
-                        exportPurpose: "unverified-draft",
+                        exportPurpose: 'unverified-draft',
                         physicalData,
                         physicalPolicy: {
                           rejectInfeasible,
@@ -1306,18 +1171,14 @@ export default function App() {
                         partColorStatuses: bill.map((entry) => ({
                           partId: entry.partId,
                           color: entry.color,
-                          ...getPartColorStatus(
-                            entry.partId,
-                            entry.color,
-                            evidence,
-                          ),
+                          ...getPartColorStatus(entry.partId, entry.color, evidence),
                         })),
                       },
                       null,
                       2,
                     ),
-                    "parts-list.json",
-                    "application/json",
+                    'parts-list.json',
+                    'application/json',
                   )
                 }
               >
@@ -1345,11 +1206,18 @@ export default function App() {
       {browserOpen && (
         <PartBrowser
           onClose={() => setBrowserOpen(false)}
-          onUse={(id) => {
-            if (!PARTS.some((part) => part.id === id)) return;
-            setPartId(id);
-            setCategory("all");
-            setSearch("");
+          onUse={(part) => {
+            if (!PARTS.some((candidate) => candidate.id === part.id)) {
+              registerPart(part);
+              setRuntimeParts((current) =>
+                current.some((candidate) => candidate.id === part.id)
+                  ? current
+                  : [...current, part],
+              );
+            }
+            setPartId(part.id);
+            setCategory('all');
+            setSearch('');
             setPreview(true);
             setBrowserOpen(false);
           }}
@@ -1362,7 +1230,7 @@ export default function App() {
             className="icon-button small"
             title="Dismiss notification"
             aria-label="Dismiss notification"
-            onClick={() => setMessage("")}
+            onClick={() => setMessage('')}
           >
             <X size={15} />
           </button>

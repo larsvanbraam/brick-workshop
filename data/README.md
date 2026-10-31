@@ -27,13 +27,21 @@ architectural details and ten foliage designs
 with Three.js's LDrawLoader.
 Its geometry status reports loading, real LDraw geometry, or procedural fallback.
 
-The full-library browser indexes top-level part IDs, names, categories, and
-keywords. It labels engine-supported designs separately from preview-only parts.
-The local development and preview servers load arbitrary part geometry and its
-dependency closure on demand under `/ldraw/`; internal subparts and primitives
-are not standalone search results. Restart after changing the library or the
-engine's supported catalog. The 1 x 2 plate uses canonical LDraw ID `3023b`, not
-the moved `3023` alias.
+The full-library browser indexes top-level part files marked `!LDRAW_ORG Part`,
+excluding minifigure, DUPLO, and electrical designs. It labels the curated engine
+designs with grid rules. Other listed parts can be added after their geometry is
+loaded, using a geometry-derived rectangular envelope; their connection sites
+remain unknown, so the engine does not allow them to support stacked parts. The
+The curated engine designs with grid rules. Other listed parts can be added after
+their geometry is loaded, using a geometry-derived rectangular envelope. They can
+be stacked when envelopes touch and overlap, but connector fit is unknown and is
+not treated as a verified stud connection; the buildability report marks these
+assemblies as unknown. Curated-to-curated stacks still require explicit aligned
+stud and receiver sites. The local development and preview servers load listed
+geometry and its dependency closure on demand under `/ldraw/`; internal subparts
+and primitives are not standalone search results. Restart after changing the
+library or the engine's supported catalog. The 1 x 2 plate uses canonical LDraw
+ID `3023b`, not the moved `3023` alias.
 The original tiles retain grooved IDs `3070b`, `3069b`, `3068b`, plus `63864`,
 `2431`, and `87079`; additional rectangular and round tiles also have smooth
 tops and do not support studs above. Upright slopes expose their high rear stud
@@ -56,8 +64,8 @@ and the library's attribution/license files, not the entire download. Arbitrary
 previews need `pnpm dev` or `pnpm preview` with the library installed; a static-only
 host can preview only the packaged supported designs. Builds without a local
 library still work using the procedural fallback. An incomplete installed library
-must be fixed before building. Geometry support does not expand the placement
-catalog or establish real part/color availability.
+must be fixed before building. Envelope-only placement does not establish
+connection behavior, physical buildability, or real part/color availability.
 
 Before redistributing meshes, preserve applicable LDraw licenses and attribution.
 The official LDraw library is community-maintained, not LEGO-authored, and does

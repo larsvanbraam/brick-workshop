@@ -29,11 +29,12 @@ import { LDrawLoader } from 'three/addons/loaders/LDrawLoader.js';
 import { LDrawConditionalLineMaterial } from 'three/addons/materials/LDrawConditionalLineMaterial.js';
 import { PARTS, footprint, getLDrawTransform } from '@lego-builder/brick-engine';
 import { cloneLDrawModel } from '../src/ldraw-materials';
-import { searchCatalog } from '../src/catalog';
+import { inferLDrawPartDefinition, searchCatalog } from '../src/catalog';
 import {
   collectLibrary,
   getReferences,
   indexLibrary,
+  isExcludedCatalogPart,
   isLibraryPath,
   parsePartHeader,
 } from './ldraw-library';
@@ -367,10 +368,47 @@ describe('local LDraw assets', () => {
       category: 'Tile',
       keywords: ['smooth', 'flat', 'panel'],
       supported: true,
+      official: false,
     });
     expect(parsePartHeader('3001', '0 Brick  2 x  4').supported).toBe(true);
     expect(parsePartHeader('3001', '0 Brick  2 x  4').category).toBe('Brick');
     expect(parsePartHeader('3070a', '0 Tile 1 x 1 without Groove').supported).toBe(false);
+  });
+  it('infers a half-grid envelope and native origin without connections', () => {
+    const part = parsePartHeader(
+      'runtime-fixture',
+      '0 Runtime fixture\n0 !LDRAW_ORG Part UPDATE 2026-01',
+    );
+    expect(
+      inferLDrawPartDefinition(part, {
+        min: { x: -15, y: -12, z: -20 },
+        max: { x: 15, y: 0, z: 20 },
+      }),
+    ).toMatchObject({
+      id: 'runtime-fixture',
+      width: 1.5,
+      depth: 2,
+      height: 1.5,
+      ldrawCenter: { x: 0, z: 0 },
+      ldrawBaseY: 0,
+      connections: { topStuds: [], bottomReceivers: [] },
+    });
+    expect(
+      inferLDrawPartDefinition(part, {
+        min: { x: 0, y: 0, z: 0 },
+        max: { x: 20, y: 0, z: 20 },
+      }),
+    ).toBeNull();
+  });
+  it('excludes minifigure, DUPLO, and electrical parts', () => {
+    for (const header of [
+      '0 Minifig Head\n0 !CATEGORY Minifig Head',
+      '0 DUPLO brick 2 x 4\n0 !CATEGORY Duplo',
+      '0 Electric motor 9V\n0 !CATEGORY Electrical',
+      '0 Train cable\n0 !KEYWORDS wire, electric',
+    ])
+      expect(isExcludedCatalogPart(parsePartHeader('fixture', header))).toBe(true);
+    expect(isExcludedCatalogPart(parsePartHeader('3001', '0 Brick 2 x 4'))).toBe(false);
   });
   it('reads type-1 references without treating comments or faces as dependencies', () => {
     expect(
@@ -407,19 +445,38 @@ describe('local LDraw assets', () => {
       for (const part of PARTS)
         await writeFile(
           join(root, 'parts', `${part.id}.dat`),
-          '0 Fixture\n1 16 0 0 0 1 0 0 0 1 0 0 0 1 s\\shared.dat',
+          '0 Fixture\n0 !LDRAW_ORG Part\n1 16 0 0 0 1 0 0 0 1 0 0 0 1 s\\shared.dat',
         );
       await writeFile(
         join(root, 'parts', 's', 'shared.dat'),
         '0 Shared\n1 16 0 0 0 1 0 0 0 1 0 0 0 1 stud.dat',
       );
       await writeFile(join(root, 'p', 'stud.dat'), '0 Primitive');
-      await writeFile(join(root, 'parts', 'unused.dat'), '0 Not supported');
+      await writeFile(join(root, 'parts', 'unused.dat'), '0 Not supported\n0 !LDRAW_ORG Part');
+      await writeFile(
+        join(root, 'parts', 'unofficial.dat'),
+        '0 Unofficial\n0 !LDRAW_ORG Unofficial_Part',
+      );
+      await writeFile(
+        join(root, 'parts', 'minifig.dat'),
+        '0 Minifig Head\n0 !LDRAW_ORG Part\n0 !CATEGORY Minifig Head',
+      );
+      await writeFile(
+        join(root, 'parts', 'duplo.dat'),
+        '0 DUPLO brick\n0 !LDRAW_ORG Part\n0 !CATEGORY Duplo',
+      );
+      await writeFile(
+        join(root, 'parts', 'motor.dat'),
+        '0 Electric motor\n0 !LDRAW_ORG Part\n0 !CATEGORY Electrical',
+      );
       const catalog = await indexLibrary(root);
       expect(catalog.parts).toHaveLength(PARTS.length + 1);
       expect(catalog.parts.filter((part) => part.supported)).toHaveLength(PARTS.length);
       expect(catalog.parts.find((part) => part.id === 'unused')?.supported).toBe(false);
       expect(catalog.parts.some((part) => part.id === 'shared' || part.id === 'stud')).toBe(false);
+      expect(
+        catalog.parts.some((part) => ['unofficial', 'minifig', 'duplo', 'motor'].includes(part.id)),
+      ).toBe(false);
       const preview = await collectLibrary(root, ['unused']);
       expect(preview.manifest.parts).toEqual(['unused']);
       expect(preview.assets.has('parts/3001.dat')).toBe(false);

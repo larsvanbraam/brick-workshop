@@ -1,6 +1,6 @@
 import solver from 'javascript-lp-solver';
 import type { SolverAPI } from 'javascript-lp-solver';
-import { footprint, getConnectionSites, getPart, validateAssembly } from './core.ts';
+import { footprint, getConnectionSites, getPart, isRuntimePart, validateAssembly } from './core.ts';
 import type { Assembly, Brick } from './core.ts';
 import { CATALOG_PART_MASSES } from './part-masses.ts';
 
@@ -36,6 +36,7 @@ export interface PhysicalOptions {
 
 export interface PhysicalAssessment {
   status: 'empty' | 'invalid-geometry' | 'infeasible' | 'unknown';
+  connectionModel: 'curated' | 'unknown';
   gravity: 'not-assessed' | 'balanced' | 'requires-clutch' | 'unstable';
   connectionStrength: 'unknown' | 'within-supplied-limit' | 'exceeds-supplied-limit';
   massBasis: 'missing' | 'measured' | 'estimated' | 'catalog' | 'mixed';
@@ -72,6 +73,7 @@ export interface BuildabilityReport {
 export function getBuildabilityReport(assessment: PhysicalAssessment): BuildabilityReport {
   const hasBuild = assessment.status !== 'empty';
   const geometryValid = hasBuild && assessment.status !== 'invalid-geometry';
+  const connectionModelKnown = assessment.connectionModel === 'curated';
   const completeMasses =
     geometryValid && assessment.massBasis !== 'missing' && assessment.masses.length > 0;
   const measuredMasses = completeMasses && assessment.massBasis === 'measured';
@@ -85,8 +87,16 @@ export function getBuildabilityReport(assessment: PhysicalAssessment): Buildabil
     {
       id: 'geometry',
       label: 'Geometry',
-      status: !hasBuild ? 'unknown' : geometryValid ? 'passed' : 'failed',
-      detail: 'Supported parts, bounds, collisions and grounded stud connections only.',
+      status: !hasBuild
+        ? 'unknown'
+        : !geometryValid
+          ? 'failed'
+          : connectionModelKnown
+            ? 'passed'
+            : 'unknown',
+      detail: connectionModelKnown
+        ? 'Curated bounds, collisions and grounded stud connections only.'
+        : 'Envelope bounds and contacts only; runtime connector geometry is unknown.',
     },
     {
       id: 'mass',
@@ -299,8 +309,10 @@ export function assessPhysicalFeasibility(
   options: PhysicalOptions = {},
 ): PhysicalAssessment {
   const data = importPhysicalData(options.data ?? { version: 1, parts: {} });
+  const hasRuntimeParts = assembly.bricks.some((brick) => isRuntimePart(brick.partId));
   const report: PhysicalAssessment = {
     status: assembly.bricks.length ? 'unknown' : 'empty',
+    connectionModel: hasRuntimeParts ? 'unknown' : 'curated',
     gravity: 'not-assessed',
     connectionStrength: 'unknown',
     massBasis: 'missing',
@@ -312,7 +324,9 @@ export function assessPhysicalFeasibility(
     connections: [],
     assemblyOrder: [],
     assumptions: [...ASSUMPTIONS],
-    reasons: [],
+    reasons: hasRuntimeParts
+      ? ['Runtime part contacts use bounding envelopes; connector fit is unknown.']
+      : [],
   };
   const geometry = validateAssembly(assembly);
   if (geometry.length) {
