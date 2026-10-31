@@ -1,0 +1,15 @@
+node_modules/
+dist/
+.vite/
+.cache/
+*.tsbuildinfo
+.DS_Store
+.env
+.env.*
+!.env.example
+data/ldraw/
+data/*.zip
+data/*.csv
+data/*.csv.gz
+data/part-colors*.json
+output/

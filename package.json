@@ -1,0 +1,29 @@
+{
+  "name": "lego-builder",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vp -C apps/web dev",
+    "build": "pnpm typecheck && vp -C apps/web build && vp -C packages/brick-engine pack && vp -C packages/claude-adapter pack",
+    "test": "vp test",
+    "check": "vp check && pnpm typecheck",
+    "typecheck": "tsc -p packages/brick-engine/tsconfig.json && tsc -p packages/claude-adapter/tsconfig.json && tsc -b apps/web",
+    "fmt": "vp fmt",
+    "preview": "vp -C apps/web preview",
+    "colors:import": "node apps/web/tooling/import-colors.ts",
+    "colors:inventory": "node apps/web/tooling/import-inventory.ts",
+    "claude:build": "node --env-file-if-exists=.env packages/claude-adapter/src/cli.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.2",
+    "csv-parse": "^7.0.3",
+    "linkedom": "^0.18.14",
+    "typescript": "~7.0.2",
+    "vite-plus": "1.4.0"
+  },
+  "engines": {
+    "node": "^22.18.0 || ^24.11.0 || >=26.0.0"
+  },
+  "packageManager": "pnpm@12.16.1"
+}

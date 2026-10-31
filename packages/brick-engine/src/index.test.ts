@@ -1,0 +1,1445 @@
+import { describe, expect, it } from 'vite-plus/test';
+import {
+  PARTS,
+  CATALOG_PART_MASSES,
+  assessPhysicalFeasibility,
+  getBuildabilityReport,
+  importPhysicalData,
+  EXAMPLES,
+  createDemoAssembly,
+  createExampleAssembly,
+  createExampleRegistry,
+  exportLDraw,
+  footprint,
+  getBillOfMaterials,
+  getConnectionSites,
+  getLDrawTransform,
+  getPart,
+  hasStudConnection,
+  placeBrick,
+  removeBrick,
+  validateAssembly,
+} from './index';
+import type { Assembly, Brick, ExampleDefinition } from './index';
+import { parseLDrawColors } from './colors.ts';
+import { getPartColorStatus, importPartColorEvidence } from './part-colors.ts';
+import { COLORS, DEFAULT_PART_COLOR_EVIDENCE } from './index.ts';
+
+const empty: Assembly = { name: 'Test', bricks: [] };
+const base: Brick = { id: 'base', partId: '3001', color: 4, x: 0, y: 0, z: 0, rotation: 0 };
+
+describe('catalogue-reported weights', () => {
+  it('covers reviewed catalogue entries with validated immutable source records', () => {
+    expect(Object.keys(CATALOG_PART_MASSES)).toHaveLength(107);
+    expect(PARTS.filter((part) => !CATALOG_PART_MASSES[part.id]).map((part) => part.id)).toEqual([
+      '39266',
+    ]);
+    expect(
+      Object.keys(CATALOG_PART_MASSES).every((id) => PARTS.some((part) => part.id === id)),
+    ).toBe(true);
+    expect(importPhysicalData({ version: 1, parts: CATALOG_PART_MASSES }).parts).toEqual(
+      CATALOG_PART_MASSES,
+    );
+    expect(Object.isFrozen(CATALOG_PART_MASSES)).toBe(true);
+    for (const mass of Object.values(CATALOG_PART_MASSES)) {
+      expect(mass.massGrams).toBeGreaterThan(0);
+      expect(mass.kind).toBe('catalog');
+      expect(mass.catalog?.retrievedAt).toBe('2026-10-31');
+      expect(Object.isFrozen(mass)).toBe(true);
+      expect(Object.isFrozen(mass.catalog)).toBe(true);
+    }
+    for (const [partId, catalogPartId] of [
+      ['3023b', '3023'],
+      ['3070b', '3070'],
+      ['3069b', '3069'],
+      ['3068b', '3068'],
+    ])
+      expect(CATALOG_PART_MASSES[partId].catalog?.partId).toBe(catalogPartId);
+    const report = assessPhysicalFeasibility(createExampleAssembly('basic-families'));
+    expect(report.massBasis).toBe('catalog');
+    expect(report.missingMassPartIds).toEqual([]);
+    expect(report.totalMassGrams).toBeCloseTo(
+      createExampleAssembly('basic-families').bricks.reduce(
+        (total, brick) => total + CATALOG_PART_MASSES[brick.partId].massGrams,
+        0,
+      ),
+      8,
+    );
+  });
+  it('uses published masses by default without treating them as independently measured', () => {
+    const assessment = assessPhysicalFeasibility({ ...empty, bricks: [base] });
+    expect(assessment).toMatchObject({
+      massBasis: 'catalog',
+      totalMassGrams: 2.32,
+      gravity: 'balanced',
+      status: 'unknown',
+    });
+    const report = getBuildabilityReport(assessment);
+    expect(report.certified).toBe(false);
+    expect(report.checks.find((check) => check.id === 'mass')?.status).toBe('reported');
+    expect(CATALOG_PART_MASSES['3005'].massGrams).toBe(0.44);
+    expect(CATALOG_PART_MASSES['87079'].massGrams).toBe(0.9);
+  });
+  it('lets host-supplied measurements override the catalogue and supports explicit opt-out', () => {
+    const build = { ...empty, bricks: [base] };
+    expect(
+      assessPhysicalFeasibility(build, {
+        data: {
+          version: 1,
+          parts: {
+            '3001': { massGrams: 2.4, kind: 'measured', source: 'Synthetic measurement fixture.' },
+          },
+        },
+      }),
+    ).toMatchObject({ totalMassGrams: 2.4, massBasis: 'measured' });
+    expect(assessPhysicalFeasibility(build, { useCatalogMasses: false })).toMatchObject({
+      massBasis: 'missing',
+      totalMassGrams: null,
+    });
+    expect(
+      assessPhysicalFeasibility(build, { useCatalogMasses: false, estimateMissingMasses: true })
+        .massBasis,
+    ).toBe('estimated');
+    const mixed = assessPhysicalFeasibility(
+      { ...empty, bricks: [base, { ...base, id: 'upper', partId: '3005', y: 3 }] },
+      {
+        data: {
+          version: 1,
+          parts: {
+            '3001': { massGrams: 2.4, kind: 'measured', source: 'Synthetic measurement fixture.' },
+          },
+        },
+      },
+    );
+    expect(mixed).toMatchObject({ massBasis: 'mixed', totalMassGrams: 2.84 });
+    expect(getBuildabilityReport(mixed).checks.find((check) => check.id === 'mass')?.status).toBe(
+      'reported',
+    );
+  });
+  it('validates catalogue provenance without allowing credentials or mismatched identifiers', () => {
+    const mass = CATALOG_PART_MASSES['3001'];
+    expect(importPhysicalData({ version: 1, parts: { '3001': mass } }).parts['3001']).toEqual(mass);
+    for (const catalog of [
+      undefined,
+      { ...mass.catalog, retrievedAt: '2026-02-30' },
+      { ...mass.catalog, partId: '3005' },
+      { ...mass.catalog, partId: '3005', url: CATALOG_PART_MASSES['3005'].catalog!.url },
+      { ...mass.catalog, url: `${mass.catalog!.url}&token=secret` },
+      {
+        ...mass.catalog,
+        url: 'https://user:password@www.bricklink.com/v2/catalog/catalogitem.page?P=3001',
+      },
+    ]) {
+      expect(() =>
+        importPhysicalData({ version: 1, parts: { '3001': { ...mass, catalog } } }),
+      ).toThrow();
+    }
+    expect(() =>
+      importPhysicalData({
+        version: 1,
+        parts: {
+          '3001': {
+            ...mass,
+            kind: 'measured',
+            catalog: { ...mass.catalog, url: 'javascript:alert(1)' },
+          },
+        },
+      }),
+    ).toThrow();
+  });
+});
+
+describe('physical feasibility', () => {
+  const measured = (massGrams: number) => ({
+    massGrams,
+    kind: 'measured' as const,
+    source: 'Synthetic test fixture, not real part data.',
+  });
+  const pedestal: Brick = { ...base, id: 'pedestal', partId: '3005', y: 3 };
+  const arm: Brick = { ...base, id: 'arm', partId: '3010', y: 6 };
+  const cantilever: Assembly = { name: 'Cantilever', bricks: [base, pedestal, arm] };
+  const data = {
+    version: 1 as const,
+    parts: { '3001': measured(10), '3005': measured(1), '3010': measured(1) },
+  };
+
+  it('never promotes estimated balance to certified buildability', () => {
+    const report = getBuildabilityReport(
+      assessPhysicalFeasibility(
+        { ...empty, bricks: [base] },
+        { estimateMissingMasses: true, useCatalogMasses: false },
+      ),
+    );
+    expect(report).toMatchObject({
+      status: 'not-certified',
+      certified: false,
+      label: 'Buildability not certified',
+    });
+    expect(report.checks.find((check) => check.id === 'geometry')?.status).toBe('passed');
+    expect(report.checks.find((check) => check.id === 'mass')?.status).toBe('estimated');
+    expect(report.checks.find((check) => check.id === 'gravity')?.status).toBe('estimated');
+    expect(report.blockers).toContain('Physical validation');
+  });
+  it('requires measured centers and independent evidence even when masses and tensile limits are supplied', () => {
+    const options = {
+      data: {
+        version: 1 as const,
+        parts: { '3001': { ...measured(10), centerOfMassStuds: { x: 1, z: 2 } } },
+        studConnection: {
+          maxTensionPerStudNewtons: 1,
+          safetyFactor: 2,
+          source: 'Synthetic fixture.',
+        },
+      },
+    };
+    const assessment = assessPhysicalFeasibility({ ...empty, bricks: [base] }, options);
+    const report = getBuildabilityReport(assessment);
+    expect(report.certified).toBe(false);
+    expect(
+      report.checks
+        .filter((check) => ['mass', 'centers', 'gravity', 'connections'].includes(check.id))
+        .every((check) => check.status === 'passed'),
+    ).toBe(true);
+    expect(report.blockers).toEqual(
+      expect.arrayContaining([
+        'Body strength',
+        'Construction sequence',
+        'Disturbance resistance',
+        'Independent evidence',
+        'Physical validation',
+      ]),
+    );
+    delete (options.data.parts['3001'] as { centerOfMassStuds?: unknown }).centerOfMassStuds;
+    expect(
+      getBuildabilityReport(
+        assessPhysicalFeasibility({ ...empty, bricks: [base] }, options),
+      ).checks.find((check) => check.id === 'gravity')?.status,
+    ).toBe('estimated');
+  });
+  it('distinguishes failed geometry, failed physics and missing masses without claiming certainty', () => {
+    const invalid = getBuildabilityReport(
+      assessPhysicalFeasibility({ ...empty, bricks: [{ ...base, y: 3 }] }),
+    );
+    expect(invalid).toMatchObject({ status: 'failed', certified: false });
+    expect(invalid.checks.find((check) => check.id === 'geometry')?.status).toBe('failed');
+    const unstable = getBuildabilityReport(
+      assessPhysicalFeasibility(
+        {
+          ...empty,
+          bricks: [
+            { ...pedestal, y: 0 },
+            { ...arm, y: 3 },
+          ],
+        },
+        { data },
+      ),
+    );
+    expect(unstable.status).toBe('failed');
+    expect(unstable.checks.find((check) => check.id === 'gravity')?.status).toBe('failed');
+    const missing = getBuildabilityReport(
+      assessPhysicalFeasibility({ ...empty, bricks: [base] }, { useCatalogMasses: false }),
+    );
+    expect(missing.checks.find((check) => check.id === 'mass')?.status).toBe('unknown');
+    expect(missing.checks.find((check) => check.id === 'gravity')?.status).toBe('unknown');
+    expect(getBuildabilityReport(assessPhysicalFeasibility(empty))).toMatchObject({
+      certified: false,
+      label: 'No build to assess',
+    });
+  });
+
+  it('does not silently invent real part masses or certify empty/invalid builds', () => {
+    expect(assessPhysicalFeasibility(empty).status).toBe('empty');
+    expect(
+      assessPhysicalFeasibility({ ...empty, bricks: [base] }, { useCatalogMasses: false }),
+    ).toMatchObject({
+      status: 'unknown',
+      gravity: 'not-assessed',
+      totalMassGrams: null,
+      missingMassPartIds: ['3001'],
+    });
+    expect(assessPhysicalFeasibility({ ...empty, bricks: [{ ...base, y: 3 }] }).status).toBe(
+      'invalid-geometry',
+    );
+  });
+  it('balances a centered stack, accumulates weight and returns bottom-up insertion order', () => {
+    const report = assessPhysicalFeasibility(
+      { ...empty, bricks: [{ ...base, id: 'top', y: 3 }, base] },
+      { data },
+    );
+    expect(report).toMatchObject({
+      status: 'unknown',
+      gravity: 'balanced',
+      massBasis: 'measured',
+      totalMassGrams: 20,
+      centerOfMassStuds: { x: 1, z: 2 },
+      assemblyOrder: ['base', 'top'],
+      connectionStrength: 'unknown',
+      minimumStudTensionNewtons: 0,
+    });
+    expect(report.connections[0].compressionNewtons).toBeCloseTo(0.0980665, 6);
+  });
+  it('detects local overhangs needing clutch even when the entire base prevents tipping', () => {
+    expect(validateAssembly(cantilever)).toEqual([]);
+    const report = assessPhysicalFeasibility(cantilever, { data });
+    expect(report).toMatchObject({
+      status: 'unknown',
+      gravity: 'requires-clutch',
+      connectionStrength: 'unknown',
+    });
+    expect(report.minimumStudTensionNewtons).toBeCloseTo(0.02941995, 6);
+    expect(
+      report.connections.find((contact) => contact.upperId === 'arm')!.tensionNewtons,
+    ).toBeCloseTo(0.0196133, 6);
+  });
+  it('detects global tipping despite legal geometry and unlimited internal clutch', () => {
+    const build = {
+      ...empty,
+      bricks: [
+        { ...pedestal, y: 0 },
+        { ...arm, y: 3 },
+      ],
+    };
+    expect(validateAssembly(build)).toEqual([]);
+    expect(assessPhysicalFeasibility(build, { data })).toMatchObject({
+      status: 'infeasible',
+      gravity: 'unstable',
+      massBasis: 'measured',
+    });
+  });
+  it('uses actual mass ratios rather than unweighted part centers', () => {
+    const build = {
+      ...empty,
+      bricks: [
+        { ...base, partId: '3003' },
+        { ...arm, y: 3 },
+      ],
+    };
+    const light = { ...data, parts: { ...data.parts, '3003': measured(10) } };
+    const heavy = { ...light, parts: { ...light.parts, '3010': measured(30) } };
+    expect(assessPhysicalFeasibility(build, { data: light }).gravity).toBe('balanced');
+    expect(assessPhysicalFeasibility(build, { data: heavy }).gravity).toBe('balanced');
+    const longer = { ...build, bricks: [build.bricks[0], { ...arm, partId: '3009', y: 3 }] };
+    expect(
+      assessPhysicalFeasibility(longer, {
+        data: { ...light, parts: { ...light.parts, '3009': measured(1) } },
+      }).gravity,
+    ).toBe('requires-clutch');
+    expect(
+      assessPhysicalFeasibility(longer, {
+        data: { ...light, parts: { ...light.parts, '3009': measured(30) } },
+      }).gravity,
+    ).toBe('unstable');
+  });
+  it('checks individual disconnected components instead of a misleading whole-build center', () => {
+    const bad = [
+      { ...pedestal, y: 0 },
+      { ...arm, y: 3 },
+    ];
+    const build = { ...empty, bricks: [...bad, { ...base, id: 'distant', z: 10 }] };
+    expect(assessPhysicalFeasibility(build, { data }).gravity).toBe('unstable');
+  });
+  it('checks supplied tension limits with safety factors without treating them as certification', () => {
+    const connection = {
+      maxTensionPerStudNewtons: 0.03,
+      safetyFactor: 1,
+      source: 'Synthetic test limit.',
+    };
+    expect(
+      assessPhysicalFeasibility(cantilever, { data: { ...data, studConnection: connection } }),
+    ).toMatchObject({ status: 'unknown', connectionStrength: 'within-supplied-limit' });
+    expect(
+      assessPhysicalFeasibility(cantilever, {
+        data: { ...data, studConnection: { ...connection, safetyFactor: 2 } },
+      }),
+    ).toMatchObject({ status: 'infeasible', connectionStrength: 'exceeds-supplied-limit' });
+  });
+  it.each([0, 90, 180, 270] as const)(
+    'handles rotated parts and preserves the input at %s degrees',
+    (rotation) => {
+      const build = {
+        ...empty,
+        bricks: [
+          { ...base, rotation },
+          { ...base, id: 'top', y: 3, rotation },
+        ],
+      };
+      const before = structuredClone(build);
+      expect(assessPhysicalFeasibility(build, { data }).gravity).toBe('balanced');
+      expect(build).toEqual(before);
+    },
+  );
+  it('labels optional solid-envelope estimates and never upgrades them to measured weights', () => {
+    const report = assessPhysicalFeasibility(cantilever, {
+      estimateMissingMasses: true,
+      useCatalogMasses: false,
+    });
+    expect(report).toMatchObject({
+      status: 'unknown',
+      massBasis: 'estimated',
+      gravity: 'requires-clutch',
+    });
+    expect(
+      report.masses.every(({ mass }) => mass.source.includes('NOT an actual part weight')),
+    ).toBe(true);
+    expect(
+      assessPhysicalFeasibility(cantilever, {
+        estimateMissingMasses: true,
+        useCatalogMasses: false,
+        data: { version: 1, parts: { '3001': measured(10) } },
+      }).massBasis,
+    ).toBe('mixed');
+  });
+  it('validates physical inputs and retains independent copies', () => {
+    const imported = importPhysicalData(data);
+    imported.parts['3001'].massGrams = 1;
+    expect(data.parts['3001'].massGrams).toBe(10);
+    for (const massGrams of [0, -1, NaN, Infinity])
+      expect(() =>
+        importPhysicalData({ ...data, parts: { '3001': measured(massGrams) } }),
+      ).toThrow();
+    expect(() => importPhysicalData({ ...data, parts: { unknown: measured(1) } })).toThrow();
+    expect(() =>
+      importPhysicalData({ ...data, parts: { '3001': { ...measured(1), source: '' } } }),
+    ).toThrow();
+    expect(() =>
+      importPhysicalData({
+        ...data,
+        parts: { '3001': { ...measured(1), centerOfMassStuds: { x: 3, z: 0 } } },
+      }),
+    ).toThrow();
+    expect(() =>
+      importPhysicalData({
+        ...data,
+        studConnection: { maxTensionPerStudNewtons: 1, safetyFactor: 0, source: 'Test' },
+      }),
+    ).toThrow();
+    expect(() => importPhysicalData({ version: 1, parts: 1 })).toThrow();
+    expect(() => importPhysicalData({ ...data, parts: { '3001': measured(1e300) } })).toThrow();
+  });
+  it('rotates a supplied asymmetric center of mass with the part', () => {
+    const report = assessPhysicalFeasibility(
+      { ...empty, bricks: [{ ...base, rotation: 90 }] },
+      {
+        data: {
+          version: 1,
+          parts: { '3001': { ...measured(10), centerOfMassStuds: { x: 0.25, z: 3 } } },
+        },
+      },
+    );
+    expect(report.centerOfMassStuds).toEqual({ x: 3, z: 1.75 });
+  });
+  it('keeps global tipping invariant under scale and reports conservative model limits', () => {
+    const build = {
+      ...empty,
+      bricks: [
+        { ...pedestal, y: 0 },
+        { ...arm, y: 3 },
+      ],
+    };
+    for (const scale of [0.01, 1, 100])
+      expect(
+        assessPhysicalFeasibility(build, {
+          data: { version: 1, parts: { '3005': measured(scale), '3010': measured(scale) } },
+        }).gravity,
+      ).toBe('unstable');
+    const large = {
+      ...empty,
+      bricks: Array.from({ length: 201 }, (_, index) => ({
+        ...base,
+        id: `ground-${index}`,
+        partId: '3005',
+        x: index % 16,
+        z: Math.floor(index / 16),
+      })),
+    };
+    expect(assessPhysicalFeasibility(large, { estimateMissingMasses: true })).toMatchObject({
+      status: 'unknown',
+      gravity: 'not-assessed',
+    });
+  });
+});
+
+describe('part/color inventory evidence', () => {
+  const input = {
+    version: 1,
+    source: {
+      provider: 'rebrickable',
+      url: 'https://cdn.rebrickable.com/media/downloads/inventory_parts.csv.gz',
+      retrievedAt: '2026-07-31T00:00:00Z',
+      mappingNote: 'Synthetic test mappings, not production catalog data.',
+    },
+    mappings: { parts: { '3023b': '3023' }, colors: { '4': 999 } },
+    observations: [{ partId: '3023', colorId: 999, inventoryId: 123 }],
+  };
+  it('requires explicit part and color mappings rather than assuming matching IDs', () => {
+    const evidence = importPartColorEvidence(input);
+    expect(getPartColorStatus('3023b', 4, evidence)).toMatchObject({
+      rendering: 'recognized',
+      manufactured: 'observed',
+      stock: 'unknown',
+      rebrickablePartId: '3023',
+      rebrickableColorId: 999,
+      inventoryId: 123,
+    });
+    expect(getPartColorStatus('3023b', 36, evidence)).toMatchObject({
+      manufactured: 'unknown',
+      reason: 'unmapped-color',
+    });
+    expect(getPartColorStatus('3001', 4, evidence)).toMatchObject({
+      manufactured: 'unknown',
+      reason: 'unmapped-part',
+    });
+  });
+  it('does not treat recognized colors or absence of observations as manufacturing or stock proof', () => {
+    expect(getPartColorStatus('3001', 36)).toMatchObject({
+      rendering: 'recognized',
+      manufactured: 'unknown',
+      stock: 'unknown',
+      reason: 'no-data',
+    });
+    expect(
+      getPartColorStatus('3023b', 4, importPartColorEvidence({ ...input, observations: [] })),
+    ).toMatchObject({ manufactured: 'unknown', reason: 'not-observed' });
+    expect(getPartColorStatus('3001', 999999)).toMatchObject({
+      rendering: 'unknown',
+      manufactured: 'unknown',
+    });
+  });
+  it('validates provenance, reserved color IDs, observations, and ambiguous mappings', () => {
+    expect(() => importPartColorEvidence({ ...input, version: 2 })).toThrow('version');
+    expect(() =>
+      importPartColorEvidence({
+        ...input,
+        source: { ...input.source, url: 'https://example.com/data' },
+      }),
+    ).toThrow('Rebrickable');
+    expect(() =>
+      importPartColorEvidence({
+        ...input,
+        source: { ...input.source, url: 'https://rebrickable.com/api/?key=secret' },
+      }),
+    ).toThrow('credentials');
+    expect(() =>
+      importPartColorEvidence({ ...input, mappings: { ...input.mappings, colors: { '16': 999 } } }),
+    ).toThrow('color mapping');
+    expect(() =>
+      importPartColorEvidence({
+        ...input,
+        mappings: { ...input.mappings, colors: { '4': 999, '36': 999 } },
+      }),
+    ).toThrow('ambiguous');
+    expect(() =>
+      importPartColorEvidence({
+        ...input,
+        observations: [{ partId: '3023', colorId: 999, inventoryId: 0 }],
+      }),
+    ).toThrow('inventory ID');
+  });
+  it('deduplicates observations and freezes copied input data', () => {
+    const evidence = importPartColorEvidence({
+      ...input,
+      observations: [...input.observations, ...input.observations],
+    });
+    expect(evidence.observations).toHaveLength(1);
+    expect(Object.isFrozen(evidence.mappings.colors)).toBe(true);
+    expect(Object.isFrozen(evidence.observations[0])).toBe(true);
+    expect(evidence.mappings.colors).not.toBe(input.mappings.colors);
+  });
+});
+
+describe('LDraw color definitions', () => {
+  it('accepts all official colors in placement, BOM, and LDraw export but rejects contextual IDs', () => {
+    for (const color of COLORS) {
+      const brick = { ...base, color: color.id };
+      const assembly = { name: 'Color check', bricks: [brick] };
+      expect(placeBrick({ name: 'Color check', bricks: [] }, brick).ok).toBe(true);
+      expect(validateAssembly(assembly)).toEqual([]);
+      expect(getBillOfMaterials(assembly)[0].color).toBe(color.id);
+      expect(exportLDraw(assembly)).toContain(`1 ${color.id} `);
+    }
+    for (const color of [16, 24, 999999])
+      expect(placeBrick({ name: 'Contextual color', bricks: [] }, { ...base, color }).ok).toBe(
+        false,
+      );
+    expect(DEFAULT_PART_COLOR_EVIDENCE.observations).toHaveLength(562);
+    expect(Object.keys(DEFAULT_PART_COLOR_EVIDENCE.mappings.parts)).toHaveLength(106);
+    for (const part of PARTS)
+      for (const color of [0, 1, 2, 4, 14, 15])
+        expect(getPartColorStatus(part.id, color, DEFAULT_PART_COLOR_EVIDENCE).manufactured).toBe(
+          DEFAULT_PART_COLOR_EVIDENCE.observations.some(
+            (observation) =>
+              observation.partId === DEFAULT_PART_COLOR_EVIDENCE.mappings.parts[part.id] &&
+              observation.colorId === DEFAULT_PART_COLOR_EVIDENCE.mappings.colors[String(color)],
+          )
+            ? 'observed'
+            : 'unknown',
+        );
+  });
+  it('preserves color IDs, transparency, edges, finishes, and luminance', () => {
+    const colors = parseLDrawColors(
+      '0 !COLOUR Red CODE 4 VALUE #B40000 EDGE #333333\n0 !COLOUR Trans_Red CODE 36 VALUE #C91A09 EDGE #660D05 ALPHA 128\n0 !COLOUR Chrome_Blue CODE 61 VALUE #123456 EDGE 4 CHROME LUMINANCE 12',
+    );
+    expect(colors[0]).toEqual({
+      id: 4,
+      name: 'Red',
+      hex: '#b40000',
+      edge: '#333333',
+      alpha: 255,
+      luminance: 0,
+      finish: 'solid',
+    });
+    expect(colors[1]).toMatchObject({ id: 36, name: 'Trans Red', alpha: 128 });
+    expect(colors[2]).toMatchObject({ id: 61, edge: 4, finish: 'chrome', luminance: 12 });
+  });
+  it('excludes contextual codes and preserves detailed material definitions', () => {
+    const colors = parseLDrawColors(
+      '0 !COLOUR Main CODE 16 VALUE #FFFFFF EDGE #333333\n0 !COLOUR Edge CODE 24 VALUE #333333 EDGE #333333\n0 !COLOUR Glitter CODE 114 VALUE #123456 EDGE #333333 ALPHA 128 MATERIAL GLITTER VALUE #FFFFFF FRACTION 0.17 VFRACTION 0.2 SIZE 1',
+    );
+    expect(colors).toHaveLength(1);
+    expect(colors[0]).toMatchObject({
+      id: 114,
+      finish: 'glitter',
+      material: 'GLITTER VALUE #FFFFFF FRACTION 0.17 VFRACTION 0.2 SIZE 1',
+    });
+    expect(
+      parseLDrawColors(
+        '0 !COLOUR Cloth CODE 20000 VALUE #123456 EDGE #333333 MATERIAL FABRIC CANVAS',
+      )[0],
+    ).toMatchObject({ finish: 'fabric', material: 'FABRIC CANVAS' });
+  });
+  it('rejects malformed definitions and duplicate IDs', () => {
+    expect(() =>
+      parseLDrawColors('0 !COLOUR Broken CODE 4 VALUE #B40000 EDGE #333333 ALPHA 300'),
+    ).toThrow('Invalid color');
+    expect(() =>
+      parseLDrawColors(
+        '0 !COLOUR Red CODE 4 VALUE #B40000 EDGE #333333\n0 !COLOUR Other CODE 4 VALUE #000000 EDGE #333333',
+      ),
+    ).toThrow('Duplicate color');
+  });
+});
+
+describe('architectural part families', () => {
+  it('demonstrates every architectural design on one ground level', () => {
+    const assembly = createExampleAssembly('architectural-details');
+    expect(assembly.bricks).toHaveLength(20);
+    expect(
+      new Set(assembly.bricks.map((brick) => getPart(brick.partId).family)).size,
+    ).toBeGreaterThanOrEqual(5);
+    expect(validateAssembly(assembly)).toEqual([]);
+    expect(assembly.bricks.every((brick) => brick.y === 0)).toBe(true);
+    expect(getPartColorStatus('801a', 4).manufactured).toBe('unknown');
+    expect(getPartColorStatus('802a', 4).manufactured).toBe('unknown');
+    expect(assessPhysicalFeasibility(assembly)).toMatchObject({
+      gravity: 'not-assessed',
+      status: 'unknown',
+      massBasis: 'catalog',
+    });
+  });
+  it('uses real half-plate baseplates with no underside stud receivers', () => {
+    const foundation = { ...base, partId: '3867' };
+    expect(getPart('3867')).toMatchObject({ height: 0.5, family: 'baseplate' });
+    expect(getConnectionSites(foundation, 'bottom')).toEqual([]);
+    expect(
+      placeBrick({ ...empty, bricks: [foundation] }, { ...base, id: 'upper', y: 0.5 }).ok,
+    ).toBe(true);
+    expect(placeBrick({ ...empty, bricks: [foundation] }, { ...base, id: 'upper', y: 1 }).ok).toBe(
+      false,
+    );
+    expect(placeBrick({ ...empty, bricks: [base] }, { ...foundation, id: 'upper', y: 3 }).ok).toBe(
+      false,
+    );
+    expect(placeBrick(empty, { ...base, x: 0.25 }).ok).toBe(false);
+  });
+  it('connects centred cone studs with half-stud offsets without inventing corner studs', () => {
+    const cone = { ...base, partId: '3942c' };
+    expect(getConnectionSites(cone, 'top')).toEqual([{ x: 1, y: 6, z: 1 }]);
+    expect(
+      placeBrick(
+        { ...empty, bricks: [cone] },
+        { ...base, id: 'cap', partId: '6141', x: 0.5, y: 6, z: 0.5 },
+      ).ok,
+    ).toBe(true);
+    expect(
+      placeBrick({ ...empty, bricks: [cone] }, { ...base, id: 'cap', partId: '6141', y: 6 }).ok,
+    ).toBe(false);
+    expect(getConnectionSites({ ...base, partId: '3943b' }, 'top')).toHaveLength(4);
+    expect(getConnectionSites({ ...base, partId: '6233' }, 'top')).toHaveLength(4);
+  });
+  it('supports arch legs but never treats the opening as an underside receiver', () => {
+    const support = { ...base, partId: '3005' };
+    expect(
+      placeBrick({ ...empty, bricks: [support] }, { ...base, id: 'arch', partId: '3659', y: 3 }).ok,
+    ).toBe(true);
+    expect(
+      placeBrick(
+        { ...empty, bricks: [{ ...support, z: 1 }] },
+        { ...base, id: 'arch', partId: '3659', y: 3 },
+      ).ok,
+    ).toBe(false);
+  });
+  it('retains integral hinge studs and the two centre studs of modern frames', () => {
+    expect(getConnectionSites({ ...base, partId: '801a' }, 'top')).toEqual([
+      { x: 0.5, y: 9, z: 0.5 },
+    ]);
+    expect(getConnectionSites({ ...base, partId: '60596' }, 'top')).toHaveLength(2);
+    expect(getConnectionSites({ ...base, partId: '60594' }, 'top')).toHaveLength(2);
+  });
+});
+
+describe('basic part families', () => {
+  it('connects tall bricks at their actual plate height, not at ordinary brick height', () => {
+    const tall = { ...base, partId: '2453b' };
+    expect(getPart(tall.partId)).toMatchObject({ height: 15, family: 'tall' });
+    expect(
+      placeBrick({ ...empty, bricks: [tall] }, { ...base, id: 'upper', partId: '3005', y: 15 }).ok,
+    ).toBe(true);
+    expect(
+      placeBrick({ ...empty, bricks: [tall] }, { ...base, id: 'upper', partId: '3005', y: 3 }).ok,
+    ).toBe(false);
+  });
+  it.each([0, 90, 180, 270] as const)(
+    'limits slope studs to the high rear row at %s degrees',
+    (rotation) => {
+      const slope = { ...base, partId: '3039', rotation };
+      const studs = getConnectionSites(slope, 'top');
+      expect(studs).toHaveLength(2);
+      for (const x of [0, 1])
+        for (const z of [0, 1]) {
+          const upper = { ...base, id: 'upper', partId: '3005', x, z, y: 3 };
+          const rear =
+            rotation === 0
+              ? z === 1
+              : rotation === 90
+                ? x === 1
+                : rotation === 180
+                  ? z === 0
+                  : x === 0;
+          expect(placeBrick({ ...empty, bricks: [slope] }, upper).ok).toBe(rear);
+        }
+      const transform = getLDrawTransform(slope);
+      const cosine = Math.round(Math.cos((rotation * Math.PI) / 180));
+      const sine = Math.round(Math.sin((rotation * Math.PI) / 180));
+      const corners = [-20, 20].flatMap((nativeX) =>
+        [-30, 10].map((nativeZ) => ({
+          x: transform.x + cosine * nativeX + sine * nativeZ,
+          z: transform.z - sine * nativeX + cosine * nativeZ,
+        })),
+      );
+      expect(Math.min(...corners.map((corner) => corner.x))).toBe(0);
+      expect(Math.min(...corners.map((corner) => corner.z))).toBe(0);
+      expect(Math.max(...corners.map((corner) => corner.x))).toBe(40);
+      expect(Math.max(...corners.map((corner) => corner.z))).toBe(40);
+    },
+  );
+  it.each(PARTS.filter((part) => part.shape))(
+    'withholds rectangular contact physics for $id',
+    (part) => {
+      const assessment = assessPhysicalFeasibility(
+        { ...empty, bricks: [{ ...base, partId: part.id }] },
+        { estimateMissingMasses: true },
+      );
+      expect(assessment).toMatchObject({
+        status: 'unknown',
+        gravity: 'not-assessed',
+        connectionStrength: 'unknown',
+        minimumStudTensionNewtons: null,
+      });
+      expect(assessment.totalMassGrams).toBeGreaterThan(0);
+      expect(assessment.reasons.join(' ')).toContain('contact surfaces');
+      expect(
+        getBuildabilityReport(assessment).checks.find((check) => check.id === 'gravity')?.status,
+      ).toBe('unknown');
+      const measured = assessPhysicalFeasibility(
+        { ...empty, bricks: [{ ...base, partId: part.id }] },
+        {
+          data: {
+            version: 1,
+            parts: {
+              [part.id]: {
+                massGrams: 1,
+                kind: 'measured',
+                source: 'Synthetic regression fixture.',
+              },
+            },
+          },
+        },
+      );
+      expect(measured).toMatchObject({
+        massBasis: 'measured',
+        gravity: 'not-assessed',
+        status: 'unknown',
+        connectionStrength: 'unknown',
+      });
+    },
+  );
+  it('demonstrates all new families without changing the existing examples', () => {
+    const assembly = createExampleAssembly('basic-families');
+    expect(assembly.bricks).toHaveLength(18);
+    expect(validateAssembly(assembly)).toEqual([]);
+    expect(
+      new Set(assembly.bricks.map((brick) => getPart(brick.partId).family).filter(Boolean)),
+    ).toEqual(new Set(['tall', 'slope', 'round']));
+  });
+});
+
+describe('tile connections', () => {
+  it.each(PARTS.filter((part) => part.kind === 'tile'))(
+    'attaches $id underneath but provides no studs in any rotation',
+    (part) => {
+      for (const rotation of [0, 90, 180, 270] as const) {
+        const tile = { ...base, id: 'tile', partId: part.id, y: 3, rotation };
+        const size = footprint(tile);
+        const support = {
+          ...base,
+          partId: '4204',
+          rotation,
+        };
+        const assembly = { ...empty, bricks: [support, tile] };
+        expect(validateAssembly(assembly)).toEqual([]);
+        expect(getConnectionSites(tile, 'top')).toEqual([]);
+        expect(getConnectionSites(tile, 'bottom')).toHaveLength(size.width * size.depth);
+        expect(hasStudConnection(support, tile)).toBe(true);
+        const upper = { ...base, id: 'upper', partId: '3024', y: 4 };
+        expect(hasStudConnection(tile, upper)).toBe(false);
+        expect(placeBrick(assembly, upper)).toMatchObject({
+          ok: false,
+          issues: [expect.objectContaining({ code: 'unsupported' })],
+        });
+        expect(removeBrick(assembly, support.id).ok).toBe(false);
+        expect(removeBrick(assembly, tile.id).ok).toBe(true);
+        expect(exportLDraw(assembly)).toContain(`${part.id}.dat`);
+      }
+    },
+  );
+  it('does not count a smooth tile as an alternate stud support', () => {
+    const tile = { ...base, id: 'tile', partId: '3070b' };
+    const plate = { ...base, id: 'plate', partId: '3024', x: 1 };
+    const upper = { ...base, id: 'upper', partId: '3069b', y: 1, rotation: 90 as const };
+    const assembly = { ...empty, bricks: [tile, plate, upper] };
+    expect(validateAssembly(assembly)).toEqual([]);
+    expect(hasStudConnection(tile, upper)).toBe(false);
+    expect(hasStudConnection(plate, upper)).toBe(true);
+    expect(removeBrick(assembly, tile.id).ok).toBe(true);
+    expect(removeBrick(assembly, plate.id).ok).toBe(false);
+  });
+});
+
+describe('upright brick engine', () => {
+  it('matches brute-force support and collision results across half-unit grid bucket boundaries', () => {
+    let seed = 104729;
+    const random = () => {
+      seed = (seed * 1664525 + 1013904223) >>> 0;
+      return seed / 4294967296;
+    };
+    for (let sample = 0; sample < 150; sample++) {
+      const bricks = Array.from({ length: 25 }, (_, index) => {
+        const part = PARTS[Math.floor(random() * PARTS.length)];
+        const rotation = ([0, 90, 180, 270] as const)[Math.floor(random() * 4)];
+        const size = footprint({ ...base, partId: part.id, rotation });
+        return {
+          ...base,
+          id: `sample-${index}`,
+          partId: part.id,
+          rotation,
+          x: Math.floor(random() * (16 - size.width) * 2) / 2,
+          z: Math.floor(random() * (16 - size.depth) * 2) / 2,
+          y: [0, 0.5, 1, 3, 6, 9, 15, 18][Math.floor(random() * 8)],
+        };
+      });
+      const expected: [string, string][] = [];
+      const grounded = new Set<string>();
+      for (const brick of bricks.toSorted((first, second) => first.y - second.y)) {
+        if (
+          brick.y === 0 ||
+          bricks.some((support) => grounded.has(support.id) && hasStudConnection(support, brick))
+        )
+          grounded.add(brick.id);
+        else expected.push(['unsupported', brick.id]);
+      }
+      for (const [index, brick] of bricks.entries())
+        for (const other of bricks.slice(index + 1)) {
+          const first = footprint(brick);
+          const second = footprint(other);
+          if (
+            brick.x < other.x + second.width &&
+            brick.x + first.width > other.x &&
+            brick.z < other.z + second.depth &&
+            brick.z + first.depth > other.z &&
+            brick.y < other.y + second.height &&
+            brick.y + first.height > other.y
+          )
+            expected.push(['collision', brick.id], ['collision', other.id]);
+        }
+      expect(
+        validateAssembly({ ...empty, bricks }).map((issue) => [issue.code, issue.brickId]),
+      ).toEqual(expected);
+    }
+  });
+  it('contains 108 unique basic and architectural parts with explicit connection sites', () => {
+    expect(PARTS).toHaveLength(108);
+    expect(new Set(PARTS.map((part) => part.id)).size).toBe(108);
+    expect(PARTS.filter((part) => part.family === 'tall')).toHaveLength(10);
+    expect(PARTS.filter((part) => part.family === 'slope')).toHaveLength(4);
+    expect(PARTS.filter((part) => part.family === 'round')).toHaveLength(6);
+    for (const [family, count] of [
+      ['arch', 4],
+      ['baseplate', 2],
+      ['cone', 4],
+      ['door', 5],
+      ['window', 5],
+    ] as const)
+      expect(PARTS.filter((part) => part.family === family)).toHaveLength(count);
+    for (const part of PARTS) {
+      expect(part.height).toBeGreaterThan(0);
+      expect(Number.isInteger(part.height * 2)).toBe(true);
+      for (const [surface, sites] of Object.entries(part.connections)) {
+        if (!part.family || ['tall', 'slope', 'round'].includes(part.family))
+          expect(sites).toHaveLength(
+            surface === 'topStuds'
+              ? part.kind === 'tile'
+                ? 0
+                : part.shape === 'slope'
+                  ? part.width
+                  : part.width * part.depth
+              : part.width * part.depth,
+          );
+        expect(new Set(sites.map((site) => `${site.x}:${site.z}`)).size).toBe(sites.length);
+        expect(
+          sites.every(
+            (site) =>
+              Number.isInteger(site.x * 2) &&
+              Number.isInteger(site.z * 2) &&
+              site.x >= 0 &&
+              site.x < part.width &&
+              site.z >= 0 &&
+              site.z < part.depth,
+          ),
+        ).toBe(true);
+      }
+    }
+  });
+  it.each(PARTS)(
+    'validates $id placement, collisions, support, removal, and export in all rotations',
+    (part) => {
+      for (const rotation of [0, 90, 180, 270] as const) {
+        const brick = { ...base, partId: part.id, rotation };
+        const size = footprint(brick);
+        expect(placeBrick(empty, brick).ok).toBe(true);
+        expect(
+          validateAssembly({ ...empty, bricks: [{ ...brick, y: 61 - part.height }] }),
+        ).toContainEqual(expect.objectContaining({ code: 'invalid' }));
+        expect(placeBrick(empty, { ...brick, x: 16 - size.width, z: 16 - size.depth }).ok).toBe(
+          true,
+        );
+        expect(placeBrick(empty, { ...brick, x: 17 - size.width }).ok).toBe(false);
+        expect(placeBrick(empty, { ...brick, z: 17 - size.depth }).ok).toBe(false);
+        expect(
+          placeBrick(
+            { ...empty, bricks: [brick] },
+            { ...brick, id: 'collision', x: size.width - 1 },
+          ).ok,
+        ).toBe(false);
+        expect(
+          placeBrick({ ...empty, bricks: [brick] }, { ...brick, id: 'adjacent', x: size.width }).ok,
+        ).toBe(size.width * 2 <= 16);
+        let upper = { ...brick, id: 'upper', y: part.height };
+        const stud = getConnectionSites(brick, 'top')[0];
+        const receiver =
+          stud &&
+          getConnectionSites(upper, 'bottom').find(
+            (site) =>
+              stud.x >= site.x &&
+              stud.z >= site.z &&
+              stud.x - site.x + size.width <= 16 &&
+              stud.z - site.z + size.depth <= 16,
+          );
+        if (!receiver) {
+          expect(placeBrick({ ...empty, bricks: [brick] }, upper)).toMatchObject({
+            ok: false,
+            issues: [expect.objectContaining({ code: 'unsupported' })],
+          });
+          expect(removeBrick({ ...empty, bricks: [brick] }, brick.id).ok).toBe(true);
+          expect(getBillOfMaterials({ ...empty, bricks: [brick] })).toEqual([
+            { partId: part.id, color: 4, quantity: 1 },
+          ]);
+          expect(exportLDraw({ ...empty, bricks: [brick] })).toContain(`${part.id}.dat`);
+          continue;
+        }
+        upper = { ...upper, x: stud.x - receiver.x, z: stud.z - receiver.z };
+        const stack = { ...empty, bricks: [upper, brick] };
+        expect(validateAssembly(stack)).toEqual([]);
+        expect(removeBrick(stack, brick.id).ok).toBe(false);
+        expect(removeBrick(stack, upper.id).ok).toBe(true);
+        expect(hasStudConnection(brick, upper)).toBe(true);
+        expect(getBillOfMaterials(stack)).toEqual([{ partId: part.id, color: 4, quantity: 2 }]);
+        expect(
+          exportLDraw(stack)
+            .split('\n')
+            .filter((line) => line.startsWith('1 ')),
+        ).toHaveLength(2);
+        expect(exportLDraw(stack)).toContain(`${part.id}.dat`);
+        expect(exportLDraw(stack)).toContain('0 STEP');
+      }
+    },
+  );
+  it('connects supported part pairs only when the lower part provides an aligned stud', () => {
+    for (const lowerPart of PARTS)
+      for (const upperPart of PARTS) {
+        for (const lowerRotation of [0, 90, 180, 270] as const)
+          for (const upperRotation of [0, 90, 180, 270] as const) {
+            const lower = { ...base, partId: lowerPart.id, rotation: lowerRotation };
+            const size = footprint(lower);
+            const upperSize = footprint({ ...base, partId: upperPart.id, rotation: upperRotation });
+            const upper = {
+              ...base,
+              id: 'upper',
+              partId: upperPart.id,
+              rotation: upperRotation,
+              x: Math.min(size.width - 1, 16 - upperSize.width),
+              z: Math.min(size.depth - 1, 16 - upperSize.depth),
+              y: lowerPart.height,
+            };
+            const issues = validateAssembly({ ...empty, bricks: [lower, upper] });
+            const receivers = getConnectionSites(upper, 'bottom');
+            const connects = getConnectionSites(lower, 'top').some((stud) =>
+              receivers.some((receiver) => stud.x === receiver.x && stud.z === receiver.z),
+            );
+            if (connects) expect(issues).toEqual([]);
+            else
+              expect(issues).toEqual([
+                expect.objectContaining({ brickId: 'upper', code: 'unsupported' }),
+              ]);
+          }
+      }
+  });
+  it('accepts a grounded brick without mutating its input', () => {
+    const result = placeBrick(empty, base);
+    expect(result.ok).toBe(true);
+    expect(empty.bricks).toHaveLength(0);
+  });
+  it('rejects overlapping bricks but allows edge contact', () => {
+    const assembly = { ...empty, bricks: [base] };
+    expect(placeBrick(assembly, { ...base, id: 'overlap', x: 1 }).ok).toBe(false);
+    expect(placeBrick(assembly, { ...base, id: 'neighbor', x: 2 }).ok).toBe(true);
+  });
+  it('connects an upper brick at the exact top surface', () => {
+    const assembly = { ...empty, bricks: [base] };
+    expect(placeBrick(assembly, { ...base, id: 'top', y: 3 }).ok).toBe(true);
+    expect(placeBrick(assembly, { ...base, id: 'floating', y: 4 }).ok).toBe(false);
+  });
+  it('rotates explicit connection sites around the minimum footprint corner', () => {
+    const part = {
+      ...getPart('3001'),
+      connections: { topStuds: [{ x: 0, z: 1 }], bottomReceivers: [] },
+    };
+    const expected = [
+      { x: 3.5, y: 6, z: 6.5 },
+      { x: 4.5, y: 6, z: 6.5 },
+      { x: 4.5, y: 6, z: 7.5 },
+      { x: 5.5, y: 6, z: 5.5 },
+    ];
+    for (const [index, rotation] of ([0, 90, 180, 270] as const).entries()) {
+      const brick = { ...base, x: 3, y: 3, z: 5, rotation };
+      expect(getConnectionSites(brick, 'top', part)).toEqual([expected[index]]);
+      expect(getConnectionSites(brick, 'bottom', part)).toEqual([]);
+    }
+  });
+  it('requires stud and underside contact on the exact height plane', () => {
+    expect(hasStudConnection(base, { ...base, id: 'upper', x: 1, z: 3, y: 3 })).toBe(true);
+    expect(hasStudConnection(base, { ...base, id: 'upper', x: 2, y: 3 })).toBe(false);
+    expect(hasStudConnection(base, { ...base, id: 'upper', y: 4 })).toBe(false);
+    expect(
+      hasStudConnection({ ...base, rotation: 90 }, { ...base, id: 'upper', x: 3, z: 1, y: 3 }),
+    ).toBe(true);
+  });
+  it('rejects overlapping bodies with absent or misaligned connection sites', () => {
+    const original = getPart('3001');
+    const lowerPart = {
+      ...original,
+      connections: { ...original.connections, topStuds: [{ x: 0, z: 1 }] },
+    };
+    const upperPart = {
+      ...original,
+      connections: { ...original.connections, bottomReceivers: [{ x: 0, z: 0 }] },
+    };
+    const upper = { ...base, id: 'upper', y: 3 };
+    expect(hasStudConnection(base, upper, lowerPart, upperPart)).toBe(false);
+    expect(hasStudConnection(base, { ...upper, rotation: 90 }, lowerPart, upperPart)).toBe(true);
+    expect(
+      hasStudConnection(
+        base,
+        upper,
+        { ...original, connections: { ...original.connections, topStuds: [] } },
+        original,
+      ),
+    ).toBe(false);
+    expect(
+      hasStudConnection(base, upper, original, {
+        ...original,
+        connections: { ...original.connections, bottomReceivers: [] },
+      }),
+    ).toBe(false);
+    expect(original.connections.topStuds).toHaveLength(8);
+    expect(original.connections.bottomReceivers).toHaveLength(8);
+  });
+  it.each(['3008', '3460'])(
+    'accepts $0 at the maximum supported height and rejects overflow',
+    (partId) => {
+      const part = getPart(partId);
+      const tower = Array.from({ length: 60 / part.height }, (_, index) => ({
+        ...base,
+        id: `level-${index}`,
+        partId,
+        y: index * part.height,
+      }));
+      expect(validateAssembly({ ...empty, bricks: tower })).toEqual([]);
+      expect(
+        placeBrick({ ...empty, bricks: tower }, { ...base, id: 'overflow', partId, y: 60 }).ok,
+      ).toBe(false);
+    },
+  );
+  it('rejects floating support chains', () => {
+    const issues = validateAssembly({
+      ...empty,
+      bricks: [
+        { ...base, y: 3 },
+        { ...base, id: 'upper', y: 6 },
+      ],
+    });
+    expect(issues.filter((issue) => issue.code === 'unsupported')).toHaveLength(2);
+  });
+  it('swaps the footprint on a quarter turn', () => {
+    expect(footprint({ ...base, rotation: 90 })).toEqual({ width: 4, depth: 2, height: 3 });
+  });
+  it('rejects unsupported parts, colors, coordinates, rotations, and duplicate IDs', () => {
+    for (const change of [
+      { partId: 'unknown' },
+      { color: 999 },
+      { x: -1 },
+      { y: 0.5 },
+      { x: NaN },
+      { x: 15 },
+      { y: 60 },
+      { rotation: 45 },
+    ]) {
+      expect(placeBrick(empty, { ...base, ...change } as Brick).ok).toBe(false);
+    }
+    expect(placeBrick({ ...empty, bricks: [base] }, base).ok).toBe(false);
+  });
+  it('prevents removing a support and allows removing the top brick', () => {
+    const assembly = { ...empty, bricks: [base, { ...base, id: 'top', y: 3 }] };
+    expect(removeBrick(assembly, 'base').ok).toBe(false);
+    expect(removeBrick(assembly, 'top').ok).toBe(true);
+    expect(removeBrick(assembly, 'missing').ok).toBe(false);
+  });
+  it('ships a valid demo with a complete bill of materials', () => {
+    const demo = createDemoAssembly();
+    expect(validateAssembly(demo)).toEqual([]);
+    expect(getBillOfMaterials(demo).reduce((total, entry) => total + entry.quantity, 0)).toBe(
+      demo.bricks.length,
+    );
+  });
+  it('exports LDraw coordinates and layer steps', () => {
+    const assembly = {
+      ...empty,
+      bricks: [base, { ...base, id: 'top', y: 3, rotation: 90 as const }],
+    };
+    expect(exportLDraw(assembly)).toContain('1 4 20 -24 40 0 0 1 0 1 0 -1 0 0 3001.dat');
+    expect(exportLDraw(assembly)).toContain('0 STEP');
+    expect(exportLDraw(assembly)).toContain('1 4 40 -48 20 -1 0 0 0 1 0 0 0 -1 3001.dat');
+    expect(() => exportLDraw({ ...empty, bricks: [{ ...base, y: 4 }] })).toThrow();
+  });
+  it.each([
+    { id: '3001', halfWidth: 40, halfDepth: 20, bodyHeight: 24 },
+    { id: '3003', halfWidth: 20, halfDepth: 20, bodyHeight: 24 },
+    { id: '3004', halfWidth: 20, halfDepth: 10, bodyHeight: 24 },
+    { id: '3005', halfWidth: 10, halfDepth: 10, bodyHeight: 24 },
+    { id: '3622', halfWidth: 30, halfDepth: 10, bodyHeight: 24 },
+    { id: '3010', halfWidth: 40, halfDepth: 10, bodyHeight: 24 },
+    { id: '3009', halfWidth: 60, halfDepth: 10, bodyHeight: 24 },
+    { id: '3008', halfWidth: 80, halfDepth: 10, bodyHeight: 24 },
+    { id: '3002', halfWidth: 30, halfDepth: 20, bodyHeight: 24 },
+    { id: '2456', halfWidth: 60, halfDepth: 20, bodyHeight: 24 },
+    { id: '6111', halfWidth: 100, halfDepth: 10, bodyHeight: 24 },
+    { id: '3020', halfWidth: 40, halfDepth: 20, bodyHeight: 8 },
+    { id: '3022', halfWidth: 20, halfDepth: 20, bodyHeight: 8 },
+    { id: '3024', halfWidth: 10, halfDepth: 10, bodyHeight: 8 },
+    { id: '3023b', halfWidth: 20, halfDepth: 10, bodyHeight: 8 },
+    { id: '3623', halfWidth: 30, halfDepth: 10, bodyHeight: 8 },
+    { id: '3710', halfWidth: 40, halfDepth: 10, bodyHeight: 8 },
+    { id: '3666', halfWidth: 60, halfDepth: 10, bodyHeight: 8 },
+    { id: '3460', halfWidth: 80, halfDepth: 10, bodyHeight: 8 },
+    { id: '3021', halfWidth: 30, halfDepth: 20, bodyHeight: 8 },
+    { id: '3795', halfWidth: 60, halfDepth: 20, bodyHeight: 8 },
+    { id: '3070b', halfWidth: 10, halfDepth: 10, bodyHeight: 8 },
+    { id: '3069b', halfWidth: 20, halfDepth: 10, bodyHeight: 8 },
+    { id: '63864', halfWidth: 30, halfDepth: 10, bodyHeight: 8 },
+    { id: '2431', halfWidth: 40, halfDepth: 10, bodyHeight: 8 },
+    { id: '3068b', halfWidth: 20, halfDepth: 20, bodyHeight: 8 },
+    { id: '87079', halfWidth: 40, halfDepth: 20, bodyHeight: 8 },
+  ])(
+    'maps measured native $id bounds and exports to the footprint in every orientation',
+    ({ id, halfWidth, halfDepth, bodyHeight }) => {
+      for (const rotation of [0, 90, 180, 270] as const) {
+        const brick = { ...base, partId: id, x: 3, y: 3, z: 5, rotation };
+        const transform = getLDrawTransform(brick);
+        const cosine = Math.round(Math.cos((transform.rotation * Math.PI) / 180));
+        const sine = Math.round(Math.sin((transform.rotation * Math.PI) / 180));
+        const corners = [-halfWidth, halfWidth].flatMap((nativeX) =>
+          [-halfDepth, halfDepth].map((nativeZ) => ({
+            x: transform.x + cosine * nativeX + sine * nativeZ,
+            z: transform.z - sine * nativeX + cosine * nativeZ,
+          })),
+        );
+        const size = footprint(brick);
+        expect(Math.min(...corners.map((corner) => corner.x))).toBe(brick.x * 20);
+        expect(Math.max(...corners.map((corner) => corner.x))).toBe((brick.x + size.width) * 20);
+        expect(Math.min(...corners.map((corner) => corner.z))).toBe(brick.z * 20);
+        expect(Math.max(...corners.map((corner) => corner.z))).toBe((brick.z + size.depth) * 20);
+        expect(transform.y + bodyHeight).toBe(-brick.y * 8);
+        const support = { ...base, id: 'support', partId: '3005', x: 3, z: 5 };
+        const record = exportLDraw({ ...empty, bricks: [support, brick] })
+          .split('\n')
+          .filter((line) => line.startsWith('1 '))[1]
+          .split(' ');
+        expect(record[14]).toBe(`${id}.dat`);
+        expect(record.slice(2, 5).map(Number)).toEqual([transform.x, transform.y, transform.z]);
+        expect(record.slice(5, 14).map(Number)).toEqual(
+          [cosine, 0, sine, 0, 1, 0, -sine, 0, cosine].map((value) => value || 0),
+        );
+      }
+    },
+  );
+});
+
+describe('mixed-part engine builds', () => {
+  it('lays complete catalogue and tile displays on one larger board without stacking', () => {
+    for (const [id, count] of [
+      ['catalog-sampler', 88],
+      ['tile-finishes', 17],
+      ['basic-families', 18],
+      ['architectural-details', 20],
+    ] as const) {
+      const assembly = createExampleAssembly(id);
+      expect(assembly.buildArea).toBe(64);
+      expect(assembly.bricks).toHaveLength(count);
+      expect(new Set(assembly.bricks.map((brick) => brick.y))).toEqual(new Set([0]));
+      expect(validateAssembly(assembly)).toEqual([]);
+      expect(assembly.bricks.some((brick) => brick.x > 15 || brick.z > 15)).toBe(true);
+      expect(
+        validateAssembly({ ...assembly, buildArea: 16 }).some((issue) => issue.code === 'invalid'),
+      ).toBe(true);
+    }
+    for (const buildArea of [0, 15, 16.5, 65, Infinity, NaN])
+      expect(validateAssembly({ name: 'invalid board', bricks: [], buildArea })).toContainEqual(
+        expect.objectContaining({ code: 'invalid' }),
+      );
+    expect(createExampleAssembly('courtyard-house').buildArea).toBeUndefined();
+  });
+  const catalogSampler = () => createExampleAssembly('catalog-sampler');
+  const staggeredWall = () => createExampleAssembly('staggered-wall');
+  const steppedTower = () => createExampleAssembly('stepped-tower');
+
+  it('builds a larger medieval courtyard with masonry, timber, tall posts and round furnishings', () => {
+    const assembly = createExampleAssembly('courtyard-house');
+    expect(assembly.bricks).toHaveLength(306);
+    expect(new Set(assembly.bricks.map((brick) => brick.partId)).size).toBe(35);
+    expect(new Set(assembly.bricks.map((brick) => brick.color))).toEqual(
+      new Set([71, 72, 70, 19, 2, 4, 1, 0]),
+    );
+    expect(
+      new Set(assembly.bricks.map((brick) => getPart(brick.partId).family).filter(Boolean)),
+    ).toEqual(new Set(['tall', 'slope', 'round']));
+    expect(assembly.bricks[0]).toMatchObject({ partId: '91405', x: 0, y: 0, z: 0 });
+    expect(Math.max(...assembly.bricks.map((brick) => brick.y + footprint(brick).height))).toBe(49);
+    expect(validateAssembly(assembly)).toEqual([]);
+  });
+
+  it('gives the courtyard house a pitched roof with overhanging eaves', () => {
+    const assembly = createExampleAssembly('courtyard-house');
+    const roofHeights = Array.from({ length: 10 }, (_, index) => {
+      const z = index + 6;
+      return Math.max(
+        ...assembly.bricks
+          .filter((brick) => {
+            const size = footprint(brick);
+            return (
+              brick.color === 72 &&
+              brick.y >= 26 &&
+              brick.x <= 8 &&
+              8 < brick.x + size.width &&
+              brick.z <= z &&
+              z < brick.z + size.depth
+            );
+          })
+          .map((brick) => brick.y + footprint(brick).height),
+      );
+    });
+    expect(roofHeights).toEqual([29, 32, 35, 38, 40, 40, 38, 35, 32, 29]);
+    expect(
+      assembly.bricks
+        .filter((brick) => brick.partId === '3037' && brick.y === 26)
+        .map((brick) => brick.x),
+    ).toEqual([0, 0, 4, 4, 8, 8, 12, 12]);
+  });
+
+  it('provides named, valid examples with independent assembly instances', () => {
+    expect(EXAMPLES.length).toBeGreaterThan(0);
+    expect(new Set(EXAMPLES.map((example) => example.id)).size).toBe(EXAMPLES.length);
+    for (const example of EXAMPLES) {
+      const first = createExampleAssembly(example.id);
+      const second = createExampleAssembly(example.id);
+      expect(first.name).toBe(example.name);
+      expect(first.bricks).toHaveLength(example.expectedPieceCount);
+      expect(validateAssembly(first)).toEqual([]);
+      expect(first).toEqual(second);
+      expect(first.bricks).not.toBe(second.bricks);
+      for (const [index, brick] of first.bricks.entries())
+        expect(brick).not.toBe(second.bricks[index]);
+    }
+    expect(createExampleAssembly('courtyard-house')).toEqual(createDemoAssembly());
+    expect(() => createExampleAssembly('unknown')).toThrow('Unknown example');
+  }, 15_000);
+
+  it.each(EXAMPLES)(
+    'validates, exports, rejects invalid moves, and disassembles the $name',
+    ({ id, expectedPieceCount: count }) => {
+      const assembly = createExampleAssembly(id);
+      expect(assembly.bricks).toHaveLength(count);
+      expect(validateAssembly(assembly)).toEqual([]);
+      expect(validateAssembly({ ...assembly, bricks: assembly.bricks.toReversed() })).toEqual([]);
+      expect(getBillOfMaterials(assembly).reduce((total, entry) => total + entry.quantity, 0)).toBe(
+        count,
+      );
+      const lines = exportLDraw(assembly).split('\n');
+      expect(lines.filter((line) => line.startsWith('1 '))).toHaveLength(count);
+      expect(lines.filter((line) => line === '0 STEP')).toHaveLength(
+        Math.max(0, new Set(assembly.bricks.map((brick) => brick.y)).size - 1),
+      );
+      const snapshot = structuredClone(assembly);
+      const top = assembly.bricks.at(-1);
+      if (top) {
+        const collision = placeBrick(assembly, { ...top, id: 'collision' });
+        expect(collision.ok).toBe(false);
+        if (!collision.ok)
+          expect(collision.issues.some((issue) => issue.code === 'collision')).toBe(true);
+        const height = Math.max(
+          ...assembly.bricks.map((brick) => brick.y + footprint(brick).height),
+        );
+        const floating = placeBrick(assembly, { ...top, id: 'floating', y: height + 1 });
+        expect(floating.ok).toBe(false);
+        if (!floating.ok)
+          expect(
+            floating.issues.some(
+              (issue) =>
+                issue.code ===
+                (height + 1 + footprint(top).height > 60 ? 'invalid' : 'unsupported'),
+            ),
+          ).toBe(true);
+      }
+      expect(assembly).toEqual(snapshot);
+      let remaining = assembly;
+      for (const brick of assembly.bricks.toReversed()) {
+        const result = removeBrick(remaining, brick.id);
+        if (!result.ok) throw new Error(`Disassembly: ${JSON.stringify(result.issues)}`);
+        remaining = result.assembly;
+      }
+      expect(remaining.bricks).toHaveLength(0);
+    },
+  );
+
+  it('samples every basic design and demonstrates every supported tile size', () => {
+    const basicParts = PARTS.filter(
+      (part) => !part.family || ['tall', 'slope', 'round'].includes(part.family),
+    );
+    expect(new Set(catalogSampler().bricks.map((brick) => brick.partId))).toEqual(
+      new Set(basicParts.map((part) => part.id)),
+    );
+    expect(
+      new Set(
+        createExampleAssembly('tile-finishes')
+          .bricks.filter((brick) => getPart(brick.partId).kind === 'tile')
+          .map((brick) => brick.partId),
+      ),
+    ).toEqual(new Set(PARTS.filter((part) => part.kind === 'tile').map((part) => part.id)));
+    expect(assessPhysicalFeasibility(catalogSampler()).missingMassPartIds).toEqual(['39266']);
+  });
+
+  it('connects a staggered wall brick across two lower-brick seams', () => {
+    const wall = staggeredWall();
+    const bridge = wall.bricks.find((brick) => brick.partId === '3010' && brick.x === 6)!;
+    const supports = wall.bricks.filter((brick) => hasStudConnection(brick, bridge));
+    expect(supports.map((brick) => brick.x).toSorted()).toEqual([5, 8]);
+  });
+
+  it('preserves a tower with alternate supports but protects its last grounded connection', () => {
+    let tower = steppedTower();
+    const center = tower.bricks.find((brick) => brick.partId === '3031' && brick.y === 8)!;
+    const supports = tower.bricks.filter((brick) => hasStudConnection(brick, center));
+    expect(supports).toHaveLength(4);
+    for (const support of supports.slice(0, 3)) {
+      const result = removeBrick(tower, support.id);
+      if (!result.ok) throw new Error(JSON.stringify(result.issues));
+      tower = result.assembly;
+    }
+    expect(validateAssembly(tower)).toEqual([]);
+    const result = removeBrick(tower, supports[3].id);
+    expect(result.ok).toBe(false);
+    if (!result.ok)
+      expect(result.issues).toContainEqual(
+        expect.objectContaining({ brickId: center.id, code: 'unsupported' }),
+      );
+  });
+});
+
+describe('example registry', () => {
+  const definition: ExampleDefinition = {
+    id: 'registry-fixture',
+    name: 'Registry fixture',
+    tags: ['registry'],
+    expectedPieceCount: 1,
+    build: (add) => add('3005', 4, 0, 0, 0),
+  };
+
+  it('rejects duplicate IDs and malformed metadata', () => {
+    expect(() => createExampleRegistry([definition, definition])).toThrow('Duplicate example ID');
+    for (const change of [
+      { id: 'Bad ID' },
+      { name: '  ' },
+      { expectedPieceCount: -1 },
+      { expectedPieceCount: 0.5 },
+    ]) {
+      expect(() => createExampleRegistry([{ ...definition, ...change }])).toThrow(
+        'Invalid example metadata',
+      );
+    }
+  });
+
+  it('rejects invalid placements and incorrect expected counts', () => {
+    const floating = createExampleRegistry([
+      { ...definition, build: (add) => add('3005', 4, 0, 1, 0) },
+    ]);
+    expect(() => floating.createAssembly(definition.id)).toThrow('unsupported');
+    const miscounted = createExampleRegistry([{ ...definition, expectedPieceCount: 2 }]);
+    expect(() => miscounted.createAssembly(definition.id)).toThrow('expected 2 pieces, got 1');
+  });
+
+  it('exposes immutable metadata without builders and creates fresh assemblies', () => {
+    const tags = ['registry'];
+    const registry = createExampleRegistry([{ ...definition, tags }]);
+    tags.push('changed');
+    expect(registry.examples[0].tags).toEqual(['registry']);
+    expect(registry.examples[0]).not.toHaveProperty('build');
+    expect(Object.isFrozen(registry.examples)).toBe(true);
+    expect(Object.isFrozen(registry.examples[0])).toBe(true);
+    const first = registry.createAssembly(definition.id);
+    const second = registry.createAssembly(definition.id);
+    expect(first).toEqual(second);
+    expect(first.bricks[0]).not.toBe(second.bricks[0]);
+    expect(() => registry.createAssembly('unknown')).toThrow('Unknown example');
+    expect(createDemoAssembly().bricks.map((brick) => brick.id)).toEqual(
+      Array.from({ length: 306 }, (_, index) => `demo-${index + 1}`),
+    );
+  });
+});

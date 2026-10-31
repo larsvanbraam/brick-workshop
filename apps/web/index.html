@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#25714f" />
+    <meta
+      name="description"
+      content="Local brick engine and interactive LEGO assembly workspace."
+    />
+    <title>Brick Workshop</title>
+    <style>
+      #workshop-loading {
+        position: fixed;
+        inset: 0;
+        z-index: 1000;
+        display: grid;
+        place-content: center;
+        gap: 18px;
+        padding: 24px;
+        background: #f8f9f7;
+        color: #303832;
+        font-family: 'IBM Plex Sans', sans-serif;
+        text-align: center;
+      }
+      #workshop-loading h1 {
+        margin: 0;
+        font-size: 24px;
+        font-weight: 600;
+      }
+      #workshop-loading p {
+        margin: 0;
+        font-size: 14px;
+        color: #7b847e;
+      }
+      #workshop-loading progress {
+        width: 220px;
+        max-width: 100%;
+        height: 6px;
+        margin: 0 auto;
+        accent-color: #25714f;
+      }
+    </style>
+  </head>
+
+  <body>
+    <div id="workshop-loading" role="status" aria-live="polite">
+      <h1>Brick Workshop</h1>
+      <progress aria-label="Loading workshop"></progress>
+      <p data-loading-message>Loading parts...</p>
+    </div>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
