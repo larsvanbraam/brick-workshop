@@ -26,6 +26,9 @@ import {
   MAX_HEIGHT,
   PARTS,
   assessPhysicalFeasibility,
+  applyPatch,
+  previewPatch,
+  evaluateAssemblyPolicy,
   createDemoAssembly,
   createExampleAssembly,
   exportLDraw,
@@ -38,9 +41,7 @@ import {
   importPartColorEvidence,
   importPhysicalData,
   isRuntimePart,
-  placeBrick,
   registerPart,
-  removeBrick,
   validateAssembly,
 } from '@lego-builder/brick-engine';
 import type {
@@ -50,6 +51,7 @@ import type {
   PhysicalData,
   Part,
   Rotation,
+  EditPolicy,
 } from '@lego-builder/brick-engine';
 import { Scene } from './Scene';
 import { useLDrawLibrary } from './ldraw';
@@ -224,7 +226,28 @@ export default function App() {
     }),
     [partId, color, position, rotation],
   );
-  const candidate = useMemo(() => placeBrick(assembly, ghost), [assembly, ghost]);
+  const editPolicy = useMemo<EditPolicy>(
+    () => ({
+      evidence,
+      requireObservedColors: false,
+      rejectInfeasible,
+      physical: { data: physicalData, estimateMissingMasses, useCatalogMasses },
+    }),
+    [evidence, rejectInfeasible, physicalData, estimateMissingMasses, useCatalogMasses],
+  );
+  const candidate = useMemo(
+    () =>
+      preview
+        ? previewPatch(
+            assembly,
+            {
+              operations: [{ type: 'add', brick: ghost }],
+            },
+            { policy: editPolicy },
+          )
+        : null,
+    [assembly, ghost, editPolicy, preview],
+  );
   const colorStatus = useMemo(
     () => getPartColorStatus(partId, color, evidence),
     [partId, color, evidence],
@@ -252,17 +275,15 @@ export default function App() {
     setMessage('');
   }
   function addBrick() {
-    const result = placeBrick(assembly, { ...ghost, id: crypto.randomUUID() });
+    const result = applyPatch(
+      assembly,
+      {
+        operations: [{ type: 'add', brick: { ...ghost, id: crypto.randomUUID() } }],
+      },
+      { policy: editPolicy },
+    );
     if (result.ok) {
-      const assessment = assessPhysicalFeasibility(result.assembly, {
-        data: physicalData,
-        estimateMissingMasses,
-        useCatalogMasses,
-      });
-      if (rejectInfeasible && assessment.status === 'infeasible') {
-        setMessage(`Physical model rejected placement. ${assessment.reasons[0]}`);
-        return;
-      }
+      const assessment = result.assessment.physical!;
       commit(result.assembly);
       setSelectedId(result.assembly.bricks.at(-1)!.id);
       setLayer(MAX_HEIGHT);
@@ -272,27 +293,41 @@ export default function App() {
           ? `Piece added. Envelope placement accepted; connector fit is unknown. Physical feasibility ${assessment.status}.`
           : `Piece added. Geometry passed; physical feasibility ${assessment.status}.`,
       );
-    } else setMessage(result.issues[0].message);
+    } else
+      setMessage(
+        result.error.code === 'physical_rejected'
+          ? `Physical model rejected placement. ${result.error.message}`
+          : result.error.message,
+      );
   }
   function deleteSelected() {
     if (!selected) return;
-    const result = removeBrick(assembly, selected.id);
+    const result = applyPatch(
+      assembly,
+      {
+        operations: [{ type: 'remove', id: selected.id }],
+      },
+      { policy: editPolicy },
+    );
     if (result.ok) {
-      const assessment = assessPhysicalFeasibility(result.assembly, {
-        data: physicalData,
-        estimateMissingMasses,
-        useCatalogMasses,
-      });
-      if (rejectInfeasible && assessment.status === 'infeasible') {
-        setMessage(`Physical model rejected removal. ${assessment.reasons[0]}`);
-        return;
-      }
       commit(result.assembly);
       setSelectedId(null);
-    } else setMessage(`Cannot remove support. ${result.issues[0].message}`);
+    } else
+      setMessage(
+        result.error.code === 'physical_rejected'
+          ? `Physical model rejected removal. ${result.error.message}`
+          : `Cannot remove support. ${result.error.message}`,
+      );
   }
   function undo() {
     const previous = history.past.at(-1);
+    if (previous) {
+      const assessment = evaluateAssemblyPolicy(previous, editPolicy);
+      if (!assessment.allowed) {
+        setMessage(`Undo rejected by current policy. ${assessment.issues[0].message}`);
+        return;
+      }
+    }
     if (previous)
       setHistory({
         past: history.past.slice(0, -1),
@@ -304,6 +339,13 @@ export default function App() {
   }
   function redo() {
     const next = history.future[0];
+    if (next) {
+      const assessment = evaluateAssemblyPolicy(next, editPolicy);
+      if (!assessment.allowed) {
+        setMessage(`Redo rejected by current policy. ${assessment.issues[0].message}`);
+        return;
+      }
+    }
     if (next)
       setHistory({
         past: [...history.past, assembly],
@@ -596,16 +638,18 @@ export default function App() {
               <Plus size={16} />
               Place piece
             </button>
-            {preview && (
+            {preview && candidate && (
               <div className={`placement-status ${candidate.ok ? 'valid' : 'invalid'}`}>
                 <span className="status-dot" />
                 {candidate.ok
                   ? 'Placement available'
-                  : candidate.issues[0].code === 'collision'
+                  : candidate.assessment?.geometry[0]?.code === 'collision'
                     ? 'Collision detected'
-                    : candidate.issues[0].code === 'unsupported'
+                    : candidate.assessment?.geometry[0]?.code === 'unsupported'
                       ? 'No support below'
-                      : 'Outside placement rules'}
+                      : candidate.error.code === 'physical_rejected'
+                        ? 'Physical model rejects placement'
+                        : candidate.error.message}
               </div>
             )}
           </section>
@@ -675,7 +719,7 @@ export default function App() {
                 selectedId={selectedId}
                 onSelect={setSelectedId}
                 ghost={preview ? ghost : null}
-                ghostValid={candidate.ok}
+                ghostValid={candidate?.ok ?? false}
                 layer={visibleLayer}
                 explode={explode}
                 view={view}

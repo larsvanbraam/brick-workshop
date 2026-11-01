@@ -7,16 +7,21 @@ import {
   DEFAULT_PART_COLOR_EVIDENCE,
   MAX_HEIGHT,
   PARTS,
-  assessPhysicalFeasibility,
+  MAX_PATCH_OPERATIONS,
+  applyPatch,
+  previewPatch,
+  evaluateAssemblyPolicy,
   exportLDraw,
+  explainConnection,
+  findPlacementCandidates,
   getBillOfMaterials,
   getBuildArea,
   getBuildabilityReport,
+  getEngineCapabilities,
+  getPartCapabilities,
   getPartColorStatus,
   importPartColorEvidence,
   importPhysicalData,
-  placeBrick,
-  removeBrick,
   validateAssembly,
 } from '@lego-builder/brick-engine';
 import type {
@@ -24,6 +29,10 @@ import type {
   Brick,
   PartColorEvidence,
   PhysicalOptions,
+  PlacementQuery,
+  AssemblyPatch,
+  EditPolicy,
+  InventoryEntry,
 } from '@lego-builder/brick-engine';
 
 const partIdSchema = { type: 'string', enum: PARTS.map((part) => part.id) };
@@ -44,12 +53,76 @@ function objectSchema(
   return { type: 'object' as const, properties, required, additionalProperties: false };
 }
 
+const patchSchema = objectSchema({
+  expectedRevision: { type: 'integer', minimum: 0, maximum: Number.MAX_SAFE_INTEGER - 1 },
+  operations: {
+    type: 'array',
+    minItems: 1,
+    maxItems: MAX_PATCH_OPERATIONS,
+    items: {
+      oneOf: [
+        objectSchema({
+          type: { const: 'add' },
+          brick: objectSchema({ id: idSchema, ...placementProperties }),
+        }),
+        objectSchema({ type: { const: 'remove' }, id: idSchema }),
+        objectSchema({
+          type: { const: 'update' },
+          id: idSchema,
+          changes: { ...objectSchema(placementProperties, []), minProperties: 1 },
+        }),
+      ],
+    },
+  },
+});
+
 export const BUILDER_TOOLS: readonly Anthropic.Tool[] = [
   {
     name: 'brick_catalog',
     description:
-      'Read supported real part designs, their reserved footprints, plate-unit heights, local connector cells, and observed color choices. Call this before planning placements; never invent part or color IDs. topStuds and bottomReceivers are zero-based cells before rotation, with half-cell offsets where needed. Baseplates have no bottomReceivers and must remain on the ground; smooth tiles have no topStuds. Doors are closed integral-hinge designs or empty frames; loose leaves and glazing are unsupported. By default only inventory-observed colors are listed. includeUnverifiedColors is for inspection, not permission to place unobserved colors.',
+      'Read engine-owned capabilities, supported part designs, reserved footprints, plate-unit heights, local connector cells, and observed color choices. Call this before planning placements; never invent part or color IDs. topStuds and bottomReceivers are zero-based cells before rotation, with half-cell offsets where needed. Baseplates have no bottomReceivers and must remain on the ground; smooth tiles have no topStuds. Only explicitly listed matchingInsertFrameId exceptions permit static inserts inside reserved frame envelopes. By default only inventory-observed colors are listed. includeUnverifiedColors is for inspection, not permission to place unobserved colors.',
     input_schema: objectSchema({ includeUnverifiedColors: { type: 'boolean' } }, []),
+  },
+  {
+    name: 'brick_candidates',
+    description:
+      'Find bounded, deterministic, geometry-valid upright placements by matching studs and receivers, optionally on one support. Ground-grid placements default on only for empty assemblies. Returned candidates have temporary IDs; use their part, color, coordinates and rotation with brick_place, which assigns a stable ID and rechecks all policies. Each candidate reports host physical-policy permission, not safety or certification. Unknown physics remains unknown. Truncated searches are not exhaustive; static inserts and special connectors are not enumerated. This tool never mutates the assembly.',
+    input_schema: objectSchema(
+      {
+        partId: partIdSchema,
+        color: colorSchema,
+        supportId: idSchema,
+        rotations: {
+          type: 'array',
+          minItems: 1,
+          maxItems: 4,
+          uniqueItems: true,
+          items: { type: 'integer', enum: [0, 90, 180, 270] },
+        },
+        includeGround: { type: 'boolean' },
+        maxCandidates: { type: 'integer', minimum: 1, maximum: 20 },
+        maxChecks: { type: 'integer', minimum: 1, maximum: 2000 },
+      },
+      ['partId', 'color'],
+    ),
+  },
+  {
+    name: 'brick_connection',
+    description:
+      'Explain an existing piece by stable ID: ground contact, matched world-space stud sites, supporting piece IDs, reviewed insert frames, and geometry issues. Compatible connector sites are not measured clutch strength. This tool is read-only.',
+    input_schema: objectSchema({ id: idSchema }),
+  },
+  {
+    name: 'brick_preview_patch',
+    description:
+      'Preview 1-100 additions, removals or updates atomically against the current expectedRevision. Each piece may be targeted once. Additions require complete bricks including a proposed unique ID and rotation; updates preserve IDs. Only the final arrangement is evaluated, not the operation order or construction sequence. Manufacturing, declared inventory, piece limit and physics policies are host-controlled. This tool never mutates the assembly or revision; an allowed preview is not certification or permission to skip commit-time checks.',
+    input_schema: patchSchema,
+  },
+  {
+    name: 'brick_apply_patch',
+    description:
+      'Apply an atomic patch using the current expectedRevision, preferably after preview. Rechecks all host policies and final geometry before committing all operations together. Success increments revision once and returns the resulting assembly and assessment; rejection changes nothing. Proposed addition IDs become stable only after success. A valid final arrangement is not a validated construction sequence and remains uncertified.',
+    input_schema: patchSchema,
   },
   {
     name: 'brick_inspect',
@@ -126,6 +199,8 @@ export function createBuilderSession(
     maxPieces?: number;
     physical?: PhysicalOptions;
     rejectInfeasible?: boolean;
+    inventory?: readonly InventoryEntry[];
+    requireInventory?: boolean;
   } = {},
 ) {
   if (!validateInitial(initial))
@@ -142,14 +217,6 @@ export function createBuilderSession(
     initial.bricks.length > maxPieces
   )
     throw new Error('Piece limit must be 1-500 and fit the initial assembly.');
-  if (
-    requireObservedColors &&
-    initial.bricks.some(
-      (brick) =>
-        getPartColorStatus(brick.partId, brick.color, evidence).manufactured !== 'observed',
-    )
-  )
-    throw new Error('Initial assembly contains unverified part/color combinations.');
   let assembly = structuredClone(initial);
   const physicalOptions = {
     data: importPhysicalData(options.physical?.data ?? { version: 1, parts: {} }),
@@ -157,11 +224,26 @@ export function createBuilderSession(
     useCatalogMasses: options.physical?.useCatalogMasses ?? true,
   };
   const rejectInfeasible = options.rejectInfeasible ?? true;
-  let physicalAssessment = assessPhysicalFeasibility(assembly, physicalOptions);
-  if (rejectInfeasible && physicalAssessment.status === 'infeasible')
+  const editPolicy: EditPolicy = {
+    evidence,
+    requireObservedColors,
+    maxPieces,
+    physical: physicalOptions,
+    rejectInfeasible,
+    inventory: options.inventory === undefined ? undefined : structuredClone(options.inventory),
+    requireInventory: options.requireInventory,
+  };
+  const initialAssessment = evaluateAssemblyPolicy(assembly, editPolicy);
+  if (!initialAssessment.allowed) {
+    const issue = initialAssessment.issues[0];
     throw new Error(
-      `Initial assembly is physically infeasible under the selected model: ${physicalAssessment.reasons[0]}`,
+      issue.code === 'unverified_color'
+        ? 'Initial assembly contains unverified part/color combinations.'
+        : `Initial assembly rejected by host policy: ${issue.message}`,
     );
+  }
+  let physicalAssessment = initialAssessment.physical!;
+  let policyAssessment = initialAssessment;
   let revision = 0;
   let nextId = 1;
   const snapshot = () => structuredClone(assembly);
@@ -186,13 +268,25 @@ export function createBuilderSession(
       estimateMissingMasses: physicalOptions.estimateMissingMasses,
       useCatalogMasses: physicalOptions.useCatalogMasses,
     },
+    inventoryPolicy: {
+      requireInventory: editPolicy.requireInventory ?? false,
+      entries:
+        editPolicy.inventory?.map(({ partId, color, quantity }) => ({ partId, color, quantity })) ??
+        null,
+    },
+    inventoryUsage: structuredClone(policyAssessment.inventory),
+    constructionSequence: 'not-validated',
     checks: {
       geometry: 'validated',
       strength: physicalAssessment.connectionStrength,
       stability: physicalAssessment.gravity,
       physicalFeasibility: physicalAssessment.status,
       assemblyAccess: 'idealized-vertical-only',
-      stock: 'unknown',
+      stock:
+        policyAssessment.inventory.length &&
+        policyAssessment.inventory.every((entry) => entry.status === 'within-declared-inventory')
+          ? 'within-declared-inventory'
+          : 'unknown',
     },
   });
   const fail = (code: string, message: string, issues?: unknown): BuilderToolResult => ({
@@ -206,42 +300,110 @@ export function createBuilderSession(
     if (!validate) return fail('unknown_tool', `Unknown builder tool: ${name}`);
     if (!validate(input)) return fail('invalid_input', ajv.errorsText(validate.errors));
     const args = input as Record<string, unknown>;
+    if (name === 'brick_preview_patch' || name === 'brick_apply_patch') {
+      const result = (name === 'brick_apply_patch' ? applyPatch : previewPatch)(
+        assembly,
+        args as unknown as AssemblyPatch,
+        { revision, policy: editPolicy },
+      );
+      if (!result.ok) return fail(result.error.code, result.error.message, result.error.issues);
+      if (name === 'brick_apply_patch') {
+        assembly = result.assembly;
+        physicalAssessment = result.assessment.physical!;
+        policyAssessment = result.assessment;
+        revision = result.revision;
+      }
+      return {
+        ok: true,
+        revision,
+        data: {
+          purpose: name === 'brick_apply_patch' ? 'applied-final-arrangement' : 'preview-only',
+          assembly: structuredClone(result.assembly),
+          assessment: structuredClone(result.assessment),
+        },
+      };
+    }
     if (name === 'brick_catalog') {
       const observedColors = new Set(evidence.observations.map((entry) => entry.colorId));
       return {
         ok: true,
         revision,
         data: {
+          capabilities: getEngineCapabilities(assembly),
           buildArea: getBuildArea(assembly),
           maxHeight: MAX_HEIGHT,
           positionIncrement: 0.5,
           maxPieces,
           requireObservedColors,
           recognizedColorCount: COLORS.length,
-          collisionModel:
-            'Conservative full body envelopes, including hardware and sills; openings and empty space inside shaped parts are not available for interlocking. Hinges remain closed and static.',
-          parts: PARTS.map(
-            ({ id, name, width, depth, height, kind, family, shape, connections }) => ({
-              id,
-              name,
-              width,
-              depth,
-              height,
-              kind,
-              family: family ?? kind,
-              shape: shape ?? 'box',
-              contactPhysics: shape ? 'not-assessed' : 'rectangular-model',
-              connections: structuredClone(connections),
-              observedColors: COLORS.filter(
-                (color) => getPartColorStatus(id, color.id, evidence).manufactured === 'observed',
-              ).map((color) => color.id),
-            }),
-          ),
+          collisionModel: getEngineCapabilities(assembly).collisionModel,
+          parts: PARTS.map(({ id }) => ({
+            ...getPartCapabilities(id),
+            observedColors: COLORS.filter(
+              (color) => getPartColorStatus(id, color.id, evidence).manufactured === 'observed',
+            ).map((color) => color.id),
+          })),
           colors: COLORS.filter(
             (color) =>
               args.includeUnverifiedColors ||
               observedColors.has(evidence.mappings.colors[String(color.id)]),
           ).map(({ id, name, hex, alpha, finish }) => ({ id, name, hex, alpha, finish })),
+        },
+      };
+    }
+    if (name === 'brick_connection') {
+      const brick = assembly.bricks.find((piece) => piece.id === args.id);
+      if (!brick) return fail('piece_not_found', 'Piece not found.');
+      return { ok: true, revision, data: explainConnection(assembly, brick) };
+    }
+    if (name === 'brick_candidates') {
+      if (assembly.bricks.length >= maxPieces)
+        return fail('piece_limit', `The session allows at most ${maxPieces} pieces.`);
+      const colorStatus = getPartColorStatus(args.partId as string, args.color as number, evidence);
+      if (requireObservedColors && colorStatus.manufactured !== 'observed')
+        return fail(
+          'unverified_color',
+          'Choose an observed part/color combination from brick_catalog.',
+        );
+      let result;
+      try {
+        result = findPlacementCandidates(assembly, {
+          ...args,
+          maxCandidates: args.maxCandidates ?? 8,
+        } as PlacementQuery);
+      } catch (error) {
+        return fail(
+          'search_rejected',
+          error instanceof Error ? error.message : 'Placement search failed.',
+        );
+      }
+      return {
+        ok: true,
+        revision,
+        data: {
+          ...result,
+          manufacturing: colorStatus,
+          physics: 'assessed-under-host-policy',
+          candidates: result.candidates.map((candidate) => {
+            const evaluation = evaluateAssemblyPolicy(
+              { ...assembly, bricks: [...assembly.bricks, candidate.brick] },
+              editPolicy,
+            );
+            const assessment = evaluation.physical!;
+            return {
+              ...candidate,
+              placementAllowed: evaluation.allowed,
+              policyIssues: evaluation.issues,
+              physical: {
+                status: assessment.status,
+                gravity: assessment.gravity,
+                massBasis: assessment.massBasis,
+                connectionStrength: assessment.connectionStrength,
+                reasons: assessment.reasons,
+                certified: false,
+              },
+            };
+          }),
         },
       };
     }
@@ -278,26 +440,21 @@ export function createBuilderSession(
     if (name === 'brick_place') {
       if (assembly.bricks.length >= maxPieces)
         return fail('piece_limit', `The session allows at most ${maxPieces} pieces.`);
-      if (
-        requireObservedColors &&
-        getPartColorStatus(args.partId as string, args.color as number, evidence).manufactured !==
-          'observed'
-      )
-        return fail(
-          'unverified_color',
-          'This part/color combination has no mapped inventory observation. Choose an observed color from brick_catalog.',
-        );
-      while (assembly.bricks.some((brick) => brick.id === `ai-${nextId}`)) nextId += 1;
-      const brick = { ...args, rotation: args.rotation ?? 0, id: `ai-${nextId}` } as Brick;
-      const result = placeBrick(assembly, brick);
-      if (!result.ok) return fail('geometry_rejected', result.issues[0].message, result.issues);
-      const assessment = assessPhysicalFeasibility(result.assembly, physicalOptions);
-      if (rejectInfeasible && assessment.status === 'infeasible')
-        return fail('physical_rejected', assessment.reasons[0], assessment);
+      let proposedId = nextId;
+      while (assembly.bricks.some((brick) => brick.id === `ai-${proposedId}`)) proposedId += 1;
+      const brick = { ...args, rotation: args.rotation ?? 0, id: `ai-${proposedId}` } as Brick;
+      const result = applyPatch(
+        assembly,
+        { expectedRevision: revision, operations: [{ type: 'add', brick }] },
+        { revision, policy: editPolicy },
+      );
+      if (!result.ok) return fail(result.error.code, result.error.message, result.error.issues);
+      const assessment = result.assessment.physical!;
       assembly = result.assembly;
       physicalAssessment = assessment;
-      revision += 1;
-      nextId += 1;
+      policyAssessment = result.assessment;
+      revision = result.revision;
+      nextId = proposedId + 1;
       return {
         ok: true,
         revision,
@@ -314,14 +471,17 @@ export function createBuilderSession(
         },
       };
     }
-    const result = removeBrick(assembly, args.id as string);
-    if (!result.ok) return fail('geometry_rejected', result.issues[0].message, result.issues);
-    const assessment = assessPhysicalFeasibility(result.assembly, physicalOptions);
-    if (rejectInfeasible && assessment.status === 'infeasible')
-      return fail('physical_rejected', assessment.reasons[0], assessment);
+    const result = applyPatch(
+      assembly,
+      { expectedRevision: revision, operations: [{ type: 'remove', id: args.id as string }] },
+      { revision, policy: editPolicy },
+    );
+    if (!result.ok) return fail(result.error.code, result.error.message, result.error.issues);
+    const assessment = result.assessment.physical!;
     assembly = result.assembly;
     physicalAssessment = assessment;
-    revision += 1;
+    policyAssessment = result.assessment;
+    revision = result.revision;
     return {
       ok: true,
       revision,

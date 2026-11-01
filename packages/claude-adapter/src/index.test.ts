@@ -160,6 +160,252 @@ describe('Claude tool-use loop', () => {
 });
 
 describe('headless Claude builder tools', () => {
+  it('previews and applies patches atomically with revision guards and stable IDs', () => {
+    const session = createBuilderSession();
+    const operations = [
+      { type: 'add', brick: { ...placement, id: 'foundation' } },
+      { type: 'add', brick: { ...placement, id: 'upper', partId: '3005', y: 3 } },
+    ];
+    const before = session.snapshot();
+    expect(
+      session.runTool('brick_preview_patch', { expectedRevision: 0, operations }),
+    ).toMatchObject({
+      ok: true,
+      revision: 0,
+      data: {
+        purpose: 'preview-only',
+        assessment: { constructionSequence: 'not-validated', buildability: { certified: false } },
+      },
+    });
+    expect(session.snapshot()).toEqual(before);
+    expect(session.runTool('brick_apply_patch', { expectedRevision: 0, operations })).toMatchObject(
+      { ok: true, revision: 1 },
+    );
+    const built = session.snapshot();
+    expect(built.bricks.map((brick) => brick.id)).toEqual(['foundation', 'upper']);
+    expect(
+      session.runTool('brick_apply_patch', {
+        expectedRevision: 0,
+        operations: [{ type: 'remove', id: 'upper' }],
+      }),
+    ).toMatchObject({ ok: false, revision: 1, error: { code: 'revision_conflict' } });
+    expect(
+      session.runTool('brick_apply_patch', {
+        expectedRevision: 1,
+        operations: [{ type: 'update', id: 'upper', changes: { color: 47 } }],
+      }),
+    ).toMatchObject({ ok: false, revision: 1, error: { code: 'unverified_color' } });
+    expect(session.snapshot()).toEqual(built);
+    expect(
+      session.runTool('brick_apply_patch', {
+        expectedRevision: 1,
+        operations: [
+          { type: 'remove', id: 'foundation' },
+          { type: 'add', brick: { ...placement, id: 'replacement' } },
+        ],
+      }),
+    ).toMatchObject({ ok: true, revision: 2 });
+    expect(session.runTool('brick_place', { ...placement, x: 8 }).ok).toBe(true);
+    expect(session.snapshot().bricks.at(-1)?.id).toBe('ai-1');
+  });
+
+  it('uses declared inventory for patches, single edits and candidates without accepting tool policy overrides', () => {
+    const session = createBuilderSession(undefined, {
+      requireInventory: true,
+      inventory: [{ partId: '3005', color: 4, quantity: 1 }],
+    });
+    const operations = [{ type: 'add', brick: { ...placement, id: 'stock', partId: '3005' } }];
+    expect(
+      session.runTool('brick_apply_patch', {
+        expectedRevision: 0,
+        operations,
+        rejectInfeasible: false,
+      }),
+    ).toMatchObject({ ok: false, revision: 0, error: { code: 'invalid_input' } });
+    expect(session.runTool('brick_apply_patch', { expectedRevision: 0, operations })).toMatchObject(
+      { ok: true, revision: 1 },
+    );
+    expect(session.runTool('brick_place', { ...placement, partId: '3005', x: 4 })).toMatchObject({
+      ok: false,
+      revision: 1,
+      error: { code: 'inventory_exceeded' },
+    });
+    expect(
+      session.runTool('brick_candidates', { partId: '3005', color: 4, maxCandidates: 1 }),
+    ).toMatchObject({
+      ok: true,
+      revision: 1,
+      data: {
+        candidates: [
+          expect.objectContaining({
+            placementAllowed: false,
+            policyIssues: [expect.objectContaining({ code: 'inventory_exceeded' })],
+          }),
+        ],
+      },
+    });
+    expect(
+      session.runTool('brick_apply_patch', {
+        expectedRevision: 1,
+        operations: [{ type: 'update', id: 'stock', changes: { partId: '3001' } }],
+      }),
+    ).toMatchObject({ ok: false, error: { code: 'inventory_unknown' } });
+    expect(session.snapshot().bricks).toHaveLength(1);
+  });
+
+  it('rejects a model-infeasible batch without committing any additions', () => {
+    const session = createBuilderSession();
+    expect(session.runTool('brick_place', { ...placement, partId: '3003' }).ok).toBe(true);
+    const before = session.snapshot();
+    const operations = [
+      { type: 'add', brick: { ...placement, id: 'arm', partId: '3009', y: 3 } },
+      { type: 'add', brick: { ...placement, id: 'unrelated', x: 8 } },
+    ];
+    expect(
+      session.runTool('brick_preview_patch', { expectedRevision: 1, operations }),
+    ).toMatchObject({ ok: false, revision: 1, error: { code: 'physical_rejected' } });
+    expect(session.runTool('brick_apply_patch', { expectedRevision: 1, operations })).toMatchObject(
+      { ok: false, revision: 1, error: { code: 'physical_rejected' } },
+    );
+    expect(session.snapshot()).toEqual(before);
+  });
+
+  it('offers read-only candidates with color policy, physical coverage and engine capabilities', () => {
+    const session = createBuilderSession();
+    expect(session.runTool('brick_catalog', {})).toMatchObject({
+      ok: true,
+      data: {
+        capabilities: { insertFrames: { '4035': '60593' }, staticGravity: { maxPieces: 200 } },
+      },
+    });
+    const before = session.snapshot();
+    expect(
+      session.runTool('brick_candidates', { partId: '3005', color: 4, maxCandidates: 1 }),
+    ).toMatchObject({
+      ok: true,
+      revision: 0,
+      data: {
+        truncated: true,
+        candidates: [
+          expect.objectContaining({
+            placementAllowed: true,
+            physical: {
+              status: 'unknown',
+              gravity: 'balanced',
+              massBasis: 'catalog',
+              connectionStrength: 'unknown',
+              reasons: expect.any(Array),
+              certified: false,
+            },
+          }),
+        ],
+      },
+    });
+    expect(session.snapshot()).toEqual(before);
+    expect(
+      session.runTool('brick_candidates', { partId: '3005', color: 4, supportId: 'missing' }),
+    ).toMatchObject({ ok: false, revision: 0, error: { code: 'search_rejected' } });
+    expect(
+      session.runTool('brick_candidates', { partId: '3005', color: 4, maxCandidates: 21 }).ok,
+    ).toBe(false);
+    expect(session.runTool('brick_candidates', { partId: '3005', color: 47 })).toMatchObject({
+      ok: false,
+      error: { code: 'unverified_color' },
+    });
+    expect(session.runTool('brick_connection', { id: 'missing' })).toMatchObject({
+      ok: false,
+      error: { code: 'piece_not_found' },
+    });
+    expect(session.runTool('brick_place', placement).ok).toBe(true);
+    expect(session.runTool('brick_connection', { id: 'ai-1' })).toMatchObject({
+      ok: true,
+      revision: 1,
+      data: { grounded: true, issues: [], strength: 'unknown' },
+    });
+  });
+
+  it('labels tipping candidates as rejected unless the host explicitly opts out', () => {
+    for (const rejectInfeasible of [true, false]) {
+      const session = createBuilderSession(undefined, { rejectInfeasible });
+      expect(session.runTool('brick_place', { ...placement, partId: '3003' }).ok).toBe(true);
+      const before = session.snapshot();
+      expect(
+        session.runTool('brick_candidates', {
+          partId: '3009',
+          color: 4,
+          supportId: 'ai-1',
+          rotations: [0],
+          maxCandidates: 1,
+        }),
+      ).toMatchObject({
+        ok: true,
+        revision: 1,
+        data: {
+          candidates: [
+            expect.objectContaining({
+              placementAllowed: !rejectInfeasible,
+              brick: expect.objectContaining({ x: 0, y: 3, z: 0 }),
+              physical: expect.objectContaining({
+                status: 'infeasible',
+                gravity: 'unstable',
+                certified: false,
+              }),
+            }),
+          ],
+        },
+      });
+      expect(session.snapshot()).toEqual(before);
+    }
+  });
+
+  it('keeps missing-mass and shaped candidates unknown and enforces piece limits', () => {
+    const missingMass = createBuilderSession(undefined, {
+      physical: { useCatalogMasses: false, estimateMissingMasses: false },
+    });
+    expect(
+      missingMass.runTool('brick_candidates', { partId: '3005', color: 4, maxCandidates: 1 }),
+    ).toMatchObject({
+      ok: true,
+      data: {
+        candidates: [
+          expect.objectContaining({
+            placementAllowed: true,
+            physical: expect.objectContaining({
+              status: 'unknown',
+              gravity: 'not-assessed',
+              massBasis: 'missing',
+            }),
+          }),
+        ],
+      },
+    });
+    const shaped = createBuilderSession(undefined, { requireObservedColors: false });
+    expect(
+      shaped.runTool('brick_candidates', { partId: '3942c', color: 4, maxCandidates: 1 }),
+    ).toMatchObject({
+      ok: true,
+      data: {
+        candidates: [
+          expect.objectContaining({
+            placementAllowed: true,
+            physical: expect.objectContaining({
+              status: 'unknown',
+              gravity: 'not-assessed',
+              certified: false,
+            }),
+          }),
+        ],
+      },
+    });
+    const limited = createBuilderSession(undefined, { maxPieces: 1 });
+    expect(limited.runTool('brick_place', placement).ok).toBe(true);
+    expect(limited.runTool('brick_candidates', { partId: '3005', color: 4 })).toMatchObject({
+      ok: false,
+      revision: 1,
+      error: { code: 'piece_limit' },
+    });
+  });
+
   it('respects the host assembly board size in catalogue, placements and exports', () => {
     const session = createBuilderSession({ name: 'Wide board', bricks: [], buildArea: 64 });
     expect(session.runTool('brick_catalog', {})).toMatchObject({

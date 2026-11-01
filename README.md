@@ -55,7 +55,7 @@ preview and can be undone. These checks are not physical-strength certification.
 | Example         | Pieces | Detail                                                                                                                                                     |
 | --------------- | ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Courtyard House | 306    | Two-storey medieval hall, half-timbering, watchtower, stepped slate roof, chimney, well and furnished courtyard; 35 designs, eight colors, 49 plates high. |
-| Catalog sampler | 164    | Every supported design exactly once, including all architectural details and foliage, on one 64 x 64 ground-level board.                                    |
+| Catalog sampler | 164    | Every supported design exactly once, including all architectural details and foliage, on one 64 x 64 ground-level board.                                   |
 
 Examples validate geometry, not every manufacturing combination or physical
 strength requirement. Medieval colors outside the six mapped colors and the
@@ -262,6 +262,90 @@ not validated building instructions. Inspect exports in a LEGO editor and
 physically test builds before relying on them.
 
 Changes currently live in memory until exported. Refreshing resets the example.
+
+## AI Placement Planning
+
+The UI-independent engine exports `getEngineCapabilities(assembly)` and
+`getPartCapabilities(partId)` for shared connector rules, reviewed static
+frame/insert exceptions, conservative collision geometry and physics limits.
+Runtime part connector fit remains unknown. Capability metadata describes model
+coverage, not a successful physical assessment.
+
+`findPlacementCandidates(assembly, query)` aligns an upright part's declared
+receivers with existing world-space studs and validates every proposed placement.
+`query` requires `partId` and `color`; optional `supportId`, `rotations`,
+`includeGround`, `maxCandidates` and `maxChecks` restrict the search. Ground-grid
+search defaults on only for empty assemblies. Defaults are 20 candidates and
+256 unique placement checks; maxima are 50 and 2,000. Results are deterministic,
+deduplicated and explicitly marked `truncated` when a limit cuts the search short.
+Searches do not enumerate static frame inserts or special connections and are
+not optimal or exhaustive searches over all possible geometry.
+
+`explainConnection(assembly, brick)` reports ground contact, supporting stud
+sites, reviewed insert frames and geometry issues. Neither API mutates the input.
+Candidate IDs are temporary and collision-free within the supplied assembly.
+Raw engine candidates check geometry only, not manufacturing, stock or physics.
+Compatible connector sites do not establish measured clutch strength.
+
+The Claude adapter's read-only `brick_candidates` tool adds the host's
+manufacturing and physical policies. It defaults to eight candidates, allows
+at most 20, and reports `placementAllowed` separately from physical uncertainty.
+Model-infeasible candidates remain visible with rejection labels; unknown
+results are never called safe or certified. `brick_connection` explains an
+existing piece by stable ID. To commit a candidate, call `brick_place` with its
+part, color, coordinates and rotation, without its temporary ID. Placement
+rechecks current state and assigns a stable ID.
+
+Palette harmony, inventory-aware design ranking and verified construction
+sequences are not implemented yet.
+
+## Atomic Edits And Policy
+
+The engine exports `previewPatch`, `applyPatch` and `evaluateAssemblyPolicy`.
+Patches contain 1-100 operations: `add` with a complete `brick`, `remove` by `id`,
+or `update` by `id` with nonempty `changes`. Updates can move, rotate, recolor
+or change the design but cannot change an ID. Each ID can be targeted only once.
+The input assembly must have valid geometry. The complete resulting arrangement
+is checked atomically, so coordinated swaps and support replacements need not
+be valid after each listed operation.
+
+Both APIs are pure: input assemblies, patch data and host data remain unchanged.
+Preview returns an isolated proposed assembly and assessment without advancing
+the revision. Apply reevaluates current data and policy, returning a new assembly
+and incremented revision only on success. Rejections return structured errors
+without a partial assembly. Callers implementing concurrency must retain their
+revision, pass it in `{ revision, policy }`, and include the same
+`expectedRevision` in the patch. A stale revision returns `revision_conflict`;
+a preview is not a reusable approval token. Without an explicit revision,
+standalone calls default to revision zero.
+
+`EditPolicy` combines geometry, optional `maxPieces`, manufacturing evidence,
+declared inventory and physical settings. Recognized colors alone are not
+manufacturing evidence. `requireObservedColors` defaults off in the engine;
+`rejectInfeasible` defaults on, while unknown physical results remain permitted
+but uncertified. Engine mass estimation remains opt-in. The adapter retains
+its stricter observed-color policy and enabled estimates; the workshop retains
+unverified-color exploration and its host-selected physical settings.
+Workshop previews, placements, removals and undo/redo use these shared checks.
+
+Optional inventory is an array of unique `{ partId, color, quantity }` records
+with nonnegative integer quantities. Usage is the complete final BOM, so removals
+release quantities within a patch. Exceeding a declared quantity is rejected.
+Missing records mean unknown, not zero; `requireInventory: true` rejects unknown
+quantities. Inventory is supplied by the host, not independently authenticated
+marketplace stock. Adapter hosts can provide `inventory` and `requireInventory`
+through `createBuilderSession`; model tools cannot alter them.
+
+Claude `brick_preview_patch` and `brick_apply_patch` require `expectedRevision`.
+Successful commits increment the session revision once, irrespective of operation
+count. Complete additions include a proposed unique ID and rotation; IDs become
+stable only after success. Single-piece tools and placement candidates use the
+same evaluator. Inspection/export retains declared inventory usage separately
+from unknown marketplace stock.
+
+Every assessment reports `constructionSequence: "not-validated"` and retains
+the existing uncertified buildability report. A final-state support replacement
+does not establish a safe order for removing and inserting the actual pieces.
 
 ## Physical Feasibility
 
@@ -515,7 +599,9 @@ library to refresh its cached manifests and index.
 ## Local Claude Adapter
 
 The headless adapter sends text prompts to the Claude API and lets Claude call
-only seven engine tools: catalog, inspection, physical assessment, placement,
+only eleven engine tools: catalog, placement candidates, connection explanations,
+atomic patch preview/application,
+inspection, physical assessment, placement,
 removal, color status, and export. It does not expose a shell, filesystem, web browsing, arbitrary
 code execution, or browser access. JSON schemas are checked locally with Ajv;
 the engine independently rejects collisions, floating parts, and unsafe removal.
