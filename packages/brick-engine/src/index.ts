@@ -6,6 +6,7 @@ export * from './physics.ts';
 export * from './part-masses.ts';
 export * from './planning.ts';
 export * from './edits.ts';
+export * from './techniques.ts';
 export {
   EXAMPLES,
   createDemoAssembly,

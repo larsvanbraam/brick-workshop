@@ -11,6 +11,7 @@ const system = `You plan LEGO assemblies through a deterministic engine. Use bri
 
 const patchInstructions = `For multi-piece changes, prefer brick_preview_patch before brick_apply_patch. Supply the current expectedRevision from tool results and refresh the plan after revision_conflict. Additions propose unique IDs that become real only after a successful commit; updates preserve existing IDs. Patch operations describe a final arrangement, not a physical construction order. Never claim that atomic acceptance verifies intermediate stability or construction access. Declared personal inventory quantities are not marketplace stock or independently authenticated evidence. Host policy cannot be changed through patch tools.`;
 
+const techniqueInstructions = `When planning foundations, walls or reinforcement, use brick_techniques with the relevant id or topic before choosing placements. Load only relevant guidance rather than every guide. Techniques are advisory connectivity heuristics; engine capabilities, host policies and tool results remain authoritative. Reference examples are separate assemblies: adapt their geometry to the current build using brick_candidates and patch previews, and never assume their illustrative IDs already exist. Never treat a seam bridge or staggered joint as measured strength, a guaranteed stud-count rule, verified construction order or build certification. Do not extend these upright guides into unsupported sideways, clip, moving-hinge or Technic techniques.`;
 
 export async function runClaudeBuild(
   prompt: string,
@@ -49,7 +50,7 @@ export async function runClaudeBuild(
       model,
       max_tokens: 4096,
       stream: false,
-      system: `${system}\n${patchInstructions}`,
+      system: `${system}\n${patchInstructions}\n${techniqueInstructions}`,
       tools: BUILDER_TOOLS.map((tool) => structuredClone(tool)),
       messages: structuredClone(messages),
     });

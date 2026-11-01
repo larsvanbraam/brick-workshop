@@ -26,6 +26,53 @@ function message(
 }
 
 describe('Claude tool-use loop', () => {
+  it('sends technique instructions and selected guide content through the actual tool loop', async () => {
+    const requests: Anthropic.MessageCreateParamsNonStreaming[] = [];
+    const transport: ClaudeTransport = async (request) => {
+      requests.push(request);
+      return requests.length === 1
+        ? message(
+            [
+              {
+                type: 'tool_use',
+                id: 'guide-call',
+                name: 'brick_techniques',
+                input: { id: 'staggered-walls', includeExamples: false },
+              },
+            ],
+            'tool_use',
+          )
+        : message(
+            [
+              {
+                type: 'text',
+                text: 'The wall plan uses staggered joints; strength and construction remain unverified.',
+                citations: null,
+              },
+            ],
+            'end_turn',
+          );
+    };
+    const session = createBuilderSession();
+    const result = await runClaudeBuild('Plan a staggered wall.', session, transport);
+    expect(requests[0].system).toContain('use brick_techniques');
+    expect(
+      requests[0].tools?.some((tool) => 'name' in tool && tool.name === 'brick_techniques'),
+    ).toBe(true);
+    const results = requests[1].messages.at(-1)!.content as Anthropic.ToolResultBlockParam[];
+    expect(JSON.parse(results[0].content as string)).toMatchObject({
+      ok: true,
+      revision: 0,
+      data: {
+        version: 1,
+        techniques: [expect.objectContaining({ id: 'staggered-walls', steps: expect.any(Array) })],
+        certified: false,
+      },
+    });
+    expect(result.trace).toEqual([{ tool: 'brick_techniques', ok: true, revision: 0 }]);
+    expect(session.snapshot().bricks).toEqual([]);
+  });
+
   it('integrates the official SDK over a mocked HTTP transport without network access', async () => {
     const requests: Record<string, unknown>[] = [];
     const responses = [
@@ -160,6 +207,98 @@ describe('Claude tool-use loop', () => {
 });
 
 describe('headless Claude builder tools', () => {
+  it('never upgrades reference geometry into host inventory approval', () => {
+    const session = createBuilderSession(undefined, { requireInventory: true, inventory: [] });
+    expect(session.runTool('brick_techniques', { id: 'foundations' })).toMatchObject({
+      ok: true,
+      revision: 0,
+      data: {
+        techniques: [
+          expect.objectContaining({
+            example: expect.objectContaining({ hostPolicyApproval: 'not-evaluated' }),
+          }),
+        ],
+      },
+    });
+    expect(session.runTool('brick_place', placement)).toMatchObject({
+      ok: false,
+      revision: 0,
+      error: { code: 'inventory_unknown' },
+    });
+    expect(session.snapshot().bricks).toEqual([]);
+  });
+
+  it('retrieves bounded versioned technique guidance and isolated reference examples without mutation', () => {
+    const session = createBuilderSession();
+    const before = session.snapshot();
+    const result = session.runTool('brick_techniques', { topic: 'walls', limit: 1 });
+    expect(result).toMatchObject({
+      ok: true,
+      revision: 0,
+      data: {
+        version: 1,
+        totalMatches: 2,
+        truncated: true,
+        certified: false,
+        constructionSequence: 'not-validated',
+        techniques: [
+          expect.objectContaining({
+            id: 'staggered-walls',
+            example: {
+              assembly: expect.objectContaining({ bricks: expect.any(Array) }),
+              coordinateSpace: 'standalone-reference-not-current-build',
+              ids: 'illustrative-only',
+              geometry: 'validated-reference-only',
+              hostPolicyApproval: 'not-evaluated',
+              parameters: expect.any(Object),
+            },
+          }),
+        ],
+      },
+    });
+    expect(session.snapshot()).toEqual(before);
+    if (!result.ok) throw new Error('Technique query rejected');
+    const data = result.data as {
+      techniques: { title: string; example: { assembly: { bricks: { x: number }[] } } }[];
+    };
+    data.techniques[0].title = 'Changed';
+    data.techniques[0].example.assembly.bricks[0].x = 12;
+    expect(session.runTool('brick_techniques', { id: 'staggered-walls' })).toMatchObject({
+      ok: true,
+      revision: 0,
+      data: {
+        techniques: [
+          expect.objectContaining({
+            title: 'Staggered wall joints',
+            example: expect.objectContaining({
+              assembly: expect.objectContaining({
+                bricks: expect.arrayContaining([expect.objectContaining({ x: 0 })]),
+              }),
+            }),
+          }),
+        ],
+      },
+    });
+    const brief = session.runTool('brick_techniques', {
+      id: 'foundations',
+      includeExamples: false,
+    });
+    expect(brief).toMatchObject({
+      ok: true,
+      data: { techniques: [expect.objectContaining({ id: 'foundations' })] },
+    });
+    if (!brief.ok) throw new Error('Technique query rejected');
+    expect((brief.data as { techniques: object[] }).techniques[0]).not.toHaveProperty('example');
+    expect(session.runTool('brick_techniques', { limit: 4 }).ok).toBe(false);
+    expect(session.runTool('brick_techniques', { id: 'technic' }).ok).toBe(false);
+    expect(session.runTool('brick_techniques', { rejectInfeasible: false }).ok).toBe(false);
+    expect(session.runTool('brick_place', placement)).toMatchObject({
+      ok: true,
+      revision: 1,
+      data: { brick: { id: 'ai-1' } },
+    });
+  });
+
   it('previews and applies patches atomically with revision guards and stable IDs', () => {
     const session = createBuilderSession();
     const operations = [

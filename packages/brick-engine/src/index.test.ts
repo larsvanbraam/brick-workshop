@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vite-plus/test';
 import {
   PARTS,
+  BUILDING_TECHNIQUE_IDS,
+  createBuildingTechniqueExample,
+  getBuildingTechniques,
   applyPatch,
   previewPatch,
   evaluateAssemblyPolicy,
@@ -1810,6 +1813,80 @@ describe('mixed-part engine builds', () => {
       expect(result.issues).toContainEqual(
         expect.objectContaining({ brickId: center.id, code: 'unsupported' }),
       );
+  });
+});
+
+describe('building technique guidance', () => {
+  it('returns bounded versioned advisory guides without sharing mutable records', () => {
+    const result = getBuildingTechniques({ topic: 'walls', limit: 1 });
+    expect(result).toMatchObject({
+      version: 1,
+      totalMatches: 2,
+      truncated: true,
+      certified: false,
+      constructionSequence: 'not-validated',
+    });
+    expect(result.techniques).toHaveLength(1);
+    Reflect.set(result.techniques[0], 'title', 'Changed');
+    expect(getBuildingTechniques({ id: 'staggered-walls' }).techniques[0].title).toBe(
+      'Staggered wall joints',
+    );
+    expect(() => getBuildingTechniques({ limit: 4 })).toThrow('1-3');
+    expect(() => getBuildingTechniques({ id: 'invented' } as never)).toThrow('Unknown');
+    expect(getBuildingTechniques({ id: 'reinforcement', topic: 'foundations' }).techniques).toEqual(
+      [],
+    );
+  });
+
+  it.each(BUILDING_TECHNIQUE_IDS)(
+    'constructs valid parameterized %s references without certifying physics',
+    (id) => {
+      for (const sections of [2, 3, 4]) {
+        const assembly = createBuildingTechniqueExample(id, { sections });
+        expect(validateAssembly(assembly)).toEqual([]);
+        expect(new Set(assembly.bricks.map((brick) => brick.partId))).toEqual(
+          new Set(getBuildingTechniques({ id }).techniques[0].requiredPartIds),
+        );
+        expect(
+          evaluateAssemblyPolicy(assembly, {
+            requireObservedColors: true,
+            evidence: DEFAULT_PART_COLOR_EVIDENCE,
+          }),
+        ).toMatchObject({
+          allowed: true,
+          physical: { gravity: 'balanced' },
+          buildability: { certified: false },
+        });
+        for (const brick of assembly.bricks.filter(
+          (piece) =>
+            piece.partId === '3020' ||
+            (id === 'staggered-walls' && piece.y === 3 && piece.partId === '3001'),
+        ))
+          expect(explainConnection(assembly, brick).studSupports).toHaveLength(2);
+      }
+    },
+  );
+
+  it('alternates multiple wall courses and rejects invalid example parameters or occupied bounds', () => {
+    const assembly = createBuildingTechniqueExample('staggered-walls', {
+      sections: 2,
+      courses: 4,
+      x: 0.5,
+      z: 0.5,
+      color: 14,
+    });
+    expect(validateAssembly(assembly)).toEqual([]);
+    expect(assembly.bricks.filter((brick) => brick.y === 9).map((brick) => brick.partId)).toEqual([
+      '3003',
+      '3001',
+      '3003',
+    ]);
+    expect(() => createBuildingTechniqueExample('foundations', { sections: 1 })).toThrow('Invalid');
+    expect(() => createBuildingTechniqueExample('reinforcement', { courses: 2 })).toThrow(
+      'Invalid',
+    );
+    expect(() => createBuildingTechniqueExample('foundations', { color: 16 })).toThrow('Invalid');
+    expect(() => createBuildingTechniqueExample('foundations', { z: 14 })).toThrow('rejected');
   });
 });
 

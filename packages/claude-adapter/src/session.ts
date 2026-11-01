@@ -8,6 +8,9 @@ import {
   MAX_HEIGHT,
   PARTS,
   MAX_PATCH_OPERATIONS,
+  BUILDING_TECHNIQUE_IDS,
+  getBuildingTechniques,
+  createBuildingTechniqueExample,
   applyPatch,
   previewPatch,
   evaluateAssemblyPolicy,
@@ -77,6 +80,20 @@ const patchSchema = objectSchema({
 });
 
 export const BUILDER_TOOLS: readonly Anthropic.Tool[] = [
+  {
+    name: 'brick_techniques',
+    description:
+      'Read up to three versioned advisory guides for grounded foundations, staggered wall joints or seam reinforcement. Filter by id or topic to load relevant guidance only. Examples default on and are separate geometry-validated reference assemblies, NOT placements in the current model; their IDs are illustrative and coordinates must be adapted. Guidance cannot authorize unsupported connections, unobserved colors, unavailable inventory or override host physics policy. Connectivity heuristics are not measured strength, construction-sequence validation or build certification. This tool never mutates the assembly or revision.',
+    input_schema: objectSchema(
+      {
+        id: { type: 'string', enum: BUILDING_TECHNIQUE_IDS },
+        topic: { type: 'string', enum: ['foundations', 'walls', 'reinforcement'] },
+        limit: { type: 'integer', minimum: 1, maximum: 3 },
+        includeExamples: { type: 'boolean' },
+      },
+      [],
+    ),
+  },
   {
     name: 'brick_catalog',
     description:
@@ -300,6 +317,42 @@ export function createBuilderSession(
     if (!validate) return fail('unknown_tool', `Unknown builder tool: ${name}`);
     if (!validate(input)) return fail('invalid_input', ajv.errorsText(validate.errors));
     const args = input as Record<string, unknown>;
+    if (name === 'brick_techniques') {
+      const result = getBuildingTechniques(args as Parameters<typeof getBuildingTechniques>[0]);
+      return {
+        ok: true,
+        revision,
+        data: {
+          ...result,
+          currentBuildCapabilities: getEngineCapabilities(assembly),
+          techniques: result.techniques.map((technique) => ({
+            ...technique,
+            ...(args.includeExamples === false
+              ? {}
+              : {
+                  example: {
+                    assembly: createBuildingTechniqueExample(technique.id),
+                    coordinateSpace: 'standalone-reference-not-current-build',
+                    ids: 'illustrative-only',
+                    geometry: 'validated-reference-only',
+                    hostPolicyApproval: 'not-evaluated',
+                    parameters: {
+                      sections: { minimum: 2, maximum: 4, default: 2 },
+                      ...(technique.id === 'staggered-walls'
+                        ? { courses: { minimum: 2, maximum: 4, default: 2 } }
+                        : {}),
+                      color: {
+                        default: 4,
+                        rule: 'recognized-color-subject-to-host-evidence-policy',
+                      },
+                      origin: 'nonnegative-half-grid-X/Z-within-a-16-stud-reference-board',
+                    },
+                  },
+                }),
+          })),
+        },
+      };
+    }
     if (name === 'brick_preview_patch' || name === 'brick_apply_patch') {
       const result = (name === 'brick_apply_patch' ? applyPatch : previewPatch)(
         assembly,

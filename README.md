@@ -299,6 +299,44 @@ rechecks current state and assigns a stable ID.
 Palette harmony, inventory-aware design ranking and verified construction
 sequences are not implemented yet.
 
+## Building Technique Guidance
+
+The engine includes a versioned, repository-authored advisory library in
+[packages/brick-engine/src/techniques.ts](packages/brick-engine/src/techniques.ts).
+Its initial guides cover grounded foundations, staggered wall joints and bridging
+existing seams for reinforcement. Each guide includes prerequisites, supported
+connections, required designs, steps, tradeoffs and explicit limitations.
+These are upright connectivity heuristics, not measured structural capacities.
+
+`getBuildingTechniques({ id?, topic?, limit? })` returns independent guide records
+with version metadata. Topics are `foundations`, `walls` and `reinforcement`;
+queries return at most three guides and report truncation. Exact IDs are
+`foundations`, `staggered-walls` and `reinforcement`.
+
+`createBuildingTechniqueExample(id, options)` creates a separate reference
+assembly through sequential `placeBrick` checks. Options include `sections`
+(2-4), `courses` (2-4, walls only), recognized `color` and a nonnegative half-grid
+X/Z origin. Defaults are two sections, two wall courses, red and origin zero.
+The reference board is 16 studs; out-of-bounds options are rejected. Tests cover
+parameterized geometry, connections to both sides of seams, observed default
+part/color combinations and nominal static balance. They do not verify real
+clutch strength, construction access or physical load performance.
+
+Claude's read-only `brick_techniques` tool explicitly sends selected guides into
+the API conversation. Optional `includeExamples` defaults on. Examples include
+parameter bounds but remain separate reference assemblies: their IDs are
+illustrative, their coordinates are not placements in the current model, and
+host policy approval is not evaluated. The tool also reports current build
+capabilities. Guidance cannot bypass geometry, manufacturing, inventory or
+physical-policy checks; adapt it using placement candidates and patch previews.
+
+The runner asks the model to retrieve relevant guides on demand rather than
+injecting the whole library into every system prompt. Editor skill files are
+not automatically discovered by the application's API session. When updating
+guidance or recipes, review the limitations, update version metadata and rerun
+the technique fixtures and adapter conversation tests. Construction sequences
+and physical buildability remain unverified.
+
 ## Atomic Edits And Policy
 
 The engine exports `previewPatch`, `applyPatch` and `evaluateAssemblyPolicy`.
@@ -599,7 +637,7 @@ library to refresh its cached manifests and index.
 ## Local Claude Adapter
 
 The headless adapter sends text prompts to the Claude API and lets Claude call
-only eleven engine tools: catalog, placement candidates, connection explanations,
+only twelve engine tools: technique guidance, catalog, placement candidates, connection explanations,
 atomic patch preview/application,
 inspection, physical assessment, placement,
 removal, color status, and export. It does not expose a shell, filesystem, web browsing, arbitrary
