@@ -23,7 +23,6 @@ type Library = {
   message: string;
 };
 
-let pendingLibrary: Promise<Record<string, Group>> | undefined;
 let pendingCatalog: Promise<LibraryCatalog> | undefined;
 
 export function loadLDrawCatalog(): Promise<LibraryCatalog> {
@@ -39,7 +38,7 @@ export function loadLDrawCatalog(): Promise<LibraryCatalog> {
   return pendingCatalog;
 }
 
-export async function loadLDrawPart(id: string): Promise<Group> {
+async function loadPreviewPart(id: string): Promise<Group> {
   let response = await fetch(`/ldraw/preview/${encodeURIComponent(id)}/manifest.json`);
   if (
     (!response.ok || !response.headers.get('content-type')?.includes('application/json')) &&
@@ -65,8 +64,13 @@ export async function loadLDrawPart(id: string): Promise<Group> {
   return model;
 }
 
-export async function loadLDrawModels(): Promise<Record<string, Group>> {
-  const response = await fetch('/ldraw/manifest.json');
+async function loadSupportedModels(partIds: readonly string[]): Promise<Record<string, Group>> {
+  let response = await fetch(`/ldraw/manifest.json?parts=${encodeURIComponent(partIds.join(','))}`);
+  if (
+    response.status < 500 &&
+    (!response.ok || !response.headers.get('content-type')?.includes('application/json'))
+  )
+    response = await fetch('/ldraw/manifest.json');
   if (!response.ok) throw new Error('Local LDraw library could not be read.');
   const manifest = (await response.json()) as {
     available: boolean;
@@ -80,33 +84,53 @@ export async function loadLDrawModels(): Promise<Record<string, Group>> {
   loader.setConditionalLineMaterial(LDrawConditionalLineMaterial);
   await loader.preloadMaterials(colorConfigUrl);
   const entries = await Promise.all(
-    PARTS.map(async (part) => {
-      const model = await loader.loadAsync(`/ldraw/parts/${part.id}.dat`);
+    partIds.map(async (id) => {
+      const model = await loader.loadAsync(`/ldraw/parts/${id}.dat`);
       modelLoaders.set(model, loader);
-      return [part.id, model] as const;
+      return [id, model] as const;
     }),
   );
   return Object.fromEntries(entries);
 }
 
-function loadScenePart(id: string): Promise<Group> {
-  let pending = pendingPartModels.get(id);
-  if (!pending) {
-    pending = loadLDrawPart(id).catch((error: unknown) => {
-      pendingPartModels.delete(id);
-      throw error;
-    });
-    pendingPartModels.set(id, pending);
+export function loadLDrawModels(
+  partIds: readonly string[] = PARTS.map((part) => part.id),
+): Promise<Record<string, Group>> {
+  const ids = [...new Set(partIds)];
+  const missing = ids.filter((id) => !pendingPartModels.has(id));
+  const supported = missing.filter((id) => PARTS.some((part) => part.id === id));
+  if (supported.length) {
+    const batch = loadSupportedModels(supported);
+    for (const id of supported)
+      pendingPartModels.set(
+        id,
+        batch
+          .then((models) => models[id])
+          .catch((error: unknown) => {
+            pendingPartModels.delete(id);
+            throw error;
+          }),
+      );
   }
-  return pending;
+  for (const id of missing.filter((id) => !supported.includes(id)))
+    pendingPartModels.set(
+      id,
+      loadPreviewPart(id).catch((error: unknown) => {
+        pendingPartModels.delete(id);
+        throw error;
+      }),
+    );
+  return Promise.all(ids.map(async (id) => [id, await pendingPartModels.get(id)!] as const)).then(
+    (entries) => Object.fromEntries(entries),
+  );
 }
 
-export function useLDrawLibrary(extraParts: readonly string[] = []): Library {
-  const additionalKey = [
-    ...new Set(extraParts.filter((id) => !PARTS.some((part) => part.id === id))),
-  ]
-    .sort()
-    .join('\0');
+export function loadLDrawPart(id: string): Promise<Group> {
+  return loadLDrawModels([id]).then((models) => models[id]);
+}
+
+export function useLDrawLibrary(requiredParts: readonly string[]): Library {
+  const requiredKey = [...new Set(requiredParts)].sort().join('\0');
   const [library, setLibrary] = useState<Library>({
     status: 'loading',
     models: {},
@@ -114,62 +138,27 @@ export function useLDrawLibrary(extraParts: readonly string[] = []): Library {
   });
   useEffect(() => {
     let cancelled = false;
-    pendingLibrary ??= loadLDrawModels();
-    pendingLibrary
+    const ids = requiredKey ? requiredKey.split('\0') : [];
+    loadLDrawModels(ids)
       .then((models) => {
         if (!cancelled)
-          setLibrary({
+          setLibrary((current) => ({
             status: 'ready',
-            models,
-            message: `LDraw geometry / ${Object.keys(models).length} parts`,
-          });
-      })
-      .catch((error: unknown) => {
-        if (!cancelled)
-          setLibrary({
-            status: 'fallback',
-            models: {},
-            message: error instanceof Error ? error.message : 'LDraw loading failed.',
-          });
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-  useEffect(() => {
-    let cancelled = false;
-    if (library.status === 'loading')
-      return () => {
-        cancelled = true;
-      };
-    const additionalIds = additionalKey ? additionalKey.split('\0') : [];
-    const missing = additionalIds.filter((id) => !library.models[id]);
-    if (!missing.length)
-      return () => {
-        cancelled = true;
-      };
-    Promise.all(missing.map(async (id) => [id, await loadScenePart(id)] as const))
-      .then((entries) => {
-        if (!cancelled)
-          setLibrary((current) => ({
-            ...current,
-            models: { ...current.models, ...Object.fromEntries(entries) },
-            message:
-              current.status === 'fallback'
-                ? `Prototype fallback / ${Object.keys(current.models).length + entries.length} native LDraw parts`
-                : `LDraw geometry / ${Object.keys(current.models).length + entries.length} parts`,
+            models: { ...current.models, ...models },
+            message: `LDraw geometry / ${Object.keys({ ...current.models, ...models }).length} parts`,
           }));
       })
       .catch((error: unknown) => {
         if (!cancelled)
           setLibrary((current) => ({
-            ...current,
+            status: Object.keys(current.models).length ? current.status : 'fallback',
+            models: current.models,
             message: error instanceof Error ? error.message : 'LDraw loading failed.',
           }));
       });
     return () => {
       cancelled = true;
     };
-  }, [additionalKey, library.status, library.models]);
+  }, [requiredKey]);
   return library;
 }

@@ -134,22 +134,8 @@ function download(contents: string, name: string, type: string) {
 
 export default function App() {
   const [runtimeParts, setRuntimeParts] = useState<Part[]>([]);
-  const library = useLDrawLibrary(runtimeParts.map((part) => part.id));
   const [sceneReady, setSceneReady] = useState(false);
   const onSceneReady = useCallback(() => setSceneReady(true), []);
-  const loading = library.status === 'loading' || !sceneReady;
-  const hasNativeModels = Object.keys(library.models).length > 0;
-  useEffect(() => {
-    const overlay = document.getElementById('workshop-loading');
-    if (!overlay) return;
-    if (!loading) {
-      overlay.remove();
-      return;
-    }
-    const label = overlay.querySelector('[data-loading-message]');
-    if (label)
-      label.textContent = library.status === 'loading' ? 'Loading parts...' : 'Preparing scene...';
-  }, [loading, library.status]);
   const evidenceFile = useRef<HTMLInputElement>(null);
   const physicalFile = useRef<HTMLInputElement>(null);
   const [physicalData, setPhysicalData] = useState<PhysicalData>(() => {
@@ -193,6 +179,20 @@ export default function App() {
   const [message, setMessage] = useState('');
   const [browserOpen, setBrowserOpen] = useState(false);
   const assembly = history.present;
+  const library = useLDrawLibrary([...assembly.bricks.map((brick) => brick.partId), partId]);
+  const loading = library.status === 'loading' || !sceneReady;
+  const hasNativeModels = Object.keys(library.models).length > 0;
+  useEffect(() => {
+    const overlay = document.getElementById('workshop-loading');
+    if (!overlay) return;
+    if (!loading) {
+      overlay.remove();
+      return;
+    }
+    const label = overlay.querySelector('[data-loading-message]');
+    if (label)
+      label.textContent = library.status === 'loading' ? 'Loading parts...' : 'Preparing scene...';
+  }, [loading, library.status]);
   const buildArea = getBuildArea(assembly);
   const physical = useMemo(
     () =>

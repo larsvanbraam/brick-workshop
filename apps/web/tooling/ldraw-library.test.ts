@@ -29,6 +29,7 @@ import { LDrawLoader } from 'three/addons/loaders/LDrawLoader.js';
 import { LDrawConditionalLineMaterial } from 'three/addons/materials/LDrawConditionalLineMaterial.js';
 import { PARTS, footprint, getLDrawTransform } from '@lego-builder/brick-engine';
 import { cloneLDrawModel } from '../src/ldraw-materials';
+import { loadLDrawModels } from '../src/ldraw';
 import { inferLDrawPartDefinition, searchCatalog } from '../src/catalog';
 import {
   collectLibrary,
@@ -36,10 +37,64 @@ import {
   indexLibrary,
   isExcludedCatalogPart,
   isLibraryPath,
+  ldrawLibraryPlugin,
   parsePartHeader,
 } from './ldraw-library';
 
 describe('local LDraw assets', () => {
+  it('loads only requested models and shares overlapping in-flight requests', async () => {
+    const fetch = vi.fn().mockImplementation(
+      async () =>
+        new Response(JSON.stringify({ available: true, fileMap: {} }), {
+          headers: { 'content-type': 'application/json' },
+        }),
+    );
+    vi.stubGlobal('fetch', fetch);
+    const load = vi
+      .spyOn(LDrawLoader.prototype, 'loadAsync')
+      .mockImplementation(async () => new Group());
+    vi.spyOn(LDrawLoader.prototype, 'preloadMaterials').mockResolvedValue(undefined);
+    try {
+      const first = loadLDrawModels(['3001', '3001']);
+      const second = loadLDrawModels(['3001', '3005']);
+      const [initial, expanded] = await Promise.all([first, second]);
+      expect(Object.keys(initial)).toEqual(['3001']);
+      expect(initial['3001']).toBe(expanded['3001']);
+      expect(fetch.mock.calls.map(([url]) => url)).toEqual([
+        '/ldraw/manifest.json?parts=3001',
+        '/ldraw/manifest.json?parts=3005',
+      ]);
+      expect(load).toHaveBeenCalledTimes(2);
+      await loadLDrawModels(['3001']);
+      expect(fetch).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.restoreAllMocks();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('evicts failed model requests so subsequent loads can retry', async () => {
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(new Response('Unavailable', { status: 503 }))
+      .mockResolvedValue(
+        new Response(JSON.stringify({ available: true, fileMap: {} }), {
+          headers: { 'content-type': 'application/json' },
+        }),
+      );
+    vi.stubGlobal('fetch', fetch);
+    vi.spyOn(LDrawLoader.prototype, 'loadAsync').mockResolvedValue(new Group());
+    vi.spyOn(LDrawLoader.prototype, 'preloadMaterials').mockResolvedValue(undefined);
+    try {
+      await expect(loadLDrawModels(['3004'])).rejects.toThrow('could not be read');
+      expect(Object.keys(await loadLDrawModels(['3004']))).toEqual(['3004']);
+      expect(fetch).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.restoreAllMocks();
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('batches faces with preserved material groups and picks the correct mirrored native instance', () => {
     const geometry = new BoxGeometry(20, 24, 20).translate(0, 12, 0);
     const material = new MeshStandardMaterial();
@@ -431,6 +486,73 @@ describe('local LDraw assets', () => {
     expect(result.manifest.available).toBe(false);
     expect(result.assets.size).toBe(0);
   });
+  it('serves selective manifests and raw assets without preparing unrelated designs', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'ldraw-subset-'));
+    try {
+      await mkdir(join(root, 'parts', 's'), { recursive: true });
+      await writeFile(join(root, 'LDConfig.ldr'), '0 Fixture colors');
+      await writeFile(join(root, 'CAreadme.txt'), 'Fixture attribution');
+      await writeFile(
+        join(root, 'parts', '3001.dat'),
+        '0 Brick\n1 16 0 0 0 1 0 0 0 1 0 0 0 1 s/shared.dat',
+      );
+      await writeFile(join(root, 'parts', 's', 'shared.dat'), '0 Shared geometry');
+      const plugin = ldrawLibraryPlugin(root);
+      const use = vi.fn();
+      if (typeof plugin.configureServer !== 'function') throw new Error('Missing middleware');
+      await plugin.configureServer({ middlewares: { use } } as never);
+      const middleware = use.mock.calls[0][0] as (
+        request: { url: string },
+        response: {
+          statusCode: number;
+          setHeader(name: string, value: string): void;
+          end(content: string): void;
+        },
+        next: () => void,
+      ) => Promise<void>;
+      const request = async (url: string) => {
+        let body = '';
+        const response = {
+          statusCode: 200,
+          setHeader: vi.fn(),
+          end(content: string) {
+            body = content;
+          },
+        };
+        await middleware({ url }, response, vi.fn());
+        return { status: response.statusCode, body };
+      };
+      expect(await request('/ldraw/LDConfig.ldr')).toEqual({
+        status: 200,
+        body: '0 Fixture colors',
+      });
+      expect(await request('/ldraw/CAreadme.txt')).toEqual({
+        status: 200,
+        body: 'Fixture attribution',
+      });
+      expect(await request('/ldraw/parts/3001.dat')).toMatchObject({ status: 200 });
+      const subset = await request('/ldraw/manifest.json?parts=3001');
+      expect(subset.status).toBe(200);
+      expect(JSON.parse(subset.body)).toMatchObject({
+        available: true,
+        parts: ['3001'],
+        fileMap: { 's/shared.dat': 's/shared.dat' },
+      });
+      expect(await request('/ldraw/parts/s/shared.dat')).toEqual({
+        status: 200,
+        body: '0 Shared geometry',
+      });
+      expect(await request('/ldraw/manifest.json?parts=unknown')).toMatchObject({ status: 400 });
+      expect(await request('/ldraw/manifest.json?parts=3001&parts=3005')).toMatchObject({
+        status: 400,
+      });
+      expect(await request('/ldraw/parts/%2e%2e%2f%2e%2e%2fsecret')).toMatchObject({ status: 400 });
+      expect(await request('/ldraw/manifest.json')).toMatchObject({ status: 503 });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it('collects only supported parts and their dependencies, retaining attribution', async () => {
     const sandbox = await mkdtemp(join(tmpdir(), 'ldraw-test-'));
     const root = join(sandbox, 'library');

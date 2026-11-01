@@ -75,6 +75,23 @@ geometry retain individual rendering. Draw-call savings therefore depend on
 part/color diversity, and picking still considers individual instances.
 The canvas renders on demand, including orbit movement, selection and edits.
 
+Startup loads only the designs used by the initial assembly plus the selected
+part (currently 36 designs for Courtyard House), not all 164 supported designs.
+Supported parts share selective manifests and cached model promises; selecting
+or placing another design loads only missing geometry while retaining the
+current scene. Failed model requests are evicted so later requests can retry.
+The server prepares only requested dependency closures, serves safe geometry
+assets independently and defers full-catalogue indexing until the browser needs it.
+Static builds still package the complete supported library, but the client parses
+only requested models.
+
+Example registries cache successfully validated templates and return independent
+copies on subsequent loads. The first build retains all sequential placement
+checks. Local Node timings for the 306-piece house were approximately 450 ms
+for its first construction and 0.15-0.22 ms for subsequent copies; these are not
+browser startup timings. This also avoids repeating generation during development
+Strict Mode initialization without disabling Strict Mode.
+
 An initial loading screen hides the unfinished workspace until the local parts
 library resolves and the scene has rendered its first frame. Missing native
 files still open the procedural fallback rather than leaving loading stuck.
@@ -110,7 +127,8 @@ Import the definition in
 `createExampleRegistry([...])` list. No picker changes or switch cases are needed.
 Use a unique kebab-case ID and meaningful scenario tags. `build` is synchronous;
 `add(partId, color, x, y, z, rotation?)` defaults to zero rotation and validates
-each placement through the engine. The registry rejects duplicate IDs, invalid
+each placement through the engine on the first load, then reuses an isolated
+copy of the validated template on subsequent loads. The registry rejects duplicate IDs, invalid
 metadata/placements, and mismatched piece counts, and returns fresh assemblies
 on every load. `EXAMPLES` exposes immutable metadata without the build functions.
 Set optional `buildArea` on an example to choose a whole-number square board

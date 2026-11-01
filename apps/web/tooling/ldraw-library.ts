@@ -185,11 +185,31 @@ export function ldrawLibraryPlugin(libraryPath: string): Plugin {
   let catalog: Promise<LibraryCatalog> | undefined;
   const loadCatalog = () => (catalog ??= indexLibrary(libraryPath));
   const previews = new Map<string, ReturnType<typeof collectLibrary>>();
+  const assets = new Map<string, string>();
+  const loadSubset = (ids: readonly string[]) => {
+    const key = [...new Set(ids)].sort().join(',');
+    let pending = previews.get(key);
+    if (!pending) {
+      pending = collectLibrary(libraryPath, key.split(','))
+        .then((result) => {
+          for (const [path, text] of result.assets) assets.set(path, text);
+          return result;
+        })
+        .catch((error: unknown) => {
+          previews.delete(key);
+          throw error;
+        });
+      previews.set(key, pending);
+      if (previews.size > 12) previews.delete(previews.keys().next().value!);
+    }
+    return pending;
+  };
   const attach = (server: Pick<ViteDevServer, 'middlewares'>) => {
     server.middlewares.use(async (request, response, next) => {
       if (!request.url?.startsWith('/ldraw/')) return next();
       try {
-        const path = decodeURIComponent(request.url.split('?')[0].slice('/ldraw/'.length));
+        const url = new URL(request.url, 'http://localhost');
+        const path = decodeURIComponent(url.pathname.slice('/ldraw/'.length));
         if (!isLibraryPath(path)) {
           response.statusCode = 400;
           response.end('Invalid library path');
@@ -198,6 +218,18 @@ export function ldrawLibraryPlugin(libraryPath: string): Plugin {
         let content: string | undefined;
         if (path === 'catalog.json') {
           content = JSON.stringify(await loadCatalog());
+        } else if (path === 'manifest.json' && url.searchParams.has('parts')) {
+          const ids = url.searchParams.get('parts')!.split(',');
+          if (
+            url.searchParams.getAll('parts').length !== 1 ||
+            ids.length > PARTS.length ||
+            ids.some((id) => !PARTS.some((part) => part.id === id))
+          ) {
+            response.statusCode = 400;
+            response.end('Expected supported part IDs.');
+            return;
+          }
+          content = JSON.stringify((await loadSubset(ids)).manifest);
         } else if (/^preview\/[a-z0-9_-]+\/manifest\.json$/i.test(path)) {
           const id = path.split('/')[1];
           if (!(await loadCatalog()).parts.some((part) => part.id === id)) {
@@ -205,19 +237,24 @@ export function ldrawLibraryPlugin(libraryPath: string): Plugin {
             response.end('Part not found in the library');
             return;
           }
-          let preview = previews.get(id);
-          if (!preview) {
-            preview = collectLibrary(libraryPath, [id]);
-            previews.set(id, preview);
-            if (previews.size > 12) previews.delete(previews.keys().next().value!);
-          }
-          content = JSON.stringify((await preview).manifest);
-        } else {
-          const { assets, manifest } = await loadLibrary();
-          content = path === 'manifest.json' ? JSON.stringify(manifest) : assets.get(path);
-          if (content === undefined && /^(parts|p)\/.*\.dat$/i.test(path)) {
+          content = JSON.stringify((await loadSubset([id])).manifest);
+        } else if (path === 'manifest.json') {
+          content = JSON.stringify((await loadLibrary()).manifest);
+        } else if (
+          /^(parts|p)\/.*\.dat$/i.test(path) ||
+          [
+            'LDConfig.ldr',
+            'CAreadme.txt',
+            'CAlicense.txt',
+            'CAlicense4.txt',
+            'Readme.txt',
+          ].includes(path)
+        ) {
+          content = assets.get(path);
+          if (content === undefined) {
             try {
               content = await readFile(await findFile(await realpath(libraryPath), path), 'utf8');
+              assets.set(path, content);
             } catch (error) {
               if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
             }

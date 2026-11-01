@@ -1683,6 +1683,27 @@ describe('example registry', () => {
     build: (add) => add('3005', 4, 0, 0, 0),
   };
 
+  it('reuses validated templates while isolating every returned assembly', () => {
+    let builds = 0;
+    const registry = createExampleRegistry([
+      {
+        ...definition,
+        build(add) {
+          builds += 1;
+          add('3005', 4, 0, 0, 0);
+        },
+      },
+    ]);
+    const first = registry.createAssembly(definition.id);
+    first.name = 'Changed';
+    first.bricks[0].x = 10;
+    const second = registry.createAssembly(definition.id);
+    expect(builds).toBe(1);
+    expect(second.name).toBe(definition.name);
+    expect(second.bricks[0].x).toBe(0);
+    expect(validateAssembly(second)).toEqual([]);
+  });
+
   it('rejects duplicate IDs and malformed metadata', () => {
     expect(() => createExampleRegistry([definition, definition])).toThrow('Duplicate example ID');
     for (const change of [

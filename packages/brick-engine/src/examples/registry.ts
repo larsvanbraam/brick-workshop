@@ -7,6 +7,7 @@ import { crookedTankard } from './crooked-tankard.ts';
 
 export function createExampleRegistry(definitions: readonly ExampleDefinition[]) {
   const byId = new Map<string, ExampleDefinition>();
+  const templates = new Map<string, Assembly>();
   for (const definition of definitions) {
     if (
       !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(definition.id) ||
@@ -38,6 +39,8 @@ export function createExampleRegistry(definitions: readonly ExampleDefinition[])
     createAssembly(exampleId: string): Assembly {
       const definition = byId.get(exampleId);
       if (!definition) throw new Error(`Unknown example: ${exampleId}`);
+      const template = templates.get(exampleId);
+      if (template) return structuredClone(template);
       let assembly: Assembly = {
         name: definition.name,
         bricks: [],
@@ -62,7 +65,8 @@ export function createExampleRegistry(definitions: readonly ExampleDefinition[])
         throw new Error(
           `${definition.id}: expected ${definition.expectedPieceCount} pieces, got ${assembly.bricks.length}.`,
         );
-      return assembly;
+      templates.set(exampleId, assembly);
+      return structuredClone(assembly);
     },
   };
 }
