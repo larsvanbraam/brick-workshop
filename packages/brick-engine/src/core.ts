@@ -951,15 +951,15 @@ function isValid(brick: Brick, buildArea: number): boolean {
   );
 }
 
-function isMatchingInsertFrame(insert: Brick, frame: Brick): boolean {
-  const framePartId =
-    insert.partId === '4035'
-      ? '60593'
-      : insert.partId === '3853'
-        ? '60594'
-        : insert.partId === '801a' || insert.partId === '802a'
-          ? '3579'
-          : null;
+export const INSERT_FRAME_PARTS: Readonly<Record<string, string>> = Object.freeze({
+  '4035': '60593',
+  '3853': '60594',
+  '801a': '3579',
+  '802a': '3579',
+});
+
+export function isMatchingInsertFrame(insert: Brick, frame: Brick): boolean {
+  const framePartId = INSERT_FRAME_PARTS[insert.partId];
   if (
     !framePartId ||
     frame.partId !== framePartId ||

@@ -202,6 +202,8 @@ export function getBuildabilityReport(assessment: PhysicalAssessment): Buildabil
 }
 
 const GRAVITY = 9.80665;
+export const MAX_PHYSICS_PIECES = 200;
+export const MAX_PHYSICS_CONTACT_VARIABLES = 4000;
 const TOLERANCE = 1e-7;
 const ASSUMPTIONS = [
   'Upright rigid rectangular bodies under gravity on a flat, non-adhesive floor; no external loads.',
@@ -377,8 +379,10 @@ export function assessPhysicalFeasibility(
     );
     return report;
   }
-  if (bodies.length > 200) {
-    report.reasons.push('Static analysis is limited to 200 pieces; this build was not assessed.');
+  if (bodies.length > MAX_PHYSICS_PIECES) {
+    report.reasons.push(
+      `Static analysis is limited to ${MAX_PHYSICS_PIECES} pieces; this build was not assessed.`,
+    );
     return report;
   }
   const contacts: {
@@ -422,7 +426,10 @@ export function assessPhysicalFeasibility(
       });
     }
   }
-  if (contacts.reduce((sum, contact) => sum + 4 + contact.studs.length, 0) > 4000) {
+  if (
+    contacts.reduce((sum, contact) => sum + 4 + contact.studs.length, 0) >
+    MAX_PHYSICS_CONTACT_VARIABLES
+  ) {
     report.reasons.push(
       'Contact complexity exceeds the static analysis limit; no result is assumed.',
     );

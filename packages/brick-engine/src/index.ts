@@ -4,6 +4,8 @@ export * from './part-colors.ts';
 export * from './part-color-evidence.ts';
 export * from './physics.ts';
 export * from './part-masses.ts';
+export * from './planning.ts';
+export * from './edits.ts';
 export {
   EXAMPLES,
   createDemoAssembly,

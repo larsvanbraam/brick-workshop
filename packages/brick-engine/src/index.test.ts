@@ -1,9 +1,14 @@
 import { describe, expect, it } from 'vite-plus/test';
 import {
   PARTS,
+  applyPatch,
+  previewPatch,
+  evaluateAssemblyPolicy,
   CATALOG_PART_MASSES,
   assessPhysicalFeasibility,
   getBuildabilityReport,
+  getEngineCapabilities,
+  getPartCapabilities,
   importPhysicalData,
   EXAMPLES,
   createDemoAssembly,
@@ -16,6 +21,8 @@ import {
   getLDrawTransform,
   getPart,
   hasStudConnection,
+  explainConnection,
+  findPlacementCandidates,
   placeBrick,
   registerPart,
   removeBrick,
@@ -86,6 +93,138 @@ const architecturalExpansionIds = [
   '92950',
   '4035',
 ];
+
+describe('connection-aware placement planning', () => {
+  it('reports engine-owned insert rules and honest physics coverage', () => {
+    expect(getPartCapabilities('4035')).toMatchObject({
+      matchingInsertFrameId: '60593',
+      contactPhysics: 'not-assessed',
+    });
+    const capabilities = getEngineCapabilities({
+      ...empty,
+      bricks: [{ ...base, partId: '3942c' }],
+    });
+    expect(capabilities.staticGravity).toEqual({
+      maxPieces: 200,
+      maxContactVariables: 4000,
+      withinPieceLimit: true,
+      unsupportedPartIds: ['3942c'],
+      unknownConnectorPartIds: [],
+      certification: 'not-certified',
+    });
+    expect(capabilities.placementSearch.inserts).toBe('not-enumerated');
+    const part = getPartCapabilities('3001');
+    part.connections.topStuds = [];
+    expect(getPart('3001').connections.topStuds).toHaveLength(8);
+  });
+
+  it('returns only valid stud-aligned placements without changing the assembly', () => {
+    const assembly = { ...empty, bricks: [base] };
+    const before = structuredClone(assembly);
+    const result = findPlacementCandidates(assembly, { partId: '3005', color: 4 });
+    expect(result.candidates.length).toBeGreaterThan(0);
+    for (const { brick, connection } of result.candidates) {
+      expect(placeBrick(assembly, brick).ok).toBe(true);
+      expect(brick.y).toBe(3);
+      expect(connection.studSupports).toEqual([
+        { brickId: 'base', sites: getConnectionSites(brick, 'bottom') },
+      ]);
+      expect(connection.strength).toBe('unknown');
+    }
+    expect(assembly).toEqual(before);
+    expect(findPlacementCandidates(assembly, { partId: '3005', color: 4 })).toEqual(result);
+  });
+
+  it('does not invent support on tiles and preserves half-stud cone mounts', () => {
+    const tile = { ...base, partId: '87079' };
+    expect(
+      findPlacementCandidates({ ...empty, bricks: [tile] }, { partId: '3005', color: 4 })
+        .candidates,
+    ).toEqual([]);
+    const cone = { ...base, partId: '3942c' };
+    const result = findPlacementCandidates(
+      { ...empty, bricks: [cone] },
+      {
+        partId: '6141',
+        color: 4,
+        rotations: [0],
+        supportId: base.id,
+      },
+    );
+    expect(result.candidates).toHaveLength(1);
+    expect(result.candidates[0].brick).toMatchObject({ x: 0.5, y: 6, z: 0.5 });
+  });
+
+  it('bounds searches and distinguishes truncation from an exhausted search', () => {
+    expect(
+      findPlacementCandidates(empty, { partId: '3005', color: 4, maxCandidates: 1 }),
+    ).toMatchObject({
+      checked: 1,
+      truncated: true,
+      candidates: [expect.anything()],
+    });
+    expect(
+      findPlacementCandidates(empty, { partId: '3005', color: 4, maxChecks: 1 }),
+    ).toMatchObject({ checked: 1, truncated: true });
+    expect(() =>
+      findPlacementCandidates(empty, { partId: '3005', color: 4, supportId: 'missing' }),
+    ).toThrow('Support piece not found');
+    expect(() =>
+      findPlacementCandidates(empty, { partId: '3005', color: 4, maxChecks: 0 }),
+    ).toThrow('Invalid placement search');
+    expect(() =>
+      findPlacementCandidates(
+        { ...empty, bricks: [{ ...base, y: 3 }] },
+        { partId: '3005', color: 4 },
+      ),
+    ).toThrow('Resolve assembly geometry');
+  });
+
+  it('finds collision-free candidates for rotated supports without reusing existing IDs', () => {
+    for (const rotation of [0, 90, 180, 270] as const) {
+      const support = { ...base, id: 'candidate', rotation, x: 2, z: 2 };
+      const cap = { ...base, id: 'cap', partId: '3005', x: 2, z: 2, y: 3 };
+      const assembly = { ...empty, bricks: [support, cap] };
+      const result = findPlacementCandidates(assembly, {
+        partId: '3023b',
+        color: 4,
+        supportId: support.id,
+      });
+      expect(result.candidates.length).toBeGreaterThan(0);
+      const positions = result.candidates.map(
+        ({ brick }) => `${brick.x}:${brick.y}:${brick.z}:${brick.rotation}`,
+      );
+      expect(new Set(positions).size).toBe(positions.length);
+      for (const { brick } of result.candidates) {
+        expect(brick.id).not.toBe(support.id);
+        expect(placeBrick(assembly, brick).ok).toBe(true);
+      }
+    }
+  });
+
+  it('explains reviewed insert connections using the validator mapping', () => {
+    const support = { ...base, partId: '3001' };
+    const frame: Brick = { ...base, id: 'frame', partId: '3579', y: 3, z: 1, rotation: 90 };
+    const door: Brick = { ...base, id: 'door', partId: '801a', y: 3, z: 0.5, rotation: 90 };
+    expect(explainConnection({ ...empty, bricks: [support, frame] }, door)).toMatchObject({
+      insertFrames: ['frame'],
+      issues: [],
+    });
+  });
+
+  it('explains missing and existing support without treating fit as strength', () => {
+    expect(explainConnection(empty, { ...base, y: 3 })).toMatchObject({
+      grounded: false,
+      studSupports: [],
+      issues: [expect.objectContaining({ code: 'unsupported' })],
+      strength: 'unknown',
+    });
+    expect(explainConnection({ ...empty, bricks: [base] }, base)).toMatchObject({
+      grounded: true,
+      issues: [],
+    });
+  });
+});
 
 describe('catalogue-reported weights', () => {
   it('covers reviewed catalogue entries with validated immutable source records', () => {
@@ -1671,6 +1810,230 @@ describe('mixed-part engine builds', () => {
       expect(result.issues).toContainEqual(
         expect.objectContaining({ brickId: center.id, code: 'unsupported' }),
       );
+  });
+});
+
+describe('atomic assembly edits', () => {
+  it('moves and recolors multiple pieces against final geometry, not temporary overlaps', () => {
+    const second = { ...base, id: 'second', x: 4 };
+    const assembly = { ...empty, bricks: [base, second] };
+    const result = applyPatch(assembly, {
+      operations: [
+        { type: 'update', id: base.id, changes: { x: 4, color: 14 } },
+        { type: 'update', id: second.id, changes: { x: 0 } },
+      ],
+    });
+    expect(result).toMatchObject({ ok: true, revision: 1 });
+    if (!result.ok) throw new Error('Patch rejected');
+    expect(result.assembly.bricks).toMatchObject([
+      { id: base.id, x: 4, color: 14 },
+      { id: second.id, x: 0 },
+    ]);
+    expect(assembly.bricks).toMatchObject([{ x: 0, color: 4 }, { x: 4 }]);
+    expect(result.assessment.constructionSequence).toBe('not-validated');
+  });
+
+  it('counts final inventory usage and does not infer zero stock from missing entries', () => {
+    const assembly = { ...empty, bricks: [base] };
+    const policy = {
+      requireInventory: true,
+      inventory: [{ partId: base.partId, color: 4, quantity: 1 }],
+    };
+    const result = applyPatch(
+      assembly,
+      {
+        operations: [
+          { type: 'remove', id: base.id },
+          { type: 'add', brick: { ...base, id: 'replacement', x: 4 } },
+        ],
+      },
+      { policy },
+    );
+    expect(result).toMatchObject({
+      ok: true,
+      assessment: {
+        inventory: [{ required: 1, available: 1, status: 'within-declared-inventory' }],
+      },
+    });
+    expect(evaluateAssemblyPolicy(assembly, { inventory: [] })).toMatchObject({
+      allowed: true,
+      inventory: [{ available: null, status: 'unknown' }],
+    });
+  });
+
+  it('bounds patch operations and rejects nonfinite or unsupported coordinates', () => {
+    expect(
+      previewPatch(empty, {
+        operations: Array.from({ length: 101 }, (_, index) => ({
+          type: 'add' as const,
+          brick: { ...base, id: `piece-${index}` },
+        })),
+      }),
+    ).toMatchObject({ ok: false, error: { code: 'invalid_patch' } });
+    expect(
+      previewPatch(empty, { operations: [{ type: 'add', brick: { ...base, x: NaN } }] }),
+    ).toMatchObject({ ok: false, error: { code: 'invalid_patch' } });
+    expect(
+      previewPatch(empty, { operations: [{ type: 'add', brick: { ...base, x: 0.25 } }] }),
+    ).toMatchObject({ ok: false, error: { code: 'geometry_rejected' } });
+    expect(
+      previewPatch(
+        empty,
+        { operations: [{ type: 'add', brick: base }] },
+        { revision: Number.MAX_SAFE_INTEGER },
+      ),
+    ).toMatchObject({ ok: false, error: { code: 'invalid_revision' } });
+    expect(evaluateAssemblyPolicy(empty, null as never).allowed).toBe(false);
+  });
+
+  it('replaces a support atomically without claiming a valid construction sequence', () => {
+    const upper = { ...base, id: 'upper', partId: '3005', y: 3 };
+    const assembly = { ...empty, bricks: [base, upper] };
+    expect(removeBrick(assembly, base.id).ok).toBe(false);
+    const patch = {
+      expectedRevision: 4,
+      operations: [
+        { type: 'remove' as const, id: base.id },
+        { type: 'add' as const, brick: { ...base, id: 'replacement' } },
+      ],
+    };
+    const before = structuredClone(assembly);
+    const preview = previewPatch(assembly, patch, { revision: 4 });
+    expect(preview).toMatchObject({
+      ok: true,
+      revision: 4,
+      assessment: { constructionSequence: 'not-validated', buildability: { certified: false } },
+    });
+    const applied = applyPatch(assembly, patch, { revision: 4 });
+    expect(applied).toMatchObject({ ok: true, revision: 5 });
+    expect(assembly).toEqual(before);
+    if (!applied.ok) throw new Error('Patch rejected');
+    applied.assembly.bricks[0].color = 14;
+    expect(upper.color).toBe(4);
+    expect(patch.operations[1]).toMatchObject({ brick: { color: 4 } });
+    expect(previewPatch(assembly, patch, { revision: 5 })).toMatchObject({
+      ok: false,
+      revision: 5,
+      error: { code: 'revision_conflict' },
+    });
+  });
+
+  it('rejects collisions, duplicate targets, malformed updates and partial edits without mutation', () => {
+    const assembly = { ...empty, bricks: [base] };
+    const before = structuredClone(assembly);
+    expect(
+      applyPatch(assembly, {
+        operations: [
+          { type: 'update', id: base.id, changes: { color: 14 } },
+          { type: 'add', brick: { ...base, id: 'overlap' } },
+        ],
+      }),
+    ).toMatchObject({ ok: false, revision: 0, error: { code: 'geometry_rejected' } });
+    expect(
+      applyPatch(assembly, {
+        operations: [
+          { type: 'remove', id: base.id },
+          { type: 'update', id: base.id, changes: { color: 14 } },
+        ],
+      }),
+    ).toMatchObject({ ok: false, error: { code: 'duplicate_target' } });
+    expect(
+      previewPatch(assembly, {
+        operations: [{ type: 'update', id: base.id, changes: { id: 'changed' } }],
+      } as never),
+    ).toMatchObject({ ok: false, error: { code: 'invalid_patch' } });
+    expect(previewPatch(assembly, { operations: [] })).toMatchObject({
+      ok: false,
+      error: { code: 'invalid_patch' },
+    });
+    expect(
+      previewPatch(assembly, { operations: [{ type: 'remove', id: 'missing' }] }),
+    ).toMatchObject({ ok: false, error: { code: 'piece_not_found' } });
+    expect(assembly).toEqual(before);
+  });
+
+  it('shares manufacturing, declared inventory and physical rejection policies', () => {
+    const assembly = { ...empty, bricks: [base] };
+    expect(evaluateAssemblyPolicy(assembly, { requireObservedColors: true })).toMatchObject({
+      allowed: false,
+      issues: [expect.objectContaining({ code: 'unverified_color' })],
+    });
+    expect(
+      evaluateAssemblyPolicy(assembly, {
+        requireObservedColors: true,
+        evidence: DEFAULT_PART_COLOR_EVIDENCE,
+      }),
+    ).toMatchObject({ allowed: true });
+    expect(evaluateAssemblyPolicy(assembly, { requireInventory: true })).toMatchObject({
+      allowed: false,
+      issues: [expect.objectContaining({ code: 'inventory_unknown' })],
+    });
+    expect(
+      evaluateAssemblyPolicy(assembly, {
+        inventory: [{ partId: base.partId, color: base.color, quantity: 0 }],
+      }),
+    ).toMatchObject({
+      allowed: false,
+      inventory: [expect.objectContaining({ status: 'exceeds-declared-inventory' })],
+    });
+    expect(
+      evaluateAssemblyPolicy(assembly, {
+        requireInventory: true,
+        inventory: [{ partId: base.partId, color: base.color, quantity: 1 }],
+      }),
+    ).toMatchObject({ allowed: true });
+    const tipping = {
+      ...empty,
+      bricks: [
+        { ...base, partId: '3003' },
+        { ...base, id: 'arm', partId: '3009', y: 3 },
+      ],
+    };
+    expect(evaluateAssemblyPolicy(tipping)).toMatchObject({
+      allowed: false,
+      physical: { status: 'infeasible' },
+    });
+    expect(evaluateAssemblyPolicy(tipping, { rejectInfeasible: false })).toMatchObject({
+      allowed: true,
+      physical: { status: 'infeasible' },
+      buildability: { certified: false },
+    });
+  });
+
+  it('rechecks current policy on apply and fails closed on invalid host data', () => {
+    const patch = { operations: [{ type: 'add' as const, brick: base }] };
+    expect(previewPatch(empty, patch).ok).toBe(true);
+    expect(applyPatch(empty, patch, { policy: { requireInventory: true } })).toMatchObject({
+      ok: false,
+      error: { code: 'inventory_unknown' },
+    });
+    expect(
+      evaluateAssemblyPolicy(empty, { physical: { data: { version: 2 } } } as never),
+    ).toMatchObject({
+      allowed: false,
+      physical: null,
+      issues: [expect.objectContaining({ code: 'invalid_policy' })],
+    });
+    expect(
+      evaluateAssemblyPolicy(empty, { physical: { estimateMissingMasses: 'yes' } } as never),
+    ).toMatchObject({ allowed: false });
+    expect(evaluateAssemblyPolicy(empty, { evidence: {} } as never)).toMatchObject({
+      allowed: false,
+    });
+    expect(
+      evaluateAssemblyPolicy(empty, {
+        inventory: [
+          { partId: '3001', color: 4, quantity: 1 },
+          { partId: '3001', color: 4, quantity: 2 },
+        ],
+      }),
+    ).toMatchObject({ allowed: false });
+    expect(
+      previewPatch(
+        { ...empty, bricks: [base, base] },
+        { operations: [{ type: 'remove', id: base.id }] },
+      ),
+    ).toMatchObject({ ok: false, error: { code: 'geometry_rejected' } });
   });
 });
 
