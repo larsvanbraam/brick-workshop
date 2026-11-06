@@ -1,13 +1,15 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
+import type { RefObject } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { Edges, Environment, Grid, OrbitControls } from '@react-three/drei';
-import { Group, LineSegments, Mesh, PerspectiveCamera, Vector3 } from 'three';
+import { CameraControls, CameraControlsImpl, Edges, Environment, Grid } from '@react-three/drei';
+import { Box3, Group, Line, LineSegments, Mesh, PerspectiveCamera, Vector3 } from 'three';
+import type { Object3D } from 'three';
 import { createFallbackGeometry } from './fallback-geometry';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { coloredLDrawModel } from './ldraw';
 import { canBatchLDrawModel, createLDrawBatch, disposeLDrawBatch } from './ldraw-batches';
 import type { ThreeEvent } from '@react-three/fiber';
-import { colorMaterialProperties } from './ldraw-materials';
+import { colorMaterialProperties, displayHex } from './ldraw-materials';
 import { getLDrawModelOffset, getSceneFrame, getSceneHeight } from './scene-frame';
 import {
   BUILD_AREA,
@@ -20,10 +22,26 @@ import {
 } from '@lego-builder/brick-engine';
 import type { Assembly, Brick } from '@lego-builder/brick-engine';
 
+/** Where the pointer rests on the board, in stud and plate units. */
+export interface PointerTarget {
+  face: 'ground' | 'top' | 'bottom' | 'x-' | 'x+' | 'z-' | 'z+';
+  brick?: Brick;
+  x: number;
+  z: number;
+}
+export type SceneMode = 'select' | 'place' | 'erase';
+
 interface SceneProps {
   assembly: Assembly;
   selectedId: string | null;
   onSelect: (id: string | null) => void;
+  mode?: SceneMode;
+  highlightId?: string | null;
+  onHover?: (target: PointerTarget | null) => void;
+  onActivate?: (target: PointerTarget, modifiers: { alt: boolean; shift: boolean }) => void;
+  /** Two-finger scrolling orbits instead of zooming. */
+  trackpad?: boolean;
+  onPointerDevice?: (device: PointerDevice) => void;
   ghost: Brick | null;
   ghostValid: boolean;
   layer: number;
@@ -59,32 +77,209 @@ export function WorkshopEnvironment() {
   );
 }
 
+const { ACTION } = CameraControlsImpl;
+
+function isTyping(target: EventTarget | null) {
+  return (
+    target instanceof HTMLElement &&
+    (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))
+  );
+}
+
+export type PointerDevice = 'mouse' | 'trackpad';
+
+/**
+ * Infers the scrolling device from one wheel event, or null when it cannot tell. Only trackpads
+ * (and touch mice) scroll sideways without Shift; wheels scroll by line in Firefox and by
+ * 120-unit notches in the legacy wheelDelta elsewhere, where trackpads report three times their
+ * pixel delta.
+ */
+function scrollDevice(event: WheelEvent): PointerDevice | null {
+  if (event.deltaMode !== 0) return 'mouse';
+  if (event.deltaX !== 0 && !event.shiftKey) return 'trackpad';
+  const legacy = (event as WheelEvent & { wheelDeltaY?: number }).wheelDeltaY;
+  if (legacy && legacy % 120 === 0 && legacy !== -3 * event.deltaY) return 'mouse';
+  return null;
+}
+
+const IS_MAC = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.userAgent);
+/**
+ * Pinch zoom relative to finger travel. camera-controls scales wheel deltas down tenfold on
+ * macOS and thirtyfold elsewhere, so the factor restores roughly 1.5x the pinch distance.
+ */
+const PINCH_SPEED = IS_MAC ? 6 : 18;
+
+/**
+ * Camera navigation: drag to orbit, right/middle-drag or Space-drag to pan, wheel and pinch zoom
+ * toward the cursor, trackpad two-finger scroll orbits (Shift pans), F frames the model and views
+ * animate into place. The camera only moves on its own when the view or board changes.
+ */
 function CameraRig({
   view,
   revision,
   height,
   buildArea,
+  bounds,
+  controls,
+  trackpad,
+  onDevice,
 }: {
+  controls: RefObject<CameraControls | null>;
+  trackpad: boolean;
+  onDevice?: (device: PointerDevice) => void;
   view: SceneProps['view'];
   revision: number;
   height: number;
   buildArea: number;
+  bounds: Box3 | null;
 }) {
-  const { camera, controls, size, invalidate } = useThree();
+  const { camera, size, gl, invalidate } = useThree();
+  const first = useRef(true);
+  const latest = useRef({ height, aspect: size.width / size.height, bounds, trackpad, onDevice });
   useEffect(() => {
-    if (!(camera instanceof PerspectiveCamera)) return;
-    const frame = getSceneFrame(height, view, size.width / size.height, camera.fov, buildArea);
-    camera.position.fromArray(frame.position);
-    camera.lookAt(...frame.target);
-    const orbit = controls as unknown as { target: Vector3; update(): void } | null;
-    if (orbit) {
-      orbit.target.fromArray(frame.target);
-      orbit.update();
-    }
-    camera.updateProjectionMatrix();
-    invalidate();
-  }, [view, revision, height, buildArea, size.width, size.height, camera, controls, invalidate]);
-  return null;
+    latest.current = { height, aspect: size.width / size.height, bounds, trackpad, onDevice };
+  });
+  useEffect(() => {
+    const rig = controls.current;
+    if (!rig || !(camera instanceof PerspectiveCamera)) return;
+    const { height, aspect } = latest.current;
+    const frame = getSceneFrame(height, view, aspect, camera.fov, buildArea);
+    void rig.setLookAt(...frame.position, ...frame.target, !first.current);
+    first.current = false;
+  }, [view, revision, buildArea, camera, controls]);
+  useEffect(() => {
+    // The pivot stays over the board, so the build cannot drift out of reach.
+    const margin = buildArea * 0.25;
+    const rig = controls.current;
+    rig?.setBoundary(
+      new Box3(
+        new Vector3(-buildArea / 2 - margin, 0, -buildArea / 2 - margin),
+        new Vector3(buildArea / 2 + margin, Math.max(height, 8) + margin, buildArea / 2 + margin),
+      ),
+    );
+  }, [buildArea, height, controls]);
+  useEffect(() => {
+    const element = gl.domElement;
+    const pan = (enabled: boolean) => {
+      const rig = controls.current;
+      if (!rig) return;
+      rig.mouseButtons.left = enabled ? ACTION.TRUCK : ACTION.ROTATE;
+      element.style.cursor = enabled ? 'grab' : '';
+    };
+    const keydown = (event: KeyboardEvent) => {
+      if (isTyping(event.target) || event.metaKey || event.ctrlKey || event.altKey) return;
+      if (event.code === 'Space') {
+        event.preventDefault();
+        pan(true);
+      } else if (event.key.toLowerCase() === 'f' && !event.repeat) {
+        const { bounds } = latest.current;
+        if (bounds)
+          void controls.current?.fitToBox(bounds, true, {
+            paddingTop: 1,
+            paddingBottom: 1,
+            paddingLeft: 1,
+            paddingRight: 1,
+          });
+      }
+    };
+    const keyup = (event: KeyboardEvent) => {
+      if (event.code === 'Space') pan(false);
+    };
+    const blur = () => pan(false);
+    // Pinches are replayed as plain wheel steps: camera-controls would otherwise treat them as a
+    // slow lens zoom, while a dolly toward the cursor matches the mouse wheel.
+    const replayed = new WeakSet<Event>();
+    const zoom = (deltaY: number, clientX: number, clientY: number) => {
+      const replay = new WheelEvent('wheel', {
+        deltaY: deltaY * PINCH_SPEED,
+        clientX,
+        clientY,
+        bubbles: true,
+        cancelable: true,
+      });
+      replayed.add(replay);
+      element.dispatchEvent(replay);
+    };
+    // Runs on the canvas, before camera-controls' handler on its container.
+    const wheel = (event: WheelEvent) => {
+      const rig = controls.current;
+      if (!rig || replayed.has(event)) return;
+      if (event.ctrlKey) {
+        // macOS and Windows precision touchpads report a pinch as a Ctrl+wheel.
+        event.preventDefault();
+        event.stopPropagation();
+        zoom(event.deltaY * (event.deltaMode === 1 ? 33 : 1), event.clientX, event.clientY);
+        return;
+      }
+      const device = scrollDevice(event);
+      if (device) latest.current.onDevice?.(device);
+      if (!(latest.current.trackpad || device === 'trackpad') || device === 'mouse') return;
+      event.preventDefault();
+      event.stopPropagation();
+      // Two fingers move the model like a drag would: orbit, or pan with Shift or Space.
+      const unit = (2 * Math.PI) / element.clientHeight;
+      if (event.shiftKey || rig.mouseButtons.left === ACTION.TRUCK) {
+        const scale = (rig.distance * 1.4) / element.clientHeight;
+        void rig.truck(event.deltaX * scale, event.deltaY * scale, false);
+      } else void rig.rotate(event.deltaX * unit * 0.9, event.deltaY * unit * 0.9, false);
+      invalidate();
+    };
+    // Safari reports pinches as gesture events with a running scale instead.
+    let scale = 1;
+    const gesturestart = (event: Event) => {
+      event.preventDefault();
+      scale = 1;
+      latest.current.onDevice?.('trackpad');
+    };
+    const gesturechange = (event: Event) => {
+      event.preventDefault();
+      const gesture = event as Event & { scale: number; clientX: number; clientY: number };
+      zoom(-100 * Math.log(gesture.scale / scale), gesture.clientX, gesture.clientY);
+      scale = gesture.scale;
+    };
+    window.addEventListener('keydown', keydown);
+    window.addEventListener('keyup', keyup);
+    window.addEventListener('blur', blur);
+    element.addEventListener('wheel', wheel, { passive: false });
+    element.addEventListener('gesturestart', gesturestart);
+    element.addEventListener('gesturechange', gesturechange);
+    return () => {
+      window.removeEventListener('keydown', keydown);
+      window.removeEventListener('keyup', keyup);
+      window.removeEventListener('blur', blur);
+      element.removeEventListener('wheel', wheel);
+      element.removeEventListener('gesturestart', gesturestart);
+      element.removeEventListener('gesturechange', gesturechange);
+    };
+  }, [gl, controls, invalidate]);
+  return (
+    <CameraControls
+      ref={controls}
+      makeDefault
+      minDistance={2}
+      maxDistance={buildArea * 6}
+      maxPolarAngle={Math.PI / 2 - 0.03}
+      smoothTime={0.18}
+      draggingSmoothTime={0.06}
+      dollyToCursor
+      // Lower zooms gentler per wheel step; 1 is the library default. Pinch speed is PINCH_SPEED.
+      dollySpeed={0.5}
+      azimuthRotateSpeed={0.9}
+      polarRotateSpeed={0.9}
+      boundaryFriction={0.2}
+      mouseButtons={{
+        left: ACTION.ROTATE,
+        middle: ACTION.TRUCK,
+        right: ACTION.TRUCK,
+        wheel: ACTION.DOLLY,
+      }}
+      touches={{
+        one: ACTION.TOUCH_ROTATE,
+        two: ACTION.TOUCH_DOLLY_TRUCK,
+        three: ACTION.TOUCH_TRUCK,
+      }}
+    />
+  );
 }
 
 export function LDrawMesh({
@@ -126,8 +321,6 @@ function FallbackGeometry({ brick }: { brick: Brick }) {
 const BrickMesh = memo(function BrickMesh({
   brick,
   buildArea = BUILD_AREA,
-  selected,
-  onSelect,
   opacity = 1,
   overrideColor,
   explode = false,
@@ -135,8 +328,6 @@ const BrickMesh = memo(function BrickMesh({
 }: {
   brick: Brick;
   buildArea?: number;
-  selected?: boolean;
-  onSelect?: (id: string) => void;
   opacity?: number;
   overrideColor?: string;
   explode?: boolean;
@@ -145,7 +336,7 @@ const BrickMesh = memo(function BrickMesh({
   const size = footprint(brick);
   const definition = COLORS.find((entry) => entry.id === brick.color)!;
   const material = colorMaterialProperties(definition);
-  const color = overrideColor ?? definition.hex;
+  const color = overrideColor ?? displayHex(definition);
   const actualOpacity = overrideColor ? opacity : opacity * material.opacity;
   const elevation = brick.y * PLATE_HEIGHT + (explode ? brick.y * 0.18 : 0);
   const bodyHeight = size.height * PLATE_HEIGHT;
@@ -156,33 +347,17 @@ const BrickMesh = memo(function BrickMesh({
         elevation,
         brick.z + size.depth / 2 - buildArea / 2,
       ]}
-      onClick={
-        onSelect
-          ? (event) => {
-              event.stopPropagation();
-              onSelect(brick.id);
-            }
-          : undefined
-      }
+      userData={{ brickId: brick.id }}
     >
       {model ? (
-        <>
-          <group position={getLDrawModelOffset(brick)}>
-            <LDrawMesh
-              key={`${brick.partId}:${brick.color}`}
-              model={model}
-              color={brick.color}
-              rotation={getLDrawTransform(brick).rotation}
-            />
-          </group>
-          {selected && (
-            <mesh position={[0, bodyHeight / 2, 0]}>
-              <boxGeometry args={[size.width, bodyHeight, size.depth]} />
-              <meshBasicMaterial transparent opacity={0} depthWrite={false} />
-              <Edges color="#156dff" linewidth={2} />
-            </mesh>
-          )}
-        </>
+        <group position={getLDrawModelOffset(brick)}>
+          <LDrawMesh
+            key={`${brick.partId}:${brick.color}`}
+            model={model}
+            color={brick.color}
+            rotation={getLDrawTransform(brick).rotation}
+          />
+        </group>
       ) : (
         <>
           <mesh position={[0, bodyHeight / 2, 0]} castShadow receiveShadow>
@@ -194,7 +369,6 @@ const BrickMesh = memo(function BrickMesh({
               opacity={actualOpacity}
               depthWrite={actualOpacity === 1}
             />
-            {selected && <Edges color="#156dff" linewidth={2} />}
           </mesh>
           {getConnectionSites(brick, 'top').map((site) => (
             <mesh
@@ -228,36 +402,97 @@ const NativeBatch = memo(function NativeBatch({
   model,
   buildArea,
   explode,
-  onSelect,
 }: {
   bricks: readonly Brick[];
   model: Group;
   buildArea: number;
   explode: boolean;
-  onSelect: SceneProps['onSelect'];
 }) {
   const batch = useMemo(
     () => createLDrawBatch(bricks, coloredLDrawModel(model, bricks[0].color), buildArea, explode),
     [bricks, model, buildArea, explode],
   );
   useEffect(() => () => disposeLDrawBatch(batch), [batch]);
-  return (
-    <primitive
-      object={batch}
-      dispose={null}
-      onClick={(event: ThreeEvent<MouseEvent>) => {
-        const id =
-          event.instanceId === undefined
-            ? undefined
-            : event.object.userData.brickIds?.[event.instanceId];
-        if (typeof id === 'string') {
-          event.stopPropagation();
-          onSelect(id);
-        }
-      }}
-    />
-  );
+  return <primitive object={batch} dispose={null} />;
 });
+
+function Outline({
+  brick,
+  buildArea,
+  explode,
+  color,
+  fill,
+}: {
+  brick: Brick;
+  buildArea: number;
+  explode: boolean;
+  color: string;
+  /** Washes the piece out, so the outline reads on every brick color. */
+  fill?: string;
+}) {
+  const size = footprint(brick);
+  return (
+    <mesh
+      raycast={() => null}
+      position={[
+        brick.x + size.width / 2 - buildArea / 2,
+        (brick.y + size.height / 2) * PLATE_HEIGHT + (explode ? brick.y * 0.18 : 0),
+        brick.z + size.depth / 2 - buildArea / 2,
+      ]}
+    >
+      <boxGeometry
+        args={[size.width + 0.04, size.height * PLATE_HEIGHT + 0.04, size.depth + 0.04]}
+      />
+      <meshBasicMaterial transparent color={fill} opacity={fill ? 0.55 : 0} depthWrite={false} />
+      <Edges color={color} linewidth={2} />
+    </mesh>
+  );
+}
+
+/** Finds the brick an intersection belongs to: batched instances or a separate brick group. */
+function hitBrickId(object: Object3D, instanceId: number | undefined) {
+  if (instanceId !== undefined && Array.isArray(object.userData.brickIds))
+    return object.userData.brickIds[instanceId] as string | undefined;
+  for (let current: Object3D | null = object; current; current = current.parent)
+    if (typeof current.userData.brickId === 'string') return current.userData.brickId as string;
+  return undefined;
+}
+
+/**
+ * Turns a hit into the face it lands on, from the brick's footprint rather than the mesh normal,
+ * so studs, slopes and LDraw's mirrored transforms all resolve the same way.
+ */
+function pointerTarget(
+  event: ThreeEvent<PointerEvent | MouseEvent>,
+  bricks: ReadonlyMap<string, Brick>,
+  buildArea: number,
+): PointerTarget | null | undefined {
+  if (event.object instanceof Line) return undefined;
+  const x = event.point.x + buildArea / 2;
+  const z = event.point.z + buildArea / 2;
+  if (event.object.userData.ground) return { face: 'ground', x, z };
+  const id = hitBrickId(event.object, event.instanceId);
+  const brick = id === undefined ? undefined : bricks.get(id);
+  if (!brick) return undefined;
+  const size = footprint(brick);
+  const plates = event.point.y / PLATE_HEIGHT;
+  if (plates >= brick.y + size.height - 0.3) return { face: 'top', brick, x, z };
+  if (plates <= brick.y + 0.05) return { face: 'bottom', brick, x, z };
+  const sides = [
+    ['x-', x - brick.x],
+    ['x+', brick.x + size.width - x],
+    ['z-', z - brick.z],
+    ['z+', brick.z + size.depth - z],
+  ] as const;
+  const [face] = sides.reduce((nearest, side) => (side[1] < nearest[1] ? side : nearest));
+  return { face, brick, x, z };
+}
+
+function targetKey(target: PointerTarget | null) {
+  return target
+    ? `${target.face}:${target.brick?.id ?? ''}:${Math.floor(target.x * 2)}:${Math.floor(target.z * 2)}`
+    : '';
+}
 
 export const Scene = memo(function Scene(props: SceneProps) {
   const buildArea = getBuildArea(props.assembly);
@@ -291,10 +526,57 @@ export const Scene = memo(function Scene(props: SceneProps) {
     }
     return { batches: [...batches.entries()], separate };
   }, [props.assembly, props.layer, eligible]);
-  const selected = props.assembly.bricks.find(
-    (brick) => brick.id === props.selectedId && brick.y < props.layer,
+  const visible = useMemo(
+    () =>
+      new Map(
+        props.assembly.bricks
+          .filter((brick) => brick.y < props.layer)
+          .map((brick) => [brick.id, brick]),
+      ),
+    [props.assembly, props.layer],
   );
-  const selectedSize = selected && footprint(selected);
+  const selected = props.selectedId ? visible.get(props.selectedId) : undefined;
+  const highlighted = props.highlightId ? visible.get(props.highlightId) : undefined;
+  const mode = props.mode ?? 'select';
+  const bounds = useMemo(() => {
+    if (!visible.size) return null;
+    const box = new Box3();
+    for (const brick of visible.values()) {
+      const size = footprint(brick);
+      const lift = props.explode ? brick.y * 0.18 : 0;
+      box.expandByPoint(
+        new Vector3(
+          brick.x - buildArea / 2,
+          brick.y * PLATE_HEIGHT + lift,
+          brick.z - buildArea / 2,
+        ),
+      );
+      box.expandByPoint(
+        new Vector3(
+          brick.x + size.width - buildArea / 2,
+          (brick.y + size.height) * PLATE_HEIGHT + lift,
+          brick.z + size.depth - buildArea / 2,
+        ),
+      );
+    }
+    return box;
+  }, [visible, buildArea, props.explode]);
+  const hoverKey = useRef('');
+  const rig = useRef<CameraControls>(null);
+  const { onHover } = props;
+  function hover(target: PointerTarget | null) {
+    const key = targetKey(target);
+    if (key === hoverKey.current) return;
+    hoverKey.current = key;
+    onHover?.(target);
+  }
+  function resolve(event: ThreeEvent<PointerEvent | MouseEvent>) {
+    // Explode spreads bricks apart, so hits no longer map onto build positions.
+    if (props.explode) return null;
+    const target = pointerTarget(event, visible, buildArea);
+    if (target !== undefined) event.stopPropagation();
+    return target;
+  }
   return (
     <Canvas
       shadows
@@ -302,7 +584,11 @@ export const Scene = memo(function Scene(props: SceneProps) {
       camera={{ position: [21, 19, 24], fov: 38, near: 0.1, far: 500 }}
       gl={{ antialias: true, preserveDrawingBuffer: true }}
       dpr={[1, 2]}
-      onPointerMissed={() => props.onSelect(null)}
+      onPointerMissed={(event) => {
+        if (mode === 'select' && event.type === 'click') props.onSelect(null);
+      }}
+      onPointerLeave={() => hover(null)}
+      style={{ cursor: mode === 'place' ? 'crosshair' : 'default' }}
       aria-label="Interactive 3D brick model"
     >
       <color attach="background" args={['#eef0ee']} />
@@ -341,67 +627,86 @@ export const Scene = memo(function Scene(props: SceneProps) {
         <planeGeometry args={[200, 200]} />
         <meshStandardMaterial color="#eef0ee" />
       </mesh>
-      {displays.batches.map(([key, bricks]) => (
-        <NativeBatch
-          key={key}
-          bricks={bricks}
-          model={props.models[bricks[0].partId]}
+      <group
+        onPointerMove={(event) => {
+          const target = resolve(event);
+          if (target !== undefined) hover(target);
+        }}
+        onClick={(event) => {
+          // A drag orbits the camera; only a still click acts on the build.
+          if (event.delta > 5) return;
+          const target = resolve(event);
+          if (target === undefined) return;
+          if (mode === 'select') props.onSelect(target?.brick?.id ?? null);
+          else if (target) props.onActivate?.(target, { alt: event.altKey, shift: event.shiftKey });
+        }}
+        onDoubleClick={(event) => {
+          // Double-click recenters the orbit on that spot; while building, clicks place pieces.
+          if (mode !== 'select' || event.object instanceof Line) return;
+          event.stopPropagation();
+          void rig.current?.moveTo(event.point.x, event.point.y, event.point.z, true);
+        }}
+      >
+        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]} userData={{ ground: true }}>
+          <planeGeometry args={[200, 200]} />
+          <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+        </mesh>
+        {displays.batches.map(([key, bricks]) => (
+          <NativeBatch
+            key={key}
+            bricks={bricks}
+            model={props.models[bricks[0].partId]}
+            buildArea={buildArea}
+            explode={props.explode}
+          />
+        ))}
+        {displays.separate.map((brick) => (
+          <BrickMesh
+            key={brick.id}
+            brick={brick}
+            buildArea={buildArea}
+            explode={props.explode}
+            model={props.models[brick.partId]}
+          />
+        ))}
+      </group>
+      {selected && (
+        <Outline brick={selected} buildArea={buildArea} explode={props.explode} color="#0a84ff" />
+      )}
+      {highlighted && highlighted !== selected && (
+        <Outline
+          brick={highlighted}
           buildArea={buildArea}
           explode={props.explode}
-          onSelect={props.onSelect}
-        />
-      ))}
-      {displays.separate.map((brick) => (
-        <BrickMesh
-          key={brick.id}
-          brick={brick}
-          buildArea={buildArea}
-          selected={props.selectedId === brick.id}
-          onSelect={props.onSelect}
-          explode={props.explode}
-          model={props.models[brick.partId]}
-        />
-      ))}
-      {selected &&
-        selectedSize &&
-        eligible[selected.partId] &&
-        COLORS.find((color) => color.id === selected.color)?.alpha === 255 && (
-          <mesh
-            position={[
-              selected.x + selectedSize.width / 2 - buildArea / 2,
-              (selected.y + selectedSize.height / 2) * PLATE_HEIGHT +
-                (props.explode ? selected.y * 0.18 : 0),
-              selected.z + selectedSize.depth / 2 - buildArea / 2,
-            ]}
-          >
-            <boxGeometry
-              args={[selectedSize.width, selectedSize.height * PLATE_HEIGHT, selectedSize.depth]}
-            />
-            <meshBasicMaterial transparent opacity={0} depthWrite={false} />
-            <Edges color="#156dff" linewidth={2} />
-          </mesh>
-        )}
-      {props.ghost && (
-        <BrickMesh
-          brick={props.ghost}
-          buildArea={buildArea}
-          opacity={0.45}
-          overrideColor={props.ghostValid ? '#228b65' : '#e14d4d'}
+          color="#b0000f"
+          fill="#ffffff"
         />
       )}
-      <OrbitControls
-        makeDefault
-        target={[0, height / 2, 0]}
-        minDistance={8}
-        maxDistance={500}
-        maxPolarAngle={Math.PI / 2 - 0.02}
-        enableDamping
-      />
+      {props.ghost && (
+        <group raycast={() => null}>
+          <BrickMesh
+            brick={props.ghost}
+            buildArea={buildArea}
+            opacity={props.ghostValid ? 0.6 : 0.45}
+            overrideColor={props.ghostValid ? undefined : '#ff453a'}
+          />
+          <Outline
+            brick={props.ghost}
+            buildArea={buildArea}
+            explode={false}
+            color={props.ghostValid ? '#ffffff' : '#ff453a'}
+          />
+        </group>
+      )}
       <CameraRig
         view={props.view}
         revision={props.cameraRevision}
         height={height}
         buildArea={buildArea}
+        bounds={bounds}
+        controls={rig}
+        trackpad={props.trackpad ?? false}
+        onDevice={props.onPointerDevice}
       />
       <SceneReady onReady={props.onReady} />
     </Canvas>

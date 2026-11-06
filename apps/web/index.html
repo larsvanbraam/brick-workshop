@@ -22,6 +22,11 @@
         color: #303832;
         font-family: 'IBM Plex Sans', sans-serif;
         text-align: center;
+        transition: opacity 240ms ease-out;
+      }
+      #workshop-loading[data-done] {
+        opacity: 0;
+        pointer-events: none;
       }
       #workshop-loading h1 {
         margin: 0;
@@ -33,12 +38,40 @@
         font-size: 14px;
         color: #7b847e;
       }
-      #workshop-loading progress {
+      /* Transform-only animation stays on the compositor, so it keeps moving while
+         part parsing and shader compilation block the main thread. */
+      #workshop-loading .loading-bar {
+        position: relative;
         width: 220px;
         max-width: 100%;
         height: 6px;
         margin: 0 auto;
-        accent-color: #25714f;
+        overflow: hidden;
+        border-radius: 3px;
+        background: #dfe4e0;
+      }
+      #workshop-loading .loading-bar::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        width: 40%;
+        border-radius: inherit;
+        background: #25714f;
+        will-change: transform;
+        animation: workshop-loading-slide 1.2s ease-in-out infinite;
+      }
+      @keyframes workshop-loading-slide {
+        from {
+          transform: translateX(-100%);
+        }
+        to {
+          transform: translateX(250%);
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        #workshop-loading .loading-bar::before {
+          animation-duration: 3s;
+        }
       }
     </style>
   </head>
@@ -46,7 +79,7 @@
   <body>
     <div id="workshop-loading" role="status" aria-live="polite">
       <h1>Brick Workshop</h1>
-      <progress aria-label="Loading workshop"></progress>
+      <div class="loading-bar" role="progressbar" aria-label="Loading workshop"></div>
       <p data-loading-message>Loading parts...</p>
     </div>
     <div id="root"></div>
