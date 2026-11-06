@@ -345,7 +345,18 @@ describe('local LDraw assets', () => {
           const quarterTurn = part.ldrawRotation === 90;
           if (
             part.clearance === 'reserved' ||
-            ['801a', '802a', '3861c', '3853'].includes(part.id)
+            [
+              '3193a',
+              '3192a',
+              '60616a',
+              '60623',
+              '60601',
+              '60602',
+              '86210',
+              '2494',
+              '3861c',
+              '3853',
+            ].includes(part.id)
           ) {
             for (const [axis, extent] of [
               ['x', (quarterTurn ? part.depth : part.width) * 20],

@@ -1,4 +1,13 @@
-import { COLORS, getBillOfMaterials, getPart, validateAssembly } from './core.ts';
+import {
+  BUILD_AREA,
+  MAX_BUILD_AREA,
+  MAX_PIECES,
+  COLORS,
+  getBillOfMaterials,
+  getPart,
+  isMatchingInsertFrame,
+  validateAssembly,
+} from './core.ts';
 import type { Assembly, Brick } from './core.ts';
 import { getPartColorStatus, importPartColorEvidence } from './part-colors.ts';
 import type { PartColorEvidence } from './part-colors.ts';
@@ -215,6 +224,81 @@ function validChanges(value: unknown, complete: boolean): boolean {
     } else if (typeof value[field] !== 'number' || !Number.isFinite(value[field])) return false;
   }
   return true;
+}
+
+/** 1 x 3 x 3 doors that older builds hung in 1 x 3 x 4 frames, and the doors that fit them. */
+const LEGACY_DOORS: Readonly<Record<string, string>> = { '801a': '3193a', '802a': '3192a' };
+
+/** Whole windows that older builds hung inside window frames, and the glass that fits each frame. */
+const LEGACY_PANES: Readonly<Record<string, { frame: string; glass: string }>> = {
+  '4035': { frame: '60593', glass: '60602' },
+  '3853': { frame: '60594', glass: '86210' },
+};
+
+/**
+ * Swaps legacy doors for fitting ones, nudged half a stud if that is what seats them, and
+ * windows that sat inside a frame for the frame's glass.
+ */
+function migrateLegacyInserts(bricks: readonly Brick[]): Brick[] {
+  return bricks.map((brick) => {
+    const pane = LEGACY_PANES[brick.partId];
+    if (pane) {
+      const frame = bricks.find(
+        (candidate) =>
+          candidate.partId === pane.frame &&
+          candidate.y === brick.y &&
+          candidate.rotation === brick.rotation &&
+          Math.abs(candidate.x - brick.x) <= 0.5 &&
+          Math.abs(candidate.z - brick.z) <= 0.5,
+      );
+      return frame ? { ...brick, partId: pane.glass, x: frame.x, z: frame.z } : brick;
+    }
+    const partId = LEGACY_DOORS[brick.partId];
+    if (!partId) return brick;
+    const door = { ...brick, partId };
+    for (const [dx, dz] of [
+      [0, 0],
+      [0.5, 0],
+      [-0.5, 0],
+      [0, 0.5],
+      [0, -0.5],
+    ]) {
+      const moved = { ...door, x: door.x + dx, z: door.z + dz };
+      if (bricks.some((frame) => isMatchingInsertFrame(moved, frame))) return moved;
+    }
+    return door;
+  });
+}
+
+export function importAssembly(value: unknown, maxPieces = MAX_PIECES): Assembly {
+  if (!Number.isInteger(maxPieces) || maxPieces < 1 || maxPieces > MAX_PIECES)
+    throw new Error(`Import piece limit must be 1-${MAX_PIECES}.`);
+  if (object(value) && 'assembly' in value) {
+    if (value.version !== 1) throw new Error('Unsupported assembly document version.');
+    value = value.assembly;
+  }
+  if (
+    !object(value) ||
+    !fields(value, ['name', 'buildArea', 'bricks']) ||
+    typeof value.name !== 'string' ||
+    !value.name.trim() ||
+    value.name.length > 200 ||
+    !Array.isArray(value.bricks) ||
+    value.bricks.length > maxPieces ||
+    !value.bricks.every((brick) => validChanges(brick, true)) ||
+    (value.buildArea !== undefined &&
+      (!Number.isInteger(value.buildArea) ||
+        (value.buildArea as number) < BUILD_AREA ||
+        (value.buildArea as number) > MAX_BUILD_AREA))
+  )
+    throw new Error(
+      `Invalid assembly: expected a name, complete bricks and a ${BUILD_AREA}-${MAX_BUILD_AREA} stud board, at most ${maxPieces} pieces.`,
+    );
+  const assembly = structuredClone(value) as unknown as Assembly;
+  assembly.bricks = migrateLegacyInserts(assembly.bricks);
+  const issues = validateAssembly(assembly);
+  if (issues.length) throw new Error(`Invalid assembly geometry: ${issues[0].message}`);
+  return assembly;
 }
 
 function validOperation(value: unknown): value is PatchOperation {

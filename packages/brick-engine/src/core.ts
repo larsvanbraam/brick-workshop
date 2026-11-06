@@ -766,13 +766,12 @@ export const PARTS: readonly Part[] = [
   architecturalPart('6233', 'Cone 3 x 3 x 2', 3, 3, 6, 'cone', {
     connections: coneConnections(3, 2),
   }),
-  architecturalPart('801a', 'Door 1 x 3 x 3, left hinge', 1.5, 3, 10.5, 'door', {
+  architecturalPart('3193a', 'Door 1 x 3 x 4, left hinge', 1.5, 3, 12, 'door', {
     ldrawRotation: 0,
     ldrawCenter: { x: 5, z: 20 },
-    ldrawBaseY: 84,
     connections: { topStuds: [{ x: 0, z: 0 }], bottomReceivers: [{ x: 0, z: 0 }] },
   }),
-  architecturalPart('802a', 'Door 1 x 3 x 3, right hinge', 1.5, 3, 9, 'door', {
+  architecturalPart('3192a', 'Door 1 x 3 x 4, right hinge', 1.5, 3, 12, 'door', {
     ldrawRotation: 0,
     ldrawCenter: { x: -5, z: 20 },
     connections: { topStuds: [{ x: 0.5, z: 0 }], bottomReceivers: [{ x: 0.5, z: 0 }] },
@@ -792,8 +791,25 @@ export const PARTS: readonly Part[] = [
       bottomReceivers: rectangularConnections(1, 4).bottomReceivers,
     },
   }),
+  // Hung on pins in the 1 x 4 x 6 frame's hinge holes, which sit 2 LDU past the end stud and
+  // 5 LDU behind the frame's centre line, so the leaf stands half a stud proud of the frame.
+  architecturalPart('60616a', 'Door 1 x 4 x 6, smooth', 1.5, 4, 18, 'door', {
+    ldrawCenter: { x: 32, z: 0 },
+    connections: { topStuds: [], bottomReceivers: [] },
+  }),
+  architecturalPart('60623', 'Door 1 x 4 x 6 with 4 panes', 1.5, 4, 18, 'door', {
+    ldrawCenter: { x: 32, z: 0 },
+    connections: { topStuds: [], bottomReceivers: [] },
+  }),
   architecturalPart('60592', 'Window frame 1 x 2 x 2', 1, 2, 6, 'window'),
+  // Glass shares its frame's native origin and cells; the frame's groove holds it.
+  architecturalPart('60601', 'Glass for window 1 x 2 x 2', 1, 2, 6, 'window', {
+    connections: { topStuds: [], bottomReceivers: [] },
+  }),
   architecturalPart('60593', 'Window frame 1 x 2 x 3', 1, 2, 9, 'window'),
+  architecturalPart('60602', 'Glass for window 1 x 2 x 3', 1, 2, 9, 'window', {
+    connections: { topStuds: [], bottomReceivers: [] },
+  }),
   architecturalPart('4035', 'Window 1 x 2 x 3', 1, 2, 9, 'window'),
   architecturalPart('60594', 'Window frame 1 x 4 x 3', 1, 4, 9, 'window', {
     connections: {
@@ -804,7 +820,16 @@ export const PARTS: readonly Part[] = [
       bottomReceivers: rectangularConnections(1, 4).bottomReceivers,
     },
   }),
+  // Hung on side pins in the frame's top holes, 5 LDU down and 3.5 LDU behind its origin.
+  architecturalPart('86210', 'Glass for window 1 x 4 x 3, opening', 1, 4, 9, 'window', {
+    ldrawCenter: { x: 0, z: -3.5 },
+    ldrawBaseY: 67,
+    connections: { topStuds: [], bottomReceivers: [] },
+  }),
   architecturalPart('2493b', 'Window frame 1 x 4 x 5, hollow studs', 1, 4, 15, 'window'),
+  architecturalPart('2494', 'Glass for window 1 x 4 x 5', 1, 4, 15, 'window', {
+    connections: { topStuds: [], bottomReceivers: [] },
+  }),
   architecturalPart('3853', 'Window 1 x 4 x 3 with sill', 1.5, 5, 9, 'window', {
     ldrawCenter: { x: 0, z: -5 },
     connections: {
@@ -870,12 +895,46 @@ export interface Issue {
 export type PlacementResult = { ok: true; assembly: Assembly } | { ok: false; issues: Issue[] };
 
 export const BUILD_AREA = 16;
-export const MAX_BUILD_AREA = 64;
-export const MAX_HEIGHT = 60;
+export const MAX_BUILD_AREA = 128;
+export const MAX_HEIGHT = 384;
+/** Most pieces in one assembly: imports, Claude builds and model conversions. */
+export const MAX_PIECES = 50000;
 export const PLATE_HEIGHT = 0.4;
 
 export function getBuildArea(assembly: Assembly): number {
   return assembly.buildArea ?? BUILD_AREA;
+}
+
+/**
+ * Moves the build onto a board of another size, keeping it centred where the pieces allow.
+ * Returns null when the size is out of range or the pieces don't fit on the smaller board.
+ */
+export function resizeBuildArea(assembly: Assembly, size: number): Assembly | null {
+  if (!Number.isInteger(size) || size < BUILD_AREA || size > MAX_BUILD_AREA) return null;
+  const centred = Math.floor((size - getBuildArea(assembly)) / 2);
+  // Whole-stud shifts keep every piece on the same studs relative to its neighbours.
+  const shift = (low: number, high: number) => {
+    const min = Math.ceil(-low);
+    const max = Math.floor(size - high);
+    return min > max ? null : Math.min(max, Math.max(min, centred));
+  };
+  let [minX, maxX, minZ, maxZ] = [Infinity, -Infinity, Infinity, -Infinity];
+  for (const brick of assembly.bricks) {
+    const { width, depth } = footprint(brick);
+    minX = Math.min(minX, brick.x);
+    maxX = Math.max(maxX, brick.x + width);
+    minZ = Math.min(minZ, brick.z);
+    maxZ = Math.max(maxZ, brick.z + depth);
+  }
+  const dx = assembly.bricks.length ? shift(minX, maxX) : 0;
+  const dz = assembly.bricks.length ? shift(minZ, maxZ) : 0;
+  if (dx === null || dz === null) return null;
+  const { buildArea: _, ...rest } = assembly;
+  return {
+    ...rest,
+    ...(size === BUILD_AREA ? {} : { buildArea: size }),
+    bricks: assembly.bricks.map((brick) => ({ ...brick, x: brick.x + dx, z: brick.z + dz })),
+  };
 }
 
 export function getPart(partId: string): Part {
@@ -952,35 +1011,61 @@ function isValid(brick: Brick, buildArea: number): boolean {
 }
 
 export const INSERT_FRAME_PARTS: Readonly<Record<string, string>> = Object.freeze({
-  '4035': '60593',
-  '3853': '60594',
-  '801a': '3579',
-  '802a': '3579',
+  '60601': '60592',
+  '60602': '60593',
+  '86210': '60594',
+  '2494': '2493b',
+  '3193a': '3579',
+  '3192a': '3579',
+  '60616a': '60596',
+  '60623': '60596',
 });
+
+/** Doors hung on their own hinge stud, which stands at one end of the frame's opening. */
+const HINGED_DOORS = new Set(['3193a', '3192a']);
+/** Doors hung on the frame's hinge pins: native origin at frame-local (±32, 5), turned to match. */
+const PINNED_DOORS = new Set(['60616a', '60623']);
 
 export function isMatchingInsertFrame(insert: Brick, frame: Brick): boolean {
   const framePartId = INSERT_FRAME_PARTS[insert.partId];
-  if (
-    !framePartId ||
-    frame.partId !== framePartId ||
-    frame.y !== insert.y ||
-    frame.rotation !== insert.rotation
-  )
-    return false;
-
-  if (insert.partId === '801a' || insert.partId === '802a')
-    return frame.x === insert.x && frame.z === insert.z + 0.5;
+  if (!framePartId || frame.partId !== framePartId || frame.y !== insert.y) return false;
 
   const frameSize = footprint(frame);
   const insertSize = footprint(insert);
-  const alignedAcrossOpening = frame.x + frameSize.width / 2 === insert.x + insertSize.width / 2;
-  return insert.rotation === 90
-    ? alignedAcrossOpening && Math.abs(frame.z - insert.z) === 0.5
-    : frame.z === insert.z && Math.abs(frame.x - insert.x) === 0.5;
+  if (HINGED_DOORS.has(insert.partId)) {
+    // Either end and either face: the leaf spans the opening from a hinge on its centre line.
+    const [hinge] = getConnectionSites(insert, 'top');
+    return frameSize.width > frameSize.depth
+      ? insert.x === frame.x &&
+          insertSize.width === frameSize.width &&
+          hinge.z === frame.z + 0.5 &&
+          (hinge.x === frame.x + 0.5 || hinge.x === frame.x + frameSize.width - 0.5)
+      : insert.z === frame.z &&
+          insertSize.depth === frameSize.depth &&
+          hinge.x === frame.x + 0.5 &&
+          (hinge.z === frame.z + 0.5 || hinge.z === frame.z + frameSize.depth - 0.5);
+  }
+  if (PINNED_DOORS.has(insert.partId)) {
+    // Either hinge hole: the door turned like the frame, or half a turn round for the other end.
+    const hingeX = { 0: -32, 180: 32 }[(insert.rotation - frame.rotation + 360) % 360];
+    if (hingeX === undefined) return false;
+    const door = getLDrawTransform(insert);
+    const pins = getLDrawTransform(frame);
+    const cosine = Math.round(Math.cos((pins.rotation * Math.PI) / 180));
+    const sine = Math.round(Math.sin((pins.rotation * Math.PI) / 180));
+    return (
+      door.x === pins.x + cosine * hingeX + sine * 5 &&
+      door.z === pins.z - sine * hingeX + cosine * 5
+    );
+  }
+  // Glass fills its frame's own cells, turned the same way.
+  return frame.rotation === insert.rotation && frame.x === insert.x && frame.z === insert.z;
 }
 
 function isSupportedInsert(brick: Brick, bricks: readonly Brick[]): boolean {
-  return bricks.some((frame) => isMatchingInsertFrame(brick, frame));
+  // Only insert parts can sit in a frame, so other pieces skip the scan; that keeps validating
+  // large builds linear.
+  return brick.partId in INSERT_FRAME_PARTS && bricks.some((frame) => isMatchingInsertFrame(brick, frame));
 }
 
 function hasEnvelopeContact(upper: Brick, lower: Brick): boolean {

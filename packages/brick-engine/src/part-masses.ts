@@ -157,18 +157,6 @@ const entries: readonly [string, string, number, string][] = [
   ['3943b', '3943b', 3.46, 'Cone 4 x 4 x 2 with axle hole.'],
   ['6233', '6233', 3, 'Cone 3 x 3 x 2.'],
   [
-    '801a',
-    '801apb00',
-    1.8,
-    'Native LDraw keywords explicitly identify BrickLink 801apb00; catalogue includes moulded clear window. Native handle naming differs, so this is nominal catalogue alias evidence, not exact-piece measurement or an inventory mapping.',
-  ],
-  [
-    '802a',
-    '802apb00',
-    1.8,
-    'Native LDraw keywords explicitly identify BrickLink 802apb00; catalogue includes moulded clear window. Native handle naming differs, so this is nominal catalogue alias evidence, not exact-piece measurement or an inventory mapping.',
-  ],
-  [
     '3861c',
     '3861',
     2.13,
