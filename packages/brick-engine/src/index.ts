@@ -7,6 +7,7 @@ export * from './part-masses.ts';
 export * from './planning.ts';
 export * from './edits.ts';
 export * from './techniques.ts';
+export * from './voxels.ts';
 export {
   EXAMPLES,
   createDemoAssembly,
