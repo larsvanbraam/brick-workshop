@@ -4,6 +4,17 @@ import type { LDrawLoader } from 'three/addons/loaders/LDrawLoader.js';
 import { COLORS } from '@lego-builder/brick-engine';
 import type { LDrawColor } from '@lego-builder/brick-engine';
 
+/**
+ * Display colours that differ from LDraw's. LDraw draws Black as blue-grey #1B2A34 so edges stay
+ * visible in line drawings; lit in 3D it reads as navy, while a real Black brick looks black
+ * (BrickLink and Rebrickable list it as #05131D).
+ */
+const DISPLAY_HEX: Readonly<Record<number, string>> = { 0: '#05131d' };
+
+export function displayHex(color: LDrawColor) {
+  return DISPLAY_HEX[color.id] ?? color.hex;
+}
+
 const finishTokens: Record<string, string> = {
   chrome: 'CHROME',
   pearl: 'PEARLESCENT',
@@ -16,7 +27,7 @@ export const COLOR_CONFIG = [
   '0 !COLOUR Edge_Colour CODE 24 VALUE #A0A0A0 EDGE #333333',
   ...COLORS.map(
     (color) =>
-      `0 !COLOUR ${color.name.replaceAll(' ', '_')} CODE ${color.id} VALUE ${color.hex} EDGE ${color.edge} ALPHA ${color.alpha} LUMINANCE ${color.luminance}${color.material ? ` MATERIAL ${color.material}` : finishTokens[color.finish] ? ` ${finishTokens[color.finish]}` : ''}`,
+      `0 !COLOUR ${color.name.replaceAll(' ', '_')} CODE ${color.id} VALUE ${displayHex(color)} EDGE ${color.edge} ALPHA ${color.alpha} LUMINANCE ${color.luminance}${color.material ? ` MATERIAL ${color.material}` : finishTokens[color.finish] ? ` ${finishTokens[color.finish]}` : ''}`,
   ),
 ].join('\n');
 
@@ -30,13 +41,13 @@ export function colorMaterialProperties(color: LDrawColor) {
   };
   const [roughness, metalness] = finishes[color.finish] ?? [0.3, 0];
   return {
-    color: color.hex,
+    color: displayHex(color),
     roughness,
     metalness,
     opacity: color.alpha / 255,
     transparent: color.alpha < 255,
     depthWrite: color.alpha === 255,
-    emissive: color.hex,
+    emissive: displayHex(color),
     emissiveIntensity: color.luminance / 255,
   };
 }

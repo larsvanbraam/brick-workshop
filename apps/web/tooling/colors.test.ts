@@ -10,7 +10,7 @@ import {
 import { LDrawLoader } from 'three/addons/loaders/LDrawLoader.js';
 import { LDrawConditionalLineMaterial } from 'three/addons/materials/LDrawConditionalLineMaterial.js';
 import { COLORS, parseLDrawColors } from '@lego-builder/brick-engine';
-import { COLOR_CONFIG, cloneLDrawModel, colorMaterialProperties } from '../src/ldraw-materials';
+import { COLOR_CONFIG, cloneLDrawModel, colorMaterialProperties, displayHex } from '../src/ldraw-materials';
 import { Readable } from 'node:stream';
 import { gzipSync } from 'node:zlib';
 import { basicInventoryConfiguration, readInventoryEvidence } from './import-inventory';
@@ -76,11 +76,14 @@ describe('streaming inventory imports', () => {
 describe('official color materials', () => {
   it('round-trips the entire palette including material descriptors', () => {
     expect(COLORS).toHaveLength(320);
-    expect(parseLDrawColors(COLOR_CONFIG)).toEqual(COLORS);
+    // The viewer's palette is LDraw's except for display overrides (Black reads as black).
+    expect(parseLDrawColors(COLOR_CONFIG)).toEqual(COLORS.map((color) => ({ ...color, hex: displayHex(color) })));
+    expect(displayHex(COLORS.find((color) => color.id === 0)!)).toBe('#05131d');
+    expect(COLORS.filter((color) => displayHex(color) !== color.hex).map((color) => color.id)).toEqual([0]);
     expect(COLORS.some((color) => color.id === 16 || color.id === 24)).toBe(false);
     for (const color of COLORS) {
       const material = loader.getMaterial(String(color.id)) as MeshStandardMaterial;
-      expect(material.color.getHexString()).toBe(color.hex.slice(1));
+      expect(material.color.getHexString()).toBe(displayHex(color).slice(1).toLowerCase());
       expect(material.opacity).toBe(color.alpha / 255);
       expect(material.transparent).toBe(color.alpha < 255);
       expect(material.roughness).toBe(colorMaterialProperties(color).roughness);

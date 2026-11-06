@@ -1,6 +1,7 @@
 import { useId, useState } from 'react';
 import { Check, Search } from 'lucide-react';
 import { COLORS } from '@lego-builder/brick-engine';
+import { displayHex } from './ldraw-materials';
 import './color-picker.css';
 
 export function ColorPicker({
@@ -67,7 +68,7 @@ export function ColorPicker({
           >
             <span
               className="color-fill"
-              style={{ backgroundColor: entry.hex, opacity: entry.alpha / 255 }}
+              style={{ backgroundColor: displayHex(entry), opacity: entry.alpha / 255 }}
             />
             {entry.id === color && <Check size={15} className="color-check" aria-hidden="true" />}
           </button>
