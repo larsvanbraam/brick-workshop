@@ -1,8 +1,8 @@
 import Ajv from 'ajv';
 import type Anthropic from '@anthropic-ai/sdk';
 import {
-  BUILD_AREA,
   MAX_BUILD_AREA,
+  MAX_PIECES,
   COLORS,
   DEFAULT_PART_COLOR_EVIDENCE,
   MAX_HEIGHT,
@@ -25,7 +25,11 @@ import {
   getPartColorStatus,
   importPartColorEvidence,
   importPhysicalData,
+  importAssembly,
   validateAssembly,
+  describeVoxelLayer,
+  findVoxelGaps,
+  MAX_PHYSICS_PIECES,
 } from '@lego-builder/brick-engine';
 import type {
   Assembly,
@@ -36,6 +40,7 @@ import type {
   AssemblyPatch,
   EditPolicy,
   InventoryEntry,
+  VoxelModel,
 } from '@lego-builder/brick-engine';
 
 const partIdSchema = { type: 'string', enum: PARTS.map((part) => part.id) };
@@ -55,6 +60,58 @@ function objectSchema(
 ) {
   return { type: 'object' as const, properties, required, additionalProperties: false };
 }
+
+const BRICK_COLUMNS = ['id', 'partId', 'color', 'x', 'y', 'z', 'rotation'] as const;
+/**
+ * Catalogue overview columns; one row per part instead of repeated keys. connectorFit is left
+ * out because every shipped part is curated; per-part detail still reports it.
+ */
+const PART_COLUMNS = [
+  'id', 'name', 'width', 'depth', 'height', 'kind', 'family', 'shape', 'contactPhysics',
+] as const;
+
+/**
+ * Bricks as rows of BRICK_COLUMNS: about a third of the JSON size, which matters because every
+ * turn resends the conversation and converted models run to thousands of pieces.
+ */
+export function compactBricks(bricks: readonly Brick[]) {
+  return {
+    columns: BRICK_COLUMNS,
+    rows: bricks.map((brick) => BRICK_COLUMNS.map((column) => brick[column])),
+  };
+}
+
+/** A compact assembly for Claude: name, board and brick rows. */
+/** Bricks added, updated (by ID) and removed between two assemblies, as compact rows. */
+function changedBricks(before: Assembly, after: Assembly) {
+  const previous = new Map(before.bricks.map((brick) => [brick.id, brick]));
+  const current = new Set(after.bricks.map((brick) => brick.id));
+  const added = after.bricks.filter((brick) => !previous.has(brick.id));
+  const updated = after.bricks.filter((brick) => {
+    const old = previous.get(brick.id);
+    return old && BRICK_COLUMNS.some((column) => old[column] !== brick[column]);
+  });
+  return {
+    pieceCount: after.bricks.length,
+    added: compactBricks(added).rows,
+    updated: compactBricks(updated).rows,
+    removed: before.bricks.filter((brick) => !current.has(brick.id)).map((brick) => brick.id),
+    columns: BRICK_COLUMNS,
+  };
+}
+
+export function compactAssembly(assembly: Assembly) {
+  return { name: assembly.name, buildArea: assembly.buildArea, bricks: compactBricks(assembly.bricks) };
+}
+
+const regionSchema = {
+  type: 'object',
+  description: 'Only list bricks whose minimum corner lies in this box (studs for x/z, plates for y).',
+  properties: Object.fromEntries(
+    ['minX', 'maxX', 'minY', 'maxY', 'minZ', 'maxZ'].map((key) => [key, { type: 'number' }]),
+  ),
+  additionalProperties: false,
+};
 
 const patchSchema = objectSchema({
   expectedRevision: { type: 'integer', minimum: 0, maximum: Number.MAX_SAFE_INTEGER - 1 },
@@ -97,8 +154,14 @@ export const BUILDER_TOOLS: readonly Anthropic.Tool[] = [
   {
     name: 'brick_catalog',
     description:
-      'Read engine-owned capabilities, supported part designs, reserved footprints, plate-unit heights, local connector cells, and observed color choices. Call this before planning placements; never invent part or color IDs. topStuds and bottomReceivers are zero-based cells before rotation, with half-cell offsets where needed. Baseplates have no bottomReceivers and must remain on the ground; smooth tiles have no topStuds. Only explicitly listed matchingInsertFrameId exceptions permit static inserts inside reserved frame envelopes. By default only inventory-observed colors are listed. includeUnverifiedColors is for inspection, not permission to place unobserved colors.',
-    input_schema: objectSchema({ includeUnverifiedColors: { type: 'boolean' } }, []),
+      'Read engine-owned capabilities, supported part designs, reserved footprints, plate-unit heights and color choices. Without partIds it lists every part briefly; pass partIds (up to 20) for their local connector cells and observed colors. Call the overview once and reuse it; never invent part or color IDs. topStuds and bottomReceivers are zero-based [x, z] cells before rotation, with half-cell offsets where needed; "full" means every whole cell of the width x depth footprint. Parts use the top-level collisionModel unless they list their own. Baseplates have no bottomReceivers and must remain on the ground; smooth tiles have no topStuds. Only explicitly listed matchingInsertFrameId exceptions permit static inserts inside reserved frame envelopes. By default only inventory-observed colors are listed. includeUnverifiedColors is for inspection, not permission to place unobserved colors.',
+    input_schema: objectSchema(
+      {
+        includeUnverifiedColors: { type: 'boolean' },
+        partIds: { type: 'array', items: partIdSchema, minItems: 1, maxItems: 20, uniqueItems: true },
+      },
+      [],
+    ),
   },
   {
     name: 'brick_candidates',
@@ -138,14 +201,14 @@ export const BUILDER_TOOLS: readonly Anthropic.Tool[] = [
   {
     name: 'brick_apply_patch',
     description:
-      'Apply an atomic patch using the current expectedRevision, preferably after preview. Rechecks all host policies and final geometry before committing all operations together. Success increments revision once and returns the resulting assembly and assessment; rejection changes nothing. Proposed addition IDs become stable only after success. A valid final arrangement is not a validated construction sequence and remains uncertified.',
+      'Apply an atomic patch using the current expectedRevision, preferably after preview. Rechecks all host policies and final geometry before committing all operations together. Success increments revision once and returns the changed bricks (added, updated, removed) and a summarized assessment (brick_physics has per-piece detail); rejection changes nothing. Proposed addition IDs become stable only after success. A valid final arrangement is not a validated construction sequence and remains uncertified.',
     input_schema: patchSchema,
   },
   {
     name: 'brick_inspect',
     description:
-      'Read the current assembly, revision, bill of materials, geometry issues, physical assessment, and manufacturing statuses. Coordinates are minimum reserved-footprint corners in studs for X/Z and plate units for Y, all in increments of 0.5. Physical estimates and supplied limits are not build certification. Use brick_physics for mass provenance, gravity balance, required clutch tension and remaining unknowns.',
-    input_schema: objectSchema(),
+      'Read the current assembly as compact brick rows (optionally only a region, which keeps large builds small), revision, bill of materials, geometry issues, a physical summary, and manufacturing statuses. Coordinates are minimum reserved-footprint corners in studs for X/Z and plate units for Y, all in increments of 0.5. Physical estimates and supplied limits are not build certification. Use brick_physics for mass provenance, gravity balance, required clutch tension and remaining unknowns.',
+    input_schema: objectSchema({ region: regionSchema }, []),
   },
   {
     name: 'brick_physics',
@@ -183,25 +246,63 @@ export const BUILDER_TOOLS: readonly Anthropic.Tool[] = [
       ['format'],
     ),
   },
+  {
+    name: 'model_gaps',
+    description:
+      'Only with a reference 3D model: regions of the model the current build does not cover yet, closable ones first, as board bounding boxes (studs for x/z, plates for y) with their main color and support: "supported" (a built piece directly under it), "bridgeable" (one within two studs, reachable with a longer brick) or "unsupported" (over empty space; no brick can be placed there). Closable gaps come first. Recomputed on every call; use it after patches to see what is left.',
+    input_schema: objectSchema(),
+  },
+  {
+    name: 'model_layer',
+    description:
+      'Only with a reference 3D model: one brick layer of the model next to the same layer of the current build, one character per stud. Read only the layers you are working on.',
+    input_schema: objectSchema({ layer: { type: 'integer', minimum: 0, maximum: MAX_HEIGHT / 3 - 1 } }),
+  },
 ];
+
+const HOST_ONLY_TOOLS = new Set(['brick_preview_patch', 'brick_export']);
+
+/**
+ * Tool definitions sent to Claude. The part and color enums repeat ~1.5k characters in every
+ * placement schema on every turn, so Claude gets catalogue references instead; runTool still
+ * validates inputs against the strict BUILDER_TOOLS schemas.
+ */
+export const MODEL_TOOLS: readonly Anthropic.Tool[] = BUILDER_TOOLS.filter(
+  // Exports are the host's job, and brick_apply_patch already rejects atomically with the same
+  // issues a preview reports; both definitions would be resent on every turn for nothing.
+  (tool) => !HOST_ONLY_TOOLS.has(tool.name),
+).map((tool) => ({
+  ...tool,
+  input_schema: compactSchema(tool.input_schema) as Anthropic.Tool['input_schema'],
+}));
+
+function compactSchema(schema: unknown): unknown {
+  if (schema === partIdSchema) return { type: 'string', description: 'Part ID from brick_catalog.' };
+  if (schema === colorSchema)
+    return { type: 'integer', description: 'Color ID from brick_catalog.' };
+  if (Array.isArray(schema)) return schema.map(compactSchema);
+  if (!schema || typeof schema !== 'object') return schema;
+  return Object.fromEntries(
+    Object.entries(schema).map(([key, value]) => [key, compactSchema(value)]),
+  );
+}
+
+/** 'full' when the cells are exactly every whole cell of the footprint, else [x, z] pairs. */
+function compactCells(cells: readonly { x: number; z: number }[], width: number, depth: number) {
+  const unique = new Set(cells.map(({ x, z }) => `${x},${z}`));
+  const full =
+    cells.length === width * depth &&
+    unique.size === cells.length &&
+    cells.every(
+      ({ x, z }) =>
+        Number.isInteger(x) && Number.isInteger(z) && x >= 0 && z >= 0 && x < width && z < depth,
+    );
+  return full ? 'full' : cells.map(({ x, z }) => [x, z]);
+}
 
 const ajv = new Ajv({ allErrors: true, coerceTypes: false });
 const validators = new Map(
   BUILDER_TOOLS.map((tool) => [tool.name, ajv.compile(tool.input_schema)]),
-);
-const validateInitial = ajv.compile<Assembly>(
-  objectSchema(
-    {
-      name: { type: 'string', minLength: 1, maxLength: 200 },
-      buildArea: { type: 'integer', minimum: BUILD_AREA, maximum: MAX_BUILD_AREA },
-      bricks: {
-        type: 'array',
-        maxItems: 500,
-        items: objectSchema({ id: idSchema, ...placementProperties }),
-      },
-    },
-    ['name', 'bricks'],
-  ),
 );
 
 export type BuilderToolResult =
@@ -218,23 +319,31 @@ export function createBuilderSession(
     rejectInfeasible?: boolean;
     inventory?: readonly InventoryEntry[];
     requireInventory?: boolean;
+    /** The 3D model the initial assembly was converted from, and where it sits on the board. */
+    reference?: { model: VoxelModel; origin: { x: number; z: number } };
   } = {},
 ) {
-  if (!validateInitial(initial))
-    throw new Error(`Invalid initial assembly: ${ajv.errorsText(validateInitial.errors)}`);
-  const issues = validateAssembly(initial);
-  if (issues.length) throw new Error(`Invalid initial geometry: ${issues[0].message}`);
+  let imported: Assembly;
+  try {
+    imported = importAssembly(initial);
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith('Invalid assembly geometry:'))
+      throw new Error(error.message.replace('assembly geometry', 'initial geometry'));
+    throw new Error(
+      `Invalid initial assembly: ${error instanceof Error ? error.message : 'Invalid input.'}`,
+    );
+  }
   const evidence = importPartColorEvidence(options.evidence ?? DEFAULT_PART_COLOR_EVIDENCE);
   const requireObservedColors = options.requireObservedColors ?? true;
   const maxPieces = options.maxPieces ?? 500;
   if (
     !Number.isInteger(maxPieces) ||
     maxPieces < 1 ||
-    maxPieces > 500 ||
-    initial.bricks.length > maxPieces
+    maxPieces > MAX_PIECES ||
+    imported.bricks.length > maxPieces
   )
-    throw new Error('Piece limit must be 1-500 and fit the initial assembly.');
-  let assembly = structuredClone(initial);
+    throw new Error(`Piece limit must be 1-${MAX_PIECES} and fit the initial assembly.`);
+  let assembly = imported;
   const physicalOptions = {
     data: importPhysicalData(options.physical?.data ?? { version: 1, parts: {} }),
     estimateMissingMasses: options.physical?.estimateMissingMasses ?? true,
@@ -317,6 +426,19 @@ export function createBuilderSession(
     if (!validate) return fail('unknown_tool', `Unknown builder tool: ${name}`);
     if (!validate(input)) return fail('invalid_input', ajv.errorsText(validate.errors));
     const args = input as Record<string, unknown>;
+    if (name === 'model_gaps' || name === 'model_layer') {
+      const reference = options.reference;
+      if (!reference) return fail('no_reference', 'This build has no reference 3D model.');
+      if (name === 'model_gaps')
+        return { ok: true, revision, data: findVoxelGaps(reference.model, reference.origin, assembly) };
+      if ((args.layer as number) >= reference.model.layers)
+        return fail('invalid_input', `The model has layers 0-${reference.model.layers - 1}.`);
+      return {
+        ok: true,
+        revision,
+        data: describeVoxelLayer(reference.model, reference.origin, assembly, args.layer as number),
+      };
+    }
     if (name === 'brick_techniques') {
       const result = getBuildingTechniques(args as Parameters<typeof getBuildingTechniques>[0]);
       return {
@@ -354,6 +476,7 @@ export function createBuilderSession(
       };
     }
     if (name === 'brick_preview_patch' || name === 'brick_apply_patch') {
+      const before = assembly;
       const result = (name === 'brick_apply_patch' ? applyPatch : previewPatch)(
         assembly,
         args as unknown as AssemblyPatch,
@@ -366,13 +489,35 @@ export function createBuilderSession(
         policyAssessment = result.assessment;
         revision = result.revision;
       }
+      // The full assembly and per-piece physics grow with every piece and stay in the
+      // conversation for each patch, so patch results carry only the changes and a summary.
+      const { physical, buildability, ...assessment } = structuredClone(result.assessment);
       return {
         ok: true,
         revision,
         data: {
           purpose: name === 'brick_apply_patch' ? 'applied-final-arrangement' : 'preview-only',
-          assembly: structuredClone(result.assembly),
-          assessment: structuredClone(result.assessment),
+          changes: changedBricks(before, result.assembly),
+          assessment: {
+            ...assessment,
+            physical: physical && {
+              status: physical.status,
+              gravity: physical.gravity,
+              massBasis: physical.massBasis,
+              connectionStrength: physical.connectionStrength,
+              totalMassGrams: physical.totalMassGrams,
+              centerOfMassStuds: physical.centerOfMassStuds,
+              missingMassPartIds: physical.missingMassPartIds,
+              minimumStudTensionNewtons: physical.minimumStudTensionNewtons,
+              reasons: physical.reasons,
+              detail: 'Call brick_physics for masses, load paths and assembly order.',
+            },
+            buildability: buildability && {
+              status: buildability.status,
+              certified: buildability.certified,
+              label: buildability.label,
+            },
+          },
         },
       };
     }
@@ -390,12 +535,39 @@ export function createBuilderSession(
           requireObservedColors,
           recognizedColorCount: COLORS.length,
           collisionModel: getEngineCapabilities(assembly).collisionModel,
-          parts: PARTS.map(({ id }) => ({
-            ...getPartCapabilities(id),
-            observedColors: COLORS.filter(
-              (color) => getPartColorStatus(id, color.id, evidence).manufactured === 'observed',
-            ).map((color) => color.id),
-          })),
+          // Connector cells and per-part colors are most of the catalogue and it stays in the
+          // conversation for every later turn, so they are listed only for requested parts.
+          ...(!args.partIds && {
+            detail: 'Call brick_catalog with partIds for the connector cells and observed colors of the parts you will use.',
+          }),
+          ...(!args.partIds && {
+            partColumns: PART_COLUMNS,
+            partRows: PARTS.map(({ id }) => {
+              const part = getPartCapabilities(id);
+              const row: unknown[] = PART_COLUMNS.map((column) => part[column]);
+              return part.matchingInsertFrameId ? [...row, { matchingInsertFrameId: part.matchingInsertFrameId }] : row;
+            }),
+          }),
+          parts: PARTS.filter(({ id }) => (args.partIds as string[] | undefined)?.includes(id)).map(({ id }) => {
+            const { connections, collisionModel, matchingInsertFrameId, ...part } =
+              getPartCapabilities(id);
+            return {
+              ...part,
+              ...(matchingInsertFrameId ? { matchingInsertFrameId } : {}),
+              connections: Object.fromEntries(
+                Object.entries(connections).map(([key, cells]) => [
+                  key,
+                  compactCells(cells, part.width, part.depth),
+                ]),
+              ),
+              ...(collisionModel === getEngineCapabilities(assembly).collisionModel
+                ? {}
+                : { collisionModel }),
+              observedColors: COLORS.filter(
+                (color) => getPartColorStatus(id, color.id, evidence).manufactured === 'observed',
+              ).map((color) => color.id),
+            };
+          }),
           colors: COLORS.filter(
             (color) =>
               args.includeUnverifiedColors ||
@@ -460,17 +632,64 @@ export function createBuilderSession(
         },
       };
     }
-    if (name === 'brick_inspect')
-      return { ok: true, revision, data: { ...document(), issues: validateAssembly(assembly) } };
-    if (name === 'brick_physics')
+    if (name === 'brick_inspect') {
+      const region = (args.region ?? {}) as Partial<Record<'minX' | 'maxX' | 'minY' | 'maxY' | 'minZ' | 'maxZ', number>>;
+      const inside = (brick: Brick) =>
+        brick.x >= (region.minX ?? -Infinity) &&
+        brick.x <= (region.maxX ?? Infinity) &&
+        brick.y >= (region.minY ?? -Infinity) &&
+        brick.y <= (region.maxY ?? Infinity) &&
+        brick.z >= (region.minZ ?? -Infinity) &&
+        brick.z <= (region.maxZ ?? Infinity);
       return {
         ok: true,
         revision,
         data: {
-          ...structuredClone(physicalAssessment),
+          name: assembly.name,
+          buildArea: assembly.buildArea,
+          pieceCount: assembly.bricks.length,
+          bricks: compactBricks(assembly.bricks.filter(inside)),
+          billOfMaterials: getBillOfMaterials(assembly),
+          partColorStatuses: statuses(),
+          issues: validateAssembly(assembly),
+          physical: {
+            status: physicalAssessment.status,
+            gravity: physicalAssessment.gravity,
+            massBasis: physicalAssessment.massBasis,
+            totalMassGrams: physicalAssessment.totalMassGrams,
+            reasons: physicalAssessment.reasons,
+            detail: 'Call brick_physics for masses, load paths and assembly order.',
+          },
+          buildability: getBuildabilityReport(physicalAssessment).status,
+        },
+      };
+    }
+    if (name === 'brick_physics') {
+      const { masses, connections, assemblyOrder, ...summary } = structuredClone(physicalAssessment);
+      // Per-piece lists grow to hundreds of thousands of characters on converted models, and
+      // past MAX_PHYSICS_PIECES the solver has not run, so large builds get masses by part.
+      const perPiece = assembly.bricks.length <= MAX_PHYSICS_PIECES;
+      const byPart = new Map<string, { partId: string; count: number; mass: (typeof masses)[number]['mass'] }>();
+      for (const { partId, mass } of masses) {
+        const entry = byPart.get(partId);
+        if (entry) entry.count += 1;
+        else byPart.set(partId, { partId, count: 1, mass });
+      }
+      return {
+        ok: true,
+        revision,
+        data: {
+          ...summary,
+          ...(perPiece
+            ? { masses, connections, assemblyOrder }
+            : {
+                massesByPart: [...byPart.values()],
+                perPieceDetail: `Omitted: per-piece masses, connections and assembly order are only listed up to ${MAX_PHYSICS_PIECES} pieces.`,
+              }),
           buildability: getBuildabilityReport(physicalAssessment),
         },
       };
+    }
     if (name === 'brick_color_status')
       return {
         ok: true,

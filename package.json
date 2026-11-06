@@ -13,7 +13,8 @@
     "preview": "vp -C apps/web preview",
     "colors:import": "node apps/web/tooling/import-colors.ts",
     "colors:inventory": "node apps/web/tooling/import-inventory.ts",
-    "claude:build": "node --env-file-if-exists=.env packages/claude-adapter/src/cli.ts"
+    "claude:build": "node --env-file-if-exists=.env packages/claude-adapter/src/cli.ts",
+    "workshop:server": "node --env-file-if-exists=.env packages/claude-adapter/src/server.ts"
   },
   "devDependencies": {
     "@types/node": "^24.19.2",

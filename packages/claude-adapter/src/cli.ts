@@ -3,7 +3,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { importPhysicalData } from '@lego-builder/brick-engine';
-import { createBuilderSession, runClaudeBuild } from './index.ts';
+import { createBuilderSession, runClaudeBuild, runClaudeCodeBuild } from './index.ts';
 
 const { values, positionals } = parseArgs({
   allowPositionals: true,
@@ -17,20 +17,18 @@ const { values, positionals } = parseArgs({
     'physical-data': { type: 'string' },
     'no-mass-estimates': { type: 'boolean' },
     'no-catalog-masses': { type: 'boolean' },
+    'claude-code': { type: 'boolean' },
   },
 });
+const useClaudeCode = values['claude-code'] || !process.env.ANTHROPIC_API_KEY;
 
 if (values.help) {
   console.log(
-    'Usage: pnpm claude:build "Build a small bridge" [--out output/bridge] [--input assembly.json] [--model MODEL_ID] [--max-turns 12] [--allow-unverified-colors] [--physical-data measurements.json] [--no-mass-estimates] [--no-catalog-masses]\nRequires ANTHROPIC_API_KEY in the local environment. Sends prompt, assembly and tool-returned physical data to Anthropic. API usage is billed. By default uses catalogue-reported nominal weights, with explicit solid-envelope estimates only for missing masses, and rejects model-infeasible edits. Missing strength remains unknown. No browser secrets or model-controlled file paths.',
+    'Usage: pnpm claude:build "Build a small bridge" [--out output/bridge] [--input assembly.json] [--model MODEL_ID] [--max-turns 12] [--allow-unverified-colors] [--physical-data measurements.json] [--no-mass-estimates] [--no-catalog-masses] [--claude-code]\nUses ANTHROPIC_API_KEY from the local environment (API usage is billed). Without a key, or with --claude-code, runs through the Claude Agent SDK on your local Claude Code login and subscription limits. Sends prompt, assembly and tool-returned physical data to Anthropic. By default uses catalogue-reported nominal weights, with explicit solid-envelope estimates only for missing masses, and rejects model-infeasible edits. Missing strength remains unknown. No browser secrets or model-controlled file paths.',
   );
 } else {
   const prompt = positionals.join(' ').trim();
   if (!prompt) throw new Error('Provide a build prompt. Use --help for usage.');
-  if (!process.env.ANTHROPIC_API_KEY)
-    throw new Error(
-      'Set ANTHROPIC_API_KEY in your local environment. Never put it in a VITE_ variable or a browser bundle.',
-    );
   const maxTurns = Number(values['max-turns'] ?? 12);
   if (!Number.isInteger(maxTurns) || maxTurns < 1 || maxTurns > 32)
     throw new Error('--max-turns must be 1-32.');
@@ -55,13 +53,15 @@ if (values.help) {
       useCatalogMasses: !values['no-catalog-masses'],
     },
   });
-  const client = new Anthropic({ timeout: 60_000, maxRetries: 0 });
-  const result = await runClaudeBuild(
-    prompt,
-    session,
-    (request) => client.messages.create(request),
-    { model: values.model ?? process.env.CLAUDE_MODEL, maxTurns },
-  );
+  const buildOptions = { model: values.model ?? process.env.CLAUDE_MODEL, maxTurns };
+  let result;
+  if (useClaudeCode) {
+    console.log('Using the local Claude Code login (no ANTHROPIC_API_KEY).');
+    result = await runClaudeCodeBuild(prompt, session, buildOptions);
+  } else {
+    const client = new Anthropic({ timeout: 60_000, maxRetries: 0 });
+    result = await runClaudeBuild(prompt, session, (request) => client.messages.create(request), buildOptions);
+  }
   const directory = resolve(values.out ?? 'output/claude-build');
   await mkdir(directory, { recursive: true });
   await writeFile(

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vite-plus/test';
-import { validateAssembly } from '@lego-builder/brick-engine';
-import { createBuilderSession, runClaudeBuild } from './index.ts';
+import { MAX_BUILD_AREA, validateAssembly } from '@lego-builder/brick-engine';
+import { MODEL_TOOLS, createBuilderSession, runClaudeBuild } from './index.ts';
 import type { ClaudeTransport } from './index.ts';
 import Anthropic from '@anthropic-ai/sdk';
 
@@ -26,6 +26,86 @@ function message(
 }
 
 describe('Claude tool-use loop', () => {
+  it('sends bounded photo references with progress through the normal tool loop', async () => {
+    const events: unknown[] = [];
+    const requests: Anthropic.MessageCreateParamsNonStreaming[] = [];
+    const responses = [
+      message(
+        [{ type: 'tool_use', id: 'photo-brick', name: 'brick_place', input: placement }],
+        'tool_use',
+      ),
+      message([{ type: 'text', text: 'A simplified draft.', citations: null }], 'end_turn'),
+    ];
+    const result = await runClaudeBuild(
+      'Use this reference',
+      createBuilderSession(),
+      async (request) => {
+        requests.push(request);
+        return responses.shift()!;
+      },
+      {
+        images: [{ mediaType: 'image/png', data: 'aW1hZ2U=' }],
+        onProgress: (event) => events.push(event),
+      },
+    );
+    expect(requests[0].messages[0].content).toEqual([
+      expect.objectContaining({ type: 'text' }),
+      { type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'aW1hZ2U=' } },
+    ]);
+    expect(events).toContainEqual({
+      type: 'tool',
+      turn: 1,
+      tool: 'brick_place',
+      ok: true,
+      revision: 1,
+      pieces: 1,
+    });
+    expect(events).toContainEqual({ type: 'usage', inputTokens: 20, cachedInputTokens: 0, outputTokens: 10 });
+    expect(result.complete).toBe(true);
+  });
+
+  it('rejects malformed or oversized references before transport', async () => {
+    let calls = 0;
+    const transport: ClaudeTransport = async () => {
+      calls += 1;
+      return message([], 'end_turn');
+    };
+    for (const images of [
+      Array(5).fill({ mediaType: 'image/png', data: 'aW1hZ2U=' }),
+      [{ mediaType: 'image/svg+xml', data: 'aW1hZ2U=' }],
+      [{ mediaType: 'image/png', data: 'not-base64' }],
+    ]) {
+      await expect(
+        runClaudeBuild('Build', createBuilderSession(), transport, { images: images as never }),
+      ).rejects.toThrow();
+    }
+    expect(calls).toBe(0);
+  });
+
+  it('cancels before executing returned tools and propagates the abort signal', async () => {
+    const controller = new AbortController();
+    const session = createBuilderSession();
+    const result = await runClaudeBuild(
+      'Build',
+      session,
+      async (_request, options) => {
+        expect(options?.signal).toBe(controller.signal);
+        controller.abort();
+        return message(
+          [{ type: 'tool_use', id: 'late', name: 'brick_place', input: placement }],
+          'tool_use',
+        );
+      },
+      { signal: controller.signal },
+    );
+    expect(result).toMatchObject({
+      complete: false,
+      reason: 'cancelled',
+      trace: [],
+      assembly: { bricks: [] },
+    });
+  });
+
   it('sends technique instructions and selected guide content through the actual tool loop', async () => {
     const requests: Anthropic.MessageCreateParamsNonStreaming[] = [];
     const transport: ClaudeTransport = async (request) => {
@@ -132,7 +212,7 @@ describe('Claude tool-use loop', () => {
         { type: 'tool_result', tool_use_id: 'top', is_error: false },
       ],
     });
-    expect(result.usage).toEqual({ inputTokens: 20, outputTokens: 10 });
+    expect(result.usage).toEqual({ inputTokens: 20, cachedInputTokens: 0, outputTokens: 10 });
   });
   it('reports rejected tools as errors and lets Claude revise without trusting its claims', async () => {
     const responses = [
@@ -317,9 +397,21 @@ describe('headless Claude builder tools', () => {
       },
     });
     expect(session.snapshot()).toEqual(before);
-    expect(session.runTool('brick_apply_patch', { expectedRevision: 0, operations })).toMatchObject(
-      { ok: true, revision: 1 },
-    );
+    const applied = session.runTool('brick_apply_patch', { expectedRevision: 0, operations });
+    expect(applied).toMatchObject({ ok: true, revision: 1 });
+    // Only the changes come back, as compact rows, not the whole assembly.
+    expect((applied as { data: Record<string, unknown> }).data.assembly).toBeUndefined();
+    expect((applied as { data: { changes: unknown } }).data.changes).toMatchObject({
+      pieceCount: 2,
+      added: [expect.arrayContaining(['foundation']), expect.arrayContaining(['upper'])],
+      updated: [],
+      removed: [],
+    });
+    const region = session.runTool('brick_inspect', { region: { minY: 1 } }) as {
+      data: { pieceCount: number; bricks: { rows: unknown[][] } };
+    };
+    expect(region.data.pieceCount).toBe(2);
+    expect(region.data.bricks.rows.map((row) => row[0])).toEqual(['upper']);
     const built = session.snapshot();
     expect(built.bricks.map((brick) => brick.id)).toEqual(['foundation', 'upper']);
     expect(
@@ -414,7 +506,7 @@ describe('headless Claude builder tools', () => {
     expect(session.runTool('brick_catalog', {})).toMatchObject({
       ok: true,
       data: {
-        capabilities: { insertFrames: { '4035': '60593' }, staticGravity: { maxPieces: 200 } },
+        capabilities: { insertFrames: { '60602': '60593' }, staticGravity: { maxPieces: 200 } },
       },
     });
     const before = session.snapshot();
@@ -557,7 +649,7 @@ describe('headless Claude builder tools', () => {
     expect(session.runTool('brick_place', { ...placement, x: 63, z: 60 }).ok).toBe(false);
     expect(session.snapshot()).toEqual(before);
     expect(createBuilderSession().runTool('brick_place', { ...placement, x: 60 }).ok).toBe(false);
-    expect(() => createBuilderSession({ name: 'Bad board', bricks: [], buildArea: 65 })).toThrow(
+    expect(() => createBuilderSession({ name: 'Bad board', bricks: [], buildArea: MAX_BUILD_AREA + 1 })).toThrow(
       'Invalid initial assembly',
     );
   });
@@ -577,27 +669,19 @@ describe('headless Claude builder tools', () => {
     });
   });
   it('exposes and places new families without claiming shaped contact physics', () => {
-    const catalogue = createBuilderSession().runTool('brick_catalog', {});
-    expect(catalogue).toMatchObject({
-      ok: true,
-      data: {
-        parts: expect.arrayContaining([
-          expect.objectContaining({ id: '2453b', height: 15, family: 'tall', shape: 'box' }),
-          expect.objectContaining({
-            id: '3039',
-            family: 'slope',
-            shape: 'slope',
-            contactPhysics: 'not-assessed',
-          }),
-          expect.objectContaining({
-            id: '3062b',
-            family: 'round',
-            shape: 'round',
-            contactPhysics: 'not-assessed',
-          }),
-        ]),
-      },
-    });
+    const catalogue = createBuilderSession().runTool('brick_catalog', {}) as {
+      data: { partColumns: string[]; partRows: unknown[][] };
+    };
+    const rows = catalogue.data.partRows.map((row) =>
+      Object.fromEntries(catalogue.data.partColumns.map((column, index) => [column, row[index]])),
+    );
+    expect(rows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: '2453b', height: 15, family: 'tall', shape: 'box' }),
+        expect.objectContaining({ id: '3039', family: 'slope', shape: 'slope', contactPhysics: 'not-assessed' }),
+        expect.objectContaining({ id: '3062b', family: 'round', shape: 'round', contactPhysics: 'not-assessed' }),
+      ]),
+    );
     for (const partId of ['2453b', '3039', '3062b']) {
       const session = createBuilderSession();
       expect(session.runTool('brick_place', { ...placement, partId }).ok).toBe(true);
@@ -756,17 +840,18 @@ describe('headless Claude builder tools', () => {
   });
   it('exposes tile connectors and places observed-color tiles without allowing stud support above them', () => {
     const session = createBuilderSession();
-    expect(session.runTool('brick_catalog', {})).toMatchObject({
+    expect(session.runTool('brick_catalog', {})).toMatchObject({ data: { parts: [] } });
+    expect(session.runTool('brick_catalog', { partIds: ['87079'] })).toMatchObject({
       ok: true,
       data: {
-        parts: expect.arrayContaining([
+        parts: [
           expect.objectContaining({
             id: '87079',
             kind: 'tile',
-            connections: { topStuds: [], bottomReceivers: expect.any(Array) },
+            connections: { topStuds: [], bottomReceivers: 'full' },
             observedColors: expect.arrayContaining([4]),
           }),
-        ]),
+        ],
       },
     });
     expect(session.runTool('brick_place', placement)).toMatchObject({ ok: true, revision: 1 });
@@ -846,6 +931,52 @@ describe('headless Claude builder tools', () => {
       data: { colorStatus: { rendering: 'recognized', manufactured: 'unknown', stock: 'unknown' } },
     });
   });
+  it('keeps a reference 3D model behind tools and sends only the missing regions', async () => {
+    const requests: Anthropic.MessageCreateParamsNonStreaming[] = [];
+    const transport: ClaudeTransport = async (request) => {
+      requests.push(structuredClone(request));
+      return message([{ type: 'text', text: 'Refined.', citations: null }], 'end_turn');
+    };
+    // A two-layer model; the build covers its bottom layer with one 1 x 2 brick.
+    const reference = {
+      model: { name: 'Model', width: 2, depth: 1, layers: 2, cells: [4, 4, 4, null] },
+      origin: { x: 0, z: 0 },
+    };
+    const shell = {
+      name: 'Shell',
+      bricks: [{ id: 'a', partId: '3004', color: 4, x: 0, y: 0, z: 0, rotation: 90 }],
+    };
+    const session = createBuilderSession(shell, { reference });
+    await runClaudeBuild('Refine the shell.', session, transport);
+    const first = requests[0].messages[0].content as string;
+    expect(first).toContain('Reference 3D model');
+    expect(first).toContain('"missingCells":1');
+    expect(first).toContain('"y":[3,6]');
+    expect(session.runTool('model_layer', { layer: 1 })).toMatchObject({
+      ok: true,
+      data: expect.stringContaining('Model:\na.\nBuild:\n..'),
+    });
+    expect(session.runTool('model_layer', { layer: 2 })).toMatchObject({ ok: false });
+    expect(createBuilderSession().runTool('model_gaps', {})).toMatchObject({
+      ok: false,
+      error: { code: 'no_reference' },
+    });
+  });
+
+  it('sends compact part and color references to Claude but still validates them strictly', () => {
+    const place = MODEL_TOOLS.find((tool) => tool.name === 'brick_place');
+    expect(JSON.stringify(MODEL_TOOLS)).not.toContain('"3001"');
+    expect(place?.input_schema.properties).toMatchObject({
+      partId: { type: 'string', description: 'Part ID from brick_catalog.' },
+    });
+    const session = createBuilderSession();
+    expect(session.runTool('brick_place', { ...placement, partId: 'not-a-part' })).toMatchObject({
+      ok: false,
+      error: { code: 'invalid_input' },
+    });
+    expect(session.snapshot().bricks).toHaveLength(0);
+  });
+
   it('isolates returned snapshots, respects piece limits, and cannot execute unknown tools', () => {
     const session = createBuilderSession(undefined, { maxPieces: 1 });
     session.runTool('brick_place', placement);
