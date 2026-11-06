@@ -1,0 +1,445 @@
+import {
+  AmbientLight,
+  Box3,
+  DirectionalLight,
+  Group,
+  InstancedMesh,
+  LineSegments,
+  Mesh,
+  MeshBasicMaterial,
+  MeshStandardMaterial,
+  OrthographicCamera,
+  PMREMGenerator,
+  Scene,
+  Vector3,
+  WebGLRenderTarget,
+  WebGLRenderer,
+} from 'three';
+import type { Object3D } from 'three';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { COLORS, PLATE_HEIGHT, footprint, getLDrawTransform } from '@lego-builder/brick-engine';
+import type { Assembly, Brick } from '@lego-builder/brick-engine';
+import { createFallbackGeometry } from '../fallback-geometry';
+import { coloredLDrawModel, loadLDrawModels } from '../ldraw';
+import { canBatchLDrawModel, createLDrawBatch } from '../ldraw-batches';
+import { colorMaterialProperties } from '../ldraw-materials';
+import { rgbCss } from './layout';
+import type { Rgb } from './layout';
+
+/**
+ * The four sides the model is shown from, a quarter turn apart, all looking down at the same
+ * angle. The first matches the workshop's opening view.
+ */
+const VIEWS = [
+  new Vector3(0.65, 0.55, -0.8),
+  new Vector3(0.8, 0.55, 0.65),
+  new Vector3(-0.65, 0.55, 0.8),
+  new Vector3(-0.8, 0.55, -0.65),
+].map((view) => view.normalize());
+
+/** Edges live on their own layer so visibility checks count faces only. */
+const EDGE_LAYER = 1;
+/** Loose pieces are merged into instanced batches once this many have piled up. */
+const BATCH_THRESHOLD = 300;
+/** Early steps zoom in on the first pieces, but never more than this past the finished model. */
+const MAX_ZOOM = 2.5;
+const VISIBILITY_SIZE = 160;
+/** Outline around each step's new pieces: a vivid pink-red few bricks share. */
+const HIGHLIGHT = [255, 45, 85, 255];
+
+export interface StepImage {
+  url: string;
+  /** Quarter turns from the previous step's view: 1 is clockwise seen from above. */
+  turn: -1 | 0 | 1 | 2;
+}
+
+function brickBounds(brick: Brick) {
+  const size = footprint(brick);
+  return new Box3(
+    new Vector3(brick.x, brick.y * PLATE_HEIGHT, brick.z),
+    new Vector3(
+      brick.x + size.width,
+      (brick.y + size.height) * PLATE_HEIGHT + 0.17,
+      brick.z + size.depth,
+    ),
+  );
+}
+
+function corners(box: Box3) {
+  return [0, 1, 2, 3, 4, 5, 6, 7].map(
+    (index) =>
+      new Vector3(
+        index & 1 ? box.max.x : box.min.x,
+        index & 2 ? box.max.y : box.min.y,
+        index & 4 ? box.max.z : box.min.z,
+      ),
+  );
+}
+
+export class ManualRenderer {
+  private readonly renderer = new WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+  private readonly scene = new Scene();
+  private readonly camera = new OrthographicCamera();
+  private readonly placed = new Group();
+  private readonly fresh = new Group();
+  private readonly target = new WebGLRenderTarget(VISIBILITY_SIZE, VISIBILITY_SIZE);
+  private readonly highlightTarget = new WebGLRenderTarget(1, 1);
+  private readonly canvas = document.createElement('canvas');
+  private readonly colored = new Map<string, Group>();
+  private readonly owned: { dispose(): void }[] = [];
+  private readonly bricks: Map<string, Brick>;
+  private readonly finalBounds = new Box3();
+  private readonly bounds = new Box3();
+  private loose: { brick: Brick; object: Object3D }[] = [];
+  private view = 0;
+  private readonly models: Record<string, Group>;
+
+  private constructor(assembly: Assembly, models: Record<string, Group>) {
+    this.models = models;
+    this.bricks = new Map(assembly.bricks.map((brick) => [brick.id, brick]));
+    for (const brick of assembly.bricks) this.finalBounds.union(brickBounds(brick));
+    this.renderer.setPixelRatio(1);
+    const environment = new RoomEnvironment();
+    const pmrem = new PMREMGenerator(this.renderer);
+    this.scene.environment = pmrem.fromScene(environment).texture;
+    this.owned.push(this.scene.environment, this.target, this.highlightTarget, this.renderer);
+    environment.dispose();
+    pmrem.dispose();
+    this.scene.add(new AmbientLight(0xffffff, 0.6));
+    const key = new DirectionalLight(0xffffff, 1.8);
+    key.position.set(8, 14, -10);
+    const fill = new DirectionalLight(0xffffff, 0.6);
+    fill.position.set(-10, 4, 8);
+    this.scene.add(key, fill, this.placed, this.fresh);
+    this.camera.layers.enable(EDGE_LAYER);
+  }
+
+  /** Loads the build's parts; pieces whose geometry can't load are drawn as simple shapes. */
+  static async create(assembly: Assembly) {
+    const ids = [...new Set(assembly.bricks.map((brick) => brick.partId))];
+    const models: Record<string, Group> = {};
+    const settled = await Promise.allSettled(ids.map((id) => loadLDrawModels([id])));
+    for (const result of settled)
+      if (result.status === 'fulfilled') Object.assign(models, result.value);
+    return {
+      renderer: new ManualRenderer(assembly, models),
+      missing: ids.filter((id) => !models[id]),
+    };
+  }
+
+  private coloredModel(partId: string, color: number) {
+    const key = `${partId}:${color}`;
+    let model = this.colored.get(key);
+    if (!model) {
+      model = coloredLDrawModel(this.models[partId], color);
+      this.colored.set(key, model);
+    }
+    return model;
+  }
+
+  private createPiece(brick: Brick): Object3D {
+    let piece: Object3D;
+    if (this.models[brick.partId]) {
+      const instance = this.coloredModel(brick.partId, brick.color).clone();
+      const transform = getLDrawTransform(brick);
+      instance.position.set(transform.x, transform.y, transform.z);
+      instance.rotation.y = (transform.rotation * Math.PI) / 180;
+      piece = new Group();
+      // LDraw's y axis points down and its units are 20 to a stud.
+      piece.scale.set(0.05, -0.05, 0.05);
+      piece.add(instance);
+    } else {
+      const size = footprint(brick);
+      const geometry = createFallbackGeometry(brick);
+      const material = new MeshStandardMaterial(
+        colorMaterialProperties(COLORS.find((color) => color.id === brick.color)!),
+      );
+      this.owned.push(geometry, material);
+      piece = new Mesh(geometry, material);
+      piece.position.set(
+        brick.x + size.width / 2,
+        (brick.y + size.height / 2) * PLATE_HEIGHT,
+        brick.z + size.depth / 2,
+      );
+    }
+    piece.traverse((object) => {
+      if (object instanceof LineSegments) object.layers.set(EDGE_LAYER);
+    });
+    return piece;
+  }
+
+  /** Merges loose opaque LDraw pieces into one instanced batch per part and color. */
+  private consolidate() {
+    const groups = new Map<string, Brick[]>();
+    const remaining: typeof this.loose = [];
+    for (const entry of this.loose) {
+      const { brick } = entry;
+      const model = this.models[brick.partId];
+      if (
+        !model ||
+        !canBatchLDrawModel(model) ||
+        COLORS.find((color) => color.id === brick.color)?.alpha !== 255
+      ) {
+        remaining.push(entry);
+        continue;
+      }
+      this.placed.remove(entry.object);
+      const key = `${brick.partId}:${brick.color}`;
+      const list = groups.get(key);
+      if (list) list.push(brick);
+      else groups.set(key, [brick]);
+    }
+    for (const bricks of groups.values()) {
+      const batch = createLDrawBatch(
+        bricks,
+        this.coloredModel(bricks[0].partId, bricks[0].color),
+        0,
+      );
+      batch.traverse((object) => {
+        if (object instanceof LineSegments) {
+          object.layers.set(EDGE_LAYER);
+          this.owned.push(object.geometry);
+        } else if (object instanceof InstancedMesh) {
+          this.owned.push(object);
+        }
+      });
+      this.placed.add(batch);
+    }
+    this.loose = remaining;
+  }
+
+  /** Points the camera at a box from one of the four views, filling the given aspect. */
+  private frame(box: Box3, view: number, aspect: number, minimum?: Box3) {
+    const center = box.getCenter(new Vector3());
+    const radius = Math.max(this.finalBounds.getSize(new Vector3()).length(), 1);
+    this.camera.position.copy(center).addScaledVector(VIEWS[view], radius * 2);
+    this.camera.up.set(0, 1, 0);
+    this.camera.lookAt(center);
+    this.camera.updateMatrixWorld();
+    const extent = (target: Box3) => {
+      const projected = new Box3().setFromPoints(
+        corners(target).map((corner) => corner.applyMatrix4(this.camera.matrixWorldInverse)),
+      );
+      return projected;
+    };
+    const projected = extent(box);
+    let halfWidth = (projected.max.x - projected.min.x) / 2;
+    let halfHeight = (projected.max.y - projected.min.y) / 2;
+    if (minimum) {
+      const full = extent(minimum);
+      halfWidth = Math.max(halfWidth, (full.max.x - full.min.x) / 2 / MAX_ZOOM);
+      halfHeight = Math.max(halfHeight, (full.max.y - full.min.y) / 2 / MAX_ZOOM);
+    }
+    halfWidth = Math.max(halfWidth, halfHeight * aspect) * 1.08;
+    halfHeight = halfWidth / aspect;
+    const middleX = (projected.max.x + projected.min.x) / 2;
+    const middleY = (projected.max.y + projected.min.y) / 2;
+    Object.assign(this.camera, {
+      left: middleX - halfWidth,
+      right: middleX + halfWidth,
+      top: middleY + halfHeight,
+      bottom: middleY - halfHeight,
+      near: 0.1,
+      far: radius * 4,
+    });
+    this.camera.updateProjectionMatrix();
+  }
+
+  /**
+   * Renders the new pieces white on black into a target, behind the build so far when
+   * `withPlaced` is set, and returns its pixels (rows bottom-up, RGBA).
+   */
+  private mask(target: WebGLRenderTarget, withPlaced: boolean) {
+    const { renderer, scene, camera } = this;
+    const environment = scene.environment;
+    const black = new MeshBasicMaterial({ color: 0x000000 });
+    const white = new MeshBasicMaterial({ color: 0xffffff });
+    scene.environment = null;
+    camera.layers.set(0);
+    renderer.setRenderTarget(target);
+    renderer.setClearColor(0x000000, 1);
+    renderer.clear();
+    renderer.autoClear = false;
+    try {
+      if (withPlaced) {
+        this.fresh.visible = false;
+        scene.overrideMaterial = black;
+        renderer.render(scene, camera);
+        this.fresh.visible = true;
+      }
+      this.placed.visible = false;
+      scene.overrideMaterial = white;
+      renderer.render(scene, camera);
+      const pixels = new Uint8Array(target.width * target.height * 4);
+      renderer.readRenderTargetPixels(target, 0, 0, target.width, target.height, pixels);
+      return pixels;
+    } finally {
+      renderer.autoClear = true;
+      scene.overrideMaterial = null;
+      black.dispose();
+      white.dispose();
+      this.placed.visible = true;
+      renderer.setRenderTarget(null);
+      camera.layers.enable(EDGE_LAYER);
+      scene.environment = environment;
+    }
+  }
+
+  /** Share of the new pieces' pixels a view shows past the build so far. */
+  private visibility(view: number, aspect: number) {
+    this.frame(this.bounds, view, aspect, this.finalBounds);
+    const count = (withPlaced: boolean) => {
+      const pixels = this.mask(this.target, withPlaced);
+      let total = 0;
+      for (let index = 0; index < pixels.length; index += 4) if (pixels[index] > 127) total++;
+      return total;
+    };
+    const alone = count(false);
+    return alone ? count(true) / alone : 0;
+  }
+
+  /**
+   * Draws a ring in the highlight color around the new pieces' visible silhouette, so a
+   * single small piece stands out in a large model.
+   */
+  private outline(context: CanvasRenderingContext2D, width: number, height: number) {
+    this.highlightTarget.setSize(width, height);
+    const pixels = this.mask(this.highlightTarget, true);
+    const inside = new Uint8Array(width * height);
+    for (let row = 0; row < height; row++)
+      for (let column = 0; column < width; column++)
+        // Render target rows run bottom-up; the canvas's run top-down.
+        inside[(height - 1 - row) * width + column] =
+          pixels[(row * width + column) * 4] > 127 ? 1 : 0;
+    const radius = Math.max(2, Math.round(Math.max(width, height) / 350));
+    // Dilate with a box: a running count along rows, then along columns.
+    const rows = new Uint8Array(width * height);
+    for (let row = 0; row < height; row++) {
+      let count = 0;
+      for (let column = -radius; column < width; column++) {
+        const entering = column + radius;
+        if (entering < width) count += inside[row * width + entering];
+        if (column - radius - 1 >= 0) count -= inside[row * width + column - radius - 1];
+        if (column >= 0) rows[row * width + column] = count > 0 ? 1 : 0;
+      }
+    }
+    const image = context.getImageData(0, 0, width, height);
+    for (let column = 0; column < width; column++) {
+      let count = 0;
+      for (let row = -radius; row < height; row++) {
+        const entering = row + radius;
+        if (entering < height) count += rows[entering * width + column];
+        if (row - radius - 1 >= 0) count -= rows[(row - radius - 1) * width + column];
+        if (row < 0) continue;
+        const index = row * width + column;
+        if (count > 0 && !inside[index]) image.data.set(HIGHLIGHT, index * 4);
+      }
+    }
+    context.putImageData(image, 0, 0);
+  }
+
+  /** Renders the camera's view onto a flat background as a JPEG. */
+  private capture(width: number, height: number, background: Rgb, highlight = false) {
+    this.renderer.setSize(width, height, false);
+    this.renderer.setClearColor(0x000000, 0);
+    this.renderer.render(this.scene, this.camera);
+    // Composite in 2D so the background is exactly the page color the PDF draws around it.
+    this.canvas.width = width;
+    this.canvas.height = height;
+    const context = this.canvas.getContext('2d', { willReadFrequently: true })!;
+    context.fillStyle = rgbCss(background);
+    context.fillRect(0, 0, width, height);
+    context.drawImage(this.renderer.domElement, 0, 0);
+    if (highlight) this.outline(context, width, height);
+    return this.canvas.toDataURL('image/jpeg', 0.9);
+  }
+
+  /**
+   * Adds a step's pieces to the model and renders it. Steps must be rendered in order. The
+   * view only turns when another side shows clearly more of the new pieces.
+   */
+  renderStep(
+    brickIds: readonly string[],
+    width: number,
+    height: number,
+    background: Rgb,
+  ): StepImage {
+    const added = brickIds.map((id) => {
+      const brick = this.bricks.get(id);
+      if (!brick) throw new Error(`Unknown piece in step: ${id}`);
+      const object = this.createPiece(brick);
+      this.fresh.add(object);
+      this.bounds.union(brickBounds(brick));
+      return { brick, object };
+    });
+    const aspect = width / height;
+    const previous = this.view;
+    const current = this.visibility(this.view, aspect);
+    if (current < 0.7) {
+      let best = current;
+      for (let view = 0; view < VIEWS.length; view++) {
+        if (view === previous) continue;
+        const score = this.visibility(view, aspect);
+        if (score > best + 0.2) {
+          best = score;
+          this.view = view;
+        }
+      }
+    }
+    this.frame(this.bounds, this.view, aspect, this.finalBounds);
+    const url = this.capture(width, height, background, this.placed.children.length > 0);
+    for (const entry of added) {
+      this.fresh.remove(entry.object);
+      this.placed.add(entry.object);
+      this.loose.push(entry);
+    }
+    if (this.loose.length >= BATCH_THRESHOLD) this.consolidate();
+    const turn = ((this.view - previous + 4) % 4) as 0 | 1 | 2 | 3;
+    return { url, turn: turn === 3 ? -1 : turn };
+  }
+
+  /**
+   * The whole model so far from one of the four sides, on a transparent background. Returns
+   * the renderer's own canvas, valid until the next render.
+   */
+  renderModel(view: number, width: number, height: number): HTMLCanvasElement {
+    this.frame(this.bounds.isEmpty() ? this.finalBounds : this.bounds, view, width / height);
+    this.renderer.setSize(width, height, false);
+    this.renderer.setClearColor(0x000000, 0);
+    this.renderer.render(this.scene, this.camera);
+    return this.renderer.domElement;
+  }
+
+  /** One piece on its own, seen like the model, for parts callouts and the parts list. */
+  renderPart(partId: string, color: number, size: number, background: Rgb) {
+    const brick: Brick = { id: 'part', partId, color, x: 0, y: 0, z: 0, rotation: 0 };
+    const piece = this.createPiece(brick);
+    const stage = new Group();
+    stage.add(piece);
+    this.placed.visible = false;
+    this.fresh.visible = false;
+    this.scene.add(stage);
+    try {
+      const box = new Box3().setFromObject(piece);
+      this.frame(box.isEmpty() ? brickBounds(brick) : box, 0, 1);
+      return this.capture(size, size, background);
+    } finally {
+      this.scene.remove(stage);
+      this.placed.visible = true;
+      this.fresh.visible = true;
+    }
+  }
+
+  dispose() {
+    for (const model of this.colored.values())
+      model.traverse((object) => {
+        if (object instanceof Mesh || object instanceof LineSegments)
+          for (const material of Array.isArray(object.material)
+            ? object.material
+            : [object.material])
+            material.dispose();
+      });
+    for (const resource of this.owned) resource.dispose();
+    this.renderer.forceContextLoss();
+  }
+}
