@@ -15,6 +15,113 @@ pnpm dev
 Open the URL printed by the development server, normally http://localhost:5173.
 The project-local Vite Plus CLI is included; a global installation is optional.
 
+## Web AI Workflow
+
+The workshop now supports assembly JSON import, photo references and AI draft
+generation. Run these commands in separate terminals from the workspace root:
+
+```sh
+pnpm workshop:server
+pnpm dev
+```
+
+Set `ANTHROPIC_API_KEY` privately in the API server's environment or the existing
+local ignored environment file. Optional `CLAUDE_MODEL` selects the server model.
+Never put credentials in `VITE_` variables or browser code. The API binds only
+to `127.0.0.1:8787`; Vite proxies `/api/workshop` without exposing credentials.
+`WORKSHOP_API_PORT` changes the API port and proxy target; restart both servers
+after changing it. The UI reports offline, missing-key and busy states. This is
+a local development/preview workflow, not an authenticated public service.
+
+Without `ANTHROPIC_API_KEY`, the server runs builds through the Claude Agent SDK
+on your local Claude Code login and subscription limits instead of billed API
+usage. Claude then sees only the engine tools: Claude Code's built-in tools, your
+settings, other MCP servers and session persistence are disabled. Subscription
+login is for personal local use; use an API key for anything shared or hosted.
+
+**Import** accepts raw assemblies or version-1 workshop/CLI JSON exports, at most
+2 MB and 50,000 pieces. Shapes, IDs, coordinates, board bounds and geometry are
+validated by the shared `importAssembly` engine API. Imported evidence, physical
+policy and certification metadata are not adopted: the current workshop policy
+is rechecked before a single undoable replacement. Rejected imports leave the
+current build and history unchanged. LDraw, GLB, OBJ and STL import are not yet
+supported.
+
+**Saving.** The current build, including applied AI drafts, is autosaved in the
+browser and restored on reload. **File → Save** (⌘S) writes it to `builds/<name>.json`
+in the workspace (override with `WORKSHOP_BUILDS_PATH`); later saves update the same
+file, and a new build never overwrites another. Saved builds are listed under
+**File** and in the empty-board menu, and are ordinary version-1 assembly documents
+that **Import** also reads. They carry the runtime library parts they use. The
+folder is served by the Vite dev and preview servers only, not by a static build.
+Examples remain code in `packages/brick-engine/src/examples` and are never saved over.
+
+**Generate** opens a separate reference/draft workspace. Start empty on the
+current board, continue the current assembly or revise the previous draft.
+Choose a brief, piece budget (default 200, maximum 50,000), turn limit (default 12,
+maximum 32) and observed-color requirement. The current host physics/evidence
+settings remain authoritative; strict observed-color continuation can reject
+examples containing unmapped colors. Each request allows 4,096 output tokens;
+usage counters are token totals, not a monetary spending cap.
+
+Up to four optional JPEG, PNG or WebP photos are prepared locally. Original
+files must be under 5 MB and at most 16 megapixels. Photos are resized to at most
+1536 pixels per side and re-encoded; server decoding independently validates
+them, rejects animation and strips metadata. Encoded references are bounded to
+2 MB each and complete requests to 12 MB. Files are held in memory, not saved.
+No prompt, build, photo or policy data is sent to Anthropic until explicit
+consent and generation. Normal API charges apply, including for cancelled runs.
+
+Progress includes turns, accepted/rejected tools and token usage. Only one run
+is permitted at a time; browser disconnect/cancellation aborts pending transport
+and prevents later tool mutations. API calls have a 60-second timeout, no retries,
+and a complete web run has a five-minute deadline. Earlier completed drafts in
+the dialog survive cancellation/errors; partial results remain labeled partial.
+
+Review native/fallback draft geometry, reference photos, views and assessments
+before **Apply draft**. Application rechecks the latest host policy and refuses
+to overwrite a build changed since the dialog opened. Exported drafts can also
+be imported later. Drafts are never certified construction instructions or
+physical tests, and image resemblance is not guaranteed. Persistent conversations
+and marketplace inventory remain future work.
+
+### Building Instructions
+
+**Export → Building instructions…** opens a separate tool (`/instructions.html`) that turns
+the current build, a saved build or an example into a printable PDF manual. Choose the page
+size (A5, A4, A3, US Letter, US Legal), orientation and step size (Small, Standard or Large:
+up to 4, 6 or 8 pieces per step). A medium build of about 380 pieces takes roughly 80–130 steps.
+
+`planInstructionSteps` in the engine orders the pieces so each one is placed after everything
+it rests on (and inserts after their frames), starts each step near the previous one, and
+groups only nearby pieces at the same height with a limited number of part kinds. Each step is
+rendered from the build's LDraw parts with its new pieces outlined. The view turns a quarter
+(marked with an arrow) when another side shows the new pieces clearly better. The manual has
+a cover and back cover, a parts callout per step, and a parts list at the end. Its colors
+come from the build's most used colorful brick. Everything renders locally in the browser.
+
+### 3D Model Conversion
+
+**Add 3D model** accepts SketchUp (`.skp`), COLLADA (`.dae`) and binary glTF
+(`.glb`) files, such as 3D Warehouse downloads. Conversion runs entirely in the
+browser without AI or tokens: `.skp` files are read with the reverse-engineered
+[openskp](https://github.com/iamahsanmehmood/openskp) parser, so if one fails,
+download the COLLADA version instead. The model surface is sampled into cells of
+one stud by one brick (real proportions: a brick is 1.2 studs tall), with the
+widest scale that fits 127 brick layers and the conversion piece budget (at most
+**Max width in studs**, and no wider than minifig scale, about 34 cm per stud, when
+**Minifig scale** is on), and each cell takes the nearest allowed brick color.
+Terrain, hidden tags and objects separate from the model (scale figures) are left
+out. `fillVoxelModel` then fills each layer with the largest wall bricks that fit,
+steps sloped roofs and puts 45-degree slopes on their edges, and frames detected
+doors and windows (recesses in the walls) with standard frames. Cells still
+without support are left out. **Revise draft** sends the draft and the model to
+the workshop server, but Claude's first message only carries a summary and the
+regions of the model the build does not cover yet; Claude reads individual layers
+(`model_layer`), recomputes the gaps (`model_gaps`) and inspects bricks by region
+on demand, so large models do not fill the conversation. COLLADA textures in
+separate files are not loaded, so those models use their material colors. Respect each model's licence.
+
 ## Workspace
 
 - `apps/web`: 3D assembly viewer, part palette, placement preview, layer
@@ -40,7 +147,7 @@ pnpm build      # Typecheck, web build, standalone engine build
 pnpm fmt       # Format the workspace
 ```
 
-Engine tests construct the complete 164-design catalogue sampler through
+Engine tests construct the complete 170-design catalogue sampler through
 `placeBrick`, placing every supported part exactly once on a 64 x 64 board at
 Y=0 with half-stud gaps. This includes all supported tiles, architectural
 details and foliage. Focused tests separately cover connection, support-removal
@@ -52,14 +159,16 @@ The same definitions are available in the workshop's **Load example** dropdown,
 alongside Courtyard House. Loading an example resets the view and placement
 preview and can be undone. These checks are not physical-strength certification.
 
-| Example         | Pieces | Detail                                                                                                                                                     |
-| --------------- | ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Courtyard House | 306    | Two-storey medieval hall, half-timbering, watchtower, stepped slate roof, chimney, well and furnished courtyard; 35 designs, eight colors, 49 plates high. |
-| Catalog sampler | 164    | Every supported design exactly once, including all architectural details and foliage, on one 64 x 64 ground-level board.                                   |
+| Example             | Pieces | Detail                                                                                                                                                                                                                                     |
+| ------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Courtyard House     | 383    | Stone hall with corbelled, jettied half-timbered upper storey, stepped slate roof and chimney; crenellated watchtower with brazier; gated wall, roofed well, vegetable garden with scarecrow, tree; 46 designs, 17 colors, 48 plates high. |
+| Catalog sampler     | 170    | Every supported design exactly once, including all architectural details and foliage, on one 64 x 64 ground-level board.                                                                                                                   |
+| Seaside Lighthouse  | 399    | Striped tower with gallery, lantern and cone roof on a rocky island, keeper's cottage, jetty, rowboat, buoy and garden; 46 designs, 16 colors, 64 plates high.                                                                             |
+| Flower Market Stall | 351    | Booth with bonded shelf, striped stepped awning and sign, flower buckets, pots, crates, shade tree, lamp, bench and cobbled square; 36 designs, 16 colors.                                                                                 |
 
 Examples validate geometry, not every manufacturing combination or physical
 strength requirement. Medieval colors outside the six mapped colors and the
-two ambiguous legacy doors retain unknown manufacturing evidence.
+unmapped doors retain unknown manufacturing evidence.
 
 ## Workshop Performance
 
@@ -76,7 +185,7 @@ part/color diversity, and picking still considers individual instances.
 The canvas renders on demand, including orbit movement, selection and edits.
 
 Startup loads only the designs used by the initial assembly plus the selected
-part (currently 36 designs for Courtyard House), not all 164 supported designs.
+part (currently 47 designs for Courtyard House), not all 170 supported designs.
 Supported parts share selective manifests and cached model promises; selecting
 or placing another design loads only missing geometry while retaining the
 current scene. Failed model requests are evicted so later requests can retry.
@@ -99,7 +208,7 @@ Loading and GPU preparation can still involve synchronous work; the loading
 screen does not move that work to a worker.
 
 Performance changes do not relax geometry validation, the Claude adapter's
-500-piece limit, the static solver's 200-piece limit, or certification rules.
+50,000-piece limit, the static solver's 200-piece limit, or certification rules.
 
 ## Adding Examples
 
@@ -132,7 +241,7 @@ copy of the validated template on subsequent loads. The registry rejects duplica
 metadata/placements, and mismatched piece counts, and returns fresh assemblies
 on every load. `EXAMPLES` exposes immutable metadata without the build functions.
 Set optional `buildArea` on an example to choose a whole-number square board
-from 16 to 64 studs. The registry retains it on the assembly and metadata.
+from 16 to 128 studs. The registry retains it on the assembly and metadata.
 
 Common engine tests run for every registered example: validity, reverse input
 order, bill of materials, exports, invalid placements, and reverse disassembly.
@@ -144,9 +253,9 @@ belong in rejection tests rather than the loadable example registry.
 
 Positions use studs for X/Z and plate units for Y, all in increments of 0.5. One plate is
 3.2 mm; one brick is three plates. The default board is 16 x 16 studs;
-optional `Assembly.buildArea` selects a square board from 16 to 64 studs.
+optional `Assembly.buildArea` selects a square board from 16 to 128 studs.
 `getBuildArea` resolves the current dimension; `MAX_BUILD_AREA` is 64.
-The maximum height remains 60 plates. X/Z describe the minimum corner of a rotated reserved footprint.
+The maximum height is 384 plates (128 bricks). X/Z describe the minimum corner of a rotated reserved footprint.
 Quarter-turn rotations are supported; all studs point upward.
 The viewer grid, camera, placement bounds and JSON exports follow the assembly
 board size. Claude accepts host-selected board sizes but cannot change the
@@ -156,7 +265,7 @@ host's board through a placement tool. Existing models retain their 16 x 16 boar
 without modifying their input. The Claude tool adapter calls these
 same APIs. Removing a piece is rejected if it leaves unsupported pieces.
 
-The catalog currently contains 164 curated building designs and 320 official LDraw
+The catalog currently contains 170 curated building designs and 320 official LDraw
 colors. If the local library is installed, the viewer uses real LDraw meshes,
 including studs, underside geometry, and edge lines. Otherwise it explicitly
 falls back to simplified bodies and studs. Manufactured combinations are tracked
@@ -165,7 +274,7 @@ by `getLDrawTransform`, shared by rendering and export.
 
 The supported range includes the original rectangular bricks, plates and tiles,
 10 tall bricks, 21 roof slopes, eight round parts, six arches, two baseplates,
-four cones, five doors/door frames, six windows/window frames, 24 detail parts
+four cones, seven doors/door frames, ten windows/window frames/glass, 24 detail parts
 and ten foliage designs. The 56 additional designs target architectural builds:
 
 - Masonry, grille and log textures; corner and headlight bricks; half-stud jumper plates.
@@ -179,16 +288,24 @@ sideways SNOT attachment, clips, hinges, Technic and other special connections r
 Side-stud bricks can be placed upright using their vertical connections only;
 their protruding side studs reserve additional clearance. `family` identifies these
 parts independently of the brick/plate/tile `kind`; height is always in plates.
-The picker searches all 164 IDs and has dedicated Details and Foliage filters.
+The picker searches all 170 IDs and has dedicated Details and Foliage filters.
 
 Architectural starter IDs are arches `3659`, `4490`, `6182`, `3307`; baseplates
 `3865` (8 x 16), `3867` (16 x 16); cones `4589`, `3942c`, `3943b`, `6233`;
-doors/frames `801a`, `802a`, `3861c`, `3579`, `60596`; and windows/frames
-`60592`, `60593`, `60594`, `2493b`, `3853`. Baseplates are half a plate thick,
+doors/frames `3193a`, `3192a`, `3861c`, `3579`, `60616a`, `60623`, `60596`; windows/frames
+`60592`, `60593`, `60594`, `2493b`, `4035`, `3853`; and window glass `60601`, `60602`,
+`86210`, `2494`. Baseplates are half a plate thick,
 have no underside receivers, and must stay on the ground. Larger boards do not
 add new baseplate designs to the supported catalogue. Arches accept underside studs only at their
 legs; cone tops use their actual centred one- or four-stud layouts. Integral
-hinge doors are closed static pieces, not animated hinges or insert attachments.
+hinge doors are closed static pieces, not animated hinges. Doors `3193a`/`3192a` hang on
+their own hinge stud at either end of a `3579` frame; `60616a`/`60623` hang on the hinge
+pins of a `60596` frame, turned half round for the other end. Imports swap the legacy
+1 x 3 x 3 doors `801a`/`802a`, which fit no supported frame, for `3193a`/`3192a`.
+Glass sits in its frame's own cells, turned like the frame: `60601` in `60592`, `60602` in
+`60593`, the top-hung `86210` in `60594` and `2494` in `2493b`. Windows `4035` and `3853`
+are complete windows that stand on studs; imports turn one found inside a `60593`/`60594`
+frame into that frame's glass. Example windows are glazed in trans-clear.
 Modern four-wide frames expose only the reviewed two centre top studs where
 applicable. Protruding handles, hinges and sills reserve half-stud margins.
 
@@ -405,8 +522,8 @@ const assessment = assessPhysicalFeasibility(createExampleAssembly('catalog-samp
 ```
 
 By default the engine API uses the bundled **catalogue-reported** nominal weights
-for 107 of the 164 supported parts. Tall brick `39266` and the 56 new architectural
-and foliage designs have no verified bundled weight and remain missing unless a
+for 105 of the 170 supported parts. Tall brick `39266`, the 56 new architectural
+and foliage designs and the fitted doors and glass have no verified bundled weight and remain missing unless a
 host supplies one or enables estimates. New designs likewise have no bundled
 manufacturing-colour observations; rendering support does not establish availability.
 Lookup order is host-supplied `data.parts` overrides,
@@ -499,14 +616,14 @@ Published weights are available: BrickLink currently lists
 (checked 2026-10-31). Its catalog API documents `weight` in grams to two decimal
 places and requires OAuth credentials. These are nominal catalogue observations,
 not independently measured exact-piece weights or proof of connection strength.
-The reviewed 107-part weight snapshot is bundled in
+The reviewed 105-part weight snapshot is bundled in
 [packages/brick-engine/src/part-masses.ts](packages/brick-engine/src/part-masses.ts)
 and exported as `CATALOG_PART_MASSES` / `PART_MASS_SOURCE`. It works offline and
 requires no BrickLink credentials at runtime. Every record retains the source URL,
 catalogue ID, retrieval date, nominal grams and mapping note. Explicit mappings are
 `3023b -> 3023`, `3070b -> 3070`, `3069b -> 3069`, `3068b -> 3068`,
 `6934 -> 6934a`, `2454b -> 2454`, `3040b -> 3040`, `3062b -> 3062`,
-`6141 -> 4073`, `4032a -> 4032`, `801a -> 801apb00`, `802a -> 802apb00`, and
+`6141 -> 4073`, `4032a -> 4032`, and
 `3861c -> 3861`. The newer aliases are explicitly identified
 in the native LDraw metadata, not inferred from similar-looking numbers.
 BrickLink lists the three tile `b` IDs as alternates and lists ungrooved `a`
@@ -553,9 +670,6 @@ The grooved tile variants `3070b`, `3069b`, and `3068b` use explicitly reviewed
 matching Rebrickable IDs, not inferred unsuffixed aliases.
 Native metadata explicitly maps LDraw `6934` to Rebrickable `6934a`, and
 `39266` to `39268`, and `3861c` to `3861b`.
-Legacy doors `801a` and `802a` remain inventory-unmapped because native handle
-labels disagree with inventory design names. Their explicit native BrickLink
-weight aliases do not resolve that manufacturing identity discrepancy.
 The other 314 colors are rendering-supported but unmapped. Absence from the
 dataset is **unknown**, never evidence that a combination was never manufactured.
 Inventory observations can be historical and do not prove current production.
@@ -651,7 +765,8 @@ environment. Never put it in `VITE_` variables, source files, screenshots, or ch
 `CLAUDE_MODEL` defaults to `claude-sonnet-5-5`; `--model` overrides it. The command
 loads the root `.env` but neither logs nor exports credentials. The prompt and
 initial assembly and tool-returned physical data/provenance are sent to Anthropic,
-and normal API charges apply.
+and normal API charges apply. Without a key, or with `--claude-code`, the command
+uses your local Claude Code login instead (see the workshop note above).
 
 ```sh
 pnpm claude:build --help
@@ -666,11 +781,12 @@ inventory evidence/statuses, tool outcome
 trace, token usage, and Claude's final text. Claude cannot choose output paths.
 The command starts empty unless `--input` supplies an assembly or workshop JSON
 export; input is validated and cloned. It is not synchronized with the browser
-workshop, and generated files should be inspected in an LDraw editor for now.
+workshop, but its JSON files can be imported into the workshop for review and
+further edits. An LDraw editor remains another option for inspection.
 
 By default only inventory-observed part/color combinations can be placed. The
 host can explicitly allow rendering-only choices with `--allow-unverified-colors`;
-their manufacturing/stock status remains unknown. Limits are 500 pieces,
+their manufacturing/stock status remains unknown. Limits are 50,000 pieces,
 12 API turns by default (`--max-turns 1..32`), and 4,096 output tokens per turn.
 Each API request has a 60-second timeout and no automatic retries. These bound
 execution, not a monetary budget; input context grows with tool results.
@@ -701,15 +817,17 @@ Use `createBuilderSession`, `BUILDER_TOOLS`, and `runClaudeBuild` from
 tests cover the official SDK with mocked HTTP responses, dependency ordering,
 error recovery, input validation, immutable snapshots, and partial results.
 A live Claude generation requires a locally supplied key and is not part of
-the offline test suite. No web chat or upload pipeline is included in this step.
+the offline test suite. The web workflow above uses this same runner with bounded
+base64 photo references, abort signals and progress callbacks. HTTP tests use
+real image decoding and mocked Claude transport; no live API call is required.
 
 ## Next Steps
 
 1. Add sourced mass/connection measurements, bending/shear and robust tipping
    margins, real assembly-access checks, and verified part/color coverage.
-2. Connect generated assemblies to the workshop and add model/reference uploads.
-   Keep Claude/API secrets server-side.
+2. Add GLB reference viewing and captured model views, then investigate
+   geometry-to-brick fitting and broader architectural/composition guidance.
 3. Expand useful part families with measured geometry and connection tests.
 
-The local Claude API adapter is available; no web chat, upload pipeline,
-or marketplace-stock API is connected yet.
+The local Claude API adapter and web draft workflow are available; automatic
+mesh conversion and a marketplace-stock API are not connected yet.
