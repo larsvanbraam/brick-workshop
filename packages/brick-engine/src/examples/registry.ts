@@ -3,7 +3,8 @@ import type { Assembly } from '../core.ts';
 import type { ExampleDefinition, ExampleMetadata } from './types.ts';
 import { courtyardHouse } from './courtyard-house.ts';
 import { catalogSampler } from './catalog-sampler.ts';
-import { crookedTankard } from './crooked-tankard.ts';
+import { seasideLighthouse } from './seaside-lighthouse.ts';
+import { flowerStall } from './flower-stall.ts';
 
 export function createExampleRegistry(definitions: readonly ExampleDefinition[]) {
   const byId = new Map<string, ExampleDefinition>();
@@ -71,7 +72,12 @@ export function createExampleRegistry(definitions: readonly ExampleDefinition[])
   };
 }
 
-const registry = createExampleRegistry([courtyardHouse, catalogSampler, crookedTankard]);
+const registry = createExampleRegistry([
+  courtyardHouse,
+  catalogSampler,
+  seasideLighthouse,
+  flowerStall,
+]);
 export const EXAMPLES = registry.examples;
 export const createExampleAssembly = registry.createAssembly;
 

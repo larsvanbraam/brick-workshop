@@ -7,6 +7,7 @@ import {
   applyPatch,
   previewPatch,
   evaluateAssemblyPolicy,
+  importAssembly,
   CATALOG_PART_MASSES,
   assessPhysicalFeasibility,
   getBuildabilityReport,
@@ -29,7 +30,11 @@ import {
   placeBrick,
   registerPart,
   removeBrick,
+  resizeBuildArea,
   validateAssembly,
+  MAX_BUILD_AREA,
+  MAX_HEIGHT,
+  MAX_PIECES,
 } from './index';
 import type { Assembly, Brick, ExampleDefinition } from './index';
 import { parseLDrawColors } from './colors.ts';
@@ -39,6 +44,10 @@ import { COLORS, DEFAULT_PART_COLOR_EVIDENCE } from './index.ts';
 const empty: Assembly = { name: 'Test', bricks: [] };
 const base: Brick = { id: 'base', partId: '3001', color: 4, x: 0, y: 0, z: 0, rotation: 0 };
 const architecturalExpansionIds = [
+  '3193a',
+  '3192a',
+  '60616a',
+  '60623',
   '98283',
   '15533',
   '2877',
@@ -95,11 +104,15 @@ const architecturalExpansionIds = [
   '3308',
   '92950',
   '4035',
+  '60601',
+  '60602',
+  '86210',
+  '2494',
 ];
 
 describe('connection-aware placement planning', () => {
   it('reports engine-owned insert rules and honest physics coverage', () => {
-    expect(getPartCapabilities('4035')).toMatchObject({
+    expect(getPartCapabilities('60602')).toMatchObject({
       matchingInsertFrameId: '60593',
       contactPhysics: 'not-assessed',
     });
@@ -208,7 +221,7 @@ describe('connection-aware placement planning', () => {
   it('explains reviewed insert connections using the validator mapping', () => {
     const support = { ...base, partId: '3001' };
     const frame: Brick = { ...base, id: 'frame', partId: '3579', y: 3, z: 1, rotation: 90 };
-    const door: Brick = { ...base, id: 'door', partId: '801a', y: 3, z: 0.5, rotation: 90 };
+    const door: Brick = { ...base, id: 'door', partId: '3193a', y: 3, z: 0.5, rotation: 90 };
     expect(explainConnection({ ...empty, bricks: [support, frame] }, door)).toMatchObject({
       insertFrames: ['frame'],
       issues: [],
@@ -231,7 +244,7 @@ describe('connection-aware placement planning', () => {
 
 describe('catalogue-reported weights', () => {
   it('covers reviewed catalogue entries with validated immutable source records', () => {
-    expect(Object.keys(CATALOG_PART_MASSES)).toHaveLength(107);
+    expect(Object.keys(CATALOG_PART_MASSES)).toHaveLength(105);
     expect(
       new Set(PARTS.filter((part) => !CATALOG_PART_MASSES[part.id]).map((part) => part.id)),
     ).toEqual(new Set(['39266', ...architecturalExpansionIds]));
@@ -841,14 +854,14 @@ describe('architectural part families', () => {
     const included = assembly.bricks.filter((brick) =>
       architecturalParts.some((part) => part.id === brick.partId),
     );
-    expect(included).toHaveLength(75);
+    expect(included).toHaveLength(81);
     expect(new Set(included.map((brick) => brick.partId))).toEqual(
       new Set(architecturalParts.map((part) => part.id)),
     );
     expect(validateAssembly(assembly)).toEqual([]);
     expect(assembly.bricks.every((brick) => brick.y === 0)).toBe(true);
-    expect(getPartColorStatus('801a', 4).manufactured).toBe('unknown');
-    expect(getPartColorStatus('802a', 4).manufactured).toBe('unknown');
+    expect(getPartColorStatus('3193a', 4).manufactured).toBe('unknown');
+    expect(getPartColorStatus('3192a', 4).manufactured).toBe('unknown');
     expect(assessPhysicalFeasibility(assembly)).toMatchObject({
       gravity: 'not-assessed',
       status: 'unknown',
@@ -938,8 +951,8 @@ describe('architectural part families', () => {
     ).toBe(false);
   });
   it('retains integral hinge studs and the two centre studs of modern frames', () => {
-    expect(getConnectionSites({ ...base, partId: '801a' }, 'top')).toEqual([
-      { x: 0.5, y: 10.5, z: 0.5 },
+    expect(getConnectionSites({ ...base, partId: '3193a' }, 'top')).toEqual([
+      { x: 0.5, y: 12, z: 0.5 },
     ]);
     expect(getConnectionSites({ ...base, partId: '60596' }, 'top')).toHaveLength(2);
     expect(getConnectionSites({ ...base, partId: '60594' }, 'top')).toHaveLength(2);
@@ -947,17 +960,50 @@ describe('architectural part families', () => {
   it('supports a window insert only when a matching frame holds it in place', () => {
     const support = { ...base, partId: '3004', rotation: 90 as const };
     const frame = { ...base, id: 'frame', partId: '60593', y: 3, rotation: 90 as const };
-    const pane = { ...base, id: 'pane', partId: '4035', y: 3, z: 0.5, rotation: 90 as const };
+    const pane = { ...base, id: 'pane', partId: '60602', y: 3, rotation: 90 as const };
     expect(placeBrick({ ...empty, bricks: [support, frame] }, pane).ok).toBe(true);
     expect(placeBrick(empty, pane).ok).toBe(false);
-    expect(placeBrick({ ...empty, bricks: [support, { ...frame, z: 1.5 }] }, pane).ok).toBe(false);
+    expect(placeBrick({ ...empty, bricks: [support, frame] }, { ...pane, z: 0.5 }).ok).toBe(false);
+    expect(placeBrick({ ...empty, bricks: [support, frame] }, { ...pane, rotation: 270 }).ok).toBe(
+      false,
+    );
+    // An old build's whole window sitting inside the frame comes back as the frame's glass.
+    const legacy = { ...pane, partId: '4035', z: 0.5 };
+    expect(
+      importAssembly({ name: 'Legacy pane', bricks: [support, frame, legacy] }).bricks[2],
+    ).toMatchObject({ partId: '60602', x: 0, z: 0 });
   });
   it('fits a door leaf into its matching door frame', () => {
     const support = { ...base, partId: '3001' };
     const frame = { ...base, id: 'door-frame', partId: '3579', y: 3, z: 1, rotation: 90 as const };
-    const door = { ...base, id: 'door', partId: '801a', y: 3, z: 0.5, rotation: 90 as const };
+    const door = { ...base, id: 'door', partId: '3193a', y: 3, z: 0.5, rotation: 90 as const };
     expect(placeBrick({ ...empty, bricks: [support, frame] }, door).ok).toBe(true);
-    expect(getLDrawTransform(door)).toMatchObject({ x: 10, y: -108, z: 30, rotation: 90 });
+    expect(getLDrawTransform(door)).toMatchObject({ x: 10, y: -120, z: 30, rotation: 90 });
+    const right = { ...door, partId: '3192a', z: 1 };
+    expect(placeBrick({ ...empty, bricks: [support, frame] }, right).ok).toBe(true);
+    expect(placeBrick({ ...empty, bricks: [support, frame] }, { ...right, z: 0.5 }).ok).toBe(false);
+  });
+  it('hangs 1 x 4 x 6 doors on the hinge pins at either end of their frame', () => {
+    const support = { ...base, partId: '3001', rotation: 90 as const, x: 0, z: 0 };
+    const frame = { ...base, id: 'door-frame', partId: '60596', y: 3, z: 1, rotation: 90 as const };
+    const placed = { ...empty, bricks: [support, frame] };
+    for (const partId of ['60616a', '60623']) {
+      const door = { ...base, id: 'door', partId, y: 3, z: 0.5, rotation: 90 as const };
+      expect(placeBrick(placed, door).ok, partId).toBe(true);
+      expect(placeBrick(placed, { ...door, rotation: 270 }).ok, partId).toBe(true);
+      expect(placeBrick(placed, { ...door, z: 1 }).ok, partId).toBe(false);
+      expect(placeBrick({ ...empty, bricks: [support] }, door).ok, partId).toBe(false);
+    }
+  });
+  it('swaps legacy 1 x 3 x 3 doors for the doors that fit 1 x 3 x 4 frames on import', () => {
+    const support = { ...base, partId: '3001' };
+    const frame = { ...base, id: 'frame', partId: '3579', y: 3, z: 1, rotation: 90 as const };
+    const legacy = (partId: string) => ({
+      name: 'Legacy doors',
+      bricks: [support, frame, { ...base, id: 'door', partId, y: 3, z: 0.5, rotation: 90 }],
+    });
+    expect(importAssembly(legacy('801a')).bricks[2]).toMatchObject({ partId: '3193a', z: 0.5 });
+    expect(importAssembly(legacy('802a')).bricks[2]).toMatchObject({ partId: '3192a', z: 1 });
   });
 });
 
@@ -1142,9 +1188,9 @@ describe('upright brick engine', () => {
       ).toEqual(expected);
     }
   });
-  it('contains 164 unique building and foliage parts with explicit connection sites', () => {
-    expect(PARTS).toHaveLength(164);
-    expect(new Set(PARTS.map((part) => part.id)).size).toBe(164);
+  it('contains 170 unique building and foliage parts with explicit connection sites', () => {
+    expect(PARTS).toHaveLength(170);
+    expect(new Set(PARTS.map((part) => part.id)).size).toBe(170);
     expect(PARTS.filter((part) => part.family === 'tall')).toHaveLength(10);
     expect(PARTS.filter((part) => part.family === 'slope')).toHaveLength(21);
     expect(PARTS.filter((part) => part.family === 'round')).toHaveLength(8);
@@ -1152,8 +1198,8 @@ describe('upright brick engine', () => {
       ['arch', 6],
       ['baseplate', 2],
       ['cone', 4],
-      ['door', 5],
-      ['window', 6],
+      ['door', 7],
+      ['window', 10],
       ['detail', 24],
       ['foliage', 10],
     ] as const)
@@ -1198,7 +1244,7 @@ describe('upright brick engine', () => {
         const size = footprint(brick);
         expect(placeBrick(empty, brick).ok).toBe(true);
         expect(
-          validateAssembly({ ...empty, bricks: [{ ...brick, y: 61 - part.height }] }),
+          validateAssembly({ ...empty, bricks: [{ ...brick, y: MAX_HEIGHT + 1 - part.height }] }),
         ).toContainEqual(expect.objectContaining({ code: 'invalid' }));
         expect(placeBrick(empty, { ...brick, x: 16 - size.width, z: 16 - size.depth }).ok).toBe(
           true,
@@ -1416,7 +1462,7 @@ describe('upright brick engine', () => {
     'accepts $0 at the maximum supported height and rejects overflow',
     (partId) => {
       const part = getPart(partId);
-      const tower = Array.from({ length: 60 / part.height }, (_, index) => ({
+      const tower = Array.from({ length: MAX_HEIGHT / part.height }, (_, index) => ({
         ...base,
         id: `level-${index}`,
         partId,
@@ -1424,7 +1470,8 @@ describe('upright brick engine', () => {
       }));
       expect(validateAssembly({ ...empty, bricks: tower })).toEqual([]);
       expect(
-        placeBrick({ ...empty, bricks: tower }, { ...base, id: 'overflow', partId, y: 60 }).ok,
+        placeBrick({ ...empty, bricks: tower }, { ...base, id: 'overflow', partId, y: MAX_HEIGHT })
+          .ok,
       ).toBe(false);
     },
   );
@@ -1449,7 +1496,7 @@ describe('upright brick engine', () => {
       { y: 0.5 },
       { x: NaN },
       { x: 15 },
-      { y: 60 },
+      { y: MAX_HEIGHT },
       { rotation: 45 },
     ]) {
       expect(placeBrick(empty, { ...base, ...change } as Brick).ok).toBe(false);
@@ -1544,7 +1591,7 @@ describe('upright brick engine', () => {
 
 describe('mixed-part engine builds', () => {
   it('lays complete catalogue and tile displays on one larger board without stacking', () => {
-    for (const [id, count] of [['catalog-sampler', 164]] as const) {
+    for (const [id, count] of [['catalog-sampler', 170]] as const) {
       const assembly = createExampleAssembly(id);
       expect(assembly.buildArea).toBe(64);
       expect(assembly.bricks).toHaveLength(count);
@@ -1555,113 +1602,146 @@ describe('mixed-part engine builds', () => {
         validateAssembly({ ...assembly, buildArea: 16 }).some((issue) => issue.code === 'invalid'),
       ).toBe(true);
     }
-    for (const buildArea of [0, 15, 16.5, 65, Infinity, NaN])
+    for (const buildArea of [0, 15, 16.5, MAX_BUILD_AREA + 1, Infinity, NaN])
       expect(validateAssembly({ name: 'invalid board', bricks: [], buildArea })).toContainEqual(
         expect.objectContaining({ code: 'invalid' }),
       );
     expect(createExampleAssembly('courtyard-house').buildArea).toBeUndefined();
   });
+
+  it('resizes the board around the build and refuses sizes the pieces do not fit', () => {
+    const house = createExampleAssembly('courtyard-house');
+    const grown = resizeBuildArea(house, 32);
+    expect(grown?.buildArea).toBe(32);
+    expect(grown?.bricks.map((brick) => [brick.id, brick.x - 8, brick.y, brick.z - 8])).toEqual(
+      house.bricks.map((brick) => [brick.id, brick.x, brick.y, brick.z]),
+    );
+    expect(validateAssembly(grown!)).toEqual([]);
+    expect(resizeBuildArea(grown!, 16)).toEqual(house);
+
+    const sampler = catalogSampler();
+    expect(resizeBuildArea(sampler, 16)).toBeNull();
+    const cone = { id: 'cone', partId: '6141', color: 4, x: 40.5, y: 0, z: 2, rotation: 0 } as const;
+    const shrunk = resizeBuildArea({ name: 'corner', buildArea: 64, bricks: [cone] }, 16);
+    expect(shrunk).toEqual({ name: 'corner', bricks: [{ ...cone, x: 14.5, z: 0 }] });
+    expect(validateAssembly(shrunk!)).toEqual([]);
+    for (const size of [15, 16.5, MAX_BUILD_AREA + 1])
+      expect(resizeBuildArea(house, size)).toBeNull();
+  });
   const catalogSampler = () => createExampleAssembly('catalog-sampler');
 
-  it('builds a larger medieval courtyard with masonry, timber, tall posts and round furnishings', () => {
+  it('builds a medieval courtyard with a jettied hall, watchtower, well and walled garden', () => {
     const assembly = createExampleAssembly('courtyard-house');
-    expect(assembly.bricks).toHaveLength(306);
-    expect(new Set(assembly.bricks.map((brick) => brick.partId)).size).toBe(35);
-    expect(new Set(assembly.bricks.map((brick) => brick.color))).toEqual(
-      new Set([71, 72, 70, 19, 2, 4, 1, 0]),
-    );
-    expect(
-      new Set(assembly.bricks.map((brick) => getPart(brick.partId).family).filter(Boolean)),
-    ).toEqual(new Set(['tall', 'slope', 'round']));
+    expect(assembly.bricks).toHaveLength(383);
+    expect(new Set(assembly.bricks.map((brick) => brick.partId)).size).toBe(46);
     expect(assembly.bricks[0]).toMatchObject({ partId: '91405', x: 0, y: 0, z: 0 });
-    expect(Math.max(...assembly.bricks.map((brick) => brick.y + footprint(brick).height))).toBe(49);
+    expect(Math.max(...assembly.bricks.map((brick) => brick.y + footprint(brick).height))).toBe(48);
     expect(validateAssembly(assembly)).toEqual([]);
+    // Corbels under the jettied upper floor and the tower's fighting platform.
+    expect(assembly.bricks.filter((brick) => brick.partId === '3665a')).toHaveLength(11);
+    const doors = assembly.bricks.filter((brick) => brick.partId === '3193a');
+    expect(doors).toHaveLength(2);
+    for (const door of doors)
+      expect(
+        assembly.bricks.some(
+          (frame) => frame.partId === '3579' && frame.x === door.x && frame.z === door.z + 0.5,
+        ),
+      ).toBe(true);
+    for (const partId of ['3307', '3470', '33303', '3068b', '14716', '30137', '2453b'])
+      expect(assembly.bricks.some((brick) => brick.partId === partId)).toBe(true);
   });
 
-  it('builds The Crooked Tankard on an exact 24-stud square board', () => {
-    const assembly = createExampleAssembly('crooked-tankard');
-    expect(assembly.buildArea).toBe(24);
-    expect(assembly.name).toBe('The Crooked Tankard');
-    expect(
-      assembly.bricks.filter((brick) => brick.partId === '41539' && brick.y === 0),
-    ).toHaveLength(9);
-    expect(
-      assembly.bricks
-        .filter((brick) => brick.partId === '41539' && brick.y === 0)
-        .every((brick) => brick.color === 2),
-    ).toBe(true);
+  it("builds a striped lighthouse, keeper's cottage, jetty and rowboat on a rocky island", () => {
+    const assembly = createExampleAssembly('seaside-lighthouse');
+    expect(assembly.name).toBe('Seaside Lighthouse');
+    expect(assembly.buildArea).toBeUndefined();
     expect(validateAssembly(assembly)).toEqual([]);
-    expect(assembly.bricks.some((brick) => ['3853', '4035'].includes(brick.partId))).toBe(false);
-    expect(assembly.bricks.filter((brick) => brick.partId === '32607')).toHaveLength(6);
-    const blooms = assembly.bricks.filter(
+    const tower = assembly.bricks.filter(
       (brick) =>
-        brick.partId === '98138' &&
-        brick.color === 4 &&
-        brick.y === 2 &&
-        [
-          [0, 1],
-          [0, 3],
-          [22, 19],
-          [22, 21],
-        ].some(([x, z]) => brick.x === x && brick.z === z),
+        brick.y >= 16 &&
+        brick.y < 40 &&
+        brick.x >= 9 &&
+        brick.x <= 12 &&
+        brick.z >= 9 &&
+        brick.z <= 12,
     );
-    expect(blooms).toHaveLength(4);
-    expect(blooms.every((brick) => brick.color === 4)).toBe(true);
-    const windowFrames = assembly.bricks.filter((brick) =>
-      ['60593', '60594'].includes(brick.partId),
-    );
-    expect(windowFrames).toHaveLength(11);
-    expect(windowFrames.every((brick) => brick.color === 70)).toBe(true);
-    expect(assembly.bricks.find((brick) => brick.partId === '801a')).toMatchObject({
-      color: 70,
-      x: 9,
-      y: 1,
-      z: 2.5,
-      rotation: 90,
-    });
-    expect(
-      assembly.bricks.some(
-        (brick) => brick.partId === '3020' && brick.x === 14 && brick.y === 4 && brick.z === 0,
-      ),
-    ).toBe(true);
-    expect(
-      assembly.bricks.some(
-        (brick) => brick.partId === '3020' && brick.x === 8 && brick.y === 4 && brick.z === 0,
-      ),
-    ).toBe(false);
-    for (const x of [8, 12]) {
+    for (let course = 0; course < 8; course++)
       expect(
-        assembly.bricks.some(
-          (brick) => brick.partId === '2453b' && brick.x === x && brick.y === 1 && brick.z === 2,
+        new Set(
+          tower
+            .filter(
+              (brick) => brick.y === 16 + course * 3 && !['60592', '60601'].includes(brick.partId),
+            )
+            .map((brick) => brick.color),
         ),
-      ).toBe(true);
-      expect(
-        assembly.bricks.some(
-          (brick) => brick.partId === '3062b' && brick.x === x && brick.y === 16 && brick.z === 2,
-        ),
-      ).toBe(true);
-    }
-    for (const x of [1, 21])
-      for (const y of [26, 29, 32, 35])
-        expect(assembly.bricks.some((brick) => brick.x === x && brick.y === y)).toBe(true);
-    const partIds = new Set(assembly.bricks.map((brick) => brick.partId));
-    for (const partId of ['98283', '60593', '60594', '3297', '3298', '4161', '4589', '2412b'])
-      expect(partIds.has(partId)).toBe(true);
-  }, 30_000);
+      ).toEqual(new Set([course % 4 < 2 ? 15 : 4]));
+    expect(assembly.bricks.filter((brick) => brick.partId === '60592')).toHaveLength(4);
+    const doors = assembly.bricks.filter((brick) => brick.partId === '3193a');
+    expect(doors.map(({ x, y, z }) => ({ x, y, z }))).toEqual([
+      { x: 9, y: 3, z: 7.5 },
+      { x: 3, y: 3, z: 8.5 },
+    ]);
+    expect(
+      assembly.bricks.filter((brick) => brick.partId === '3941' && brick.color === 46),
+    ).toHaveLength(2);
+    expect(assembly.bricks.filter((brick) => brick.partId === '3633')).toHaveLength(4);
+    const summit = assembly.bricks.reduce((top, brick) => (brick.y > top.y ? brick : top));
+    expect(summit).toMatchObject({ partId: '4589', y: 61 });
+    expect(
+      assembly.bricks.filter((brick) => brick.partId === '3069b' && brick.y === 5),
+    ).toHaveLength(3);
+    expect(
+      assembly.bricks.filter(
+        (brick) => brick.y === 1 && brick.x >= 1 && brick.x <= 2 && brick.z <= 3,
+      ),
+    ).toEqual([expect.objectContaining({ partId: '3020', color: 15 })]);
+  });
 
-  it('gives the courtyard house a pitched roof with overhanging eaves', () => {
+  it('builds a flower stall with a striped awning, flower buckets and street furniture', () => {
+    const assembly = createExampleAssembly('flower-stall');
+    expect(assembly.name).toBe('Flower Market Stall');
+    expect(validateAssembly(assembly)).toEqual([]);
+    const awning = assembly.bricks.filter((brick) => brick.partId === '4286');
+    expect(awning).toHaveLength(28);
+    for (const brick of awning) {
+      expect(brick.rotation).toBe(0);
+      expect(brick.color).toBe(brick.x % 2 ? 4 : 15);
+    }
+    // The shelf plate is bonded into the booth wall: courses sit both under and on top of it.
+    const shelf = assembly.bricks.find((brick) => brick.partId === '2445' && brick.y === 10);
+    expect(shelf).toMatchObject({ x: 2, z: 12, rotation: 270 });
+    for (const y of [7, 11])
+      expect(assembly.bricks.some((brick) => brick.z === 13 && brick.y === y)).toBe(true);
+    const blooms = assembly.bricks.filter((brick) => brick.partId === '24866');
+    expect(blooms).toHaveLength(6);
+    for (const bloom of blooms)
+      expect(
+        assembly.bricks.some(
+          (brick) =>
+            brick.partId === '4727' &&
+            brick.x === bloom.x &&
+            brick.z === bloom.z &&
+            brick.y === bloom.y - 3,
+        ),
+      ).toBe(true);
+    for (const partId of ['3470', '3678b', '2412b', '60581', '2453b', '3456'])
+      expect(assembly.bricks.some((brick) => brick.partId === partId)).toBe(true);
+    expect(assembly.bricks.filter((brick) => brick.y === 1 && brick.z === 0)).toHaveLength(2);
+  });
+
+  it('gives the courtyard house a stepped slate roof with overhanging eaves', () => {
     const assembly = createExampleAssembly('courtyard-house');
-    const roofHeights = Array.from({ length: 10 }, (_, index) => {
-      const z = index + 6;
+    const roofHeights = Array.from({ length: 8 }, (_, index) => {
+      const z = index + 7;
       return Math.max(
         ...assembly.bricks
           .filter((brick) => {
             const size = footprint(brick);
             return (
               brick.color === 72 &&
-              brick.y >= 26 &&
-              brick.x <= 8 &&
-              8 < brick.x + size.width &&
+              brick.y >= 24 &&
+              brick.x <= 10 &&
+              10 < brick.x + size.width &&
               brick.z <= z &&
               z < brick.z + size.depth
             );
@@ -1669,19 +1749,15 @@ describe('mixed-part engine builds', () => {
           .map((brick) => brick.y + footprint(brick).height),
       );
     });
-    expect(roofHeights).toEqual([29, 32, 35, 38, 40, 40, 38, 35, 32, 29]);
-    expect(
-      assembly.bricks
-        .filter((brick) => brick.partId === '3037' && brick.y === 26)
-        .map((brick) => brick.x),
-    ).toEqual([0, 0, 4, 4, 8, 8, 12, 12]);
+    expect(roofHeights).toEqual([27, 30, 33, 34, 34, 33, 30, 27]);
   });
 
   it('provides named, valid examples with independent assembly instances', () => {
     expect(EXAMPLES.map((example) => example.id)).toEqual([
       'courtyard-house',
       'catalog-sampler',
-      'crooked-tankard',
+      'seaside-lighthouse',
+      'flower-stall',
     ]);
     expect(new Set(EXAMPLES.map((example) => example.id)).size).toBe(EXAMPLES.length);
     for (const example of EXAMPLES) {
@@ -1731,7 +1807,7 @@ describe('mixed-part engine builds', () => {
             floating.issues.some(
               (issue) =>
                 issue.code ===
-                (height + 1 + footprint(top).height > 60 ? 'invalid' : 'unsupported'),
+                (height + 1 + footprint(top).height > MAX_HEIGHT ? 'invalid' : 'unsupported'),
             ),
           ).toBe(true);
       }
@@ -1891,6 +1967,31 @@ describe('building technique guidance', () => {
 });
 
 describe('atomic assembly edits', () => {
+  it('imports raw or exported assemblies without trusting exported host policies', () => {
+    const source = {
+      version: 1,
+      assembly: { ...empty, bricks: [base] },
+      physicalPolicy: { rejectInfeasible: false },
+      buildability: { certified: true },
+    };
+    const assembly = importAssembly(source);
+    expect(assembly).toEqual({ ...empty, bricks: [base] });
+    assembly.bricks[0].x = 4;
+    expect(source.assembly.bricks[0].x).toBe(0);
+    expect(importAssembly(empty)).toEqual(empty);
+    for (const value of [
+      null,
+      { ...empty, bricks: [base, base] },
+      { ...empty, bricks: [{ ...base, x: 0.25 }] },
+      { ...empty, bricks: [{ ...base, partId: 'unknown' }] },
+      { ...empty, buildArea: MAX_BUILD_AREA + 1 },
+      { version: 2, assembly: empty },
+      { ...empty, physicalPolicy: {} },
+      { ...empty, bricks: Array(MAX_PIECES + 1).fill(base) },
+    ])
+      expect(() => importAssembly(value)).toThrow();
+  });
+
   it('moves and recolors multiple pieces against final geometry, not temporary overlaps', () => {
     const second = { ...base, id: 'second', x: 4 };
     const assembly = { ...empty, bricks: [base, second] };
@@ -2181,7 +2282,7 @@ describe('example registry', () => {
     expect(first.bricks[0]).not.toBe(second.bricks[0]);
     expect(() => registry.createAssembly('unknown')).toThrow('Unknown example');
     expect(createDemoAssembly().bricks.map((brick) => brick.id)).toEqual(
-      Array.from({ length: 306 }, (_, index) => `demo-${index + 1}`),
+      Array.from({ length: 383 }, (_, index) => `demo-${index + 1}`),
     );
   });
 });
