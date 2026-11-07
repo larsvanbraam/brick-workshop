@@ -4,6 +4,7 @@ import {
   MAX_BUILD_AREA,
   MAX_PIECES,
   COLORS,
+  FACINGS,
   DEFAULT_PART_COLOR_EVIDENCE,
   MAX_HEIGHT,
   PARTS,
@@ -49,10 +50,16 @@ const idSchema = { type: 'string', minLength: 1, maxLength: 100 };
 const placementProperties = {
   partId: partIdSchema,
   color: colorSchema,
-  x: { type: 'number', multipleOf: 0.5, minimum: 0, maximum: MAX_BUILD_AREA - 1 },
+  x: { type: 'number', multipleOf: 0.1, minimum: 0, maximum: MAX_BUILD_AREA - 1 },
   y: { type: 'number', multipleOf: 0.5, minimum: 0, maximum: MAX_HEIGHT - 1 },
-  z: { type: 'number', multipleOf: 0.5, minimum: 0, maximum: MAX_BUILD_AREA - 1 },
+  z: { type: 'number', multipleOf: 0.1, minimum: 0, maximum: MAX_BUILD_AREA - 1 },
   rotation: { type: 'integer', enum: [0, 90, 180, 270] },
+  facing: {
+    type: 'string',
+    enum: FACINGS,
+    description:
+      'Omit for upright pieces. Mounts the piece on its side (SNOT): its top points this way and its underside must sit on side studs pointing the same way (headlight brick 4070, side-stud bricks 87087/11211/30414, or another mounted piece). Its depth stands up at 2.5 plates a stud and its height becomes 0.4 studs of thickness; x/z stay the min corner, on 0.1 stud steps along the facing and 0.5 across it.',
+  },
 };
 function objectSchema(
   properties: Record<string, unknown> = {},
@@ -61,7 +68,7 @@ function objectSchema(
   return { type: 'object' as const, properties, required, additionalProperties: false };
 }
 
-const BRICK_COLUMNS = ['id', 'partId', 'color', 'x', 'y', 'z', 'rotation'] as const;
+const BRICK_COLUMNS = ['id', 'partId', 'color', 'x', 'y', 'z', 'rotation', 'facing'] as const;
 /**
  * Catalogue overview columns; one row per part instead of repeated keys. connectorFit is left
  * out because every shipped part is curated; per-part detail still reports it.
@@ -123,7 +130,15 @@ const patchSchema = objectSchema({
       oneOf: [
         objectSchema({
           type: { const: 'add' },
-          brick: objectSchema({ id: idSchema, ...placementProperties }),
+          brick: objectSchema({ id: idSchema, ...placementProperties }, [
+            'id',
+            'partId',
+            'color',
+            'x',
+            'y',
+            'z',
+            'rotation',
+          ]),
         }),
         objectSchema({ type: { const: 'remove' }, id: idSchema }),
         objectSchema({

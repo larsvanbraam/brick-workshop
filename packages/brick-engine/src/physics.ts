@@ -373,6 +373,12 @@ export function assessPhysicalFeasibility(
   report.assemblyOrder = [...bodies]
     .sort((first, second) => first.brick.y - second.brick.y)
     .map(({ brick }) => brick.id);
+  if (bodies.some(({ brick }) => brick.facing)) {
+    report.reasons.push(
+      'Pieces mounted on side studs load their hosts sideways, which the vertical static solver does not model; gravity and connection strength remain unknown.',
+    );
+    return report;
+  }
   if (bodies.some(({ brick }) => getPart(brick.partId).shape)) {
     report.reasons.push(
       'Unsupported contact surfaces of shaped parts and thin baseplates are outside the rectangular static solver; gravity, hinge behaviour, flexure and connection strength remain unknown.',

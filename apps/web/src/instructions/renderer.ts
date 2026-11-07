@@ -142,8 +142,11 @@ export class ManualRenderer {
     if (this.models[brick.partId]) {
       const instance = this.coloredModel(brick.partId, brick.color).clone();
       const transform = getLDrawTransform(brick);
-      instance.position.set(transform.x, transform.y, transform.z);
-      instance.rotation.y = (transform.rotation * Math.PI) / 180;
+      const [a, b, c, d, e, f, g, h, i] = transform.matrix;
+      instance.matrixAutoUpdate = false;
+      instance.matrix
+        .set(a, b, c, 0, d, e, f, 0, g, h, i, 0, 0, 0, 0, 1)
+        .setPosition(transform.x, transform.y, transform.z);
       piece = new Group();
       // LDraw's y axis points down and its units are 20 to a stud.
       piece.scale.set(0.05, -0.05, 0.05);

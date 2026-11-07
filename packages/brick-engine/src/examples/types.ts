@@ -1,4 +1,4 @@
-import type { Rotation } from '../core.ts';
+import type { Facing, Rotation } from '../core.ts';
 
 export type ExampleBrickAdder = (
   partId: string,
@@ -7,6 +7,8 @@ export type ExampleBrickAdder = (
   y: number,
   z: number,
   rotation?: Rotation,
+  /** Mounts the piece on its side, on side studs pointing this way. */
+  facing?: Facing,
 ) => void;
 
 export interface ExampleMetadata {

@@ -23,6 +23,7 @@ import {
   getBillOfMaterials,
   getConnectionSites,
   getLDrawTransform,
+  getSideMountHosts,
   getPart,
   hasStudConnection,
   explainConnection,
@@ -1621,7 +1622,15 @@ describe('mixed-part engine builds', () => {
 
     const sampler = catalogSampler();
     expect(resizeBuildArea(sampler, 16)).toBeNull();
-    const cone = { id: 'cone', partId: '6141', color: 4, x: 40.5, y: 0, z: 2, rotation: 0 } as const;
+    const cone = {
+      id: 'cone',
+      partId: '6141',
+      color: 4,
+      x: 40.5,
+      y: 0,
+      z: 2,
+      rotation: 0,
+    } as const;
     const shrunk = resizeBuildArea({ name: 'corner', buildArea: 64, bricks: [cone] }, 16);
     expect(shrunk).toEqual({ name: 'corner', bricks: [{ ...cone, x: 14.5, z: 0 }] });
     expect(validateAssembly(shrunk!)).toEqual([]);
@@ -1758,6 +1767,7 @@ describe('mixed-part engine builds', () => {
       'catalog-sampler',
       'seaside-lighthouse',
       'flower-stall',
+      'nordiska-museet',
     ]);
     expect(new Set(EXAMPLES.map((example) => example.id)).size).toBe(EXAMPLES.length);
     for (const example of EXAMPLES) {
@@ -1820,6 +1830,7 @@ describe('mixed-part engine builds', () => {
       }
       expect(remaining.bricks).toHaveLength(0);
     },
+    20_000,
   );
 
   it('samples every supported design exactly once and demonstrates every supported tile size', () => {
@@ -2284,5 +2295,61 @@ describe('example registry', () => {
     expect(createDemoAssembly().bricks.map((brick) => brick.id)).toEqual(
       Array.from({ length: 383 }, (_, index) => `demo-${index + 1}`),
     );
+  });
+});
+
+describe('pieces mounted on side studs', () => {
+  const piece = (
+    id: string,
+    partId: string,
+    x: number,
+    y: number,
+    z: number,
+    rotation: Brick['rotation'] = 0,
+    facing?: Brick['facing'],
+  ): Brick => ({ id, partId, color: 15, x, y, z, rotation, ...(facing ? { facing } : {}) });
+  const check = (...bricks: Brick[]) => validateAssembly({ name: 'snot', bricks });
+  // A headlight brick turned to face +z: its recessed stud stands 0.2 inside the front face.
+  const headlight = piece('host', '4070', 4, 0, 4, 180);
+
+  it('seats a tile on a headlight stud, half a plate proud of the wall', () => {
+    const tile = piece('tile', '3070b', 4, 0.5, 4.8, 0, '+z');
+    expect(footprint(tile)).toEqual({ width: 1, depth: 0.4, height: 2.5 });
+    expect(check(headlight, tile)).toEqual([]);
+    expect(getSideMountHosts([headlight, tile]).get('tile')).toEqual(['host']);
+  });
+
+  it('rejects mounted pieces off the stud, facing away or without a host', () => {
+    for (const tile of [
+      piece('tile', '3070b', 4, 0.5, 5, 0, '+z'),
+      piece('tile', '3070b', 4, 1, 4.8, 0, '+z'),
+      piece('tile', '3070b', 4, 0.5, 3.6, 0, '-z'),
+    ])
+      expect(check(headlight, tile).map((issue) => issue.code)).toContain('unsupported');
+    expect(check(piece('tile', '3070b', 4, 0.5, 4.75, 0, '+z'))[0].code).toBe('invalid');
+  });
+
+  it('chains mounted pieces on side-stud bricks and keeps neighbours solid', () => {
+    const bracket = piece('bracket', '87087', 4, 0, 4);
+    const plate = piece('plate', '3710', 4.1, 0.5, 4, 90, '-x');
+    expect(check(bracket, plate)).toEqual([]);
+    // Tiles on the plate's studs reach into the bracket's stud space, which the chain fills.
+    expect(check(bracket, plate, piece('tile', '3069b', 3.7, 0.5, 4, 90, '-x'))).toEqual([]);
+    // A level 1 x 2 tile on one headlight presses into the plain brick beside it.
+    expect(
+      check(headlight, piece('n', '3005', 5, 0, 4), piece('t', '3069b', 4, 0.5, 4.8, 90, '+z')).map(
+        (issue) => issue.code,
+      ),
+    ).toEqual(['collision', 'collision']);
+  });
+
+  it('exports, imports and orders mounted pieces', () => {
+    const tile = piece('tile', '3070b', 4, 0.5, 4.8, 0, '+z');
+    const assembly = { name: 'snot', bricks: [tile, headlight] };
+    expect(getLDrawTransform(tile)).toMatchObject({ x: 90, y: -14, z: 104 });
+    expect(exportLDraw(assembly)).toContain('1 15 90 -14 104 -1 0 0 0 0 -1 0 -1 0 3070b.dat');
+    expect(importAssembly(JSON.parse(JSON.stringify(assembly)))).toEqual(assembly);
+    expect(() => importAssembly({ ...assembly, bricks: [{ ...tile, facing: 'up' }] })).toThrow();
+    expect(getConnectionSites(tile, 'top')).toEqual([]);
   });
 });

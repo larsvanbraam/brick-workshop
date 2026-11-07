@@ -37,8 +37,9 @@ export function createLDrawBatch(
   model.updateMatrixWorld(true);
   const transforms = bricks.map((brick) => {
     const transform = getLDrawTransform(brick);
+    const [a, b, c, d, e, f, g, h, i] = transform.matrix;
     return new Matrix4()
-      .makeRotationY((transform.rotation * Math.PI) / 180)
+      .set(a, b, c, 0, d, e, f, 0, g, h, i, 0, 0, 0, 0, 1)
       .setPosition(
         transform.x - buildArea * 10,
         transform.y - (explode ? brick.y * 0.18 * 20 : 0),

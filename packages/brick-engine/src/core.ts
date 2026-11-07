@@ -3,6 +3,21 @@ export { COLORS, COLOR_SOURCE } from './color-catalog.ts';
 
 export type Rotation = 0 | 90 | 180 | 270;
 
+/** Level directions a side stud, or a piece mounted on one, can point. */
+export type Facing = '-z' | '-x' | '+z' | '+x';
+/** In quarter turns about the vertical: a part's own -z side ends up facing each one in turn. */
+export const FACINGS: readonly Facing[] = Object.freeze(['-z', '-x', '+z', '+x']);
+
+/** A stud on a side face: its base centre, and the way it points before the part turns. */
+export interface SideStud {
+  /** Studs from the part's min corner. */
+  x: number;
+  /** Plate units up from the part's bottom. */
+  y: number;
+  z: number;
+  facing: Facing;
+}
+
 export interface ConnectionSite {
   x: number;
   z: number;
@@ -45,6 +60,8 @@ export interface Part {
     topStuds: readonly ConnectionSite[];
     bottomReceivers: readonly ConnectionSite[];
   };
+  /** Studs on the sides, which hold pieces mounted on their side (SNOT). */
+  sideStuds?: readonly SideStud[];
 }
 
 function rectangularConnections(width: number, depth: number): Part['connections'] {
@@ -194,13 +211,24 @@ function roofPart(
   });
 }
 
+/**
+ * A brick with studs on one side. The reserved half stud in front of the body takes the side
+ * studs, which stand 14 LDU up on the body's face; only the plain brick height places them.
+ */
 function sideStudPart(id: string, name: string, depth: number, height = 3): Part {
   const sites = rectangularConnections(1, depth).topStuds.map(({ z }) => ({ x: 0.5, z }));
-  return sculptedPart(id, name, 1.5, depth, height, 'detail', {
-    ldrawRotation: 90,
-    ldrawCenter: { x: 0, z: -5 },
-    connections: { topStuds: sites, bottomReceivers: sites },
-  });
+  return {
+    ...sculptedPart(id, name, 1.5, depth, height, 'detail', {
+      ldrawRotation: 90,
+      ldrawCenter: { x: 0, z: -5 },
+      connections: { topStuds: sites, bottomReceivers: sites },
+    }),
+    ...(height === 3
+      ? {
+          sideStuds: sites.map(({ z }) => ({ x: 0.5, y: 1.75, z: z + 0.5, facing: '-x' as const })),
+        }
+      : {}),
+  };
 }
 
 function coneConnections(width: number, topWidth: number): Part['connections'] {
@@ -560,7 +588,12 @@ export const PARTS: readonly Part[] = [
     ldrawRotation: 90,
     connections: rectangularConnections(1, 4),
   }),
-  detailPart('4070', 'Headlight brick 1 x 1', 1, 1, 3),
+  {
+    // The stud stands on a face recessed 4 LDU above a lip, 14 LDU up: a tile on it sits on the
+    // lip, half a plate proud of the wall.
+    ...detailPart('4070', 'Headlight brick 1 x 1', 1, 1, 3),
+    sideStuds: [{ x: 0.5, y: 1.75, z: 0.2, facing: '-z' }],
+  },
   sculptedPart('2357', 'Corner brick 2 x 2', 2, 2, 3, 'detail', {
     ldrawCenter: { x: 10, z: 10 },
     connections: {
@@ -842,10 +875,12 @@ export const PARTS: readonly Part[] = [
   }),
 ];
 
+const PARTS_BY_ID = new Map(PARTS.map((part) => [part.id, part]));
+const COLOR_IDS = new Set(COLORS.map((color) => color.id));
 const RUNTIME_PARTS = new Map<string, Part>();
 
 export function registerPart(part: Part): void {
-  if (PARTS.some((candidate) => candidate.id === part.id)) return;
+  if (PARTS_BY_ID.has(part.id)) return;
   if (
     !/^[a-z0-9_-]+$/i.test(part.id) ||
     !part.name.trim() ||
@@ -860,7 +895,13 @@ export function registerPart(part: Part): void {
         site.x < part.width &&
         site.z >= 0 &&
         site.z < part.depth,
-    )
+    ) ||
+    (part.sideStuds !== undefined &&
+      (!Array.isArray(part.sideStuds) ||
+        !part.sideStuds.every(
+          (stud) =>
+            [stud.x, stud.y, stud.z].every(Number.isFinite) && FACINGS.includes(stud.facing),
+        )))
   )
     throw new Error(`Invalid runtime part definition: ${part.id}`);
   RUNTIME_PARTS.set(part.id, part);
@@ -878,6 +919,13 @@ export interface Brick {
   y: number;
   z: number;
   rotation: Rotation;
+  /**
+   * Mounted on its side: the part's top points this way and its underside sits on side studs
+   * pointing the same way. Rotation then spins it about that direction; at 0 its width runs
+   * level and its depth stands up. x/z stay the min corner, so the coordinate along the facing
+   * is in 0.1 stud (2 LDU) steps.
+   */
+  facing?: Facing;
 }
 
 export interface Assembly {
@@ -938,7 +986,7 @@ export function resizeBuildArea(assembly: Assembly, size: number): Assembly | nu
 }
 
 export function getPart(partId: string): Part {
-  const part = PARTS.find((candidate) => candidate.id === partId) ?? RUNTIME_PARTS.get(partId);
+  const part = PARTS_BY_ID.get(partId) ?? RUNTIME_PARTS.get(partId);
   if (!part) throw new Error(`Unknown part: ${partId}`);
   return part;
 }
@@ -946,11 +994,127 @@ export function getPart(partId: string): Part {
 export function footprint(brick: Brick) {
   const part = getPart(brick.partId);
   const turned = brick.rotation === 90 || brick.rotation === 270;
+  const width = turned ? part.depth : part.width;
+  const depth = turned ? part.width : part.depth;
+  if (!brick.facing) return { width, depth, height: part.height };
+  // On its side the depth stands up (2.5 plates a stud) and the height becomes the thickness
+  // out from the wall (0.4 studs a plate).
+  const thickness = (part.height * 2) / 5;
+  const across = brick.facing.endsWith('z');
   return {
-    width: turned ? part.depth : part.width,
-    depth: turned ? part.width : part.depth,
-    height: part.height,
+    width: across ? width : thickness,
+    depth: across ? thickness : width,
+    height: depth * 2.5,
   };
+}
+
+type Matrix = readonly [number, number, number, number, number, number, number, number, number];
+type Point = readonly [number, number, number];
+
+/** LDraw's turn about the vertical, row-major, as in a type 1 line. */
+function turnY(degrees: number): Matrix {
+  const cosine = Math.round(Math.cos((degrees * Math.PI) / 180));
+  const sine = Math.round(Math.sin((degrees * Math.PI) / 180));
+  return [cosine, 0, sine, 0, 1, 0, -sine, 0, cosine];
+}
+
+/** Tips a part forward so its studs (LDraw -y) point to -z and its depth (+z) stands up. */
+const TIP: Matrix = [1, 0, 0, 0, 0, -1, 0, 1, 0];
+
+function multiply(first: Matrix, second: Matrix): Matrix {
+  return Array.from({ length: 9 }, (_, index) => {
+    const row = Math.floor(index / 3);
+    const column = index % 3;
+    return [0, 1, 2].reduce(
+      (sum, step) => sum + first[row * 3 + step] * second[step * 3 + column],
+      0,
+    );
+  }) as unknown as Matrix;
+}
+
+function apply(matrix: Matrix, [x, y, z]: Point): Point {
+  return [
+    matrix[0] * x + matrix[1] * y + matrix[2] * z,
+    matrix[3] * x + matrix[4] * y + matrix[5] * z,
+    matrix[6] * x + matrix[7] * y + matrix[8] * z,
+  ];
+}
+
+/**
+ * Where a mounted piece puts each point of the upright part, in LDraw units: the part's box,
+ * spun by its rotation, tipped over and turned to its facing, lands centred on its footprint.
+ */
+function mounting(brick: Brick, part: Part) {
+  const size = footprint(brick);
+  const turn = multiply(
+    multiply(turnY(FACINGS.indexOf(brick.facing!) * 90), TIP),
+    turnY(brick.rotation),
+  );
+  const from: Point = [part.width * 10, -part.height * 4, part.depth * 10];
+  const to: Point = [
+    (brick.x + size.width / 2) * 20,
+    -(brick.y + size.height / 2) * 8,
+    (brick.z + size.depth / 2) * 20,
+  ];
+  return {
+    turn,
+    place: (point: Point): Point => {
+      const [x, y, z] = apply(turn, [point[0] - from[0], point[1] - from[1], point[2] - from[2]]);
+      return [x + to[0], y + to[1], z + to[2]];
+    },
+  };
+}
+
+/** A side stud's base as a key in whole LDU, from LDraw coordinates. */
+const sideKey = (facing: Facing, [x, y, z]: Point) =>
+  `${facing}:${Math.round(x)}:${Math.round(y)}:${Math.round(z)}`;
+
+/** Upright part sites, studs and plates up from its min corner, in LDraw units. */
+const partPoint = (x: number, y: number, z: number): Point => [x * 20, -y * 8, z * 20];
+
+/**
+ * The side studs a piece offers, keyed by facing and base position: an upright part's own side
+ * studs, turned with it, or the top studs of a piece mounted on its side.
+ */
+export function getSideStuds(brick: Brick, part: Part = getPart(brick.partId)): string[] {
+  if (brick.facing) {
+    const { place } = mounting(brick, part);
+    return part.connections.topStuds.map((site) =>
+      sideKey(brick.facing!, place(partPoint(site.x + 0.5, part.height, site.z + 0.5))),
+    );
+  }
+  return (part.sideStuds ?? []).map((stud) => {
+    let [x, z] = [stud.x, stud.z];
+    if (brick.rotation === 90) [x, z] = [stud.z, part.width - stud.x];
+    else if (brick.rotation === 180) [x, z] = [part.width - stud.x, part.depth - stud.z];
+    else if (brick.rotation === 270) [x, z] = [part.depth - stud.z, stud.x];
+    const facing = FACINGS[(FACINGS.indexOf(stud.facing) + brick.rotation / 90) % 4];
+    return sideKey(facing, partPoint(brick.x + x, brick.y + stud.y, brick.z + z));
+  });
+}
+
+/** The side studs a mounted piece's underside takes, keyed like getSideStuds. */
+function getSideReceivers(brick: Brick, part: Part = getPart(brick.partId)): string[] {
+  if (!brick.facing) return [];
+  const { place } = mounting(brick, part);
+  return part.connections.bottomReceivers.map((site) =>
+    sideKey(brick.facing!, place(partPoint(site.x + 0.5, 0, site.z + 0.5))),
+  );
+}
+
+/** For each mounted piece, the pieces whose side studs it sits on. */
+export function getSideMountHosts(bricks: readonly Brick[]): Map<string, string[]> {
+  const studs = new Map<string, string[]>();
+  for (const brick of bricks)
+    for (const key of getSideStuds(brick)) studs.set(key, [...(studs.get(key) ?? []), brick.id]);
+  const hosts = new Map<string, string[]>();
+  for (const brick of bricks) {
+    if (!brick.facing) continue;
+    const ids = new Set(getSideReceivers(brick).flatMap((key) => studs.get(key) ?? []));
+    ids.delete(brick.id);
+    hosts.set(brick.id, [...ids]);
+  }
+  return hosts;
 }
 
 export function getConnectionSites(
@@ -958,6 +1122,8 @@ export function getConnectionSites(
   surface: 'top' | 'bottom',
   part: Part = getPart(brick.partId),
 ) {
+  // Mounted pieces connect through side studs only.
+  if (brick.facing) return [];
   const sites = surface === 'top' ? part.connections.topStuds : part.connections.bottomReceivers;
   return sites.map((site) => {
     let x = site.x;
@@ -993,19 +1159,31 @@ export function hasStudConnection(
   return getConnectionSites(brick, 'bottom', part).some((site) => studs.has(`${site.x}:${site.z}`));
 }
 
+/** Slack for mounted pieces, whose 0.4 stud thickness doesn't add up exactly in floating point. */
+const EPSILON = 1e-6;
+const onGrid = (value: number, step: number) =>
+  Math.abs(Math.round(value / step) * step - value) < EPSILON;
+
 function isValid(brick: Brick, buildArea: number): boolean {
+  // Upright pieces sit on the half-stud grid; recessed studs and 0.4 stud plates put a mounted
+  // piece's coordinate along the facing on 0.1 stud steps.
+  const step = (axis: 'x' | 'z') => (brick.facing?.endsWith(axis) ? 0.1 : 0.5);
   if (
     !brick.id.trim() ||
-    (!PARTS.some((part) => part.id === brick.partId) && !RUNTIME_PARTS.has(brick.partId)) ||
-    !COLORS.some((color) => color.id === brick.color) ||
+    (!PARTS_BY_ID.has(brick.partId) && !RUNTIME_PARTS.has(brick.partId)) ||
+    !COLOR_IDS.has(brick.color) ||
     ![0, 90, 180, 270].includes(brick.rotation) ||
-    ![brick.x, brick.y, brick.z].every((value) => Number.isInteger(value * 2) && value >= 0)
+    (brick.facing !== undefined && !FACINGS.includes(brick.facing)) ||
+    ![brick.x, brick.y, brick.z].every((value) => Number.isFinite(value) && value >= 0) ||
+    !onGrid(brick.x, step('x')) ||
+    !onGrid(brick.y, 0.5) ||
+    !onGrid(brick.z, step('z'))
   )
     return false;
   const size = footprint(brick);
   return (
-    brick.x + size.width <= buildArea &&
-    brick.z + size.depth <= buildArea &&
+    brick.x + size.width <= buildArea + EPSILON &&
+    brick.z + size.depth <= buildArea + EPSILON &&
     brick.y + size.height <= MAX_HEIGHT
   );
 }
@@ -1028,7 +1206,14 @@ const PINNED_DOORS = new Set(['60616a', '60623']);
 
 export function isMatchingInsertFrame(insert: Brick, frame: Brick): boolean {
   const framePartId = INSERT_FRAME_PARTS[insert.partId];
-  if (!framePartId || frame.partId !== framePartId || frame.y !== insert.y) return false;
+  if (
+    !framePartId ||
+    frame.partId !== framePartId ||
+    frame.y !== insert.y ||
+    insert.facing ||
+    frame.facing
+  )
+    return false;
 
   const frameSize = footprint(frame);
   const insertSize = footprint(insert);
@@ -1065,7 +1250,10 @@ export function isMatchingInsertFrame(insert: Brick, frame: Brick): boolean {
 function isSupportedInsert(brick: Brick, bricks: readonly Brick[]): boolean {
   // Only insert parts can sit in a frame, so other pieces skip the scan; that keeps validating
   // large builds linear.
-  return brick.partId in INSERT_FRAME_PARTS && bricks.some((frame) => isMatchingInsertFrame(brick, frame));
+  return (
+    brick.partId in INSERT_FRAME_PARTS &&
+    bricks.some((frame) => isMatchingInsertFrame(brick, frame))
+  );
 }
 
 function hasEnvelopeContact(upper: Brick, lower: Brick): boolean {
@@ -1116,7 +1304,10 @@ export function validateAssembly(assembly: Assembly): Issue[] {
     valid.filter((brick) => isRuntimePart(brick.partId)).map((brick) => brick.id),
   );
   const groundedByTopHeight = new Map<number, Brick[]>();
-  for (const brick of valid.toSorted((first, second) => first.y - second.y)) {
+  const sideStuds = new Map<string, string[]>();
+  for (const brick of valid
+    .filter((brick) => !brick.facing)
+    .toSorted((first, second) => first.y - second.y)) {
     const hasStudSupport = getConnectionSites(brick, 'bottom').some((site) =>
       groundedStuds.has(`${site.y}:${site.x}:${site.z}`),
     );
@@ -1135,6 +1326,8 @@ export function validateAssembly(assembly: Assembly): Issue[] {
     ) {
       for (const site of getConnectionSites(brick, 'top'))
         groundedStuds.add(`${site.y}:${site.x}:${site.z}`);
+      for (const key of getSideStuds(brick))
+        sideStuds.set(key, [...(sideStuds.get(key) ?? []), brick.id]);
       const topHeight = brick.y + footprint(brick).height;
       const groundedAtHeight = groundedByTopHeight.get(topHeight) ?? [];
       groundedAtHeight.push(brick);
@@ -1147,6 +1340,40 @@ export function validateAssembly(assembly: Assembly): Issue[] {
       });
     }
   }
+  // Mounted pieces hang off grounded side studs, or off the faces of pieces mounted before them.
+  const hosts = new Map<string, Set<string>>();
+  let pending = valid.filter((brick) => brick.facing);
+  for (let progress = true; progress && pending.length;) {
+    progress = false;
+    pending = pending.filter((brick) => {
+      const ids = getSideReceivers(brick).flatMap((key) => sideStuds.get(key) ?? []);
+      if (!ids.length) return true;
+      hosts.set(brick.id, new Set(ids));
+      for (const key of getSideStuds(brick))
+        sideStuds.set(key, [...(sideStuds.get(key) ?? []), brick.id]);
+      progress = true;
+      return false;
+    });
+  }
+  for (const brick of pending)
+    issues.push({
+      brickId: brick.id,
+      code: 'unsupported',
+      message: 'No side stud on a grounded piece pointing the way this mounted piece faces.',
+    });
+  // A mounted piece reaches into the recess or stud space of the pieces that hold it, down to
+  // the upright brick the whole chain hangs from.
+  const chains = new Map<string, Set<string>>();
+  const chain = (id: string): Set<string> => {
+    let ids = chains.get(id);
+    if (!ids) {
+      ids = new Set(hosts.get(id));
+      for (const host of hosts.get(id) ?? []) for (const below of chain(host)) ids.add(below);
+      chains.set(id, ids);
+    }
+    return ids;
+  };
+  const holds = (piece: Brick, host: Brick) => !!piece.facing && chain(piece.id).has(host.id);
   const bounds = valid.map((brick) => footprint(brick));
   const buckets = new Map<string, number[]>();
   const cells = valid.map((brick, index) => {
@@ -1185,14 +1412,17 @@ export function validateAssembly(assembly: Assembly): Issue[] {
     for (const otherIndex of [...candidates].sort((first, second) => first - second)) {
       const other = valid[otherIndex];
       const otherSize = bounds[otherIndex];
-      if (isMatchingInsertFrame(brick, other) || isMatchingInsertFrame(other, brick)) continue;
       if (
-        brick.x < other.x + otherSize.width &&
-        brick.x + size.width > other.x &&
-        brick.z < other.z + otherSize.depth &&
-        brick.z + size.depth > other.z &&
+        brick.x < other.x + otherSize.width - EPSILON &&
+        brick.x + size.width - EPSILON > other.x &&
+        brick.z < other.z + otherSize.depth - EPSILON &&
+        brick.z + size.depth - EPSILON > other.z &&
         brick.y < other.y + otherSize.height &&
-        brick.y + size.height > other.y
+        brick.y + size.height > other.y &&
+        !isMatchingInsertFrame(brick, other) &&
+        !isMatchingInsertFrame(other, brick) &&
+        !holds(brick, other) &&
+        !holds(other, brick)
       ) {
         issues.push({
           brickId: brick.id,
@@ -1236,9 +1466,39 @@ export function getBillOfMaterials(assembly: Assembly) {
   return [...entries.values()];
 }
 
-export function getLDrawTransform(brick: Brick) {
-  const size = footprint(brick);
+/**
+ * Where a part's LDraw origin goes and how it is turned. `rotation` is the turn about the
+ * vertical for upright pieces; `matrix` is the full row-major turn, which mounted pieces need.
+ */
+export function getLDrawTransform(brick: Brick): {
+  x: number;
+  y: number;
+  z: number;
+  rotation: Rotation;
+  matrix: Matrix;
+} {
   const part = getPart(brick.partId);
+  if (brick.facing) {
+    const upright = getLDrawTransform({
+      ...brick,
+      x: 0,
+      y: 0,
+      z: 0,
+      rotation: 0,
+      facing: undefined,
+    });
+    const { turn, place } = mounting(brick, part);
+    const round = (value: number) => Math.round(value * 1000) / 1000 + 0;
+    const [x, y, z] = place([upright.x, upright.y, upright.z]).map(round);
+    return {
+      x,
+      y,
+      z,
+      rotation: upright.rotation,
+      matrix: multiply(turn, upright.matrix).map(round) as unknown as Matrix,
+    };
+  }
+  const size = footprint(brick);
   const rotation = ((brick.rotation + part.ldrawRotation) % 360) as Rotation;
   const cosine = Math.round(Math.cos((rotation * Math.PI) / 180));
   const sine = Math.round(Math.sin((rotation * Math.PI) / 180));
@@ -1248,6 +1508,7 @@ export function getLDrawTransform(brick: Brick) {
     y: -brick.y * 8 - (part.ldrawBaseY ?? size.height * 8),
     z: (brick.z + size.depth / 2) * 20 + sine * center.x - cosine * center.z,
     rotation,
+    matrix: turnY(rotation),
   };
 }
 
@@ -1258,17 +1519,15 @@ export function exportLDraw(assembly: Assembly): string {
     `0 ${assembly.name.replace(/[\r\n]/g, ' ')}`,
     '0 Generated by Brick Workshop',
     '0 UNVERIFIED DRAFT: physical buildability is not certified; not approved for construction.',
-    '0 Upright bricks and plates; layers are 8 LDU.',
+    '0 Upright bricks and plates, and pieces mounted on side studs; layers are 8 LDU.',
   ];
   let previousLayer = -1;
   for (const brick of assembly.bricks.toSorted((first, second) => first.y - second.y)) {
     if (previousLayer !== -1 && brick.y !== previousLayer) lines.push('0 STEP');
     previousLayer = brick.y;
     const transform = getLDrawTransform(brick);
-    const cosine = Math.round(Math.cos((transform.rotation * Math.PI) / 180));
-    const sine = Math.round(Math.sin((transform.rotation * Math.PI) / 180));
     lines.push(
-      `1 ${brick.color} ${transform.x} ${transform.y} ${transform.z} ${cosine} 0 ${sine} 0 1 0 ${-sine} 0 ${cosine} ${brick.partId}.dat`,
+      `1 ${brick.color} ${transform.x} ${transform.y} ${transform.z} ${transform.matrix.join(' ')} ${brick.partId}.dat`,
     );
   }
   return `${lines.join('\n')}\n`;

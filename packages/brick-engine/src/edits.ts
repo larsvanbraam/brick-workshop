@@ -3,6 +3,7 @@ import {
   MAX_BUILD_AREA,
   MAX_PIECES,
   COLORS,
+  FACINGS,
   getBillOfMaterials,
   getPart,
   isMatchingInsertFrame,
@@ -207,7 +208,7 @@ function fields(value: Record<string, unknown>, allowed: readonly string[]) {
   return Object.keys(value).every((key) => allowed.includes(key));
 }
 
-const brickFields = ['partId', 'color', 'x', 'y', 'z', 'rotation'] as const;
+const brickFields = ['partId', 'color', 'x', 'y', 'z', 'rotation', 'facing'] as const;
 function validChanges(value: unknown, complete: boolean): boolean {
   if (
     !object(value) ||
@@ -218,8 +219,11 @@ function validChanges(value: unknown, complete: boolean): boolean {
   if (complete && (typeof value.id !== 'string' || !value.id.trim() || value.id.length > 100))
     return false;
   for (const field of brickFields) {
-    if (!(field in value) && !complete) continue;
-    if (field === 'partId') {
+    // Facing is optional even on complete bricks: upright pieces leave it out.
+    if (!(field in value) && (!complete || field === 'facing')) continue;
+    if (field === 'facing') {
+      if (!FACINGS.includes(value[field] as never)) return false;
+    } else if (field === 'partId') {
       if (typeof value[field] !== 'string' || !value[field]) return false;
     } else if (typeof value[field] !== 'number' || !Number.isFinite(value[field])) return false;
   }

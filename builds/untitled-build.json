@@ -1,0 +1,586 @@
+{
+  "version": 1,
+  "assembly": {
+    "name": "Test house",
+    "bricks": [
+      {
+        "id": "6392d7e5-7e0a-4368-8a6f-0a3e1ac0ed5d",
+        "partId": "3867",
+        "color": 2,
+        "x": 0,
+        "y": 0,
+        "z": 0,
+        "rotation": 0
+      },
+      {
+        "id": "dad48501-a33f-4654-84f8-315c692adfad",
+        "partId": "3471",
+        "color": 2,
+        "x": 11,
+        "y": 0.5,
+        "z": 11,
+        "rotation": 0
+      },
+      {
+        "id": "84102945-ba8c-45dd-9a25-63718e879062",
+        "partId": "32607",
+        "color": 2,
+        "x": 14,
+        "y": 0.5,
+        "z": 9,
+        "rotation": 90
+      },
+      {
+        "id": "f8284935-6423-4145-b29c-f71ec1376048",
+        "partId": "32607",
+        "color": 2,
+        "x": 14,
+        "y": 0.5,
+        "z": 1,
+        "rotation": 180
+      },
+      {
+        "id": "dc7a4f00-74b4-4135-89f7-7c6c208d1744",
+        "partId": "3471",
+        "color": 2,
+        "x": 11,
+        "y": 0.5,
+        "z": 3,
+        "rotation": 270
+      },
+      {
+        "id": "f8dda7c0-edee-4ee5-888e-cc3c55cb8887",
+        "partId": "3622",
+        "color": 72,
+        "x": 1,
+        "y": 0.5,
+        "z": 12,
+        "rotation": 180
+      },
+      {
+        "id": "18260916-4d30-4008-85aa-677da1fd8966",
+        "partId": "3622",
+        "color": 72,
+        "x": 1,
+        "y": 0.5,
+        "z": 6,
+        "rotation": 180
+      },
+      {
+        "id": "58110b2c-6a34-4a75-afce-c63e0e92e447",
+        "partId": "3622",
+        "color": 72,
+        "x": 2,
+        "y": 0.5,
+        "z": 14,
+        "rotation": 270
+      },
+      {
+        "id": "1e5cbe5d-66f1-4447-b920-47157f651b57",
+        "partId": "3622",
+        "color": 72,
+        "x": 8,
+        "y": 0.5,
+        "z": 14,
+        "rotation": 270
+      },
+      {
+        "id": "36d68fee-1844-4f9a-936e-f5f65f8ee9a3",
+        "partId": "3622",
+        "color": 72,
+        "x": 10,
+        "y": 0.5,
+        "z": 11,
+        "rotation": 0
+      },
+      {
+        "id": "70aaf445-32c0-4ec9-a76d-0a39bebecfd5",
+        "partId": "3622",
+        "color": 71,
+        "x": 1,
+        "y": 0.5,
+        "z": 9,
+        "rotation": 0
+      },
+      {
+        "id": "5efbd04c-6163-477e-ad14-e27743763b8f",
+        "partId": "3622",
+        "color": 71,
+        "x": 5,
+        "y": 0.5,
+        "z": 14,
+        "rotation": 90
+      },
+      {
+        "id": "28085c02-4832-46b0-9145-bd657ea31368",
+        "partId": "3622",
+        "color": 71,
+        "x": 1,
+        "y": 3.5,
+        "z": 14,
+        "rotation": 90
+      },
+      {
+        "id": "8702bcb4-08d3-48b8-9826-e99e2ff10cc5",
+        "partId": "3622",
+        "color": 72,
+        "x": 4,
+        "y": 3.5,
+        "z": 14,
+        "rotation": 90
+      },
+      {
+        "id": "355828c0-89e4-43f6-806b-7e8fcce59377",
+        "partId": "3622",
+        "color": 72,
+        "x": 7,
+        "y": 3.5,
+        "z": 14,
+        "rotation": 90
+      },
+      {
+        "id": "584970e3-3fd1-4beb-a342-e262512935da",
+        "partId": "3622",
+        "color": 72,
+        "x": 1,
+        "y": 3.5,
+        "z": 11,
+        "rotation": 180
+      },
+      {
+        "id": "ad2c31e0-0f8f-4dee-b50a-80a40319313e",
+        "partId": "3622",
+        "color": 15,
+        "x": 1,
+        "y": 3.5,
+        "z": 8,
+        "rotation": 180
+      },
+      {
+        "id": "7b32f4b0-ed8f-4163-bdd9-e7dc806331fc",
+        "partId": "3622",
+        "color": 15,
+        "x": 10,
+        "y": 3.5,
+        "z": 12,
+        "rotation": 0
+      },
+      {
+        "id": "dd0de198-5a11-4864-83b3-a6a7c33c9f50",
+        "partId": "3622",
+        "color": 15,
+        "x": 10,
+        "y": 0.5,
+        "z": 8,
+        "rotation": 0
+      },
+      {
+        "id": "65fe7502-720b-4d25-94d7-fd8827ef8b5a",
+        "partId": "3622",
+        "color": 72,
+        "x": 10,
+        "y": 0.5,
+        "z": 5,
+        "rotation": 180
+      },
+      {
+        "id": "7b5a68d8-97ab-42bc-8870-f802356f1482",
+        "partId": "3622",
+        "color": 71,
+        "x": 1,
+        "y": 0.5,
+        "z": 5,
+        "rotation": 270
+      },
+      {
+        "id": "c29053ca-47c5-44a7-b696-fdfd1618b0d2",
+        "partId": "3622",
+        "color": 71,
+        "x": 7,
+        "y": 0.5,
+        "z": 5,
+        "rotation": 270
+      },
+      {
+        "id": "8c7164b2-d4e8-4147-a7de-2bb82880a0e3",
+        "partId": "3622",
+        "color": 72,
+        "x": 1,
+        "y": 3.5,
+        "z": 5,
+        "rotation": 0
+      },
+      {
+        "id": "dccb032b-6322-419a-948c-0b5ea24e9142",
+        "partId": "3622",
+        "color": 72,
+        "x": 10,
+        "y": 3.5,
+        "z": 9,
+        "rotation": 0
+      },
+      {
+        "id": "325f21d2-ea6e-486c-b0c6-78ca924ce93c",
+        "partId": "3622",
+        "color": 71,
+        "x": 10,
+        "y": 3.5,
+        "z": 6,
+        "rotation": 0
+      },
+      {
+        "id": "99e26d81-a650-4f16-b8ea-d2cbe2b81c16",
+        "partId": "3622",
+        "color": 72,
+        "x": 8,
+        "y": 3.5,
+        "z": 5,
+        "rotation": 90
+      },
+      {
+        "id": "cd9db7c0-624e-4c29-9c14-97e55c67fe97",
+        "partId": "3004",
+        "color": 72,
+        "x": 2,
+        "y": 3.5,
+        "z": 5,
+        "rotation": 90
+      },
+      {
+        "id": "a7553bfb-0dc7-4f1f-aff5-3822e01f7be1",
+        "partId": "3005",
+        "color": 71,
+        "x": 7,
+        "y": 3.5,
+        "z": 5,
+        "rotation": 90
+      },
+      {
+        "id": "219ea9bd-7deb-490f-87b3-75ca1f1468c4",
+        "partId": "3622",
+        "color": 70,
+        "x": 2,
+        "y": 6.5,
+        "z": 14,
+        "rotation": 270
+      },
+      {
+        "id": "4279c2b0-9d77-4df7-bdad-efb0d2403b20",
+        "partId": "3622",
+        "color": 70,
+        "x": 5,
+        "y": 6.5,
+        "z": 14,
+        "rotation": 270
+      },
+      {
+        "id": "5c8190cd-888c-4d54-af23-e4c07e13cff9",
+        "partId": "3622",
+        "color": 70,
+        "x": 8,
+        "y": 6.5,
+        "z": 14,
+        "rotation": 270
+      },
+      {
+        "id": "1466458c-1253-4906-b1d5-af4746c83a54",
+        "partId": "3622",
+        "color": 70,
+        "x": 10,
+        "y": 6.5,
+        "z": 11,
+        "rotation": 0
+      },
+      {
+        "id": "bcdeae99-41d0-4e00-bc27-bc1486eb2343",
+        "partId": "3622",
+        "color": 70,
+        "x": 10,
+        "y": 6.5,
+        "z": 8,
+        "rotation": 0
+      },
+      {
+        "id": "bbe78f7c-4623-4f8d-8fa1-8f6b1b336aa5",
+        "partId": "3622",
+        "color": 70,
+        "x": 10,
+        "y": 6.5,
+        "z": 5,
+        "rotation": 0
+      },
+      {
+        "id": "317e067a-7dc2-48a2-bb37-61c61bb3aa16",
+        "partId": "3622",
+        "color": 70,
+        "x": 7,
+        "y": 6.5,
+        "z": 5,
+        "rotation": 90
+      },
+      {
+        "id": "f5ebb8b1-806c-4e9a-93ea-d12199aa15f9",
+        "partId": "3622",
+        "color": 70,
+        "x": 8,
+        "y": 9.5,
+        "z": 5,
+        "rotation": 270
+      },
+      {
+        "id": "217271e4-821b-497c-88cd-6d4008fa8233",
+        "partId": "3622",
+        "color": 70,
+        "x": 10,
+        "y": 9.5,
+        "z": 6,
+        "rotation": 0
+      },
+      {
+        "id": "bceead27-9576-4d0b-823f-08feea4b7912",
+        "partId": "3622",
+        "color": 70,
+        "x": 10,
+        "y": 9.5,
+        "z": 9,
+        "rotation": 0
+      },
+      {
+        "id": "a2b65e40-d38b-4f6f-ba86-5c20640766a7",
+        "partId": "3622",
+        "color": 70,
+        "x": 10,
+        "y": 9.5,
+        "z": 12,
+        "rotation": 0
+      },
+      {
+        "id": "4256fae4-9156-47d4-a9c8-32ae971e4d2c",
+        "partId": "3622",
+        "color": 70,
+        "x": 7,
+        "y": 9.5,
+        "z": 14,
+        "rotation": 90
+      },
+      {
+        "id": "3333791c-9cc3-4098-8576-f3d5458d3538",
+        "partId": "3622",
+        "color": 70,
+        "x": 4,
+        "y": 9.5,
+        "z": 14,
+        "rotation": 90
+      },
+      {
+        "id": "be5ce783-d026-43ee-ae45-abc4fc57bf6b",
+        "partId": "3622",
+        "color": 70,
+        "x": 1,
+        "y": 9.5,
+        "z": 14,
+        "rotation": 90
+      },
+      {
+        "id": "0c833327-e272-447a-adf9-270ecde8efe6",
+        "partId": "3005",
+        "color": 70,
+        "x": 7,
+        "y": 9.5,
+        "z": 5,
+        "rotation": 270
+      },
+      {
+        "id": "fcc62943-9593-4269-b136-a9c7111574c4",
+        "partId": "4035",
+        "color": 0,
+        "x": 1,
+        "y": 6.5,
+        "z": 11,
+        "rotation": 0
+      },
+      {
+        "id": "53ca6cf3-6140-47c0-acb6-e657eec3d010",
+        "partId": "4035",
+        "color": 0,
+        "x": 1,
+        "y": 6.5,
+        "z": 7,
+        "rotation": 0
+      },
+      {
+        "id": "39bca1d8-3dff-48a3-b897-3d280dd5015c",
+        "partId": "3622",
+        "color": 70,
+        "x": 1,
+        "y": 6.5,
+        "z": 5,
+        "rotation": 90
+      },
+      {
+        "id": "0f9fd2c9-045b-461d-90b6-7b2de105c268",
+        "partId": "3005",
+        "color": 70,
+        "x": 1,
+        "y": 6.5,
+        "z": 6,
+        "rotation": 90
+      },
+      {
+        "id": "8f0d729d-40a9-4df4-bf3c-cddbb85a73ac",
+        "partId": "3004",
+        "color": 70,
+        "x": 1,
+        "y": 9.5,
+        "z": 5,
+        "rotation": 180
+      },
+      {
+        "id": "1cfd57a8-8fc1-4796-85e1-f556798a3008",
+        "partId": "3004",
+        "color": 70,
+        "x": 2,
+        "y": 9.5,
+        "z": 5,
+        "rotation": 270
+      },
+      {
+        "id": "10cfddbc-5c08-482b-a637-9820f3828bd2",
+        "partId": "3004",
+        "color": 70,
+        "x": 1,
+        "y": 6.5,
+        "z": 9,
+        "rotation": 0
+      },
+      {
+        "id": "fabfc394-49c9-4afb-b4d9-cfdefbdf4293",
+        "partId": "3004",
+        "color": 70,
+        "x": 1,
+        "y": 9.5,
+        "z": 9,
+        "rotation": 0
+      },
+      {
+        "id": "8fc6268e-f21f-47c8-ab7a-f63cdc86d98e",
+        "partId": "3004",
+        "color": 70,
+        "x": 1,
+        "y": 6.5,
+        "z": 13,
+        "rotation": 0
+      },
+      {
+        "id": "f34d3bb1-a12c-44d3-b675-312fa6b9b12e",
+        "partId": "3005",
+        "color": 70,
+        "x": 1,
+        "y": 9.5,
+        "z": 13,
+        "rotation": 0
+      },
+      {
+        "id": "7fc783a5-e77f-4886-aa71-e748923e1f00",
+        "partId": "3622",
+        "color": 70,
+        "x": 1,
+        "y": 12.5,
+        "z": 5,
+        "rotation": 90
+      },
+      {
+        "id": "565dae8d-bdef-423d-8492-0e48f42005c9",
+        "partId": "3622",
+        "color": 70,
+        "x": 7,
+        "y": 12.5,
+        "z": 5,
+        "rotation": 90
+      },
+      {
+        "id": "da110948-f532-47e1-b4f7-1551f609473f",
+        "partId": "3622",
+        "color": 70,
+        "x": 10,
+        "y": 12.5,
+        "z": 5,
+        "rotation": 180
+      },
+      {
+        "id": "2a293cf2-053a-4fdb-9afe-e1143132c619",
+        "partId": "3622",
+        "color": 70,
+        "x": 10,
+        "y": 12.5,
+        "z": 8,
+        "rotation": 180
+      },
+      {
+        "id": "ab81a3e3-4638-4eca-8706-b19bd9e9c028",
+        "partId": "3622",
+        "color": 70,
+        "x": 10,
+        "y": 12.5,
+        "z": 11,
+        "rotation": 180
+      },
+      {
+        "id": "d9ae9fe9-a879-4a56-9cd0-130c79b9689b",
+        "partId": "3622",
+        "color": 70,
+        "x": 8,
+        "y": 12.5,
+        "z": 14,
+        "rotation": 270
+      },
+      {
+        "id": "1672da09-0ff0-401f-a532-bdb8405a2d9d",
+        "partId": "3622",
+        "color": 70,
+        "x": 5,
+        "y": 12.5,
+        "z": 14,
+        "rotation": 270
+      },
+      {
+        "id": "27974f5e-291b-41bc-9889-c55af08eee20",
+        "partId": "3622",
+        "color": 70,
+        "x": 2,
+        "y": 12.5,
+        "z": 14,
+        "rotation": 270
+      },
+      {
+        "id": "e793d9f1-e6df-4274-8a1b-a2bc36c1217b",
+        "partId": "3004",
+        "color": 70,
+        "x": 1,
+        "y": 12.5,
+        "z": 13,
+        "rotation": 0
+      },
+      {
+        "id": "d39a0407-450d-4cef-be05-6609d4024207",
+        "partId": "3004",
+        "color": 70,
+        "x": 1,
+        "y": 12.5,
+        "z": 9,
+        "rotation": 0
+      },
+      {
+        "id": "e40156fd-4b5f-413d-896f-80004cb4fda2",
+        "partId": "3005",
+        "color": 70,
+        "x": 1,
+        "y": 12.5,
+        "z": 6,
+        "rotation": 0
+      }
+    ]
+  },
+  "parts": [],
+  "savedAt": "2026-11-06T20:23:16.414Z"
+}

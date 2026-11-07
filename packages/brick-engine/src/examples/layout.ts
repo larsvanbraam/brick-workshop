@@ -1,4 +1,4 @@
-import { BUILD_AREA, getPart } from '../core.ts';
+import { BUILD_AREA, FACINGS, footprint, getPart } from '../core.ts';
 import type { Rotation } from '../core.ts';
 import type { ExampleBrickAdder } from './types.ts';
 
@@ -154,11 +154,24 @@ const DOORS = new Set(['3193a']);
  * turn and doors stay half a stud in front of them, as the engine's insert rule expects.
  */
 export function turnAround(add: ExampleBrickAdder, buildArea = BUILD_AREA): ExampleBrickAdder {
-  return (partId, color, x, y, z, rotation = 0) => {
-    const part = getPart(partId);
-    const turned = rotation === 90 || rotation === 270;
-    const width = turned ? part.depth : part.width;
-    const depth = turned ? part.width : part.depth;
+  return (partId, color, x, y, z, rotation = 0, facing) => {
+    const { width, depth } = footprint({ id: '', partId, color, x, y, z, rotation, facing });
+    if (facing) {
+      // Turning the build about the vertical points a mounted piece the other way; its spin
+      // about that direction stays.
+      const opposite = FACINGS[(FACINGS.indexOf(facing) + 2) % 4];
+      const round = (value: number) => Math.round(value * 10) / 10;
+      add(
+        partId,
+        color,
+        round(buildArea - x - width),
+        y,
+        round(buildArea - z - depth),
+        rotation,
+        opposite,
+      );
+      return;
+    }
     if (DOOR_FRAMES.has(partId) || DOORS.has(partId)) {
       const frameZ = buildArea - (DOORS.has(partId) ? z + 0.5 : z) - 1;
       add(
@@ -193,9 +206,193 @@ const TRANS_CLEAR = 47;
 
 /** Puts trans-clear glass in every window frame the build adds. */
 export function glazeWindows(add: ExampleBrickAdder): ExampleBrickAdder {
-  return (partId, color, x, y, z, rotation = 0) => {
-    add(partId, color, x, y, z, rotation);
+  return (partId, color, x, y, z, rotation = 0, facing) => {
+    add(partId, color, x, y, z, rotation, facing);
     const glass = WINDOW_GLASS[partId];
     if (glass) add(glass, TRANS_CLEAR, x, y, z, rotation);
   };
+}
+
+/**
+ * Lays one bonded course from a top-down character map. Long runs along the course's preferred
+ * axis go down first and the preferred axis swaps every course, so stacked courses trade corners
+ * and overlap their joints; short leftovers fill in along whichever axis still fits.
+ */
+export function addBondedMap(
+  add: ExampleBrickAdder,
+  rows: readonly string[],
+  y: number,
+  legend: Readonly<Record<string, readonly [RunKind, number]>>,
+  course: number,
+) {
+  const width = Math.max(...rows.map((row) => row.length));
+  const used = rows.map(() => new Array<boolean>(width).fill(false));
+  const at = (x: number, z: number) => rows[z]?.[x] ?? ' ';
+  const free = (x: number, z: number) => !used[z][x] && legend[at(x, z)] !== undefined;
+  const [first, second] = course % 2 === 0 ? (['x', 'z'] as const) : (['z', 'x'] as const);
+  for (const [axis, minimum] of [
+    [first, 3],
+    [second, 2],
+    [first, 1],
+    [second, 1],
+  ] as const) {
+    const lines = axis === 'x' ? rows.length : width;
+    const span = axis === 'x' ? width : rows.length;
+    for (let line = 0; line < lines; line++) {
+      const cell = (offset: number): [number, number] =>
+        axis === 'x' ? [offset, line] : [line, offset];
+      let cursor = 0;
+      while (cursor < span) {
+        const [x, z] = cell(cursor);
+        if (!free(x, z)) {
+          cursor++;
+          continue;
+        }
+        let end = cursor + 1;
+        while (end < span && free(...cell(end)) && at(...cell(end)) === at(x, z)) end++;
+        if (end - cursor >= minimum) {
+          const [kind, color] = legend[at(x, z)];
+          addRun(add, kind, color, axis, x, y, z, end - cursor);
+          for (let offset = cursor; offset < end; offset++) {
+            const [usedX, usedZ] = cell(offset);
+            used[usedZ][usedX] = true;
+          }
+        }
+        cursor = end;
+      }
+    }
+  }
+}
+
+const AREA_PARTS: Readonly<Record<'plate' | 'tile' | 'brick', readonly string[]>> = {
+  plate: [
+    '91405',
+    '92438',
+    '3027',
+    '3456',
+    '41539',
+    '3028',
+    '3029',
+    '3033',
+    '3036',
+    '4282',
+    '3030',
+    '91988',
+    '3035',
+    '2445',
+    '3958',
+    '3832',
+    '3032',
+    '3034',
+    '60479',
+    '3031',
+    '4477',
+    '3795',
+    '3460',
+    '3020',
+    '11212',
+    '3666',
+    '3021',
+    '78329',
+    '3022',
+    '3710',
+    '3623',
+    '3023b',
+    '3024',
+  ],
+  tile: [
+    '48288',
+    '6320',
+    '8165',
+    '6934',
+    '1751',
+    '69729',
+    '87079',
+    '4162',
+    '26603',
+    '6636',
+    '3068b',
+    '2431',
+    '63864',
+    '3069b',
+    '3070b',
+  ],
+  brick: [
+    '4204',
+    '4202',
+    '6212',
+    '4201',
+    '2356',
+    '3006',
+    '3007',
+    '2456',
+    '2465',
+    '6112',
+    '3001',
+    '6111',
+    '3002',
+    '3008',
+    '3003',
+    '3009',
+    '3010',
+    '3622',
+    '3004',
+    '3005',
+  ],
+};
+
+const AREA_SHAPES: Partial<
+  Record<
+    'plate' | 'tile' | 'brick',
+    readonly { partId: string; width: number; depth: number; rotation: Rotation }[]
+  >
+> = {};
+
+/**
+ * Covers a top-down character map with the largest rectangular plates, tiles or bricks that fit,
+ * one layer high. Each piece claims only cells of one character, and when `anchored` is given it
+ * prefers pieces that cover at least one anchored cell, so slabs over hollow walls stay connected.
+ */
+export function addAreaMap(
+  add: ExampleBrickAdder,
+  rows: readonly string[],
+  y: number,
+  legend: Readonly<Record<string, readonly ['plate' | 'tile' | 'brick', number]>>,
+  anchored: (x: number, z: number) => boolean = () => true,
+) {
+  const width = Math.max(...rows.map((row) => row.length));
+  const used = rows.map(() => new Array<boolean>(width).fill(false));
+  const at = (x: number, z: number) => rows[z]?.[x] ?? ' ';
+  const shapes = (kind: 'plate' | 'tile' | 'brick') =>
+    (AREA_SHAPES[kind] ??= AREA_PARTS[kind]
+      .flatMap((partId) => {
+        const { width, depth } = getPart(partId);
+        return width === depth
+          ? [{ partId, width, depth, rotation: 0 as Rotation }]
+          : [
+              { partId, width, depth, rotation: 0 as Rotation },
+              { partId, width: depth, depth: width, rotation: 90 as Rotation },
+            ];
+      })
+      .sort((first, second) => second.width * second.depth - first.width * first.depth));
+  for (let z = 0; z < rows.length; z++)
+    for (let x = 0; x < width; x++) {
+      const cell = at(x, z);
+      const entry = legend[cell];
+      if (used[z][x] || !entry) continue;
+      const cells = (shape: { width: number; depth: number }) =>
+        Array.from({ length: shape.width * shape.depth }, (_, index) => [
+          x + (index % shape.width),
+          z + Math.floor(index / shape.width),
+        ]);
+      const fits = shapes(entry[0]).filter((shape) =>
+        cells(shape).every(([cellX, cellZ]) => at(cellX, cellZ) === cell && !used[cellZ]?.[cellX]),
+      );
+      const shape =
+        fits.find((candidate) =>
+          cells(candidate).some(([cellX, cellZ]) => anchored(cellX, cellZ)),
+        ) ?? fits[0];
+      add(shape.partId, entry[1], x, y, z, shape.rotation);
+      for (const [cellX, cellZ] of cells(shape)) used[cellZ][cellX] = true;
+    }
 }

@@ -1,10 +1,19 @@
 import { BoxGeometry, CylinderGeometry, ExtrudeGeometry, Path, Shape, SphereGeometry } from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { PLATE_HEIGHT, getPart } from '@lego-builder/brick-engine';
+import { PLATE_HEIGHT, footprint, getPart } from '@lego-builder/brick-engine';
 import type { Brick } from '@lego-builder/brick-engine';
 
 export function createFallbackGeometry(brick: Brick) {
   const part = getPart(brick.partId);
+  if (brick.facing) {
+    // A piece mounted on a side stud: a plain slab is enough until its LDraw model loads.
+    const size = footprint(brick);
+    return new BoxGeometry(
+      size.width - 0.035,
+      size.height * PLATE_HEIGHT - 0.025,
+      size.depth - 0.035,
+    );
+  }
   const height = part.height * PLATE_HEIGHT;
   let geometry;
   if (part.shape === 'foliage') {

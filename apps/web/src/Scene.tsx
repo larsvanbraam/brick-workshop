@@ -2,7 +2,7 @@ import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import type { RefObject } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { CameraControls, CameraControlsImpl, Edges, Environment, Grid } from '@react-three/drei';
-import { Box3, Group, Line, LineSegments, Mesh, PerspectiveCamera, Vector3 } from 'three';
+import { Box3, Group, Line, LineSegments, Matrix4, Mesh, PerspectiveCamera, Vector3 } from 'three';
 import type { Object3D } from 'three';
 import { createFallbackGeometry } from './fallback-geometry';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
@@ -286,11 +286,22 @@ export function LDrawMesh({
   model,
   color,
   rotation,
+  matrix,
 }: {
   model: Group;
   color: number;
   rotation: number;
+  /** The full LDraw turn, row-major; pieces mounted on side studs need more than `rotation`. */
+  matrix?: readonly number[];
 }) {
+  const key = matrix?.join(' ');
+  const turn = useMemo(() => {
+    if (!key) return undefined;
+    const [a, b, c, d, e, f, g, h, i] = key.split(' ').map(Number);
+    return new Matrix4()
+      .set(a, b, c, 0, d, e, f, 0, g, h, i, 0, 0, 0, 0, 1)
+      .premultiply(new Matrix4().makeScale(0.05, -0.05, 0.05));
+  }, [key]);
   const [instance] = useState(() => coloredLDrawModel(model, color));
   useEffect(
     () => () => {
@@ -305,7 +316,11 @@ export function LDrawMesh({
     },
     [instance],
   );
-  return (
+  return turn ? (
+    <group matrix={turn} matrixAutoUpdate={false} dispose={null}>
+      <primitive object={instance} />
+    </group>
+  ) : (
     <group rotation={[0, (rotation * Math.PI) / 180, 0]} scale={[0.05, -0.05, 0.05]} dispose={null}>
       <primitive object={instance} />
     </group>
@@ -356,6 +371,7 @@ const BrickMesh = memo(function BrickMesh({
             model={model}
             color={brick.color}
             rotation={getLDrawTransform(brick).rotation}
+            matrix={brick.facing ? getLDrawTransform(brick).matrix : undefined}
           />
         </group>
       ) : (

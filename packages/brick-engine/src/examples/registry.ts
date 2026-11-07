@@ -1,10 +1,11 @@
-import { BUILD_AREA, MAX_BUILD_AREA, placeBrick } from '../core.ts';
-import type { Assembly } from '../core.ts';
+import { BUILD_AREA, MAX_BUILD_AREA, placeBrick, validateAssembly } from '../core.ts';
+import type { Assembly, Brick } from '../core.ts';
 import type { ExampleDefinition, ExampleMetadata } from './types.ts';
 import { courtyardHouse } from './courtyard-house.ts';
 import { catalogSampler } from './catalog-sampler.ts';
 import { seasideLighthouse } from './seaside-lighthouse.ts';
 import { flowerStall } from './flower-stall.ts';
+import { nordiskaMuseet } from './nordiska-museet.ts';
 
 export function createExampleRegistry(definitions: readonly ExampleDefinition[]) {
   const byId = new Map<string, ExampleDefinition>();
@@ -47,21 +48,31 @@ export function createExampleRegistry(definitions: readonly ExampleDefinition[])
         bricks: [],
         ...(definition.buildArea === undefined ? {} : { buildArea: definition.buildArea }),
       };
-      definition.build((partId, color, x, y, z, rotation = 0) => {
-        const brick = {
-          id: `${definition.brickIdPrefix ?? definition.name}-${assembly.bricks.length + 1}`,
+      const bricks: Brick[] = [];
+      definition.build((partId, color, x, y, z, rotation = 0, facing) => {
+        bricks.push({
+          id: `${definition.brickIdPrefix ?? definition.name}-${bricks.length + 1}`,
           partId,
           color,
           x,
           y,
           z,
           rotation,
-        };
-        const result = placeBrick(assembly, brick);
-        if (!result.ok)
-          throw new Error(`${definition.id}: ${JSON.stringify({ brick, issues: result.issues })}`);
-        assembly = result.assembly;
+          ...(facing ? { facing } : {}),
+        });
       });
+      // Checking the finished build once keeps large examples linear; only a failing build is
+      // replayed piece by piece, to name the first piece that breaks it.
+      if (validateAssembly({ ...assembly, bricks }).length)
+        for (const brick of bricks) {
+          const result = placeBrick(assembly, brick);
+          if (!result.ok)
+            throw new Error(
+              `${definition.id}: ${JSON.stringify({ brick, issues: result.issues })}`,
+            );
+          assembly = result.assembly;
+        }
+      assembly = { ...assembly, bricks };
       if (assembly.bricks.length !== definition.expectedPieceCount)
         throw new Error(
           `${definition.id}: expected ${definition.expectedPieceCount} pieces, got ${assembly.bricks.length}.`,
@@ -77,6 +88,7 @@ const registry = createExampleRegistry([
   catalogSampler,
   seasideLighthouse,
   flowerStall,
+  nordiskaMuseet,
 ]);
 export const EXAMPLES = registry.examples;
 export const createExampleAssembly = registry.createAssembly;

@@ -2,6 +2,7 @@ import {
   INSERT_FRAME_PARTS,
   PLATE_HEIGHT,
   footprint,
+  getSideMountHosts,
   isMatchingInsertFrame,
   validateAssembly,
 } from './core.ts';
@@ -78,6 +79,8 @@ function buildNodes(bricks: readonly Brick[]): Node[] {
     return keys;
   };
   for (const node of nodes) {
+    // Nothing rests on a mounted piece, so it is never under anything.
+    if (node.brick.facing) continue;
     const top = node.brick.y + footprint(node.brick).height;
     for (const cell of cellsOf(node)) {
       const key = `${top}:${cell}`;
@@ -93,20 +96,25 @@ function buildNodes(bricks: readonly Brick[]): Node[] {
     if (list) list.push(node);
     else frames.set(node.brick.partId, [node]);
   }
+  const indexes = new Map(nodes.map((node) => [node.brick.id, node.index]));
+  const hosts = getSideMountHosts(bricks);
   for (const node of nodes) {
     const below = new Set<number>();
-    for (const cell of cellsOf(node))
-      for (const other of tops.get(`${node.brick.y}:${cell}`) ?? []) {
-        const lower = nodes[other];
-        // Whole cells can touch at a half-stud offset without overlapping; check the real boxes.
-        if (
-          node.brick.x < lower.brick.x + lower.width &&
-          lower.brick.x < node.brick.x + node.width &&
-          node.brick.z < lower.brick.z + lower.depth &&
-          lower.brick.z < node.brick.z + node.depth
-        )
-          below.add(other);
-      }
+    // A mounted piece goes on after the pieces whose side studs hold it.
+    for (const id of hosts.get(node.brick.id) ?? []) below.add(indexes.get(id)!);
+    if (!node.brick.facing)
+      for (const cell of cellsOf(node))
+        for (const other of tops.get(`${node.brick.y}:${cell}`) ?? []) {
+          const lower = nodes[other];
+          // Whole cells can touch at a half-stud offset without overlapping; check the real boxes.
+          if (
+            node.brick.x < lower.brick.x + lower.width &&
+            lower.brick.x < node.brick.x + node.width &&
+            node.brick.z < lower.brick.z + lower.depth &&
+            lower.brick.z < node.brick.z + node.depth
+          )
+            below.add(other);
+        }
     const framePartId = INSERT_FRAME_PARTS[node.brick.partId];
     if (framePartId) {
       const frame = frames
