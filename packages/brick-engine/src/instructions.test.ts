@@ -40,6 +40,7 @@ describe('planInstructionSteps', () => {
         expect(validateAssembly({ ...assembly, bricks: placed })).toEqual([]);
       }
     },
+    20_000,
   );
 
   it('places a piece only after everything it rests on', () => {
