@@ -17,7 +17,13 @@ import {
 } from 'three';
 import type { Object3D } from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { COLORS, PLATE_HEIGHT, footprint, getLDrawTransform } from '@lego-builder/brick-engine';
+import {
+  COLORS,
+  PLATE_HEIGHT,
+  footprint,
+  getLDrawTransform,
+  getPart,
+} from '@lego-builder/brick-engine';
 import type { Assembly, Brick } from '@lego-builder/brick-engine';
 import { createFallbackGeometry } from '../fallback-geometry';
 import { coloredLDrawModel, loadLDrawModels } from '../ldraw';
@@ -65,6 +71,11 @@ function brickBounds(brick: Brick) {
   );
 }
 
+/** Baseplates are the ground the model stands on, not part of what a step frames. */
+function isGround(brick: Brick) {
+  return getPart(brick.partId).family === 'baseplate';
+}
+
 function corners(box: Box3) {
   return [0, 1, 2, 3, 4, 5, 6, 7].map(
     (index) =>
@@ -88,8 +99,15 @@ export class ManualRenderer {
   private readonly colored = new Map<string, Group>();
   private readonly owned: { dispose(): void }[] = [];
   private readonly bricks: Map<string, Brick>;
+  /** Everything in the finished build, baseplates included. */
+  private readonly sceneBounds = new Box3();
+  /** The finished model without its baseplates, or the baseplates when that's all there is. */
   private readonly finalBounds = new Box3();
+  /** What's been placed so far, without baseplates once anything stands on them. */
   private readonly bounds = new Box3();
+  /** What's been placed so far, baseplates included. */
+  private readonly placedBounds = new Box3();
+  private readonly modelBounds = new Box3();
   private loose: { brick: Brick; object: Object3D }[] = [];
   private view = 0;
   private readonly models: Record<string, Group>;
@@ -97,7 +115,11 @@ export class ManualRenderer {
   private constructor(assembly: Assembly, models: Record<string, Group>) {
     this.models = models;
     this.bricks = new Map(assembly.bricks.map((brick) => [brick.id, brick]));
-    for (const brick of assembly.bricks) this.finalBounds.union(brickBounds(brick));
+    for (const brick of assembly.bricks) {
+      this.sceneBounds.union(brickBounds(brick));
+      if (!isGround(brick)) this.finalBounds.union(brickBounds(brick));
+    }
+    if (this.finalBounds.isEmpty()) this.finalBounds.copy(this.sceneBounds);
     this.renderer.setPixelRatio(1);
     const environment = new RoomEnvironment();
     const pmrem = new PMREMGenerator(this.renderer);
@@ -214,7 +236,8 @@ export class ManualRenderer {
   /** Points the camera at a box from one of the four views, filling the given aspect. */
   private frame(box: Box3, view: number, aspect: number, minimum?: Box3) {
     const center = box.getCenter(new Vector3());
-    const radius = Math.max(this.finalBounds.getSize(new Vector3()).length(), 1);
+    // Far enough back that the whole board stays in front of the camera when it's cropped.
+    const radius = Math.max(this.sceneBounds.getSize(new Vector3()).length(), 1);
     this.camera.position.copy(center).addScaledVector(VIEWS[view], radius * 2);
     this.camera.up.set(0, 1, 0);
     this.camera.lookAt(center);
@@ -372,9 +395,13 @@ export class ManualRenderer {
       if (!brick) throw new Error(`Unknown piece in step: ${id}`);
       const object = this.createPiece(brick);
       this.fresh.add(object);
-      this.bounds.union(brickBounds(brick));
+      this.placedBounds.union(brickBounds(brick));
+      if (!isGround(brick)) this.modelBounds.union(brickBounds(brick));
       return { brick, object };
     });
+    // Frame the model itself and let the baseplates run off the edges, so a small build on a
+    // large board stays readable; steps that only lay baseplates show the board.
+    this.bounds.copy(this.modelBounds.isEmpty() ? this.placedBounds : this.modelBounds);
     const aspect = width / height;
     const previous = this.view;
     const current = this.visibility(this.view, aspect);
@@ -406,7 +433,11 @@ export class ManualRenderer {
    * the renderer's own canvas, valid until the next render.
    */
   renderModel(view: number, width: number, height: number): HTMLCanvasElement {
-    this.frame(this.bounds.isEmpty() ? this.finalBounds : this.bounds, view, width / height);
+    this.frame(
+      this.placedBounds.isEmpty() ? this.sceneBounds : this.placedBounds,
+      view,
+      width / height,
+    );
     this.renderer.setSize(width, height, false);
     this.renderer.setClearColor(0x000000, 0);
     this.renderer.render(this.scene, this.camera);
