@@ -6,8 +6,8 @@ import { layPlateFloor } from '../board.ts';
 
 // Plans are drawn top-down on the 64-stud board with the front at high z; x runs left to right.
 // The building is symmetric about x = 31.5. Proportions follow a massing model of the museum at
-// 0.375 studs to the metre: a long main block with gabled bays, square corner turrets, low wings
-// at both ends, the entrance pavilion in front, a polygonal projection behind and the tower over
+// 0.375 studs to the metre: a long main block with gabled bays, corner turrets, half-octagon
+// apses at both ends and behind the crossing, the entrance pavilion in front and the tower over
 // the crossing.
 const SIZE = 64;
 
@@ -67,23 +67,41 @@ const TURRETS = [
 ] as const;
 const isTurret = (x: number, z: number) =>
   TURRETS.some(([turretX, turretZ]) => within(x, z, turretX, turretZ, turretX + 2, turretZ + 2));
-/** The polygonal projection behind the crossing, narrowing in two steps. */
-const isApse = (x: number, z: number) =>
-  (z === BACK - 1 && x >= 27 && x <= 36) ||
-  (z === BACK - 2 && x >= 28 && x <= 35) ||
-  (z === BACK - 3 && x >= 29 && x <= 34);
+/**
+ * Half-octagon apses, one behind the crossing and one on each end wall. `cell` maps a stud u
+ * along the wall and d out from it to the plan; `out`, `minus` and `plus` are the slope
+ * rotations facing away from the wall and towards lower and higher u.
+ */
+interface Apse {
+  width: number;
+  cell: (u: number, d: number) => readonly [number, number];
+  out: Rotation;
+  minus: Rotation;
+  plus: Rotation;
+}
+const APSES: readonly Apse[] = [
+  { width: 10, cell: (u, d) => [27 + u, BACK - 1 - d], out: 0, minus: 90, plus: 270 },
+  { width: 8, cell: (u, d) => [WEST - 1 - d, 20 + u], out: 90, minus: 0, plus: 180 },
+  { width: 8, cell: (u, d) => [EAST + 1 + d, 20 + u], out: 270, minus: 0, plus: 180 },
+];
+/** An apse's rows from the wall out, as [from, to] in u: two full rows, then the angled faces. */
+const apseRows = (width: number): (readonly [number, number])[] => [
+  [0, width - 1],
+  [0, width - 1],
+  [1, width - 2],
+  [2, width - 3],
+];
+const APSE_CELLS = new Set(
+  APSES.flatMap(({ width, cell }) =>
+    apseRows(width).flatMap(([from, to], d) =>
+      Array.from({ length: to - from + 1 }, (_, index) => cell(from + index, d).join(':')),
+    ),
+  ),
+);
+const isApse = (x: number, z: number) => APSE_CELLS.has(`${x}:${z}`);
+/** Apses are hollow: their walls are the cells that touch the outside, corners included. */
 const apseWall = (x: number, z: number) =>
-  (z === BACK - 3 && x >= 29 && x <= 34) ||
-  (z === BACK - 2 && (x === 28 || x === 35)) ||
-  (z === BACK - 1 && (x === 27 || x === 36));
-/** Low wings at both ends of the main block. */
-const WINGS = [
-  [4, 7],
-  [56, 59],
-] as const;
-const [WING_BACK, WING_FRONT] = [20, 27];
-const isWing = (x: number, z: number) =>
-  WINGS.some(([x0, x1]) => within(x, z, x0, WING_BACK, x1, WING_FRONT));
+  isApse(x, z) && [-1, 0, 1].some((dx) => [-1, 0, 1].some((dz) => !enclosed(x + dx, z + dz)));
 
 /** Everything the main ceiling covers. */
 const footprint = (x: number, z: number) =>
@@ -93,7 +111,7 @@ const footprint = (x: number, z: number) =>
     isApse(x, z)) &&
   !isTurret(x, z);
 /** Cells inside the building's outline at wall height. */
-const enclosed = (x: number, z: number) => footprint(x, z) || isTurret(x, z) || isWing(x, z);
+const enclosed = (x: number, z: number) => footprint(x, z) || isTurret(x, z);
 /**
  * The ways out of a wall cell: [dx, dz], a headlight brick's rotation facing that way, the
  * facing, and where a piece mounted on its side stud sits relative to the cell.
@@ -153,7 +171,9 @@ const WINDOWS: readonly (readonly [number, number, 0 | 90])[] = [
   ...RECESSES.map((x) => [x, BACK, 90] as const),
   [26, FRONT + 1, 0],
   [37, FRONT + 1, 0],
-  [31, BACK - 3, 90],
+  [31, BACK - 4, 90],
+  [WEST - 4, 23, 0],
+  [EAST + 4, 23, 0],
 ];
 /** Cells a window opens: its own two, plus the long wall behind each bay window. */
 const WINDOW_CELLS = new Set(
@@ -194,6 +214,12 @@ const stone = (x: number, z: number, course: number, density: number) => {
  */
 const isCorner = (x: number, z: number) =>
   OUTWARD.filter(([dx, dz]) => !enclosed(x + dx, z + dz)).length >= 2;
+/** The outside corners of turrets and apses are round bricks, to soften their outlines. */
+const ROUND_CORNERS = Array.from({ length: SIZE * SIZE }, (_, index) => [
+  index % SIZE,
+  Math.floor(index / SIZE),
+]).filter(([x, z]) => (isTurret(x, z) || isApse(x, z)) && isCorner(x, z));
+const ROUND_CELLS = new Set(ROUND_CORNERS.map(([x, z]) => `${x}:${z}`));
 const JAMBS = new Set(
   WINDOWS.flatMap(([x, z, rotation]) =>
     rotation === 90 ? [`${x - 1}:${z}`, `${x + 2}:${z}`] : [`${x}:${z - 1}`, `${x}:${z + 2}`],
@@ -275,6 +301,48 @@ function addSlopeRun(
   }
 }
 
+/**
+ * A faceted roof over an apse: each layer steps a stud in from the walls below, with slopes on
+ * its outer face and sides and cheese slopes where the angled faces meet the outer one.
+ */
+function addApseRoof(add: ExampleBrickAdder, { width, cell, out, minus, plus }: Apse, y: number) {
+  const slope = (u0: number, u1: number, d0: number, d1: number, rotation: Rotation, y: number) => {
+    // Rotations 90 and 270 run along z, 0 and 180 along x; the line is the other axis.
+    const [[x0, z0], [x1, z1]] = [cell(u0, d0), cell(u1, d1)];
+    const [along0, along1, across] =
+      rotation % 180 ? [z0, z1, Math.min(x0, x1)] : [x0, x1, Math.min(z0, z1)];
+    addSlopeRun(add, Math.min(along0, along1), Math.max(along0, along1), y, across, rotation);
+  };
+  const cheese = (u: number, d: number, y: number) => {
+    const [x, z] = cell(u, d);
+    add('54200', SLATE, x, y, z, out);
+  };
+  let rows = apseRows(width);
+  for (let layer = 0; rows.length; layer++) {
+    const at = y + layer * 3;
+    const [from, to] = rows.at(-1)!;
+    if (rows.length === 1) for (let u = from; u <= to; u++) cheese(u, 0, at);
+    else {
+      slope(from, to, rows.length - 2, rows.length - 1, out, at);
+      const [innerFrom, innerTo] = rows.at(-2)!;
+      for (let u = innerFrom; u <= innerTo; u++)
+        if (u < from || u > to) cheese(u, rows.length - 2, at);
+      if (rows.length > 2) {
+        const [first, last] = rows[0];
+        slope(first, first + 1, 0, rows.length - 3, minus, at);
+        slope(last - 1, last, 0, rows.length - 3, plus, at);
+      }
+    }
+    // The next layer keeps the cells whose neighbours along the wall and further out are roofed.
+    rows = rows
+      .slice(0, -1)
+      .map(([first, last], d): readonly [number, number] => [
+        Math.max(first + 1, rows[d + 1][0]),
+        Math.min(last - 1, rows[d + 1][1]),
+      ]);
+  }
+}
+
 /** A small finial: jumper plate along x, a round brick on its centre stud and a copper cone. */
 function addFinial(add: ExampleBrickAdder, x: number, y: number, z: number) {
   add('3794b', TRIM, x, y, z, 90);
@@ -314,7 +382,7 @@ export const nordiskaMuseet: ExampleDefinition = {
   id: 'nordiska-museet',
   name: 'Nordiska Museet',
   tags: ['museum', 'landmark', 'stockholm', 'tower', 'stepped-gables', 'copper-roofs', 'park'],
-  expectedPieceCount: 1998,
+  expectedPieceCount: 2269,
   buildArea: SIZE,
   brickIdPrefix: 'museet',
   build(drawnAdd) {
@@ -322,6 +390,15 @@ export const nordiskaMuseet: ExampleDefinition = {
     /** A bonded wall course from a plan of wall letters. */
     const addWallCourse = (cell: (x: number, z: number) => string, y: number, course: number) =>
       addBondedMap(add, plan(cell), y, WALL_LEGEND, course);
+    /** Round corner bricks for one course, in the course's material where `cells` holds. */
+    const addRoundCorners = (
+      cells: (x: number, z: number) => boolean,
+      y: number,
+      course: number,
+    ) => {
+      for (const [x, z] of ROUND_CORNERS)
+        if (cells(x, z)) add('3062b', WALL_LEGEND[material(x, z, course)][1], x, y, z);
+    };
 
     // The 64 x 64 lawn is a two-layer plate floor, so the whole board lifts as one.
     for (const plate of layPlateFloor({ x: 0, z: 0, width: SIZE, depth: SIZE }, LAWN)!.bricks)
@@ -355,7 +432,6 @@ export const nordiskaMuseet: ExampleDefinition = {
         !terrace(x, z) ||
         footprint(x, z) ||
         isTurret(x, z) ||
-        isWing(x, z) ||
         BALUSTRADE_CELLS.has(`${x}:${z}`) ||
         isPortal(x, z)
           ? ' '
@@ -393,12 +469,16 @@ export const nordiskaMuseet: ExampleDefinition = {
         (course === 0 && BASEMENT_CELLS.has(`${x}:${z}`));
       addWallCourse(
         (x, z) =>
-          (wall(x, z) || innerArch(x, z, course)) && !open(x, z) && !dentil(x, z, course)
+          (wall(x, z) || innerArch(x, z, course)) &&
+          !open(x, z) &&
+          !dentil(x, z, course) &&
+          !ROUND_CELLS.has(`${x}:${z}`)
             ? material(x, z, course)
             : ' ',
         y,
         course,
       );
+      addRoundCorners((x, z) => wall(x, z) && !open(x, z), y, course);
       for (let x = MAIN_CEILING[0]; x <= MAIN_CEILING[2]; x++)
         for (const z of [FRONT, BACK])
           if (dentil(x, z, course)) {
@@ -492,53 +572,20 @@ export const nordiskaMuseet: ExampleDefinition = {
       add('4589', GRANITE, outer + 0.5, BASE + 38, portal);
     }
 
-    // Square corner turrets rising past the eaves to slate pyramid roofs with gold points.
-    for (let course = 0; course < 10; course++)
+    // Corner turrets with rounded corners, rising past the eaves to tall slate spires with gold
+    // points.
+    for (let course = 0; course < 10; course++) {
       addWallCourse(
-        (x, z) => (isTurret(x, z) ? material(x, z, course) : ' '),
+        (x, z) => (isTurret(x, z) && !ROUND_CELLS.has(`${x}:${z}`) ? material(x, z, course) : ' '),
         BASE + course * 3,
         course,
       );
+      addRoundCorners(isTurret, BASE + course * 3, course);
+    }
     for (const [x, z] of TURRETS) {
       add('6233', SLATE, x, BASE + 30, z);
-      add('4589', GOLD, x + 0.5, BASE + 36, z + 0.5);
-    }
-
-    // Low wings at both ends: a storey of walls with tall windows in the end faces, a ceiling,
-    // and a roof sloping up in three steps to the main block's end wall.
-    for (const [x0, x1] of WINGS) {
-      const end = x0 < 32 ? x0 : x1;
-      const wingWall = (x: number, z: number) =>
-        within(x, z, x0, WING_BACK, x1, WING_FRONT) &&
-        (x === end || z === WING_BACK || z === WING_FRONT);
-      const wingWindow = (x: number, z: number) => x === end && [21, 22, 25, 26].includes(z);
-      for (let course = 0; course < 4; course++)
-        addBondedMap(
-          add,
-          plan((x, z) =>
-            wingWall(x, z) && !(course > 0 && wingWindow(x, z)) ? material(x, z, course) : ' ',
-          ),
-          BASE + course * 3,
-          WALL_LEGEND,
-          course,
-        );
-      for (const z of [21, 25]) add('60593', WHITE, end, BASE + 3, z, 0);
-      addAreaMap(
-        add,
-        plan((x, z) => (within(x, z, x0, WING_BACK, x1, WING_FRONT) ? 'c' : ' ')),
-        BASE + 12,
-        { c: ['plate', TRIM] },
-        wingWall,
-      );
-      for (let step = 0; step < 3; step++)
-        addSlopeRun(
-          add,
-          WING_BACK,
-          WING_FRONT,
-          BASE + 13 + step * 3,
-          end === x0 ? x0 + step : x1 - 1 - step,
-          end === x0 ? 90 : 270,
-        );
+      add('3942c', SLATE, x + 0.5, BASE + 36, z + 0.5);
+      add('4589', GOLD, x + 1, BASE + 42, z + 1);
     }
 
     // Ceiling slab over every wall and the two entrance arches, carrying the roof, the bay
@@ -556,20 +603,38 @@ export const nordiskaMuseet: ExampleDefinition = {
       plan((x, z) => {
         if (within(x, z, ...MAIN_CEILING)) return 'm';
         if (END_CEILINGS.some((area) => within(x, z, ...area))) return 'e';
-        if (!footprint(x, z)) return ' ';
+        if (!footprint(x, z) || isApse(x, z)) return ' ';
         if (x === WEST + 2 || x === EAST - 2) return 'n';
-        return isApse(x, z) ? 'a' : 'p';
+        return 'p';
       }),
       CEILING,
       {
         m: ['plate', TRIM],
         e: ['plate', TRIM],
         n: ['plate', TRIM],
-        a: ['plate', TRIM],
         p: ['plate', TRIM],
       },
       (x, z) => wall(x, z) || ((z === FRONT || z === PAVILION_FRONT) && x >= 29 && x <= 34),
     );
+    // Apses are roofed a row at a time along the wall, so each run ends on the walls either
+    // side; the row against the main block lies under the main ceiling.
+    for (const { width, cell } of APSES) {
+      const axis = cell(1, 0)[0] === cell(0, 0)[0] ? 'z' : 'x';
+      for (const [d, [from, to]] of apseRows(width).entries()) {
+        if (d === 0) continue;
+        const [[x0, z0], [x1, z1]] = [cell(from, d), cell(to, d)];
+        addRun(
+          add,
+          'plate',
+          TRIM,
+          axis,
+          Math.min(x0, x1),
+          CEILING,
+          Math.min(z0, z1),
+          to - from + 1,
+        );
+      }
+    }
     addAreaMap(
       add,
       plan((x, z) => (cornice(x, z) ? 't' : ' ')),
@@ -592,15 +657,8 @@ export const nordiskaMuseet: ExampleDefinition = {
     for (const x of [WEST, EAST - 1])
       for (const z of [BACK + 2, FRONT - 2]) add('3004', SANDSTONE, x, ROOF + 3, z, 90);
 
-    // The polygonal projection behind gets a slate roof: a slope course along its back face
-    // and slate tiles over the rest.
-    addSlopeRun(add, 29, 34, ROOF, BACK - 3, 0);
-    addAreaMap(
-      add,
-      plan((x, z) => (isApse(x, z) && !(z <= BACK - 2 && x >= 29 && x <= 34) ? 't' : ' ')),
-      ROOF,
-      { t: ['tile', SLATE] },
-    );
+    // The apses get faceted slate roofs rising to the main block.
+    for (const apse of APSES) addApseRoof(add, apse, ROOF);
 
     // Gables over the bays: a window between sandstone piers, a tan band, copper points at the
     // corners and a finial in the middle.

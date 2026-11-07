@@ -50,6 +50,8 @@ const EDGE_LAYER = 1;
 const BATCH_THRESHOLD = 300;
 /** Early steps zoom in on the first pieces, but never more than this past the finished model. */
 const MAX_ZOOM = 2.5;
+/** Below this many pixels per stud, edge lines would bury the colors, so they're left out. */
+const MIN_EDGE_DETAIL = 10;
 /** Smallest stretch of the model, in studs across, a close-up step shows. */
 const FOCUS_SIZE = 16;
 /** Room left around a step's new pieces when its close-up moves. */
@@ -409,7 +411,10 @@ export class ManualRenderer {
   private capture(width: number, height: number, background: Rgb, highlight = false) {
     this.renderer.setSize(width, height, false);
     this.renderer.setClearColor(0x000000, 0);
+    const detailed = width / (this.camera.right - this.camera.left) >= MIN_EDGE_DETAIL;
+    if (!detailed) this.camera.layers.disable(EDGE_LAYER);
     this.renderer.render(this.scene, this.camera);
+    this.camera.layers.enable(EDGE_LAYER);
     // Composite in 2D so the background is exactly the page color the PDF draws around it.
     this.canvas.width = width;
     this.canvas.height = height;
