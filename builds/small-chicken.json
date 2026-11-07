@@ -1,0 +1,217 @@
+{
+  "version": 1,
+  "assembly": {
+    "name": "Small Chicken",
+    "bricks": [
+      {
+        "id": "base",
+        "partId": "41539",
+        "color": 2,
+        "x": 0,
+        "y": 0,
+        "z": 0,
+        "rotation": 0
+      },
+      {
+        "id": "footL",
+        "partId": "3023b",
+        "color": 14,
+        "x": 3,
+        "y": 1,
+        "z": 2,
+        "rotation": 0
+      },
+      {
+        "id": "footR",
+        "partId": "3023b",
+        "color": 14,
+        "x": 4,
+        "y": 1,
+        "z": 2,
+        "rotation": 0
+      },
+      {
+        "id": "legL",
+        "partId": "3005",
+        "color": 14,
+        "x": 3,
+        "y": 2,
+        "z": 3,
+        "rotation": 0
+      },
+      {
+        "id": "legR",
+        "partId": "3005",
+        "color": 14,
+        "x": 4,
+        "y": 2,
+        "z": 3,
+        "rotation": 0
+      },
+      {
+        "id": "body1",
+        "partId": "2356",
+        "color": 15,
+        "x": 2,
+        "y": 5,
+        "z": 2,
+        "rotation": 0
+      },
+      {
+        "id": "body2",
+        "partId": "2356",
+        "color": 15,
+        "x": 1,
+        "y": 8,
+        "z": 3,
+        "rotation": 90
+      },
+      {
+        "id": "body3",
+        "partId": "2356",
+        "color": 15,
+        "x": 2,
+        "y": 11,
+        "z": 1,
+        "rotation": 0
+      },
+      {
+        "id": "wingL",
+        "partId": "3004",
+        "color": 15,
+        "x": 1,
+        "y": 11,
+        "z": 4,
+        "rotation": 0
+      },
+      {
+        "id": "wingR",
+        "partId": "3004",
+        "color": 15,
+        "x": 6,
+        "y": 11,
+        "z": 4,
+        "rotation": 0
+      },
+      {
+        "id": "head",
+        "partId": "3003",
+        "color": 15,
+        "x": 3,
+        "y": 14,
+        "z": 2,
+        "rotation": 0
+      },
+      {
+        "id": "eyeL",
+        "partId": "3005",
+        "color": 0,
+        "x": 2,
+        "y": 14,
+        "z": 2,
+        "rotation": 0
+      },
+      {
+        "id": "eyeR",
+        "partId": "3005",
+        "color": 0,
+        "x": 5,
+        "y": 14,
+        "z": 2,
+        "rotation": 0
+      },
+      {
+        "id": "beakL",
+        "partId": "3024",
+        "color": 14,
+        "x": 3,
+        "y": 14,
+        "z": 1,
+        "rotation": 0
+      },
+      {
+        "id": "beakR",
+        "partId": "3024",
+        "color": 14,
+        "x": 4,
+        "y": 14,
+        "z": 1,
+        "rotation": 0
+      },
+      {
+        "id": "comb",
+        "partId": "3004",
+        "color": 4,
+        "x": 3,
+        "y": 17,
+        "z": 2,
+        "rotation": 0
+      },
+      {
+        "id": "comb2",
+        "partId": "3024",
+        "color": 4,
+        "x": 4,
+        "y": 17,
+        "z": 2,
+        "rotation": 0
+      },
+      {
+        "id": "comb3",
+        "partId": "3024",
+        "color": 4,
+        "x": 4,
+        "y": 17,
+        "z": 3,
+        "rotation": 0
+      },
+      {
+        "id": "tail1",
+        "partId": "3004",
+        "color": 15,
+        "x": 3,
+        "y": 8,
+        "z": 7,
+        "rotation": 90
+      },
+      {
+        "id": "tail2",
+        "partId": "3004",
+        "color": 15,
+        "x": 3,
+        "y": 11,
+        "z": 7,
+        "rotation": 90
+      },
+      {
+        "id": "tail3",
+        "partId": "3004",
+        "color": 15,
+        "x": 3,
+        "y": 14,
+        "z": 7,
+        "rotation": 90
+      },
+      {
+        "id": "tail4",
+        "partId": "3024",
+        "color": 15,
+        "x": 3,
+        "y": 17,
+        "z": 7,
+        "rotation": 0
+      },
+      {
+        "id": "tail5",
+        "partId": "3024",
+        "color": 15,
+        "x": 4,
+        "y": 17,
+        "z": 7,
+        "rotation": 0
+      }
+    ]
+  },
+  "parts": [],
+  "savedAt": "2026-11-07T19:10:55.384Z"
+}

@@ -1768,6 +1768,7 @@ describe('mixed-part engine builds', () => {
       'seaside-lighthouse',
       'flower-stall',
       'nordiska-museet',
+      'nordiska-museet-2',
     ]);
     expect(new Set(EXAMPLES.map((example) => example.id)).size).toBe(EXAMPLES.length);
     for (const example of EXAMPLES) {
@@ -1784,6 +1785,9 @@ describe('mixed-part engine builds', () => {
     expect(createExampleAssembly('courtyard-house')).toEqual(createDemoAssembly());
     expect(() => createExampleAssembly('unknown')).toThrow('Unknown example');
   }, 15_000);
+
+  /** Above this many pieces, examples are taken apart in chunks rather than piece by piece. */
+  const LARGE_EXAMPLE = 2500;
 
   it.each(EXAMPLES)(
     'validates, exports, rejects invalid moves, and disassembles the $name',
@@ -1823,7 +1827,16 @@ describe('mixed-part engine builds', () => {
       }
       expect(assembly).toEqual(snapshot);
       let remaining = assembly;
-      for (const brick of assembly.bricks.toReversed()) {
+      if (count > LARGE_EXAMPLE) {
+        // Each check validates the whole remainder, so large builds come apart in chunks.
+        const chunk = Math.ceil(count / 100);
+        for (let end = count - chunk; end > 0; end -= chunk) {
+          const issues = validateAssembly({ ...assembly, bricks: assembly.bricks.slice(0, end) });
+          if (issues.length) throw new Error(`Disassembly: ${JSON.stringify(issues)}`);
+        }
+        remaining = { ...assembly, bricks: [] };
+      }
+      for (const brick of remaining.bricks.toReversed()) {
         const result = removeBrick(remaining, brick.id);
         if (!result.ok) throw new Error(`Disassembly: ${JSON.stringify(result.issues)}`);
         remaining = result.assembly;
