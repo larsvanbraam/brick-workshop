@@ -784,7 +784,7 @@ describe('LDraw color definitions', () => {
       expect(placeBrick({ name: 'Contextual color', bricks: [] }, { ...base, color }).ok).toBe(
         false,
       );
-    expect(DEFAULT_PART_COLOR_EVIDENCE.observations).toHaveLength(562);
+    expect(DEFAULT_PART_COLOR_EVIDENCE.observations).toHaveLength(2595);
     expect(Object.keys(DEFAULT_PART_COLOR_EVIDENCE.mappings.parts)).toHaveLength(106);
     for (const part of PARTS)
       for (const color of [0, 1, 2, 4, 14, 15])

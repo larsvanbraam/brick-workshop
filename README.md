@@ -167,7 +167,7 @@ preview and can be undone. These checks are not physical-strength certification.
 | Flower Market Stall | 351    | Booth with bonded shelf, striped stepped awning and sign, flower buckets, pots, crates, shade tree, lamp, bench and cobbled square; 36 designs, 16 colors.                                                                                 |
 
 Examples validate geometry, not every manufacturing combination or physical
-strength requirement. Medieval colors outside the six mapped colors and the
+strength requirement. Colors outside the 39 mapped colors and the
 unmapped doors retain unknown manufacturing evidence.
 
 ## Workshop Performance
@@ -662,15 +662,17 @@ Three independent statuses are exposed by `getPartColorStatus`:
 - **Manufacturing:** observed in a mapped Rebrickable inventory, or unknown.
 - **Stock:** unknown; no marketplace or personal-stock source is connected.
 
-The starter `DEFAULT_PART_COLOR_EVIDENCE` contains 562 observed combinations
-under 106 reviewed part mappings and six color mappings: Black, Blue, Green,
-Red, Yellow, and White. Not every part has observations in every mapped color. Explicit
+The starter `DEFAULT_PART_COLOR_EVIDENCE` contains 2,595 observed combinations
+under 106 reviewed part mappings and 39 opaque color mappings whose Rebrickable
+names match the LDraw names (Gray and Grey treated as one spelling), including
+Black, Blue, Green, Red, Yellow, White, Tan, Reddish Brown, Light and Dark Bluish
+Grey, Light, Medium and plain Nougat, Orange and Dark Red. Not every part has observations in every mapped color. Explicit
 reviewed mappings are retained, including LDraw `3023b` to Rebrickable `3023`.
 The grooved tile variants `3070b`, `3069b`, and `3068b` use explicitly reviewed
 matching Rebrickable IDs, not inferred unsuffixed aliases.
 Native metadata explicitly maps LDraw `6934` to Rebrickable `6934a`, and
 `39266` to `39268`, and `3861c` to `3861b`.
-The other 314 colors are rendering-supported but unmapped. Absence from the
+The other colors are rendering-supported but unmapped. Absence from the
 dataset is **unknown**, never evidence that a combination was never manufactured.
 Inventory observations can be historical and do not prove current production.
 

@@ -51,6 +51,16 @@ export interface VoxelFillOptions {
    */
   supportGaps?: boolean;
   maxPieces?: number;
+  /**
+   * Each layer is one plate tall instead of one brick, filled with plates: three times the
+   * vertical detail for faces and markings, at about three times the pieces.
+   */
+  plates?: boolean;
+  /**
+   * Building details: roof slopes on step edges, railings and window and door frames. On by
+   * default; sculptures turn them off.
+   */
+  details?: boolean;
   /** Host color policy, e.g. observed-colors-only. Defaults to allowing every color. */
   colorAllowed?: (partId: string, color: number) => boolean;
 }
@@ -81,6 +91,10 @@ const MAX_OVERHANG_REACH = 2;
 export const VOXEL_FILL_PART_IDS = Object.freeze([
   '2456', '3001', '3002', '3003', '3008', '3009', '3010', '3622', '3004', '3005',
 ]);
+/** Plates used instead in plate-tall layers, largest first. */
+export const VOXEL_PLATE_PART_IDS = Object.freeze([
+  '3832', '3034', '3795', '3020', '3021', '3022', '3460', '3666', '3710', '3623', '3023b', '3024',
+]);
 /** 45-degree slopes 1 to 4 studs wide; studs on the high row only. */
 const SLOPE_PART_IDS = ['3040b', '3039', '3038', '3037'];
 const WINDOW_PART_IDS = ['60592', '60593', '60594'];
@@ -104,14 +118,14 @@ function hash(...values: number[]) {
   return value;
 }
 
-export function validateVoxelModel(model: VoxelModel) {
+export function validateVoxelModel(model: VoxelModel, maxLayers = MAX_VOXEL_LAYERS) {
   const sizes = [model.width, model.depth, model.layers];
   if (sizes.some((size) => !Number.isInteger(size) || size < 1))
     throw new Error('Voxel model dimensions must be positive integers.');
   if (model.width > MAX_BUILD_AREA || model.depth > MAX_BUILD_AREA)
     throw new Error(`Voxel models must fit a ${MAX_BUILD_AREA}-stud board.`);
-  if (model.layers > MAX_VOXEL_LAYERS)
-    throw new Error(`Voxel models are limited to ${MAX_VOXEL_LAYERS} brick layers.`);
+  if (model.layers > maxLayers)
+    throw new Error(`Voxel models are limited to ${maxLayers} ${maxLayers === MAX_VOXEL_LAYERS ? 'brick ' : ''}layers.`);
   if (model.cells.length !== model.width * model.depth * model.layers)
     throw new Error('Voxel cell count does not match the model dimensions.');
   if (model.slopes && model.slopes.length !== model.cells.length)
@@ -267,7 +281,9 @@ export function fillVoxelModel(model: VoxelModel, options: VoxelFillOptions = {}
 }
 
 function fillOnce(model: VoxelModel, options: VoxelFillOptions): { result: VoxelFill; leftOut: number[] } {
-  validateVoxelModel(model);
+  // Plates per layer.
+  const unit = options.plates ? 1 : 3;
+  validateVoxelModel(model, Math.floor(MAX_HEIGHT / unit));
   const { width, depth, layers } = model;
   const cells = [...model.cells];
   const buildArea = Math.min(
@@ -277,7 +293,7 @@ function fillOnce(model: VoxelModel, options: VoxelFillOptions): { result: Voxel
   const origin = { x: Math.floor((buildArea - width) / 2), z: Math.floor((buildArea - depth) / 2) };
   const maxPieces = Math.min(options.maxPieces ?? MAX_PIECES, MAX_PIECES);
   const allowed = options.colorAllowed ?? (() => true);
-  const parts = VOXEL_FILL_PART_IDS.map((id) => getPart(id));
+  const parts = (options.plates ? VOXEL_PLATE_PART_IDS : VOXEL_FILL_PART_IDS).map((id) => getPart(id));
   const shapes = parts.flatMap((part) =>
     (part.width === part.depth ? [0] : [0, 90]).map((rotation) => ({
       part,
@@ -337,9 +353,12 @@ function fillOnce(model: VoxelModel, options: VoxelFillOptions): { result: Voxel
   };
   const detailColor = (partId: string, preferred: number) =>
     [preferred, ...DETAIL_FALLBACK_COLORS].find((color) => allowed(partId, color));
-  for (let layer = 1; layer < layers; layer += 1) planRailings(layer);
-  for (const opening of model.openings ?? []) planFrame(snapToWall(opening));
-  for (let layer = 0; layer < layers; layer += 1) planSlopes(layer);
+  // The detail parts are brick-tall.
+  if (options.details !== false && !options.plates) {
+    for (let layer = 1; layer < layers; layer += 1) planRailings(layer);
+    for (const opening of model.openings ?? []) planFrame(snapToWall(opening));
+    for (let layer = 0; layer < layers; layer += 1) planSlopes(layer);
+  }
 
   // owner[cell] is the brick index covering it, or -1.
   const owner = new Int32Array(cells.length).fill(-1);
@@ -360,7 +379,7 @@ function fillOnce(model: VoxelModel, options: VoxelFillOptions): { result: Voxel
             partId: piece.partId,
             color: piece.color,
             x: origin.x + piece.x,
-            y: layer * 3,
+            y: layer * unit,
             z: origin.z + piece.z,
             rotation: piece.rotation,
           },
@@ -423,7 +442,7 @@ function fillOnce(model: VoxelModel, options: VoxelFillOptions): { result: Voxel
             partId: shape.part.id,
             color,
             x: origin.x + x,
-            y: layer * 3,
+            y: layer * unit,
             z: origin.z + z,
             rotation: shape.rotation,
           },
@@ -479,7 +498,7 @@ function fillOnce(model: VoxelModel, options: VoxelFillOptions): { result: Voxel
             partId: best.shape.part.id,
             color,
             x: origin.x + best.x,
-            y: layer * 3,
+            y: layer * unit,
             z: origin.z + best.z,
             rotation: best.shape.rotation,
           },
@@ -543,7 +562,7 @@ function fillOnce(model: VoxelModel, options: VoxelFillOptions): { result: Voxel
             partId: best.shape.part.id,
             color,
             x: origin.x + best.x,
-            y: layer * 3,
+            y: layer * unit,
             z: origin.z + best.z,
             rotation: best.shape.rotation,
           },

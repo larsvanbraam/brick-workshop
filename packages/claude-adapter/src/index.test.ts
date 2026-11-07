@@ -530,6 +530,55 @@ describe('headless Claude builder tools', () => {
     expect(session.snapshot()).toEqual(before);
   });
 
+  it('sculpts pixel-art layers into staggered bricks atomically, on top of earlier pieces', () => {
+    const session = createBuilderSession();
+    const column = { palette: { r: 4, b: 1 }, x: 2, z: 3, y: 0 };
+    const legs = session.runTool('brick_sculpt', {
+      ...column,
+      layers: [{ rows: ['b2.2b2', 'b2.2b2'], repeat: 2 }],
+    });
+    expect(legs).toMatchObject({ ok: true, revision: 1, data: { skippedCells: 0, region: { maxX: 7, maxY: 6 } } });
+    const body = session.runTool('brick_sculpt', {
+      ...column,
+      y: 6,
+      layers: [{ rows: ['r6', 'r6'], repeat: 3 }],
+    });
+    expect(body).toMatchObject({ ok: true, revision: 2, data: { filledCells: 36, skippedCells: 0 } });
+    const assembly = session.snapshot();
+    expect(validateAssembly(assembly)).toEqual([]);
+    expect(new Set(assembly.bricks.map((brick) => brick.id)).size).toBe(assembly.bricks.length);
+    expect(assembly.bricks.filter((brick) => brick.y >= 6).every((brick) => brick.color === 4)).toBe(true);
+
+    // Overlapping the body changes nothing.
+    expect(session.runTool('brick_sculpt', { ...column, layers: [{ rows: ['r'] }] })).toMatchObject({
+      ok: false,
+      revision: 2,
+    });
+    expect(session.runTool('brick_sculpt', { ...column, layers: [{ rows: ['q'] }] })).toMatchObject({
+      ok: false,
+      error: { code: 'invalid_input' },
+    });
+    expect(session.runTool('brick_sculpt', { ...column, x: 12, layers: [{ rows: ['r6'] }] })).toMatchObject({
+      ok: false,
+      error: { code: 'out_of_bounds' },
+    });
+    expect(session.snapshot()).toEqual(assembly);
+
+    // Plate layers stack one plate at a time above the brick layers of the same call.
+    const face = session.runTool('brick_sculpt', {
+      palette: { n: 78, k: 0 },
+      x: 2,
+      z: 3,
+      y: 15,
+      layers: [{ rows: ['n6', 'n6'] }, { rows: ['nkn2kn', 'n6'], plates: true }, { rows: ['n6', 'n6'], plates: true, repeat: 2 }],
+    });
+    expect(face).toMatchObject({ ok: true, revision: 3, data: { skippedCells: 0, region: { maxY: 21 } } });
+    const plates = session.snapshot().bricks.filter((brick) => brick.y >= 18);
+    expect(plates.map((brick) => brick.y).sort()).toContain(20);
+    expect(plates.filter((brick) => brick.color === 0).every((brick) => brick.partId === '3024' || brick.partId === '3023b')).toBe(true);
+    expect(validateAssembly(session.snapshot())).toEqual([]);
+  });
+
   it('offers read-only candidates with color policy, physical coverage and engine capabilities', () => {
     const session = createBuilderSession();
     expect(session.runTool('brick_catalog', {})).toMatchObject({

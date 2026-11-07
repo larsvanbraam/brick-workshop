@@ -3,6 +3,7 @@ import {
   Box,
   Download,
   ImagePlus,
+  LoaderCircle,
   Maximize,
   RefreshCw,
   Sparkles,
@@ -54,6 +55,32 @@ import type {
 import "./generation.css";
 
 const ignore = () => {};
+
+/** What each workshop tool call means, shown while Claude works. */
+const TOOL_ACTIVITY: Record<string, string> = {
+  brick_catalog: "Browsing the brick catalog",
+  brick_techniques: "Looking up building techniques",
+  brick_candidates: "Choosing parts",
+  brick_color_status: "Checking colors",
+  brick_board: "Reviewing the board",
+  brick_inspect: "Inspecting the build",
+  brick_connection: "Checking connections",
+  brick_physics: "Testing stability",
+  brick_preview_patch: "Trying out pieces",
+  brick_apply_patch: "Placing bricks",
+  brick_place: "Placing bricks",
+  brick_remove: "Removing bricks",
+  brick_export: "Finishing the draft",
+};
+function describeActivity(event: GenerationEvent | undefined) {
+  if (!event) return "Reading the brief";
+  if (event.type === "text") return "Planning the build";
+  const activity = TOOL_ACTIVITY[event.tool ?? ""] ?? "Working";
+  return event.ok === false ? `${activity} (retrying)` : activity;
+}
+function formatElapsed(seconds: number) {
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+}
 
 interface ServerStatus {
   configured: boolean;
@@ -123,6 +150,7 @@ export function GenerationPanel({
   const [result, setResult] = useState<DraftResult | null>(null);
   const [events, setEvents] = useState<GenerationEvent[]>([]);
   const [turn, setTurn] = useState(0);
+  const [elapsed, setElapsed] = useState(0);
   const [usage, setUsage] = useState<DraftResult["usage"]>({
     inputTokens: 0,
     outputTokens: 0,
@@ -144,6 +172,18 @@ export function GenerationPanel({
     [result, policy],
   );
   const stale = assembly !== original;
+  const activity = describeActivity(events.at(-1));
+
+  useEffect(() => {
+    if (!busy) return;
+    const started = Date.now();
+    setElapsed(0);
+    const timer = setInterval(
+      () => setElapsed(Math.floor((Date.now() - started) / 1000)),
+      1000,
+    );
+    return () => clearInterval(timer);
+  }, [busy]);
 
   async function refreshStatus() {
     setStatus(await readServerStatus());
@@ -694,8 +734,11 @@ export function GenerationPanel({
           )}
           <div className="generation-progress" role="status">
             <span>
+              {busy && (
+                <LoaderCircle size={12} className="generation-spinner" />
+              )}
               {busy
-                ? `Turn ${turn} / ${maxTurns}`
+                ? `Turn ${turn} / ${maxTurns} · ${formatElapsed(elapsed)}`
                 : result
                   ? result.complete
                     ? "Draft ready"
@@ -793,10 +836,35 @@ export function GenerationPanel({
                 models={library.models}
                 onReady={ignore}
               />
-            ) : (
+            ) : busy ? null : (
               <div className="generation-empty">
                 <Sparkles size={28} />
                 <span>No draft</span>
+              </div>
+            )}
+            {busy && previewMode === "draft" && (
+              <div
+                className={`generation-working${result ? " over-draft" : ""}`}
+                aria-hidden="true"
+              >
+                <div className="generation-bricks">
+                  <span />
+                  <span />
+                  <span />
+                </div>
+                <strong>
+                  {result ? "Claude is revising the draft" : "Claude is building a draft"}
+                </strong>
+                <span key={activity} className="generation-activity">
+                  {activity}…
+                </span>
+                <div className="generation-meter">
+                  <div
+                    style={{
+                      width: `${Math.min(100, (turn / maxTurns) * 100)}%`,
+                    }}
+                  />
+                </div>
               </div>
             )}
           </div>
