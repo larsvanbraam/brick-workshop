@@ -20,6 +20,8 @@ import {
   findPlacementCandidates,
   getBillOfMaterials,
   getBuildArea,
+  resizeBuildArea,
+  BUILD_AREA,
   getBuildabilityReport,
   getEngineCapabilities,
   getPartCapabilities,
@@ -109,7 +111,7 @@ function changedBricks(before: Assembly, after: Assembly) {
 }
 
 export function compactAssembly(assembly: Assembly) {
-  return { name: assembly.name, buildArea: assembly.buildArea, bricks: compactBricks(assembly.bricks) };
+  return { name: assembly.name, buildArea: getBuildArea(assembly), bricks: compactBricks(assembly.bricks) };
 }
 
 const regionSchema = {
@@ -225,6 +227,12 @@ export const BUILDER_TOOLS: readonly Anthropic.Tool[] = [
     description:
       'Read the current assembly as compact brick rows (optionally only a region, which keeps large builds small), revision, bill of materials, geometry issues, a physical summary, and manufacturing statuses. Coordinates are minimum reserved-footprint corners in studs for X/Z and plate units for Y, all in increments of 0.5. Physical estimates and supplied limits are not build certification. Use brick_physics for mass provenance, gravity balance, required clutch tension and remaining unknowns.',
     input_schema: objectSchema({ region: regionSchema }, []),
+  },
+  {
+    name: 'brick_board',
+    description:
+      'Resize the square build board (studs per side). Existing pieces move with whole-stud shifts to stay centred where they fit; the result reports the shift. Resize before placing anything when the requested subject plus its surroundings does not fit the current board. Shrinking is rejected when the pieces would not fit. Not available with a reference 3D model.',
+    input_schema: objectSchema({ size: { type: 'integer', minimum: BUILD_AREA, maximum: MAX_BUILD_AREA } }),
   },
   {
     name: 'brick_physics',
@@ -662,7 +670,7 @@ export function createBuilderSession(
         revision,
         data: {
           name: assembly.name,
-          buildArea: assembly.buildArea,
+          buildArea: getBuildArea(assembly),
           pieceCount: assembly.bricks.length,
           bricks: compactBricks(assembly.bricks.filter(inside)),
           billOfMaterials: getBillOfMaterials(assembly),
@@ -677,6 +685,31 @@ export function createBuilderSession(
             detail: 'Call brick_physics for masses, load paths and assembly order.',
           },
           buildability: getBuildabilityReport(physicalAssessment).status,
+        },
+      };
+    }
+    if (name === 'brick_board') {
+      if (options.reference)
+        return fail('reference_board', 'The board is fixed to the reference 3D model.');
+      const resized = resizeBuildArea(assembly, args.size as number);
+      if (!resized)
+        return fail('board_too_small', `The current pieces do not fit a ${args.size}-stud board.`);
+      const evaluation = evaluateAssemblyPolicy(resized, editPolicy);
+      if (!evaluation.allowed)
+        return fail('policy_rejected', 'The resized board violates host policy.', evaluation.issues);
+      const first = assembly.bricks[0];
+      const moved = resized.bricks[0];
+      assembly = resized;
+      physicalAssessment = evaluation.physical!;
+      policyAssessment = evaluation;
+      revision += 1;
+      return {
+        ok: true,
+        revision,
+        data: {
+          buildArea: getBuildArea(assembly),
+          shift: first ? { x: moved.x - first.x, z: moved.z - first.z } : { x: 0, z: 0 },
+          pieceCount: assembly.bricks.length,
         },
       };
     }

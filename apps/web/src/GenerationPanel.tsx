@@ -26,7 +26,7 @@ import type {
 } from "@lego-builder/brick-engine";
 import { Scene } from "./Scene";
 import { useLDrawLibrary } from "./ldraw";
-import { preparePhoto, streamGeneration } from "./generation";
+import { captureCanvas, preparePhoto, streamGeneration } from "./generation";
 import type { ModelTriangles } from "./model-reference";
 
 // The model converter (openskp, three.js loaders) is loaded on first use.
@@ -98,11 +98,12 @@ export function GenerationPanel({
   const upload = useRef<HTMLInputElement>(null);
   const modelUpload = useRef<HTMLInputElement>(null);
   const abort = useRef<AbortController | null>(null);
+  const scene = useRef<HTMLDivElement>(null);
   const [status, setStatus] = useState<ServerStatus | null>(null);
   const [prompt, setPrompt] = useState(initialPrompt);
   const [source, setSource] = useState<"new" | "current" | "draft">("new");
-  const [maxPieces, setMaxPieces] = useState(200);
-  const [maxTurns, setMaxTurns] = useState(12);
+  const [maxPieces, setMaxPieces] = useState(600);
+  const [maxTurns, setMaxTurns] = useState(24);
   const [observedOnly, setObservedOnly] = useState(true);
   const [photos, setPhotos] = useState<PhotoReference[]>([]);
   const [modelTriangles, setModelTriangles] = useState<ModelTriangles | null>(
@@ -288,6 +289,12 @@ export function GenerationPanel({
         : source === "draft" && result
           ? result.assembly
           : { name: "AI draft", buildArea: getBuildArea(original), bricks: [] };
+    // The draft preview shows Claude what it is revising; large drafts are not listed in full.
+    const canvas =
+      source === "draft" && result && previewMode === "draft"
+        ? scene.current?.querySelector("canvas")
+        : null;
+    const render = canvas ? captureCanvas(canvas) : null;
     const controller = new AbortController();
     abort.current = controller;
     setBusy(true);
@@ -301,6 +308,7 @@ export function GenerationPanel({
           prompt,
           initial,
           images: photos.map(({ mediaType, data }) => ({ mediaType, data })),
+          ...(render ? { render: { mediaType: "image/jpeg", data: render } } : {}),
           ...(source === "draft" && modelReference
             ? { model: modelReference }
             : {}),
@@ -329,6 +337,10 @@ export function GenerationPanel({
       );
       setResult(next);
       setSource("draft");
+      // Leave room for a revision to add pieces as well as rework them.
+      setMaxPieces((current) =>
+        Math.min(MAX_PIECES, Math.max(current, next.assembly.bricks.length + 300)),
+      );
       setUsage(next.usage);
       setPreviewMode("draft");
       setCameraRevision((current) => current + 1);
@@ -427,7 +439,7 @@ export function GenerationPanel({
                     onChange={() => {
                       setSource(value);
                       if (value === "current")
-                        setMaxPieces(Math.max(200, original.bricks.length));
+                        setMaxPieces(Math.max(600, original.bricks.length));
                     }}
                   />
                   <span>
@@ -760,7 +772,7 @@ export function GenerationPanel({
               </div>
             )}
           </div>
-          <div className="generation-scene">
+          <div className="generation-scene" ref={scene}>
             {previewMode === "reference" && photos[photoIndex] ? (
               <img
                 className="generation-reference"

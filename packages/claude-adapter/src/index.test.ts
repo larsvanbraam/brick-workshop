@@ -49,7 +49,10 @@ describe('Claude tool-use loop', () => {
       },
     );
     expect(requests[0].messages[0].content).toEqual([
-      expect.objectContaining({ type: 'text' }),
+      expect.objectContaining({
+        type: 'text',
+        text: expect.stringContaining(`Board: 16 x 16 studs; brick_board resizes it up to ${MAX_BUILD_AREA}.`),
+      }),
       { type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'aW1hZ2U=' } },
     ]);
     expect(events).toContainEqual({
@@ -64,6 +67,32 @@ describe('Claude tool-use loop', () => {
     expect(result.complete).toBe(true);
   });
 
+  it('marks follow-ups on an existing build as revisions with a labelled render', async () => {
+    const requests: Anthropic.MessageCreateParamsNonStreaming[] = [];
+    const session = createBuilderSession({ name: 'Draft', bricks: [{ ...placement, id: 'a' }] });
+    await runClaudeBuild(
+      'Make it taller',
+      session,
+      async (request) => {
+        requests.push(request);
+        return message([{ type: 'text', text: 'Done.', citations: null }], 'end_turn');
+      },
+      { render: { mediaType: 'image/png', data: 'aW1hZ2U=' } },
+    );
+    expect(requests[0].messages[0].content).toEqual([
+      expect.objectContaining({
+        type: 'text',
+        text: expect.stringContaining('Revising an existing build'),
+      }),
+      { type: 'text', text: 'Render of the current build:' },
+      { type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'aW1hZ2U=' } },
+    ]);
+    await runClaudeBuild('Build a wall', createBuilderSession(), async (request) => {
+      requests.push(request);
+      return message([{ type: 'text', text: 'Done.', citations: null }], 'end_turn');
+    });
+    expect(requests[1].messages[0].content).not.toContain('Revising an existing build');
+  });
   it('rejects malformed or oversized references before transport', async () => {
     let calls = 0;
     const transport: ClaudeTransport = async () => {
@@ -652,6 +681,24 @@ describe('headless Claude builder tools', () => {
     expect(() => createBuilderSession({ name: 'Bad board', bricks: [], buildArea: MAX_BUILD_AREA + 1 })).toThrow(
       'Invalid initial assembly',
     );
+  });
+  it('resizes the board around existing pieces and refuses sizes they do not fit', () => {
+    const session = createBuilderSession();
+    expect(session.runTool('brick_place', { ...placement, x: 6, z: 6 }).ok).toBe(true);
+    expect(session.runTool('brick_board', { size: 32 })).toEqual({
+      ok: true,
+      revision: 2,
+      data: { buildArea: 32, shift: { x: 8, z: 8 }, pieceCount: 1 },
+    });
+    expect(session.snapshot().bricks[0]).toMatchObject({ x: 14, z: 14 });
+    expect(session.runTool('brick_place', { ...placement, x: 28, z: 28 }).ok).toBe(true);
+    const before = session.snapshot();
+    expect(session.runTool('brick_board', { size: 16 })).toMatchObject({
+      ok: false,
+      error: { code: 'board_too_small' },
+    });
+    expect(session.runTool('brick_board', { size: MAX_BUILD_AREA + 1 }).ok).toBe(false);
+    expect(session.snapshot()).toEqual(before);
   });
   it('accepts half-unit baseplate and cone placements but rejects quarter-unit inputs atomically', () => {
     const session = createBuilderSession(undefined, { requireObservedColors: false });

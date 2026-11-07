@@ -24,6 +24,8 @@ const schema = new Ajv({ allErrors: true }).compile({
     prompt: { type: 'string', minLength: 1, maxLength: 20_000 },
     initial: { type: 'object' },
     images: { type: 'array', maxItems: 4 },
+    // A render of the initial assembly for revisions, separate from the reference photos.
+    render: { type: 'object' },
     // The converted 3D model, one character per cell; it stays on the server behind tools.
     model: {
       type: 'object',
@@ -79,6 +81,7 @@ interface GenerationRequest {
   prompt: string;
   initial: unknown;
   images: ReferenceImage[];
+  render?: ReferenceImage;
   model?: EncodedVoxelModel & { origin: { x: number; z: number } };
   consent: true;
   maxTurns: number;
@@ -217,11 +220,15 @@ export function createWorkshopServer(
     const disconnect = () => controller.abort();
     response.on('close', disconnect);
     let timedOut = false;
-    const deadline = setTimeout(() => {
-      timedOut = true;
-      controller.abort();
-    }, 300_000);
-    deadline.unref();
+    const arm = (ms: number) => {
+      const timer = setTimeout(() => {
+        timedOut = true;
+        controller.abort();
+      }, ms);
+      timer.unref();
+      return timer;
+    };
+    let deadline = arm(300_000);
     try {
       const value = await readJSON(request);
       if (!schema(value)) {
@@ -235,9 +242,14 @@ export function createWorkshopServer(
         );
       }
       const input = value as GenerationRequest;
+      // Long turn limits need more than five minutes; allow about 30 seconds a turn.
+      clearTimeout(deadline);
+      deadline = arm(Math.max(300_000, input.maxTurns * 30_000));
       let images: ReferenceImage[];
+      let render: ReferenceImage | undefined;
       try {
         images = await normalizeImages(input.images);
+        if (input.render) [render] = await normalizeImages([input.render]);
       } catch {
         throw new RequestError(
           400,
@@ -273,6 +285,7 @@ export function createWorkshopServer(
       const buildOptions = {
         model,
         images,
+        render,
         maxTurns: input.maxTurns,
         signal: controller.signal,
         onProgress: emit,
@@ -285,7 +298,15 @@ export function createWorkshopServer(
         response.end(
           `${JSON.stringify(
             timedOut
-              ? { type: 'error', error: 'Generation exceeded the five-minute limit.' }
+              ? {
+                  type: 'result',
+                  result: {
+                    ...result,
+                    complete: false,
+                    reason: 'time-limit',
+                    text: 'Generation reached the time limit. The assembly is a partial result.',
+                  },
+                }
               : { type: 'result', result },
           )}\n`,
         );
