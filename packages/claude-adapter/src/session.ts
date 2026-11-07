@@ -28,6 +28,7 @@ import {
   importPhysicalData,
   importAssembly,
   validateAssembly,
+  getBaseplateJoins,
   describeVoxelLayer,
   findVoxelGaps,
   MAX_PHYSICS_PIECES,
@@ -702,6 +703,7 @@ export function createBuilderSession(
                 perPieceDetail: `Omitted: per-piece masses, connections and assembly order are only listed up to ${MAX_PHYSICS_PIECES} pieces.`,
               }),
           buildability: getBuildabilityReport(physicalAssessment),
+          ...baseplateReport(assembly),
         },
       };
     }
@@ -787,3 +789,20 @@ export function createBuilderSession(
 }
 
 export type BuilderSession = ReturnType<typeof createBuilderSession>;
+
+/** Whether the baseplates are tied into one board, and the seams that still need ties. */
+function baseplateReport(assembly: Assembly) {
+  const { seams, groups, joined } = getBaseplateJoins(assembly);
+  if (!seams.length) return {};
+  return {
+    baseplates: {
+      joined,
+      groups: groups.length,
+      untiedSeams: seams
+        .filter((seam) => !seam.ties.length)
+        .map(({ plates, axis, at, start, end }) => ({ plates, axis, at, start, end })),
+      technique:
+        'Baseplates have nothing underneath to connect to. For a board that lifts as one, lay a floor of 16 x 16 plates (91405) on a second plate layer shifted 8 studs both ways (8 x 16 plates 92438 and 8 x 8 plates 41539 at the edges) instead; otherwise tie each seam with plates across it.',
+    },
+  };
+}

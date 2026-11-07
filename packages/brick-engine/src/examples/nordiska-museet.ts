@@ -2,6 +2,7 @@ import { addAreaMap, addBondedMap, addRun, glazeWindows, turnAround } from './la
 import type { RunKind } from './layout.ts';
 import type { ExampleBrickAdder, ExampleDefinition } from './types.ts';
 import type { Facing, Rotation } from '../core.ts';
+import { layPlateFloor } from '../board.ts';
 
 // Plans are drawn top-down on the 64-stud board with the front at high z; x runs left to right.
 // The building is symmetric about x = 31.5. Proportions follow a massing model of the museum at
@@ -27,11 +28,11 @@ const SAND_RED = 335;
 const GOLD = 297;
 
 /**
- * Heights: baseplate top, terrace top (building base), the main ceiling at the eaves, the roof
+ * Heights: floor top, terrace top (building base), the main ceiling at the eaves, the roof
  * base, the flat ridge and the tiles on it. The walls are eight courses: a plinth, ground-floor
  * windows, a band, upper windows and a band.
  */
-const GROUND = 0.5;
+const GROUND = 2;
 const BASE = GROUND + 4;
 const CEILING = BASE + 24;
 const ROOF = CEILING + 1;
@@ -297,7 +298,7 @@ function addLaburnum(add: ExampleBrickAdder, x: number, z: number) {
     add('98138', BLOSSOM, x + dx, GROUND + 18, z + dz);
 }
 
-/** A bush on a jumper, so its centre peg finds a stud on the baseplate. */
+/** A bush on a jumper, so its centre peg finds a stud on the floor. */
 function addBush(add: ExampleBrickAdder, x: number, z: number) {
   add('87580', LAWN, x + 1, GROUND, z + 1);
   add('6064', LEAVES, x, GROUND + 1, z);
@@ -313,7 +314,7 @@ export const nordiskaMuseet: ExampleDefinition = {
   id: 'nordiska-museet',
   name: 'Nordiska Museet',
   tags: ['museum', 'landmark', 'stockholm', 'tower', 'stepped-gables', 'copper-roofs', 'park'],
-  expectedPieceCount: 1973,
+  expectedPieceCount: 1998,
   buildArea: SIZE,
   brickIdPrefix: 'museet',
   build(drawnAdd) {
@@ -322,9 +323,9 @@ export const nordiskaMuseet: ExampleDefinition = {
     const addWallCourse = (cell: (x: number, z: number) => string, y: number, course: number) =>
       addBondedMap(add, plan(cell), y, WALL_LEGEND, course);
 
-    // Sixteen green baseplates make the 64 x 64 board.
-    for (let x = 0; x < SIZE; x += 16)
-      for (let z = 0; z < SIZE; z += 16) add('3867', LAWN, x, 0, z);
+    // The 64 x 64 lawn is a two-layer plate floor, so the whole board lifts as one.
+    for (const plate of layPlateFloor({ x: 0, z: 0, width: SIZE, depth: SIZE }, LAWN)!.bricks)
+      add(plate.partId, plate.color, plate.x, plate.y, plate.z, plate.rotation);
 
     // Raised terrace: a slate plate footing, a granite masonry rim around a brick core, and
     // paving with a tan carpet from the entrance to the steps.

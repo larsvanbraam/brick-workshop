@@ -21,6 +21,7 @@ import {
   COLORS,
   PLATE_HEIGHT,
   footprint,
+  isFloorPlate,
   getLDrawTransform,
   getPart,
 } from '@lego-builder/brick-engine';
@@ -49,6 +50,10 @@ const EDGE_LAYER = 1;
 const BATCH_THRESHOLD = 300;
 /** Early steps zoom in on the first pieces, but never more than this past the finished model. */
 const MAX_ZOOM = 2.5;
+/** Smallest stretch of the model, in studs across, a close-up step shows. */
+const FOCUS_SIZE = 16;
+/** Room left around a step's new pieces when its close-up moves. */
+const FOCUS_MARGIN = 3;
 const VISIBILITY_SIZE = 160;
 /** Outline around each step's new pieces: a vivid pink-red few bricks share. */
 const HIGHLIGHT = [255, 45, 85, 255];
@@ -71,9 +76,9 @@ function brickBounds(brick: Brick) {
   );
 }
 
-/** Baseplates are the ground the model stands on, not part of what a step frames. */
+/** Baseplates and plate floors are the ground the model stands on, not what a step frames. */
 function isGround(brick: Brick) {
-  return getPart(brick.partId).family === 'baseplate';
+  return getPart(brick.partId).family === 'baseplate' || isFloorPlate(brick);
 }
 
 function corners(box: Box3) {
@@ -108,6 +113,8 @@ export class ManualRenderer {
   /** What's been placed so far, baseplates included. */
   private readonly placedBounds = new Box3();
   private readonly modelBounds = new Box3();
+  /** The area close-ups show, kept while work stays inside it so the camera holds still. */
+  private focus: Box3 | null = null;
   private loose: { brick: Brick; object: Object3D }[] = [];
   private view = 0;
   private readonly models: Record<string, Group>;
@@ -311,9 +318,34 @@ export class ManualRenderer {
     }
   }
 
+  /** Frames the close-up area, or the whole model so far when it's no bigger than that. */
+  private frameStep(view: number, aspect: number, overview: boolean) {
+    const size = this.bounds.getSize(new Vector3());
+    if (overview || !this.focus || Math.max(size.x, size.z) <= FOCUS_SIZE)
+      this.frame(this.bounds, view, aspect, this.finalBounds);
+    else this.frame(this.focus, view, aspect);
+  }
+
+  /**
+   * Moves the close-up area when a step's pieces fall outside it. Returns whether it jumped
+   * somewhere new, rather than sliding along to neighbouring work.
+   */
+  private refocus(pieces: Box3) {
+    const needed = pieces.clone().expandByVector(new Vector3(1, PLATE_HEIGHT * 3, 1));
+    if (this.focus?.containsBox(needed)) return false;
+    const next = pieces.clone().expandByVector(new Vector3(FOCUS_MARGIN, 1.2, FOCUS_MARGIN));
+    const size = next.getSize(new Vector3());
+    next.expandByVector(
+      new Vector3(Math.max(0, FOCUS_SIZE - size.x) / 2, 0, Math.max(0, FOCUS_SIZE - size.z) / 2),
+    );
+    const jumped = !this.focus?.intersectsBox(next);
+    this.focus = next;
+    return jumped;
+  }
+
   /** Share of the new pieces' pixels a view shows past the build so far. */
   private visibility(view: number, aspect: number) {
-    this.frame(this.bounds, view, aspect, this.finalBounds);
+    this.frameStep(view, aspect, false);
     const count = (withPlaced: boolean) => {
       const pixels = this.mask(this.target, withPlaced);
       let total = 0;
@@ -382,7 +414,9 @@ export class ManualRenderer {
 
   /**
    * Adds a step's pieces to the model and renders it. Steps must be rendered in order. The
-   * view only turns when another side shows clearly more of the new pieces.
+   * view only turns when another side shows clearly more of the new pieces. Steps are close-ups
+   * of the area being worked on; the whole model is shown when work moves to a new area or the
+   * view turns, so the reader can find their place.
    */
   renderStep(
     brickIds: readonly string[],
@@ -390,18 +424,23 @@ export class ManualRenderer {
     height: number,
     background: Rgb,
   ): StepImage {
+    const pieces = new Box3();
     const added = brickIds.map((id) => {
       const brick = this.bricks.get(id);
       if (!brick) throw new Error(`Unknown piece in step: ${id}`);
       const object = this.createPiece(brick);
       this.fresh.add(object);
       this.placedBounds.union(brickBounds(brick));
-      if (!isGround(brick)) this.modelBounds.union(brickBounds(brick));
+      if (!isGround(brick)) {
+        this.modelBounds.union(brickBounds(brick));
+        pieces.union(brickBounds(brick));
+      }
       return { brick, object };
     });
     // Frame the model itself and let the baseplates run off the edges, so a small build on a
     // large board stays readable; steps that only lay baseplates show the board.
     this.bounds.copy(this.modelBounds.isEmpty() ? this.placedBounds : this.modelBounds);
+    const jumped = !pieces.isEmpty() && this.refocus(pieces);
     const aspect = width / height;
     const previous = this.view;
     const current = this.visibility(this.view, aspect);
@@ -416,7 +455,7 @@ export class ManualRenderer {
         }
       }
     }
-    this.frame(this.bounds, this.view, aspect, this.finalBounds);
+    this.frameStep(this.view, aspect, jumped || this.view !== previous);
     const url = this.capture(width, height, background, this.placed.children.length > 0);
     for (const entry of added) {
       this.fresh.remove(entry.object);

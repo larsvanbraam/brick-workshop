@@ -1,5 +1,6 @@
 import { BUILD_AREA, COLORS, MAX_BUILD_AREA, MAX_HEIGHT, MAX_PIECES, getPart, validateAssembly } from './core.ts';
 import type { Assembly, Brick } from './core.ts';
+import { FLOOR_PART_IDS, layPlateFloor } from './board.ts';
 
 export type VoxelDirection = 'x+' | 'x-' | 'z+' | 'z-';
 
@@ -1237,7 +1238,7 @@ const FRAME_INSERTS: Readonly<Record<string, { partId: string; colors: number[] 
   '3579': { partId: '3193a', colors: [70, 308, 0] },
   '60596': { partId: '60616a', colors: [70, 308, 0] },
 };
-const BASEPLATE_COLORS = [2, 288, 72, 0];
+const FLOOR_COLORS = [2, 288, 72, 0];
 
 export interface VoxelStyle {
   masonry: number;
@@ -1245,13 +1246,14 @@ export interface VoxelStyle {
   caps: number;
   ridges: number;
   inserts: number;
-  baseplates: number;
+  /** Plates in the floor the build stands on. */
+  floor: number;
 }
 
 /**
  * Finishes a voxel fill the way a set would be: masonry bricks and a lighter accent shade on
  * stone walls, glass and doors in the frames, tiles on exposed wall tops, a ridge along the
- * roof, and baseplates underneath. Every addition is checked by the engine and dropped if it
+ * roof, and a plate floor underneath. Every addition is checked by the engine and dropped if it
  * does not fit, so the result stays as valid as the fill.
  */
 export function styleVoxelFill(
@@ -1261,7 +1263,7 @@ export function styleVoxelFill(
 ): VoxelFill & { style: VoxelStyle } {
   const allowed = options.colorAllowed ?? (() => true);
   const { origin } = fill;
-  const style: VoxelStyle = { masonry: 0, accents: 0, caps: 0, ridges: 0, inserts: 0, baseplates: 0 };
+  const style: VoxelStyle = { masonry: 0, accents: 0, caps: 0, ridges: 0, inserts: 0, floor: 0 };
   let next = 1;
   const id = (kind: string) => `style-${kind}-${next++}`;
   const footprint = (brick: Brick) => {
@@ -1375,13 +1377,12 @@ export function styleVoxelFill(
     inserts.push(candidates);
   }
 
-  // Baseplates under the ground course; everything else rises half a plate onto their studs.
+  // A plate floor under the ground course; everything else rises onto its studs.
   const ground = bricks.filter((brick) => brick.y === 0);
-  const plates: Brick[] = [];
-  const plateColor = BASEPLATE_COLORS.find((color) => allowed('3867', color));
-  // The board grows (to the engine maximum) so whole baseplates fit under the footprint.
+  const floorColors = FLOOR_COLORS.filter((color) => FLOOR_PART_IDS.every((partId) => allowed(partId, color)));
+  // The board grows (to the engine maximum) so whole floor modules fit under the footprint.
   let boardArea = fill.assembly.buildArea ?? BUILD_AREA;
-  if (ground.length && plateColor !== undefined) {
+  if (ground.length && floorColors.length) {
     const extent = (values: number[]) => Math.ceil((Math.max(...values) - Math.min(...values) + 2) / 16) * 16;
     const needed = Math.max(
       extent(ground.flatMap((brick) => [brick.x, brick.x + footprint(brick).width])),
@@ -1398,33 +1399,36 @@ export function styleVoxelFill(
       brick.z += shift;
     }
   }
+  let floor: ReturnType<typeof layPlateFloor> = null;
   const shiftedGround = bricks.filter((brick) => brick.y === 0);
-  if (shiftedGround.length && plateColor !== undefined) {
+  if (shiftedGround.length && floorColors.length) {
     const buildArea = boardArea;
     const ground = shiftedGround;
     const xs = ground.flatMap((brick) => [brick.x, brick.x + footprint(brick).width]);
     const zs = ground.flatMap((brick) => [brick.z, brick.z + footprint(brick).depth]);
     const span = (low: number, high: number) => {
-      const count = Math.ceil((high - low + 2) / 16);
+      const count = Math.min(Math.ceil((high - low + 2) / 16), Math.floor(buildArea / 16));
       const start = Math.max(0, Math.min(buildArea - count * 16, Math.floor((low + high) / 2 - count * 8)));
-      return { start, count: Math.min(count, Math.floor(buildArea / 16)) };
+      return { start, size: count * 16 };
     };
     const [sx, sz] = [span(Math.min(...xs), Math.max(...xs)), span(Math.min(...zs), Math.max(...zs))];
-    for (let i = 0; i < sx.count; i += 1)
-      for (let j = 0; j < sz.count; j += 1)
-        plates.push({ id: id('base'), partId: '3867', color: plateColor, x: sx.start + i * 16, y: 0, z: sz.start + j * 16, rotation: 0 });
+    floor = layPlateFloor({ x: sx.start, z: sz.start, width: sx.size, depth: sz.size }, floorColors[0], {
+      colorAllowed: allowed,
+      id: () => id('floor'),
+    });
   }
 
   const name = fill.assembly.name;
   const buildArea = boardArea;
   const valid = (candidate: Brick[]) => validateAssembly({ name, buildArea, bricks: candidate });
-  if (plates.length) {
-    const raised = [...plates, ...bricks.map((brick) => ({ ...brick, y: brick.y + 0.5 }))];
+  if (floor) {
+    const { height } = floor;
+    const raised = [...floor.bricks, ...bricks.map((brick) => ({ ...brick, y: brick.y + height }))];
     if (!valid(raised).length) {
       bricks = raised;
-      style.baseplates = plates.length;
-      for (const addition of additions) addition.y += 0.5;
-      for (const candidates of inserts) for (const candidate of candidates) candidate.y += 0.5;
+      style.floor = floor.bricks.length;
+      for (const addition of additions) addition.y += height;
+      for (const candidates of inserts) for (const candidate of candidates) candidate.y += height;
     }
   }
   // Inserts one by one (each needs its frame free), then caps and ridges together; anything
@@ -1442,7 +1446,7 @@ export function styleVoxelFill(
     if (!rejected.size) break;
     // Only additions are dropped; if a styled original is rejected, fall back to the fill.
     if ([...rejected].some((brickId) => !brickId.startsWith('style-cap') && !brickId.startsWith('style-ridge')))
-      return { ...fill, style: { masonry: 0, accents: 0, caps: 0, ridges: 0, inserts: 0, baseplates: 0 } };
+      return { ...fill, style: { masonry: 0, accents: 0, caps: 0, ridges: 0, inserts: 0, floor: 0 } };
     decorated = decorated.filter((brick) => !rejected.has(brick.id));
   }
   style.caps = decorated.filter((brick) => brick.id.startsWith('style-cap')).length;

@@ -208,7 +208,7 @@ export function GenerationPanel({
       });
       const pieces = fill.assembly.bricks.length;
       const { slopes, windows, doors, railings } = fill.details;
-      const { masonry, caps, ridges, inserts, baseplates } = fill.style;
+      const { masonry, caps, ridges, inserts, floor } = fill.style;
       setResult({
         assembly: { ...fill.assembly, name: `${triangles.name} (model)` },
         complete: true,
@@ -224,7 +224,7 @@ export function GenerationPanel({
             : limitedBy === "pieces"
               ? ` (the widest that fits ${MODEL_PIECE_BUDGET} pieces).`
               : ".",
-          ` Details: ${slopes} roof slopes, ${windows} window and ${doors} door frames, ${inserts} windows and doors in them, ${railings} railings, ${masonry} masonry bricks, ${caps} wall caps, ${ridges} ridge pieces, ${baseplates} baseplates.`,
+          ` Details: ${slopes} roof slopes, ${windows} window and ${doors} door frames, ${inserts} windows and doors in them, ${railings} railings, ${masonry} masonry bricks, ${caps} wall caps, ${ridges} ridge pieces, ${floor} floor plates.`,
           triangles.omitted?.length &&
             ` Left out as separate from the model: ${triangles.omitted.join(", ")}.`,
           fill.skippedCells > 0 &&
@@ -622,7 +622,7 @@ export function GenerationPanel({
               <p className="generation-hint">
                 Converted in your browser without AI, finished like a set (roof
                 slopes, windows and doors, railings, masonry, caps, ridge,
-                baseplate), as wide as the piece budget allows. Revise the draft
+                plate floor), as wide as the piece budget allows. Revise the draft
                 for specific additions.
               </p>
             </details>

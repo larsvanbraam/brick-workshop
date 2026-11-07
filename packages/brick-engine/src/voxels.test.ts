@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vite-plus/test';
-import { MAX_BUILD_AREA, MAX_VOXEL_LAYERS, describeVoxelModel, fillVoxelModel, getPart, styleVoxelFill, validateAssembly } from './index.ts';
+import { MAX_BUILD_AREA, MAX_VOXEL_LAYERS, describeVoxelModel, fillVoxelModel, getPart, isFloorPlate, styleVoxelFill, validateAssembly } from './index.ts';
 import type { VoxelModel } from './index.ts';
 
 /** A hollow rectangular room: walls one stud thick, `layers` bricks tall. */
@@ -139,16 +139,25 @@ describe('voxel shell filling', () => {
     expect(fill.assembly.bricks.filter((brick) => brick.partId === '3633')).toHaveLength(2);
   });
 
-  it('finishes a fill like a set: masonry, caps and a baseplate, all still valid', () => {
+  it('finishes a fill like a set: masonry, caps and a plate floor, all still valid', () => {
     const fill = fillVoxelModel(room(8, 8, 3, 72));
     const styled = styleVoxelFill(fill, room(8, 8, 3, 72));
     expect(validateAssembly(styled.assembly)).toEqual([]);
-    expect(styled.style.baseplates).toBe(1);
+    expect(styled.style.floor).toBe(1);
     expect(styled.style.caps).toBeGreaterThan(0);
-    expect(styled.assembly.bricks.some((brick) => brick.partId === '3867')).toBe(true);
-    // Everything that stood on the ground now stands on the baseplate.
-    expect(styled.assembly.bricks.filter((brick) => brick.y === 0).every((brick) => brick.partId === '3867')).toBe(true);
-    expect(styled.assembly.bricks.filter((brick) => brick.partId !== '3867').length).toBeGreaterThan(fill.assembly.bricks.length);
+    // A single module needs only its one 16 x 16 plate, and everything else stands on it.
+    expect(styled.assembly.bricks.filter((brick) => brick.y === 0).map((brick) => brick.partId)).toEqual(['91405']);
+    expect(styled.assembly.bricks.filter((brick) => brick.partId !== '91405').length).toBeGreaterThan(fill.assembly.bricks.length);
+  });
+
+  it('lays an interlocked two-layer floor under builds wider than one module', () => {
+    const fill = fillVoxelModel(room(24, 20, 2, 72));
+    const styled = styleVoxelFill(fill, room(24, 20, 2, 72));
+    expect(validateAssembly(styled.assembly)).toEqual([]);
+    const floor = styled.assembly.bricks.filter(isFloorPlate);
+    expect(floor.length).toBe(styled.style.floor);
+    expect(new Set(floor.map((brick) => brick.y))).toEqual(new Set([0, 1]));
+    expect(styled.assembly.bricks.filter((brick) => !isFloorPlate(brick)).every((brick) => brick.y >= 2)).toBe(true);
   });
 
   it('textures walls with short, mixed bricks and shaded stone', () => {
