@@ -62,7 +62,12 @@ export interface StepImage {
   url: string;
   /** Quarter turns from the previous step's view: 1 is clockwise seen from above. */
   turn: -1 | 0 | 1 | 2;
+  /** The whole model with the new pieces ringed, when the close-up has moved or turned. */
+  overview?: string;
 }
+
+/** Share of the step image's width and height an overview inset takes. */
+export const OVERVIEW_SCALE = 0.38;
 
 function brickBounds(brick: Brick) {
   const size = footprint(brick);
@@ -318,12 +323,16 @@ export class ManualRenderer {
     }
   }
 
-  /** Frames the close-up area, or the whole model so far when it's no bigger than that. */
-  private frameStep(view: number, aspect: number, overview: boolean) {
+  /** Whether the model so far is small enough that a close-up already shows all of it. */
+  private get compact() {
     const size = this.bounds.getSize(new Vector3());
-    if (overview || !this.focus || Math.max(size.x, size.z) <= FOCUS_SIZE)
-      this.frame(this.bounds, view, aspect, this.finalBounds);
-    else this.frame(this.focus, view, aspect);
+    return !this.focus || Math.max(size.x, size.z) <= FOCUS_SIZE;
+  }
+
+  /** Frames the close-up area, or the whole model so far when it's no bigger than that. */
+  private frameStep(view: number, aspect: number) {
+    if (this.compact) this.frame(this.bounds, view, aspect, this.finalBounds);
+    else this.frame(this.focus!, view, aspect);
   }
 
   /**
@@ -345,7 +354,7 @@ export class ManualRenderer {
 
   /** Share of the new pieces' pixels a view shows past the build so far. */
   private visibility(view: number, aspect: number) {
-    this.frameStep(view, aspect, false);
+    this.frameStep(view, aspect);
     const count = (withPlaced: boolean) => {
       const pixels = this.mask(this.target, withPlaced);
       let total = 0;
@@ -415,14 +424,16 @@ export class ManualRenderer {
   /**
    * Adds a step's pieces to the model and renders it. Steps must be rendered in order. The
    * view only turns when another side shows clearly more of the new pieces. Steps are close-ups
-   * of the area being worked on; the whole model is shown when work moves to a new area or the
-   * view turns, so the reader can find their place.
+   * of the area being worked on, so the new pieces are always readable; when work moves to a
+   * new area or the view turns, an overview of the whole model comes along on `overviewBackground`
+   * so the reader can find their place.
    */
   renderStep(
     brickIds: readonly string[],
     width: number,
     height: number,
     background: Rgb,
+    overviewBackground: Rgb,
   ): StepImage {
     const pieces = new Box3();
     const added = brickIds.map((id) => {
@@ -455,8 +466,16 @@ export class ManualRenderer {
         }
       }
     }
-    this.frameStep(this.view, aspect, jumped || this.view !== previous);
-    const url = this.capture(width, height, background, this.placed.children.length > 0);
+    const highlight = this.placed.children.length > 0;
+    let overview: string | undefined;
+    if ((jumped || this.view !== previous) && !this.compact) {
+      const insetWidth = Math.max(64, Math.round(width * OVERVIEW_SCALE));
+      const insetHeight = Math.max(64, Math.round(height * OVERVIEW_SCALE));
+      this.frame(this.bounds, this.view, insetWidth / insetHeight, this.finalBounds);
+      overview = this.capture(insetWidth, insetHeight, overviewBackground, highlight);
+    }
+    this.frameStep(this.view, aspect);
+    const url = this.capture(width, height, background, highlight);
     for (const entry of added) {
       this.fresh.remove(entry.object);
       this.placed.add(entry.object);
@@ -464,7 +483,7 @@ export class ManualRenderer {
     }
     if (this.loose.length >= BATCH_THRESHOLD) this.consolidate();
     const turn = ((this.view - previous + 4) % 4) as 0 | 1 | 2 | 3;
-    return { url, turn: turn === 3 ? -1 : turn };
+    return { url, turn: turn === 3 ? -1 : turn, overview };
   }
 
   /**

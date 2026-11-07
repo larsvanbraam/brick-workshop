@@ -10,7 +10,7 @@ import {
 } from './layout';
 import type { ManualTheme, Orientation, PageSize, Rgb } from './layout';
 import { createCoverArt } from './cover';
-import { ManualRenderer } from './renderer';
+import { ManualRenderer, OVERVIEW_SCALE } from './renderer';
 import type { StepImage } from './renderer';
 
 export interface ManualSettings {
@@ -198,6 +198,31 @@ class ManualWriter {
   }
 
   /** A quarter-turn arrow, drawn as an arc round the model's vertical axis. */
+  /** The whole-model inset in a step image's bottom-left corner, framed like a callout. */
+  overview(
+    url: string,
+    image: { x: number; y: number; width: number; height: number },
+    scale: number,
+  ) {
+    const width = image.width * OVERVIEW_SCALE;
+    const height = image.height * OVERVIEW_SCALE;
+    const y = image.y + image.height - height;
+    this.fill(this.theme.callout);
+    this.stroke(this.theme.ink, 0.35 * scale);
+    this.doc.roundedRect(image.x, y, width, height, 2.5 * scale, 2.5 * scale, 'FD');
+    const inset = 1.5 * scale;
+    this.doc.addImage(
+      url,
+      'JPEG',
+      image.x + inset,
+      y + inset,
+      width - 2 * inset,
+      height - 2 * inset,
+      undefined,
+      'FAST',
+    );
+  }
+
   turnArrow(x: number, y: number, size: number, turn: StepImage['turn']) {
     const direction = turn === -1 ? -1 : 1;
     const points: [number, number][] = [];
@@ -445,6 +470,7 @@ export async function createManual(
           Math.max(64, Math.round(image.width * pixelsPerMm * shrink)),
           Math.max(64, Math.round(image.height * pixelsPerMm * shrink)),
           theme.page,
+          theme.callout,
         );
         // The render's background is the page color, so the step number can sit over it.
         writer.doc.addImage(
@@ -457,6 +483,7 @@ export async function createManual(
           undefined,
           'FAST',
         );
+        if (rendered.overview) writer.overview(rendered.overview, image, scale);
         writer.text(String(step.number), x + padding, numberTop, numberSize, theme.ink);
         if (rendered.turn)
           writer.turnArrow(
