@@ -579,6 +579,34 @@ describe('headless Claude builder tools', () => {
     expect(validateAssembly(session.snapshot())).toEqual([]);
   });
 
+  it('sculpts rounded shapes in plates, previews without adding and reports unseen details', () => {
+    const session = createBuilderSession(undefined, { maxPieces: 2000 });
+    const head = {
+      shapes: [
+        { type: 'ellipsoid', center: [8, 3, 8], radii: [3, 3, 3], color: 78 },
+        { type: 'box', min: [7, 3, 4], max: [9, 4, 6], color: 15, mode: 'paint' },
+        { type: 'box', min: [7.6, 3, 4], max: [7.9, 4, 6], color: 0, mode: 'paint' },
+        { type: 'ellipsoid', center: [8, 3, 8], radii: [1, 1, 1], color: 4, mode: 'cut' },
+      ],
+    };
+    const preview = session.runTool('brick_shape', { ...head, preview: true });
+    expect(preview).toMatchObject({ ok: true, revision: 0, data: { purpose: 'preview-only', unseenShapes: [2] } });
+    expect(session.snapshot().bricks).toEqual([]);
+
+    const result = session.runTool('brick_shape', head);
+    expect(result).toMatchObject({ ok: true, revision: 1, data: { skippedCells: 0 } });
+    const bricks = session.snapshot().bricks;
+    expect(validateAssembly(session.snapshot())).toEqual([]);
+    expect(bricks.map((brick) => brick.y)).toContain(7);
+    expect(bricks.every((brick) => ['3020', '3021', '3022', '3023b', '3024', '3710', '3623', '3666', '3460', '3034', '3795', '3832'].includes(brick.partId))).toBe(true);
+    // Rounded: the widest layer is wider than the bottom one, and the eye paint shows.
+    const widths = (y: number) => bricks.filter((brick) => brick.y === y).length;
+    expect(widths(7)).toBeGreaterThan(widths(0));
+    expect(bricks.some((brick) => brick.color === 15)).toBe(true);
+    expect(session.runTool('brick_shape', { shapes: [{ type: 'capsule', from: [1, 0, 1], to: [1, 2, 1], color: 4 }] }))
+      .toMatchObject({ ok: false, error: { code: 'invalid_input' } });
+  });
+
   it('offers read-only candidates with color policy, physical coverage and engine capabilities', () => {
     const session = createBuilderSession();
     expect(session.runTool('brick_catalog', {})).toMatchObject({

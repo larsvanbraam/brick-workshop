@@ -8,6 +8,7 @@ export * from './planning.ts';
 export * from './edits.ts';
 export * from './techniques.ts';
 export * from './voxels.ts';
+export * from './shapes.ts';
 export * from './board.ts';
 export * from './instructions.ts';
 export {

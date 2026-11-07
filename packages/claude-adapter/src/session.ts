@@ -36,6 +36,8 @@ import {
   fillVoxelModel,
   VOXEL_FILL_PART_IDS,
   VOXEL_PLATE_PART_IDS,
+  voxelizeShapes,
+  PLATE_STUDS,
   MAX_PHYSICS_PIECES,
 } from '@lego-builder/brick-engine';
 import type {
@@ -48,6 +50,7 @@ import type {
   EditPolicy,
   InventoryEntry,
   VoxelModel,
+  SculptShape,
 } from '@lego-builder/brick-engine';
 
 const partIdSchema = { type: 'string', enum: PARTS.map((part) => part.id) };
@@ -116,6 +119,8 @@ function changedBricks(before: Assembly, after: Assembly) {
 export function compactAssembly(assembly: Assembly) {
   return { name: assembly.name, buildArea: getBuildArea(assembly), bricks: compactBricks(assembly.bricks) };
 }
+
+const VEC3 = { type: 'array', items: { type: 'number', minimum: -MAX_BUILD_AREA, maximum: MAX_HEIGHT }, minItems: 3, maxItems: 3 };
 
 const regionSchema = {
   type: 'object',
@@ -262,6 +267,44 @@ export const BUILDER_TOOLS: readonly Anthropic.Tool[] = [
         },
       },
       ['palette', 'x', 'z', 'y', 'layers'],
+    ),
+  },
+  {
+    name: 'brick_shape',
+    description:
+      'Sculpt a rounded 3D subject from solid shapes; the engine samples them one stud across and one plate (or brick) tall and fills the result with staggered plates or bricks, so curved surfaces come out round in every direction. Coordinates are studs: x and z on the board, y up from the base (a plate is 0.4 studs, a brick 1.2). The front faces -z: the default and Front cameras look at the smallest z. Shapes apply in order: "add" fills with its color, "paint" recolors only cells earlier shapes filled (eyes, pupils, brows, emblems, buttons, overall straps on the surface), "cut" empties (an open mouth, a gap between legs). Paint and cut shapes must reach the surface to show. Hidden interiors deeper than shell studs stay hollow. Every shape needs support from below or within two studs sideways of something below it; floating parts are corbelled where possible and otherwise skipped. All pieces are added atomically under the host policies or nothing changes.',
+    input_schema: objectSchema(
+      {
+        y: { type: 'number', multipleOf: 0.5, minimum: 0, maximum: MAX_HEIGHT - 1, description: 'Plate height the base (y 0) stands on.' },
+        resolution: { type: 'string', enum: ['plate', 'brick'], description: 'Layer height; plate (default) is smoother and uses about three times the pieces.' },
+        preview: { type: 'boolean', description: 'Check the result (pieces, skipped cells, unseenShapes) without adding anything.' },
+        shell: { type: 'integer', minimum: 0, maximum: 6, description: 'Wall thickness in studs before the inside is left hollow; default 2, 0 for solid.' },
+        shapes: {
+          type: 'array',
+          minItems: 1,
+          maxItems: 300,
+          items: objectSchema(
+            {
+              type: { type: 'string', enum: ['ellipsoid', 'box', 'capsule', 'cylinder'] },
+              mode: { type: 'string', enum: ['add', 'paint', 'cut'] },
+              color: colorSchema,
+              center: { ...VEC3, description: 'ellipsoid' },
+              radii: { ...VEC3, description: 'ellipsoid half-sizes along x, y, z' },
+              min: { ...VEC3, description: 'box corner' },
+              max: { ...VEC3, description: 'box corner' },
+              from: { ...VEC3, description: 'capsule or cylinder axis start' },
+              to: { ...VEC3, description: 'capsule or cylinder axis end' },
+              radius: { type: 'number', exclusiveMinimum: 0, maximum: MAX_BUILD_AREA },
+              toRadius: { type: 'number', exclusiveMinimum: 0, maximum: MAX_BUILD_AREA, description: 'radius at "to", for tapered limbs' },
+              clipMin: { ...VEC3, description: 'keep only the part above these coordinates' },
+              clipMax: { ...VEC3, description: 'keep only the part below these coordinates' },
+              note: { type: 'string', maxLength: 60, description: 'what this shape is, for your own bookkeeping' },
+            },
+            ['type'],
+          ),
+        },
+      },
+      ['shapes'],
     ),
   },
   {
@@ -487,6 +530,97 @@ export function createBuilderSession(
     error: { code, message, ...(issues ? { issues } : {}) },
   });
 
+  /**
+   * Fills voxel groups stacked bottom-up from `base` (plates) at board x/z `left`/`front` and
+   * adds every piece in one policy-checked commit, or nothing.
+   */
+  function placeVoxels(
+    left: number,
+    front: number,
+    base: number,
+    width: number,
+    depth: number,
+    groups: readonly { plates: boolean; layers: number; cells: readonly (number | null)[] }[],
+    preview = false,
+  ): BuilderToolResult {
+    const board = getBuildArea(assembly);
+    const height = groups.reduce((total, group) => total + group.layers * (group.plates ? 1 : 3), 0);
+    if (base + height > MAX_HEIGHT)
+      return fail('out_of_bounds', `The layers reach above the ${MAX_HEIGHT}-plate height limit.`);
+    if (!width || left + width > board || front + depth > board)
+      return fail('out_of_bounds', `A ${width} x ${depth} sculpt at x ${left}, z ${front} does not fit the ${board}-stud board; resize it with brick_board first.`);
+    const colorAllowed = (partId: string, color: number) =>
+      !requireObservedColors || getPartColorStatus(partId, color, evidence).manufactured === 'observed';
+    for (const plates of [false, true]) {
+      const partIds = plates ? VOXEL_PLATE_PART_IDS : VOXEL_FILL_PART_IDS;
+      const used = new Set(groups.filter((group) => group.plates === plates).flatMap((group) => group.cells));
+      const unbuildable = [...used].filter(
+        (color): color is number => color !== null && !partIds.some((partId) => colorAllowed(partId, color)),
+      );
+      if (unbuildable.length)
+        return fail(
+          'unverified_color',
+          `No plain ${plates ? 'plate' : 'brick'} is allowed in color ${unbuildable.join(', ')}; choose the nearest color brick_catalog lists for ${plates ? '3023b' : '3001'}.`,
+        );
+    }
+    const added: Brick[] = [];
+    const firstId = nextId;
+    let [y, filledCells, skippedCells, supportCells] = [base, 0, 0, 0];
+    for (const { plates, layers, cells } of groups) {
+      const remaining = maxPieces - assembly.bricks.length - added.length;
+      if (remaining < 1) return fail('piece_limit', `The session allows at most ${maxPieces} pieces.`);
+      const fill = fillVoxelModel(
+        { name: assembly.name, width, depth, layers, cells },
+        { buildArea: board, maxPieces: remaining, supportGaps: true, details: false, plates, colorAllowed },
+      );
+      if (fill.truncated)
+        return fail('piece_limit', `The sculpt needs more than the ${maxPieces - assembly.bricks.length} pieces left of the ${maxPieces}-piece budget. Hollow out hidden interiors or simplify.`);
+      for (const brick of fill.assembly.bricks) {
+        while (assembly.bricks.some((piece) => piece.id === `ai-${nextId}`)) nextId += 1;
+        added.push({ ...brick, id: `ai-${nextId++}`, x: brick.x - fill.origin.x + left, y: brick.y + y, z: brick.z - fill.origin.z + front });
+      }
+      y += layers * (plates ? 1 : 3);
+      filledCells += fill.filledCells;
+      skippedCells += fill.skippedCells;
+      supportCells += fill.addedCells;
+    }
+    if (!added.length)
+      return fail('unsupported', 'No cell could be filled: layer 0 needs studs or ground beneath it.');
+    const next = { ...assembly, bricks: [...assembly.bricks, ...added] };
+    const evaluation = evaluateAssemblyPolicy(next, editPolicy);
+    if (!evaluation.allowed) {
+      const issue = evaluation.issues[0];
+      // Geometry issues list every clash; the first few are enough to fix the drawing.
+      return fail(issue.code, issue.message, Array.isArray(issue.details) ? issue.details.slice(0, 20) : issue.details);
+    }
+    if (!preview) {
+      assembly = next;
+      physicalAssessment = evaluation.physical!;
+      policyAssessment = evaluation;
+      revision += 1;
+    } else nextId = firstId;
+    return {
+      ok: true,
+      revision,
+      data: {
+        ...(preview && { purpose: 'preview-only' }),
+        pieceCount: next.bricks.length,
+        added: { pieces: added.length, ids: [added[0].id, added.at(-1)!.id], billOfMaterials: getBillOfMaterials({ ...assembly, bricks: added }) },
+        region: { minX: left, maxX: left + width - 1, minZ: front, maxZ: front + depth - 1, minY: base, maxY: base + height },
+        filledCells,
+        skippedCells,
+        supportCells,
+        detail: 'Read pieces with brick_inspect and this region before replacing any of them.',
+        physical: {
+          status: evaluation.physical!.status,
+          gravity: evaluation.physical!.gravity,
+          massBasis: evaluation.physical!.massBasis,
+          reasons: evaluation.physical!.reasons,
+        },
+      },
+    };
+  }
+
   function runTool(name: string, input: unknown): BuilderToolResult {
     const validate = validators.get(name);
     if (!validate) return fail('unknown_tool', `Unknown builder tool: ${name}`);
@@ -589,7 +723,6 @@ export function createBuilderSession(
     }
     if (name === 'brick_sculpt') {
       const palette = args.palette as Record<string, number>;
-      const [left, front, base] = [args.x as number, args.z as number, args.y as number];
       // Consecutive layers of the same height are filled together, so their bricks stagger.
       const groups: { plates: boolean; grids: string[][] }[] = [];
       let height = 0;
@@ -608,86 +741,59 @@ export function createBuilderSession(
       const grids = groups.flatMap((group) => group.grids);
       const width = Math.max(...grids.flatMap((rows) => rows.map((row) => row.length)));
       const depth = Math.max(...grids.map((rows) => rows.length));
-      const board = getBuildArea(assembly);
-      if (base + height > MAX_HEIGHT)
-        return fail('out_of_bounds', `The layers reach above the ${MAX_HEIGHT}-plate height limit.`);
-      if (!width || left + width > board || front + depth > board)
-        return fail('out_of_bounds', `A ${width} x ${depth} sculpt at x ${left}, z ${front} does not fit the ${board}-stud board; resize it with brick_board first.`);
       const unknown = [...new Set(grids.flat().join('').replaceAll('.', ''))].filter((letter) => !(letter in palette));
       if (unknown.length) return fail('invalid_input', `Letters missing from the palette: ${unknown.join(', ')}.`);
-      const colorAllowed = (partId: string, color: number) =>
-        !requireObservedColors || getPartColorStatus(partId, color, evidence).manufactured === 'observed';
-      for (const plates of [false, true]) {
-        if (!groups.some((group) => group.plates === plates)) continue;
-        const partIds = plates ? VOXEL_PLATE_PART_IDS : VOXEL_FILL_PART_IDS;
-        const unbuildable = Object.entries(palette).filter(([letter, color]) =>
-          groups.some((group) => group.plates === plates && group.grids.some((rows) => rows.some((row) => row.includes(letter)))) &&
-          !partIds.some((partId) => colorAllowed(partId, color)),
-        );
-        if (unbuildable.length)
-          return fail(
-            'unverified_color',
-            `No plain ${plates ? 'plate' : 'brick'} is allowed in the colors of ${unbuildable.map(([letter, color]) => `${letter} (${color})`).join(', ')}; choose the nearest color brick_catalog lists for ${plates ? '3023b' : '3001'}.`,
-          );
+      return placeVoxels(
+        args.x as number,
+        args.z as number,
+        args.y as number,
+        width,
+        depth,
+        groups.map(({ plates, grids: layers }) => ({
+          plates,
+          layers: layers.length,
+          cells: layers.flatMap((rows) =>
+            Array.from({ length: depth }, (_, row) =>
+              Array.from({ length: width }, (_, column) => {
+                const letter = rows[row]?.[column] ?? '.';
+                return letter === '.' ? null : palette[letter];
+              }),
+            ).flat(),
+          ),
+        })),
+      );
+    }
+    if (name === 'brick_shape') {
+      const shapes = args.shapes as (Record<string, unknown> & { type: string; mode?: string })[];
+      const needs: Record<string, string[]> = {
+        ellipsoid: ['center', 'radii'],
+        box: ['min', 'max'],
+        capsule: ['from', 'to', 'radius'],
+        cylinder: ['from', 'to', 'radius'],
+      };
+      for (const [position, shape] of shapes.entries()) {
+        const missing = [...needs[shape.type], ...(shape.mode === 'cut' ? [] : ['color'])].filter((key) => shape[key] === undefined);
+        if (missing.length) return fail('invalid_input', `Shape ${position} (${shape.type}) needs ${missing.join(', ')}.`);
+        if (shape.type === 'ellipsoid' && (shape.radii as number[]).some((radius) => radius <= 0))
+          return fail('invalid_input', `Shape ${position} needs positive radii.`);
       }
-      const added: Brick[] = [];
-      let [y, filledCells, skippedCells, supportCells] = [base, 0, 0, 0];
-      for (const { plates, grids: layers } of groups) {
-        const cells = layers.flatMap((rows) =>
-          Array.from({ length: depth }, (_, row) =>
-            Array.from({ length: width }, (_, column) => {
-              const letter = rows[row]?.[column] ?? '.';
-              return letter === '.' ? null : palette[letter];
-            }),
-          ).flat(),
-        );
-        const remaining = maxPieces - assembly.bricks.length - added.length;
-        if (remaining < 1) return fail('piece_limit', `The session allows at most ${maxPieces} pieces.`);
-        const fill = fillVoxelModel(
-          { name: assembly.name, width, depth, layers: layers.length, cells },
-          { buildArea: board, maxPieces: remaining, supportGaps: true, details: false, plates, colorAllowed },
-        );
-        if (fill.truncated)
-          return fail('piece_limit', `The sculpt needs more than the ${maxPieces - assembly.bricks.length} pieces left of the ${maxPieces}-piece budget. Hollow out hidden interiors (a shell one or two cells thick) or simplify.`);
-        for (const brick of fill.assembly.bricks) {
-          while (assembly.bricks.some((piece) => piece.id === `ai-${nextId}`)) nextId += 1;
-          added.push({ ...brick, id: `ai-${nextId++}`, x: brick.x - fill.origin.x + left, y: brick.y + y, z: brick.z - fill.origin.z + front });
-        }
-        y += layers.length * (plates ? 1 : 3);
-        filledCells += fill.filledCells;
-        skippedCells += fill.skippedCells;
-        supportCells += fill.addedCells;
-      }
-      if (!added.length)
-        return fail('unsupported', 'No cell could be filled: layer 0 needs studs or ground beneath it.');
-      const next = { ...assembly, bricks: [...assembly.bricks, ...added] };
-      const evaluation = evaluateAssemblyPolicy(next, editPolicy);
-      if (!evaluation.allowed) {
-        const issue = evaluation.issues[0];
-        // Geometry issues list every clash; the first few are enough to fix the drawing.
-        return fail(issue.code, issue.message, Array.isArray(issue.details) ? issue.details.slice(0, 20) : issue.details);
-      }
-      assembly = next;
-      physicalAssessment = evaluation.physical!;
-      policyAssessment = evaluation;
-      revision += 1;
+      const plates = args.resolution !== 'brick';
+      const grid = voxelizeShapes(shapes as unknown as SculptShape[], {
+        buildArea: getBuildArea(assembly),
+        layerStuds: plates ? PLATE_STUDS : PLATE_STUDS * 3,
+        shell: (args.shell as number | undefined) ?? 2,
+      });
+      if (!grid) return fail('invalid_input', 'The added shapes cover no cell on the board above y 0.');
+      const result = placeVoxels(grid.x, grid.z, (args.y as number | undefined) ?? 0, grid.width, grid.depth, [
+        { plates, layers: grid.layers, cells: grid.cells },
+      ], args.preview === true);
+      if (!result.ok || !grid.unseen.length) return result;
       return {
-        ok: true,
-        revision,
+        ...result,
         data: {
-          pieceCount: assembly.bricks.length,
-          added: { pieces: added.length, ids: [added[0].id, added.at(-1)!.id], billOfMaterials: getBillOfMaterials({ ...assembly, bricks: added }) },
-          region: { minX: left, maxX: left + width - 1, minZ: front, maxZ: front + depth - 1, minY: base, maxY: base + height },
-          filledCells,
-          skippedCells,
-          supportCells,
-          detail: 'Read pieces with brick_inspect and this region before replacing any of them.',
-          physical: {
-            status: physicalAssessment.status,
-            gravity: physicalAssessment.gravity,
-            massBasis: physicalAssessment.massBasis,
-            reasons: physicalAssessment.reasons,
-          },
+          ...(result.data as object),
+          unseenShapes: grid.unseen,
+          unseenDetail: 'These shapes changed no cell: a shape shows only where it covers cell centres (x and z at whole studs + 0.5, y at layer middles), so make small features at least one stud wide and centred on a stud, and paint only where earlier shapes filled the surface.',
         },
       };
     }
