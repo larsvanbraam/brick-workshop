@@ -979,6 +979,61 @@ kbd {
   color: inherit;
 }
 
+/* Cinematic view: the viewport fills the window and only its own toolbar floats over it */
+.workspace.cinematic .viewport {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: #0b0c10;
+}
+.workspace.cinematic .viewport > :not(:first-child, .cinematic-bar) {
+  display: none;
+}
+.cinematic-bar {
+  position: absolute;
+  left: 50%;
+  bottom: 22px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 14px;
+  background: rgba(20, 22, 28, 0.6);
+  backdrop-filter: blur(20px) saturate(140%);
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  opacity: 0.35;
+  transition: opacity 0.2s;
+}
+.cinematic-bar:hover,
+.cinematic-bar:focus-within {
+  opacity: 1;
+}
+.cinematic-bar .segmented {
+  background: rgba(255, 255, 255, 0.08);
+}
+.cinematic-bar .segmented button,
+.cinematic-bar .icon-button {
+  color: rgba(255, 255, 255, 0.75);
+}
+.cinematic-bar .segmented button[aria-pressed='true'] {
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
+  box-shadow: none;
+}
+.cinematic-bar .icon-button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.1);
+}
+.cinematic-bar .icon-button[aria-pressed='true'] {
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
+}
+.cinematic-bar .divider {
+  background: rgba(255, 255, 255, 0.15);
+}
+
 /* Details drawer */
 .details-panel {
   display: flex;

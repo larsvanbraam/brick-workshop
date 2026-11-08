@@ -39,6 +39,19 @@ export function getSceneFrame(
   };
 }
 
+/** A low three-quarter view that fills the frame with the model itself rather than the board. */
+export function getCinematicFrame(bounds: Box3, aspect: number, fov = 38) {
+  const sphere = bounds.getBoundingSphere(new Sphere());
+  const vertical = (fov * Math.PI) / 360;
+  const horizontal = Math.atan(Math.tan(vertical) * aspect);
+  const distance = (Math.max(sphere.radius, 2) / Math.sin(Math.min(vertical, horizontal))) * 1.02;
+  const direction = new Vector3(0.72, 0.3, -0.78);
+  return {
+    target: sphere.center.toArray(),
+    position: direction.normalize().multiplyScalar(distance).add(sphere.center).toArray(),
+  };
+}
+
 export function getLDrawModelOffset(brick: Brick): [number, number, number] {
   const size = footprint(brick);
   const transform = getLDrawTransform(brick);

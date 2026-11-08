@@ -2,7 +2,9 @@ import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useStat
 import {
   ArrowUp,
   Boxes,
+  Camera,
   ChevronDown,
+  Clapperboard,
   Copy,
   Download,
   Eraser,
@@ -13,6 +15,7 @@ import {
   LibraryBig,
   Maximize,
   MousePointer2,
+  Orbit,
   PanelRight,
   Redo2,
   RotateCcw,
@@ -65,6 +68,8 @@ import type {
   EditPolicy,
 } from '@lego-builder/brick-engine';
 import { Scene } from './Scene';
+import { MOODS } from './cinematic';
+import type { CinematicMood } from './cinematic';
 import type { PointerDevice, PointerTarget, SceneMode } from './Scene';
 import { useLDrawLibrary } from './ldraw';
 import { displayHex } from './ldraw-materials';
@@ -181,8 +186,10 @@ const PartGrid = memo(function PartGrid({
   );
 });
 
-function download(contents: string, name: string, type: string) {
-  const url = URL.createObjectURL(new Blob([contents], { type }));
+function download(contents: string | Blob, name: string, type: string) {
+  const url = URL.createObjectURL(
+    contents instanceof Blob ? contents : new Blob([contents], { type }),
+  );
   const anchor = document.createElement('a');
   anchor.href = url;
   anchor.download = name;
@@ -348,6 +355,13 @@ export default function App() {
     scrollSetting === 'trackpad' || (scrollSetting === 'auto' && detectedDevice === 'trackpad');
   const [view, setView] = useState<'perspective' | 'top' | 'front'>('perspective');
   const [cameraRevision, setCameraRevision] = useState(0);
+  const [cinematic, setCinematic] = useState(false);
+  const [mood, setMood] = useState<CinematicMood>('studio');
+  const [turntable, setTurntable] = useState(false);
+  const cinematicStage = useMemo(
+    () => (cinematic ? { mood, turntable } : null),
+    [cinematic, mood, turntable],
+  );
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [trayOpen, setTrayOpen] = useState(false);
   const [message, setMessage] = useState('');
@@ -638,6 +652,25 @@ export default function App() {
     setView('perspective');
     setCameraRevision((revision) => revision + 1);
   }
+  function enterCinematic() {
+    setTool('select');
+    setSelectedId(null);
+    setLayersOpen(false);
+    setCinematic(true);
+  }
+  function exitCinematic() {
+    setCinematic(false);
+    setTurntable(false);
+    resetView();
+  }
+  function captureScreenshot() {
+    // The canvas keeps its drawing buffer, so it holds the last rendered frame.
+    const canvas = document.querySelector<HTMLCanvasElement>('.viewport canvas');
+    const filename = assembly.name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+    canvas?.toBlob((blob) => {
+      if (blob) download(blob, `${filename}.png`, 'image/png');
+    }, 'image/png');
+  }
   function loadExample(id: string) {
     resetAssembly(createExampleAssembly(id));
     setSavedId(null);
@@ -783,6 +816,10 @@ export default function App() {
     const keydown = (event: KeyboardEvent) => {
       setShiftHeld(event.shiftKey);
       if (modal || isTyping(event.target)) return;
+      if (cinematic) {
+        if (event.key === 'Escape') exitCinematic();
+        return;
+      }
       const key = event.key.toLowerCase();
       const command = event.metaKey || event.ctrlKey;
       if (command && key === 'z') {
@@ -1012,7 +1049,9 @@ export default function App() {
           </button>
         </div>
       </header>
-      <main className={`workspace ${detailsOpen ? 'with-details' : ''}`}>
+      <main
+        className={`workspace ${detailsOpen ? 'with-details' : ''} ${cinematic ? 'cinematic' : ''}`}
+      >
         <aside className={`tray ${trayOpen ? 'open' : ''}`} aria-label="Parts">
           <div className="tray-header">
             <label className="search-field">
@@ -1085,15 +1124,15 @@ export default function App() {
           {library.status !== 'loading' && (
             <Scene
               assembly={assembly}
-              selectedId={selectedId}
+              selectedId={cinematic ? null : selectedId}
               onSelect={setSelectedId}
               mode={tool}
-              highlightId={removing ? target?.brick?.id : null}
+              highlightId={removing && !cinematic ? target?.brick?.id : null}
               onHover={setTarget}
               trackpad={trackpad}
               onPointerDevice={detectDevice}
               onActivate={activate}
-              ghost={ghost}
+              ghost={cinematic ? null : ghost}
               ghostValid={candidate?.ok ?? false}
               layer={visibleLayer}
               explode={explode}
@@ -1101,7 +1140,46 @@ export default function App() {
               cameraRevision={cameraRevision}
               models={library.models}
               onReady={onSceneReady}
+              cinematic={cinematicStage}
             />
+          )}
+
+          {cinematic && (
+            <div className="cinematic-bar" role="toolbar" aria-label="Cinematic view">
+              <div className="segmented" role="group" aria-label="Lighting">
+                {(Object.keys(MOODS) as CinematicMood[]).map((entry) => (
+                  <button key={entry} aria-pressed={mood === entry} onClick={() => setMood(entry)}>
+                    {MOODS[entry].label}
+                  </button>
+                ))}
+              </div>
+              <span className="divider" />
+              <button
+                className="icon-button"
+                title="Turntable"
+                aria-label="Turntable"
+                aria-pressed={turntable}
+                onClick={() => setTurntable(!turntable)}
+              >
+                <Orbit size={16} />
+              </button>
+              <button
+                className="icon-button"
+                title="Save screenshot"
+                aria-label="Save screenshot"
+                onClick={captureScreenshot}
+              >
+                <Camera size={16} />
+              </button>
+              <button
+                className="icon-button"
+                title="Exit cinematic view (Esc)"
+                aria-label="Exit cinematic view"
+                onClick={exitCinematic}
+              >
+                <X size={16} />
+              </button>
+            </div>
           )}
 
           <button
@@ -1207,6 +1285,15 @@ export default function App() {
               onClick={resetView}
             >
               <Maximize size={16} />
+            </button>
+            <button
+              className="icon-button"
+              title="Cinematic view"
+              aria-label="Cinematic view"
+              disabled={empty}
+              onClick={enterCinematic}
+            >
+              <Clapperboard size={16} />
             </button>
           </div>
 

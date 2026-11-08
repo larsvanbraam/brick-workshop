@@ -10,7 +10,14 @@ import { coloredLDrawModel } from './ldraw';
 import { canBatchLDrawModel, createLDrawBatch, disposeLDrawBatch } from './ldraw-batches';
 import type { ThreeEvent } from '@react-three/fiber';
 import { colorMaterialProperties, displayHex } from './ldraw-materials';
-import { getLDrawModelOffset, getSceneFrame, getSceneHeight } from './scene-frame';
+import {
+  getCinematicFrame,
+  getLDrawModelOffset,
+  getSceneFrame,
+  getSceneHeight,
+} from './scene-frame';
+import { CinematicStage } from './cinematic';
+import type { CinematicMood } from './cinematic';
 import {
   BUILD_AREA,
   COLORS,
@@ -50,6 +57,8 @@ interface SceneProps {
   cameraRevision: number;
   models: Record<string, Group>;
   onReady: () => void;
+  /** Swaps the workshop for a dark, dramatically lit stage meant for screenshots. */
+  cinematic?: { mood: CinematicMood; turntable: boolean } | null;
 }
 
 function SceneReady({ onReady }: { onReady: () => void }) {
@@ -123,8 +132,12 @@ function CameraRig({
   controls,
   trackpad,
   onDevice,
+  cinematic,
+  turntable,
 }: {
   controls: RefObject<CameraControls | null>;
+  cinematic: boolean;
+  turntable: boolean;
   trackpad: boolean;
   onDevice?: (device: PointerDevice) => void;
   view: SceneProps['view'];
@@ -147,6 +160,22 @@ function CameraRig({
     void rig.setLookAt(...frame.position, ...frame.target, !first.current);
     first.current = false;
   }, [view, revision, buildArea, camera, controls]);
+  useEffect(() => {
+    // Refits when the stage opens and once the viewport has grown to fill the window.
+    const rig = controls.current;
+    const { bounds } = latest.current;
+    if (!cinematic || !rig || !bounds || !(camera instanceof PerspectiveCamera)) return;
+    const frame = getCinematicFrame(bounds, size.width / size.height, camera.fov);
+    void rig.setLookAt(...frame.position, ...frame.target, true);
+  }, [cinematic, size.width, size.height, camera, controls]);
+  useEffect(() => {
+    if (turntable) invalidate();
+  }, [turntable, invalidate]);
+  useFrame((_, delta) => {
+    if (!turntable) return;
+    void controls.current?.rotate(delta * 0.15, 0, false);
+    invalidate();
+  });
   useEffect(() => {
     // The pivot stays over the board, so the build cannot drift out of reach.
     const margin = buildArea * 0.25;
@@ -510,7 +539,52 @@ function targetKey(target: PointerTarget | null) {
     : '';
 }
 
+/** The everyday light board: bright, even lighting over the baseplate and its stud grid. */
+function WorkshopStage({ buildArea }: { buildArea: number }) {
+  return (
+    <>
+      <color attach="background" args={['#eef0ee']} />
+      <WorkshopEnvironment />
+      <ambientLight intensity={1.1} />
+      <hemisphereLight args={['#ffffff', '#a0ad9e', 1.2]} />
+      <directionalLight
+        position={[-8, 20, 12]}
+        intensity={2.8}
+        castShadow
+        shadow-mapSize={[2048, 2048]}
+        shadow-camera-left={-buildArea / 2 - 6}
+        shadow-camera-right={buildArea / 2 + 6}
+        shadow-camera-top={buildArea / 2 + 6}
+        shadow-camera-bottom={-buildArea / 2 - 6}
+        shadow-normalBias={0.04}
+      />
+      <directionalLight position={[12, 8, -8]} intensity={0.7} />
+      <mesh position={[0, -0.16, 0]} receiveShadow>
+        <boxGeometry args={[buildArea + 0.35, 0.3, buildArea + 0.35]} />
+        <meshStandardMaterial color="#b6bfb6" roughness={0.8} />
+      </mesh>
+      <Grid
+        position={[0, 0.003, 0]}
+        args={[buildArea, buildArea]}
+        cellSize={1}
+        cellThickness={0.65}
+        cellColor="#8f9d92"
+        sectionSize={4}
+        sectionThickness={1}
+        sectionColor="#6f8274"
+        fadeDistance={buildArea * 4.5}
+        infiniteGrid={false}
+      />
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.32, 0]} receiveShadow>
+        <planeGeometry args={[200, 200]} />
+        <meshStandardMaterial color="#eef0ee" />
+      </mesh>
+    </>
+  );
+}
+
 export const Scene = memo(function Scene(props: SceneProps) {
+  const cinematic = props.cinematic ?? null;
   const buildArea = getBuildArea(props.assembly);
   const height = useMemo(
     () => getSceneHeight(props.assembly, props.explode),
@@ -607,42 +681,11 @@ export const Scene = memo(function Scene(props: SceneProps) {
       style={{ cursor: mode === 'place' ? 'crosshair' : 'default' }}
       aria-label="Interactive 3D brick model"
     >
-      <color attach="background" args={['#eef0ee']} />
-      <WorkshopEnvironment />
-      <ambientLight intensity={1.1} />
-      <hemisphereLight args={['#ffffff', '#a0ad9e', 1.2]} />
-      <directionalLight
-        position={[-8, 20, 12]}
-        intensity={2.8}
-        castShadow
-        shadow-mapSize={[2048, 2048]}
-        shadow-camera-left={-buildArea / 2 - 6}
-        shadow-camera-right={buildArea / 2 + 6}
-        shadow-camera-top={buildArea / 2 + 6}
-        shadow-camera-bottom={-buildArea / 2 - 6}
-        shadow-normalBias={0.04}
-      />
-      <directionalLight position={[12, 8, -8]} intensity={0.7} />
-      <mesh position={[0, -0.16, 0]} receiveShadow>
-        <boxGeometry args={[buildArea + 0.35, 0.3, buildArea + 0.35]} />
-        <meshStandardMaterial color="#b6bfb6" roughness={0.8} />
-      </mesh>
-      <Grid
-        position={[0, 0.003, 0]}
-        args={[buildArea, buildArea]}
-        cellSize={1}
-        cellThickness={0.65}
-        cellColor="#8f9d92"
-        sectionSize={4}
-        sectionThickness={1}
-        sectionColor="#6f8274"
-        fadeDistance={buildArea * 4.5}
-        infiniteGrid={false}
-      />
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.32, 0]} receiveShadow>
-        <planeGeometry args={[200, 200]} />
-        <meshStandardMaterial color="#eef0ee" />
-      </mesh>
+      {cinematic ? (
+        <CinematicStage mood={cinematic.mood} bounds={bounds} />
+      ) : (
+        <WorkshopStage buildArea={buildArea} />
+      )}
       <group
         onPointerMove={(event) => {
           const target = resolve(event);
@@ -723,6 +766,8 @@ export const Scene = memo(function Scene(props: SceneProps) {
         controls={rig}
         trackpad={props.trackpad ?? false}
         onDevice={props.onPointerDevice}
+        cinematic={cinematic !== null}
+        turntable={cinematic?.turntable ?? false}
       />
       <SceneReady onReady={props.onReady} />
     </Canvas>

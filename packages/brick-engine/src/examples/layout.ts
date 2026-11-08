@@ -204,12 +204,12 @@ const WINDOW_GLASS: Readonly<Record<string, string>> = {
 };
 const TRANS_CLEAR = 47;
 
-/** Puts trans-clear glass in every window frame the build adds. */
-export function glazeWindows(add: ExampleBrickAdder): ExampleBrickAdder {
+/** Puts glass, trans-clear unless told otherwise, in every window frame the build adds. */
+export function glazeWindows(add: ExampleBrickAdder, glassColor = TRANS_CLEAR): ExampleBrickAdder {
   return (partId, color, x, y, z, rotation = 0, facing) => {
     add(partId, color, x, y, z, rotation, facing);
     const glass = WINDOW_GLASS[partId];
-    if (glass) add(glass, TRANS_CLEAR, x, y, z, rotation);
+    if (glass) add(glass, glassColor, x, y, z, rotation);
   };
 }
 
