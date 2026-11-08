@@ -1,3 +1,4 @@
+import type { CinematicMood } from '../cinematic-look';
 import { rgbCss } from './layout';
 import type { Rgb } from './layout';
 import type { ManualRenderer } from './renderer';
@@ -13,6 +14,8 @@ export interface CoverArtOptions {
   view: number;
   /** Where the model goes, in panel pixels. */
   hero: { x: number; y: number; width: number; height: number };
+  /** Shoots the model on the workshop's cinematic stage instead of under a painted sky. */
+  mood?: CinematicMood;
   /** Title lines to cast a soft shadow for; the crisp text itself is drawn in the PDF. */
   title?: { lines: string[]; x: number; y: number; size: number; lineHeight: number };
 }
@@ -36,9 +39,27 @@ function opaqueBounds(canvas: HTMLCanvasElement) {
   return right < 0 ? null : { left, top, right, bottom };
 }
 
+/** Shadow only: the text is drawn far off the canvas and its shadow shifted back into place. */
+function titleShadow(context: CanvasRenderingContext2D, { title, width }: CoverArtOptions) {
+  if (!title) return;
+  const { lines, x, y, size, lineHeight } = title;
+  const offset = width * 4;
+  context.font = `bold ${size}px Helvetica, Arial, sans-serif`;
+  context.textBaseline = 'top';
+  context.fillStyle = '#000';
+  context.shadowColor = 'rgba(0, 25, 60, 0.55)';
+  context.shadowBlur = size * 0.35;
+  context.shadowOffsetX = offset;
+  context.shadowOffsetY = size * 0.06;
+  for (const [index, line] of lines.entries())
+    context.fillText(line, x - offset, y + index * lineHeight);
+  context.shadowColor = 'transparent';
+  context.shadowOffsetX = context.shadowOffsetY = context.shadowBlur = 0;
+}
+
 /**
  * The cover's picture, like a box photo: the model large on sandy ground under a blue sky,
- * with a soft shadow beneath it and behind the title. Returned as a JPEG of the whole panel,
+ * with a soft shadow beneath it and behind the title, or on the dark cinematic stage. Returned as a JPEG of the whole panel,
  * its rounded corners filled with the frame color.
  */
 export function createCoverArt(renderer: ManualRenderer, options: CoverArtOptions) {
@@ -53,6 +74,17 @@ export function createCoverArt(renderer: ManualRenderer, options: CoverArtOption
   context.beginPath();
   context.roundRect(0, 0, width, height, options.radius);
   context.clip();
+
+  if (options.mood) {
+    context.drawImage(
+      renderer.renderCinematic(options.view, width, height, hero, options.mood),
+      0,
+      0,
+    );
+    titleShadow(context, options);
+    context.restore();
+    return canvas.toDataURL('image/jpeg', 0.92);
+  }
 
   const horizon = height * 0.64;
   const sky = context.createLinearGradient(0, 0, 0, horizon);
@@ -87,22 +119,7 @@ export function createCoverArt(renderer: ManualRenderer, options: CoverArtOption
   context.fillStyle = sun;
   context.fillRect(0, 0, width, horizon);
 
-  if (options.title) {
-    // Shadow only: the text is drawn far off the canvas and its shadow shifted back into place.
-    const { lines, x, y, size, lineHeight } = options.title;
-    const offset = width * 4;
-    context.font = `bold ${size}px Helvetica, Arial, sans-serif`;
-    context.textBaseline = 'top';
-    context.fillStyle = '#000';
-    context.shadowColor = 'rgba(0, 25, 60, 0.55)';
-    context.shadowBlur = size * 0.35;
-    context.shadowOffsetX = offset;
-    context.shadowOffsetY = size * 0.06;
-    for (const [index, line] of lines.entries())
-      context.fillText(line, x - offset, y + index * lineHeight);
-    context.shadowColor = 'transparent';
-    context.shadowOffsetX = context.shadowOffsetY = context.shadowBlur = 0;
-  }
+  titleShadow(context, options);
 
   // Render larger than needed, then crop to the model's own pixels so it fills the hero area
   // instead of the camera's safety margin, standing centred on its bottom edge.

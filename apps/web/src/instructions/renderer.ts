@@ -1,7 +1,9 @@
 import {
   AmbientLight,
   Box3,
+  Color,
   DirectionalLight,
+  Fog,
   Group,
   InstancedMesh,
   LineSegments,
@@ -9,6 +11,8 @@ import {
   MeshBasicMaterial,
   MeshStandardMaterial,
   OrthographicCamera,
+  PCFSoftShadowMap,
+  PerspectiveCamera,
   PMREMGenerator,
   Scene,
   Vector3,
@@ -30,6 +34,14 @@ import { createFallbackGeometry } from '../fallback-geometry';
 import { coloredLDrawModel, loadLDrawModels } from '../ldraw';
 import { canBatchLDrawModel, createLDrawBatch } from '../ldraw-batches';
 import { colorMaterialProperties } from '../ldraw-materials';
+import {
+  MOODS,
+  createCinematicComposer,
+  createCinematicRig,
+  createStudioEnvironment,
+  fogRange,
+} from '../cinematic-look';
+import type { CinematicMood } from '../cinematic-look';
 import { rgbCss } from './layout';
 import type { Rgb } from './layout';
 
@@ -105,6 +117,8 @@ export class ManualRenderer {
   private readonly camera = new OrthographicCamera();
   private readonly placed = new Group();
   private readonly fresh = new Group();
+  /** The everyday lights, switched off while the cinematic stage lights the model. */
+  private readonly lights = new Group();
   private readonly target = new WebGLRenderTarget(VISIBILITY_SIZE, VISIBILITY_SIZE);
   private readonly highlightTarget = new WebGLRenderTarget(1, 1);
   private readonly canvas = document.createElement('canvas');
@@ -141,12 +155,12 @@ export class ManualRenderer {
     this.owned.push(this.scene.environment, this.target, this.highlightTarget, this.renderer);
     environment.dispose();
     pmrem.dispose();
-    this.scene.add(new AmbientLight(0xffffff, 0.6));
     const key = new DirectionalLight(0xffffff, 1.8);
     key.position.set(8, 14, -10);
     const fill = new DirectionalLight(0xffffff, 0.6);
     fill.position.set(-10, 4, 8);
-    this.scene.add(key, fill, this.placed, this.fresh);
+    this.lights.add(new AmbientLight(0xffffff, 0.6), key, fill);
+    this.scene.add(this.lights, this.placed, this.fresh);
     this.camera.layers.enable(EDGE_LAYER);
   }
 
@@ -505,6 +519,112 @@ export class ManualRenderer {
     this.renderer.setClearColor(0x000000, 0);
     this.renderer.render(this.scene, this.camera);
     return this.renderer.domElement;
+  }
+
+  /**
+   * The whole model so far on the workshop's cinematic stage, for covers: a perspective shot a
+   * little lower than the steps' views, the model filling `hero` (in pixels) and standing on its
+   * bottom edge, with the dark backdrop running across the rest of the `width` × `height` image.
+   * Returns the renderer's own canvas, valid until the next render.
+   */
+  renderCinematic(
+    view: number,
+    width: number,
+    height: number,
+    hero: { x: number; y: number; width: number; height: number },
+    mood: CinematicMood,
+    /** Part of the model to fill the hero with instead of all of it, for close-ups. */
+    detail?: Box3,
+  ): HTMLCanvasElement {
+    const { renderer, scene } = this;
+    const whole = this.placedBounds.isEmpty() ? this.sceneBounds : this.placedBounds;
+    const bounds = detail ?? whole;
+    const settings = MOODS[mood];
+    const rig = createCinematicRig(mood, whole, view);
+    const environment = createStudioEnvironment(renderer, mood);
+    const previous = {
+      environment: scene.environment,
+      intensity: scene.environmentIntensity,
+      background: scene.background,
+      fog: scene.fog,
+    };
+    const camera = new PerspectiveCamera(30, hero.width / hero.height);
+    const size = bounds.getSize(new Vector3());
+    // Small shots leave edge lines out, as the steps do, so they don't bury the colors.
+    if (Math.min(hero.width, hero.height) / Math.max(size.x, size.z, 1) >= MIN_EDGE_DETAIL)
+      camera.layers.enable(EDGE_LAYER);
+    const horizontal = VIEWS[view].clone().setY(0).normalize();
+    const direction = horizontal.setY(0.42).normalize();
+    const focus = bounds.getCenter(new Vector3());
+    const distance = rig.radius / Math.sin((camera.fov * Math.PI) / 360);
+    camera.position.copy(focus).addScaledVector(direction, distance);
+    camera.lookAt(focus);
+    camera.near = distance * 0.05;
+    camera.far = distance + rig.radius * 20;
+    camera.updateProjectionMatrix();
+    camera.updateMatrixWorld();
+    // Zoom to the model's projected outline, then shift the view so it sits centred on the
+    // hero's bottom edge; the rest of the image extends the same view outwards.
+    const projected = new Box3().setFromPoints(
+      corners(bounds).map((point) => point.project(camera)),
+    );
+    camera.zoom =
+      0.97 *
+      Math.min(2 / (projected.max.x - projected.min.x), 2 / (projected.max.y - projected.min.y));
+    const centerX =
+      ((((projected.max.x + projected.min.x) / 2) * camera.zoom + 1) / 2) * hero.width;
+    const bottom = ((1 - projected.min.y * camera.zoom) / 2) * hero.height;
+    camera.setViewOffset(
+      hero.width,
+      hero.height,
+      centerX - hero.x - hero.width / 2,
+      bottom - hero.y - hero.height,
+      width,
+      height,
+    );
+    this.lights.visible = false;
+    scene.add(rig.group);
+    scene.environment = environment;
+    scene.environmentIntensity = settings.environment;
+    scene.background = new Color(settings.background);
+    scene.fog = new Fog(settings.background, ...fogRange(rig.radius));
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = PCFSoftShadowMap;
+    renderer.setSize(width, height, false);
+    renderer.setClearColor(0x000000, 1);
+    const composer = createCinematicComposer(renderer, scene, camera, mood, width, height);
+    try {
+      composer.render();
+      return renderer.domElement;
+    } finally {
+      composer.dispose();
+      scene.remove(rig.group);
+      rig.dispose();
+      environment.dispose();
+      scene.environment = previous.environment;
+      scene.environmentIntensity = previous.intensity;
+      scene.background = previous.background;
+      scene.fog = previous.fog;
+      renderer.shadowMap.enabled = false;
+      this.lights.visible = true;
+    }
+  }
+
+  /** Places every piece at once, for pictures of the finished model without rendering steps. */
+  placeAll() {
+    if (this.placed.children.length) return;
+    for (const brick of this.bricks.values()) {
+      const object = this.createPiece(brick);
+      this.placed.add(object);
+      this.loose.push({ brick, object });
+      this.placedBounds.union(brickBounds(brick));
+    }
+    this.consolidate();
+  }
+
+  /** The finished model without its baseplates, for framing close-ups. */
+  get modelExtent() {
+    return this.finalBounds.clone();
   }
 
   /** One piece on its own, seen like the model, for parts callouts and the parts list. */

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, BookOpen, Download, FileText, LoaderCircle, X } from 'lucide-react';
+import { ArrowLeft, BookOpen, Download, FileText, LoaderCircle, Package, X } from 'lucide-react';
 import {
   EXAMPLES,
   createExampleAssembly,
@@ -11,21 +11,33 @@ import { listSavedBuilds, loadSavedBuild, openBuildDocument, readAutosave } from
 import type { SavedBuildSummary } from '../saved-builds';
 import { PAGE_SIZES, STEP_SIZES, countPages, deriveManualTheme, rgbCss } from './layout';
 import type { Orientation, PageSize, StepSize } from './layout';
+import { MOODS } from '../cinematic-look';
+import type { CinematicMood } from '../cinematic-look';
+import { createBoxArt, setNumberFor } from './box';
+import type { BoxArt } from './box';
 import { createManual } from './manual';
 import type { Manual, ManualProgress } from './manual';
 
 const SETTINGS_KEY = 'brick-workshop-instructions-settings-v1';
 
+type CoverStyle = 'classic' | CinematicMood;
+
 interface Settings {
   pageSize: PageSize;
   orientation: Orientation;
   stepSize: StepSize;
+  cover: CoverStyle;
+  output: 'manual' | 'box';
+  boxMood: CinematicMood;
 }
 
 const DEFAULT_SETTINGS: Settings = {
   pageSize: 'a4',
   orientation: 'landscape',
   stepSize: 'standard',
+  cover: 'studio',
+  output: 'manual',
+  boxMood: 'studio',
 };
 
 function readSettings(): Settings {
@@ -37,6 +49,12 @@ function readSettings(): Settings {
       orientation: saved.orientation === 'portrait' ? 'portrait' : DEFAULT_SETTINGS.orientation,
       stepSize:
         saved.stepSize && saved.stepSize in STEP_SIZES ? saved.stepSize : DEFAULT_SETTINGS.stepSize,
+      cover:
+        saved.cover === 'classic' || (saved.cover && saved.cover in MOODS)
+          ? saved.cover
+          : DEFAULT_SETTINGS.cover,
+      output: saved.output === 'box' ? 'box' : DEFAULT_SETTINGS.output,
+      boxMood: saved.boxMood && saved.boxMood in MOODS ? saved.boxMood : DEFAULT_SETTINGS.boxMood,
     };
   } catch {
     return DEFAULT_SETTINGS;
@@ -81,6 +99,10 @@ export function InstructionsApp() {
   const [progress, setProgress] = useState<ManualProgress | null>(null);
   const [manual, setManual] = useState<(Manual & { url: string; name: string }) | null>(null);
   const abort = useRef<AbortController | null>(null);
+  const [box, setBox] = useState<(BoxArt & { name: string }) | null>(null);
+  const [boxStatus, setBoxStatus] = useState<string | null>(null);
+  /** Box copy the reader typed; blank fields fall back to what the build suggests. */
+  const [boxText, setBoxText] = useState({ subtitle: '', age: '', description: '' });
 
   useEffect(() => {
     listSavedBuilds()
@@ -151,7 +173,7 @@ export function InstructionsApp() {
       const result = await createManual(
         assembly,
         plan.steps,
-        { pageSize: settings.pageSize, orientation: settings.orientation },
+        { pageSize: settings.pageSize, orientation: settings.orientation, cover: settings.cover },
         setProgress,
         controller.signal,
       );
@@ -169,7 +191,37 @@ export function InstructionsApp() {
     setSettings((current) => ({ ...current, ...patch }));
     setManual(null);
   };
-  const busy = progress !== null;
+  async function generateBox() {
+    if (!assembly?.bricks.length) return;
+    setError(null);
+    setBox(null);
+    try {
+      const art = await createBoxArt(
+        assembly,
+        {
+          title: assembly.name,
+          subtitle: boxText.subtitle.trim(),
+          age: boxText.age.trim() || '18+',
+          setNumber: setNumberFor(assembly.name),
+          description: boxText.description.trim() || boxDescription,
+          mood: settings.boxMood,
+        },
+        setBoxStatus,
+      );
+      setBox({ ...art, name: assembly.name });
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'The box could not be created.');
+    } finally {
+      setBoxStatus(null);
+    }
+  }
+
+  const boxDescription = assembly
+    ? `${assembly.name} in ${assembly.bricks.length} pieces${
+        plan && !('error' in plan) ? `, built in ${plan.steps.length} steps` : ''
+      }. Designed in Brick Workshop.`
+    : '';
+  const busy = progress !== null || boxStatus !== null;
   const autosave = useMemo(() => readAutosave(), []);
 
   return (
@@ -195,6 +247,7 @@ export function InstructionsApp() {
               onChange={(event) => {
                 setSource(event.target.value);
                 setManual(null);
+                setBox(null);
                 setError(null);
               }}
             >
@@ -219,104 +272,237 @@ export function InstructionsApp() {
               </optgroup>
             </select>
           </label>
-          <label>
-            <span>Page size</span>
-            <select
-              value={settings.pageSize}
-              onChange={(event) => update({ pageSize: event.target.value as PageSize })}
-            >
-              {Object.entries(PAGE_SIZES).map(([id, size]) => (
-                <option key={id} value={id}>
-                  {size.label} ({size.width} × {size.height} mm)
-                </option>
-              ))}
-            </select>
-          </label>
           <fieldset>
-            <legend>Orientation</legend>
+            <legend>Create</legend>
             <div className="segmented">
-              {(['portrait', 'landscape'] as const).map((orientation) => (
+              {(['manual', 'box'] as const).map((output) => (
                 <button
-                  key={orientation}
-                  className={settings.orientation === orientation ? 'active' : ''}
-                  aria-pressed={settings.orientation === orientation}
-                  onClick={() => update({ orientation })}
+                  key={output}
+                  className={settings.output === output ? 'active' : ''}
+                  aria-pressed={settings.output === output}
+                  onClick={() => update({ output })}
                 >
-                  {orientation === 'portrait' ? 'Portrait' : 'Landscape'}
+                  {output === 'manual' ? 'Instructions' : 'Box'}
                 </button>
               ))}
             </div>
           </fieldset>
-          <fieldset>
-            <legend>Step size</legend>
-            <div className="segmented">
-              {Object.entries(STEP_SIZES).map(([id, size]) => (
-                <button
-                  key={id}
-                  className={settings.stepSize === id ? 'active' : ''}
-                  aria-pressed={settings.stepSize === id}
-                  title={`Up to ${size.maxPiecesPerStep} pieces per step`}
-                  onClick={() => update({ stepSize: id as StepSize })}
+          {settings.output === 'manual' ? (
+            <>
+              <label>
+                <span>Page size</span>
+                <select
+                  value={settings.pageSize}
+                  onChange={(event) => update({ pageSize: event.target.value as PageSize })}
                 >
-                  {size.label}
-                </button>
-              ))}
-            </div>
-            <small>Up to {STEP_SIZES[settings.stepSize].maxPiecesPerStep} pieces per step.</small>
-          </fieldset>
-          {plan && !('error' in plan) && (
-            <dl className="instructions-summary">
-              <div>
-                <dt>Pieces</dt>
-                <dd>{assembly!.bricks.length}</dd>
-              </div>
-              <div>
-                <dt>Steps</dt>
-                <dd>{plan.steps.length}</dd>
-              </div>
-              <div>
-                <dt>Pages</dt>
-                <dd>{plan.pages}</dd>
-              </div>
-              <div className="instructions-swatches" aria-label="Manual colors">
-                {[plan.theme.frame, plan.theme.callout, plan.theme.page].map((color, index) => (
-                  <span key={index} style={{ background: rgbCss(color) }} />
-                ))}
-              </div>
-            </dl>
+                  {Object.entries(PAGE_SIZES).map(([id, size]) => (
+                    <option key={id} value={id}>
+                      {size.label} ({size.width} × {size.height} mm)
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <fieldset>
+                <legend>Orientation</legend>
+                <div className="segmented">
+                  {(['portrait', 'landscape'] as const).map((orientation) => (
+                    <button
+                      key={orientation}
+                      className={settings.orientation === orientation ? 'active' : ''}
+                      aria-pressed={settings.orientation === orientation}
+                      onClick={() => update({ orientation })}
+                    >
+                      {orientation === 'portrait' ? 'Portrait' : 'Landscape'}
+                    </button>
+                  ))}
+                </div>
+              </fieldset>
+              <fieldset>
+                <legend>Step size</legend>
+                <div className="segmented">
+                  {Object.entries(STEP_SIZES).map(([id, size]) => (
+                    <button
+                      key={id}
+                      className={settings.stepSize === id ? 'active' : ''}
+                      aria-pressed={settings.stepSize === id}
+                      title={`Up to ${size.maxPiecesPerStep} pieces per step`}
+                      onClick={() => update({ stepSize: id as StepSize })}
+                    >
+                      {size.label}
+                    </button>
+                  ))}
+                </div>
+                <small>
+                  Up to {STEP_SIZES[settings.stepSize].maxPiecesPerStep} pieces per step.
+                </small>
+              </fieldset>
+              <label>
+                <span>Cover</span>
+                <select
+                  value={settings.cover}
+                  onChange={(event) => update({ cover: event.target.value as CoverStyle })}
+                >
+                  <option value="classic">Classic: bright sky</option>
+                  {(Object.keys(MOODS) as CinematicMood[]).map((mood) => (
+                    <option key={mood} value={mood}>
+                      Cinematic: {MOODS[mood].label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {plan && !('error' in plan) && (
+                <dl className="instructions-summary">
+                  <div>
+                    <dt>Pieces</dt>
+                    <dd>{assembly!.bricks.length}</dd>
+                  </div>
+                  <div>
+                    <dt>Steps</dt>
+                    <dd>{plan.steps.length}</dd>
+                  </div>
+                  <div>
+                    <dt>Pages</dt>
+                    <dd>{plan.pages}</dd>
+                  </div>
+                  <div className="instructions-swatches" aria-label="Manual colors">
+                    {[plan.theme.frame, plan.theme.callout, plan.theme.page].map((color, index) => (
+                      <span key={index} style={{ background: rgbCss(color) }} />
+                    ))}
+                  </div>
+                </dl>
+              )}
+            </>
+          ) : (
+            <>
+              <label>
+                <span>Subtitle</span>
+                <input
+                  value={boxText.subtitle}
+                  placeholder="Stockholm"
+                  onChange={(event) => setBoxText({ ...boxText, subtitle: event.target.value })}
+                />
+              </label>
+              <label>
+                <span>Age</span>
+                <input
+                  value={boxText.age}
+                  placeholder="18+"
+                  onChange={(event) => setBoxText({ ...boxText, age: event.target.value })}
+                />
+              </label>
+              <label>
+                <span>Description</span>
+                <textarea
+                  rows={4}
+                  value={boxText.description}
+                  placeholder={boxDescription}
+                  onChange={(event) => setBoxText({ ...boxText, description: event.target.value })}
+                />
+              </label>
+              <label>
+                <span>Lighting</span>
+                <select
+                  value={settings.boxMood}
+                  onChange={(event) => update({ boxMood: event.target.value as CinematicMood })}
+                >
+                  {(Object.keys(MOODS) as CinematicMood[]).map((mood) => (
+                    <option key={mood} value={mood}>
+                      {MOODS[mood].label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {assembly && (
+                <small>
+                  Set {setNumberFor(assembly.name)} · {assembly.bricks.length} pcs
+                </small>
+              )}
+            </>
           )}
           {assembly && !assembly.bricks.length && (
             <p className="form-note">This build has no pieces yet.</p>
           )}
           {plan && 'error' in plan && <p className="form-error">{plan.error}</p>}
           {(current?.error ?? error) && <p className="form-error">{current?.error ?? error}</p>}
-          <button
-            className="primary"
-            disabled={!plan || 'error' in plan || busy}
-            onClick={() => void generate()}
-          >
-            <FileText size={15} />
-            Create PDF
-          </button>
-          {manual && (
-            <a
-              className="secondary download-link"
-              href={manual.url}
-              download={`${slug(manual.name)}-instructions.pdf`}
-            >
-              <Download size={15} />
-              Download PDF
-            </a>
+          {settings.output === 'box' ? (
+            <>
+              <button
+                className="primary"
+                disabled={!assembly?.bricks.length || busy}
+                onClick={() => void generateBox()}
+              >
+                <Package size={15} />
+                Create box
+              </button>
+              {box && (
+                <>
+                  <a
+                    className="secondary download-link"
+                    href={box.box}
+                    download={`${slug(box.name)}-box.png`}
+                  >
+                    <Download size={15} />
+                    Download box
+                  </a>
+                  <a
+                    className="secondary download-link"
+                    href={box.front}
+                    download={`${slug(box.name)}-box-front.png`}
+                  >
+                    <Download size={15} />
+                    Download front panel
+                  </a>
+                </>
+              )}
+            </>
+          ) : (
+            <>
+              <button
+                className="primary"
+                disabled={!plan || 'error' in plan || busy}
+                onClick={() => void generate()}
+              >
+                <FileText size={15} />
+                Create PDF
+              </button>
+              {manual && (
+                <a
+                  className="secondary download-link"
+                  href={manual.url}
+                  download={`${slug(manual.name)}-instructions.pdf`}
+                >
+                  <Download size={15} />
+                  Download PDF
+                </a>
+              )}
+              {manual?.missingParts.length ? (
+                <p className="form-note">
+                  Drawn as simple shapes, because their LDraw geometry is missing:{' '}
+                  {manual.missingParts.join(', ')}.
+                </p>
+              ) : null}
+            </>
           )}
-          {manual?.missingParts.length ? (
-            <p className="form-note">
-              Drawn as simple shapes, because their LDraw geometry is missing:{' '}
-              {manual.missingParts.join(', ')}.
-            </p>
-          ) : null}
         </aside>
         <main className="instructions-preview">
-          {busy ? (
+          {boxStatus !== null ? (
+            <div className="instructions-progress" role="status">
+              <LoaderCircle className="spin" size={22} />
+              <p>{boxStatus}</p>
+            </div>
+          ) : settings.output === 'box' ? (
+            box ? (
+              <img className="box-preview" src={box.box} alt={`Box for ${box.name}`} />
+            ) : (
+              <div className="instructions-empty">
+                <Package size={28} />
+                <p>
+                  Fill in the box copy, then create the box. The front, side and lid are shot on the
+                  cinematic stage.
+                </p>
+              </div>
+            )
+          ) : progress ? (
             <div className="instructions-progress" role="status">
               <LoaderCircle className="spin" size={22} />
               <p>{progress.label}</p>

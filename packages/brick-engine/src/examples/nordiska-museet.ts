@@ -441,7 +441,7 @@ export const nordiskaMuseet: ExampleDefinition = {
     'park',
     'waterfront',
   ],
-  expectedPieceCount: 2599,
+  expectedPieceCount: 2606,
   buildArea: SIZE,
   brickIdPrefix: 'museet',
   build(drawnAdd) {
@@ -782,10 +782,14 @@ export const nordiskaMuseet: ExampleDefinition = {
     for (let step = 0; step < ROOF_STEPS; step++) {
       const y = ROOF + step * 3;
       const [from, to] = step < 2 ? [WEST + 2, EAST - 2] : [WEST, EAST];
-      // The central block reaches back to z = 21, which the back slopes meet from the fourth.
+      // The central block reaches back to z = 21, which the back slopes meet from the fourth;
+      // below that they stop either side of the back apse's cross gable.
       const spans: readonly (readonly [number, number])[] =
         step < 3
-          ? [[from, to]]
+          ? [
+              [from, 26],
+              [37, to],
+            ]
           : [
               [from, 25],
               [38, to],
@@ -815,6 +819,26 @@ export const nordiskaMuseet: ExampleDefinition = {
       const [x, z] = apse.cell(0, 0);
       addApseRoof(add, apse, isEndApse(x, z) ? ROOF + APSE_RISE * 3 : ROOF);
     }
+    // The back apse's roof carries on over the back slopes as a short cross gable up to the
+    // central block, its side slopes continuing the apse's, under a granite ridge.
+    for (let layer = 0; layer < 3; layer++) {
+      const y = ROOF + layer * 3;
+      const [west, east] = [27 + layer, 35 - layer];
+      addSlopeRun(add, BACK, BACK + 3, y, west, 90);
+      addSlopeRun(add, BACK, BACK + 3, y, east, 270);
+      addAreaMap(
+        add,
+        plan((x, z) => (x >= west + 2 && x < east && z >= BACK && z <= BACK + 3 ? 'f' : ' ')),
+        y,
+        { f: ['brick', ROOFING] },
+      );
+    }
+    addAreaMap(
+      add,
+      plan((x, z) => (x >= 31 && x <= 32 && z >= BACK && z <= BACK + 3 ? 'r' : ' ')),
+      ROOF + 9,
+      { r: ['tile', GRANITE] },
+    );
 
     // Stepped gables over the bays, rising as dormers in front of the roof: a window between
     // sandstone piers, a tan band, a step with tan caps either side, and a dark finial.

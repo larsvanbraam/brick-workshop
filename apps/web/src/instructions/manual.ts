@@ -9,6 +9,7 @@ import {
   rgbCss,
 } from './layout';
 import type { ManualTheme, Orientation, PageSize, Rgb } from './layout';
+import type { CinematicMood } from '../cinematic-look';
 import { createCoverArt } from './cover';
 import { ManualRenderer, OVERVIEW_SCALE } from './renderer';
 import type { StepImage } from './renderer';
@@ -16,6 +17,8 @@ import type { StepImage } from './renderer';
 export interface ManualSettings {
   pageSize: PageSize;
   orientation: Orientation;
+  /** The covers' look: the painted sky, or a shot on one of the cinematic stage's moods. */
+  cover?: 'classic' | CinematicMood;
 }
 
 export interface ManualProgress {
@@ -81,10 +84,12 @@ class ManualWriter {
   private readonly partImages = new Map<string, string>();
   private readonly renderer: ManualRenderer;
   private readonly theme: ManualTheme;
+  private readonly mood: CinematicMood | undefined;
 
   constructor(renderer: ManualRenderer, theme: ManualTheme, settings: ManualSettings) {
     this.renderer = renderer;
     this.theme = theme;
+    this.mood = settings.cover === 'classic' ? undefined : settings.cover;
     const { width, height } = getPageDimensions(settings.pageSize, settings.orientation);
     this.width = width;
     this.height = height;
@@ -305,6 +310,7 @@ class ManualWriter {
       radius: px(5 * scale),
       frame: theme.frame,
       view,
+      mood: this.mood,
       hero: { x: px(hero.x), y: px(hero.y), width: px(hero.width), height: px(hero.height) },
       title: title
         ? {

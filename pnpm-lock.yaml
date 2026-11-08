@@ -206,6 +206,9 @@ importers:
       lucide-react:
         specifier: ^0.577.0
         version: 0.577.0(react@19.3.1)
+      n8ao:
+        specifier: ^2.0.1
+        version: 2.0.1(postprocessing@6.39.6(three@0.183.2))(three@0.183.2)
       openskp:
         specifier: 1.4.0
         version: 1.4.0

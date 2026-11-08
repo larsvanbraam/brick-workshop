@@ -15,6 +15,7 @@
     "@react-three/postprocessing": "^3.2.2",
     "jspdf": "4.2.1",
     "lucide-react": "^0.577.0",
+    "n8ao": "^2.0.1",
     "openskp": "1.4.0",
     "postprocessing": "^6.39.6",
     "react": "^19.3.1",
