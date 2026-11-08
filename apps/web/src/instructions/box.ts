@@ -127,6 +127,36 @@ function brandMark(context: CanvasRenderingContext2D, x: number, y: number, size
   context.letterSpacing = '0px';
 }
 
+/** A four-leaf flourish to crown the title, drawn in thin white strokes. */
+function ornament(context: CanvasRenderingContext2D, x: number, y: number, size: number) {
+  context.save();
+  context.strokeStyle = 'rgba(255, 255, 255, 0.9)';
+  context.fillStyle = 'rgba(255, 255, 255, 0.9)';
+  context.lineWidth = Math.max(1.5, size * 0.035);
+  for (let leaf = 0; leaf < 4; leaf++) {
+    const angle = (leaf * Math.PI) / 2 - Math.PI / 2;
+    context.beginPath();
+    context.ellipse(
+      x + Math.cos(angle) * size * 0.27,
+      y + Math.sin(angle) * size * 0.27,
+      size * 0.25,
+      size * 0.11,
+      angle,
+      0,
+      Math.PI * 2,
+    );
+    context.stroke();
+  }
+  context.beginPath();
+  context.moveTo(x, y - size * 0.07);
+  context.lineTo(x + size * 0.07, y);
+  context.lineTo(x, y + size * 0.07);
+  context.lineTo(x - size * 0.07, y);
+  context.closePath();
+  context.fill();
+  context.restore();
+}
+
 function rule(context: CanvasRenderingContext2D, x: number, y: number, width: number) {
   context.save();
   context.fillStyle = 'rgba(255, 255, 255, 0.55)';
@@ -137,38 +167,82 @@ function rule(context: CanvasRenderingContext2D, x: number, y: number, width: nu
 function front(renderer: ManualRenderer, details: BoxDetails, pieces: number) {
   const [panel, context] = canvas(WIDTH, HEIGHT);
   const band = Math.round(HEIGHT * BAND);
+  const left = WIDTH * 0.06;
+  const column = WIDTH * 0.16;
+  const mark = WIDTH * 0.12;
+  const titleX = WIDTH * 0.66;
+  const titleY = HEIGHT * 0.14;
+  const title = details.title.toUpperCase();
+  context.letterSpacing = '6px';
+  const titleSize = fit(context, title, (size) => `${size}px ${SERIF}`, WIDTH * 0.56, 92);
+  const titleWidth = context.measureText(title).width;
+  context.letterSpacing = '0px';
+  context.font = `600 28px ${SANS}`;
+  const name = wrap(context, details.title, column).slice(0, 2);
+
+  // The model fills the whole panel above the strip, kept out of the title and the facts column.
+  const margin = WIDTH * 0.015;
+  const keepClear = [
+    {
+      x: 0,
+      y: 0,
+      width: left + column + margin,
+      height: HEIGHT * 0.06 + mark + 250 + name.length * 34 + margin,
+    },
+    {
+      x: titleX - titleWidth / 2 - margin,
+      y: 0,
+      width: titleWidth + margin * 2,
+      height: titleY + (details.subtitle ? titleSize * 0.75 : titleSize * 0.25) + margin,
+    },
+  ];
   context.drawImage(
     renderer.renderCinematic(
       0,
       WIDTH,
       band,
-      { x: WIDTH * 0.2, y: HEIGHT * 0.2, width: WIDTH * 0.78, height: band - HEIGHT * 0.215 },
+      { x: WIDTH * 0.02, y: HEIGHT * 0.05, width: WIDTH * 0.96, height: band + HEIGHT * 0.06 },
       details.mood,
+      // From just above street level across the water, so the model stands up against the sky;
+      // the front of its base runs off under the strip, as a plinth would.
+      { keepClear, elevation: 0.12, outdoor: true, street: true },
     ),
     0,
     0,
   );
-  // Darken the top so the title and the facts beside the mark read over any backdrop.
-  const shade = context.createLinearGradient(0, 0, 0, band * 0.45);
-  shade.addColorStop(0, 'rgba(0, 0, 0, 0.55)');
-  shade.addColorStop(1, 'rgba(0, 0, 0, 0)');
-  context.fillStyle = shade;
-  context.fillRect(0, 0, WIDTH, band);
+  // A soft pool of black behind each block of text, so it reads over any sky or cloud.
+  for (const area of keepClear) {
+    const x = area.x + area.width / 2;
+    const y = area.y + area.height / 2;
+    const reach = Math.max(area.width, area.height) * 0.85;
+    context.save();
+    context.translate(x, y);
+    context.scale(
+      area.width / Math.max(area.width, area.height),
+      area.height / Math.max(area.width, area.height),
+    );
+    const glow = context.createRadialGradient(0, 0, 0, 0, 0, reach);
+    glow.addColorStop(0, 'rgba(0, 0, 0, 0.7)');
+    glow.addColorStop(0.55, 'rgba(0, 0, 0, 0.45)');
+    glow.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    context.fillStyle = glow;
+    context.fillRect(-reach, -reach, reach * 2, reach * 2);
+    context.restore();
+  }
 
   context.fillStyle = '#ffffff';
   context.textAlign = 'center';
   context.textBaseline = 'alphabetic';
-  const titleX = WIDTH * 0.66;
-  const title = details.title.toUpperCase();
   context.letterSpacing = '6px';
-  const titleSize = fit(context, title, (size) => `${size}px ${SERIF}`, WIDTH * 0.56, 92);
-  context.fillText(title, titleX, HEIGHT * 0.12);
+  context.font = `${titleSize}px ${SERIF}`;
+  context.fillText(title, titleX, titleY);
+  ornament(context, titleX, titleY - titleSize * 0.72 - HEIGHT * 0.035, HEIGHT * 0.05);
   if (details.subtitle) {
     const subtitle = details.subtitle.toUpperCase();
     context.letterSpacing = '8px';
     context.font = `${titleSize * 0.32}px ${SERIF}`;
     const half = context.measureText(subtitle).width / 2;
-    const y = HEIGHT * 0.12 + titleSize * 0.75;
+    const y = titleY + titleSize * 0.75;
     context.fillText(subtitle, titleX, y);
     const lineY = y - titleSize * 0.11;
     rule(context, titleX - half - WIDTH * 0.1, lineY, WIDTH * 0.08);
@@ -176,9 +250,6 @@ function front(renderer: ManualRenderer, details: BoxDetails, pieces: number) {
   }
   context.letterSpacing = '0px';
 
-  const left = WIDTH * 0.06;
-  const column = WIDTH * 0.16;
-  const mark = WIDTH * 0.12;
   brandMark(context, left, HEIGHT * 0.06, mark);
   context.textAlign = 'left';
   context.fillStyle = '#ffffff';
@@ -192,7 +263,6 @@ function front(renderer: ManualRenderer, details: BoxDetails, pieces: number) {
   rule(context, left, y + 18, column);
   y += 56;
   context.font = `600 28px ${SANS}`;
-  const name = wrap(context, details.title, column).slice(0, 2);
   for (const line of name) {
     context.fillText(line, left, y);
     y += 34;
@@ -209,32 +279,16 @@ function front(renderer: ManualRenderer, details: BoxDetails, pieces: number) {
   context.fillRect(0, band, WIDTH, HEIGHT - band);
   const padding = WIDTH * 0.03;
   const shotHeight = HEIGHT - band - padding * 2;
-  const shotWidth = Math.round(WIDTH * 0.19);
-  const model = renderer.modelExtent;
-  const top = model.clone();
-  top.min.y = model.min.y + (model.max.y - model.min.y) * 0.55;
-  const shots: [number, Box3 | undefined][] = [
-    [2, undefined],
-    [0, top],
-    [1, undefined],
-  ];
+  const shotWidth = Math.round(WIDTH * 0.17);
   let x = padding;
-  for (const [view, detail] of shots) {
-    const hero = detail
-      ? { x: -shotWidth * 0.05, y: 0, width: shotWidth * 1.1, height: shotHeight * 1.15 }
-      : {
-          x: shotWidth * 0.06,
-          y: shotHeight * 0.1,
-          width: shotWidth * 0.88,
-          height: shotHeight * 0.82,
-        };
+  for (const { view, bounds } of renderer.closeUps(3)) {
     const image = renderer.renderCinematic(
       view,
       shotWidth,
       Math.round(shotHeight),
-      hero,
+      { x: 0, y: 0, width: shotWidth, height: shotHeight },
       details.mood,
-      detail,
+      { detail: bounds, elevation: 0.3, outdoor: true },
     );
     context.save();
     context.beginPath();
@@ -244,21 +298,34 @@ function front(renderer: ManualRenderer, details: BoxDetails, pieces: number) {
     context.restore();
     x += shotWidth + padding * 0.7;
   }
-  const textX = x + padding * 0.3;
-  const textWidth = WIDTH - padding - textX;
-  context.fillStyle = '#ffffff';
-  context.font = `600 30px ${SANS}`;
-  let textY = band + padding + 30;
-  for (const line of wrap(context, details.title, textWidth).slice(0, 2)) {
-    context.fillText(line, textX, textY);
-    textY += 38;
+  const artWidth = Math.round(WIDTH * 0.17);
+  const artX = WIDTH - padding - artWidth;
+  const caption = details.subtitle.toUpperCase();
+  const artHeight = Math.round(shotHeight - (caption ? 44 : 0));
+  context.drawImage(renderer.renderLineArt(0, artWidth, artHeight), artX, band + padding);
+  if (caption) {
+    context.fillStyle = 'rgba(255, 255, 255, 0.8)';
+    context.textAlign = 'center';
+    context.letterSpacing = '5px';
+    context.font = `18px ${SERIF}`;
+    context.fillText(caption, artX + artWidth / 2, band + padding + shotHeight - 6);
+    context.letterSpacing = '0px';
+    context.textAlign = 'left';
   }
-  context.font = `400 23px ${SANS}`;
+
+  const textX = x + padding * 0.3;
+  const textWidth = artX - padding * 0.8 - textX;
+  context.fillStyle = '#ffffff';
+  fit(context, details.title, (size) => `600 ${size}px ${SANS}`, textWidth, 30);
+  let textY = band + padding + 30;
+  context.fillText(details.title, textX, textY);
+  textY += 14;
+  context.font = `400 22px ${SANS}`;
   context.fillStyle = 'rgba(255, 255, 255, 0.85)';
   const lines = wrap(context, details.description, textWidth);
-  const room = Math.floor((HEIGHT - padding - textY) / 31);
+  const room = Math.floor((HEIGHT - padding - textY) / 29);
   for (const line of lines.slice(0, room)) {
-    textY += 31;
+    textY += 29;
     context.fillText(line, textX, textY);
   }
   return panel;
@@ -287,26 +354,12 @@ function side(renderer: ManualRenderer, details: BoxDetails) {
     context.fillText(details.subtitle.toUpperCase(), DEPTH / 2, y + size * 0.1);
   }
   context.letterSpacing = '0px';
-  const shot = Math.round(HEIGHT * 0.36);
-  const image = renderer.renderCinematic(
-    3,
-    DEPTH,
-    shot,
-    { x: DEPTH * 0.08, y: shot * 0.1, width: DEPTH * 0.84, height: shot * 0.8 },
-    details.mood,
+  const art = Math.round(HEIGHT * 0.3);
+  context.drawImage(
+    renderer.renderLineArt(0, Math.round(DEPTH * 0.8), art),
+    DEPTH * 0.1,
+    HEIGHT - art - DEPTH * 0.2,
   );
-  // Fade the shot's edges into the panel instead of showing a hard frame.
-  const [faded, fadedContext] = canvas(DEPTH, shot);
-  fadedContext.drawImage(image, 0, 0);
-  fadedContext.globalCompositeOperation = 'destination-in';
-  const mask = fadedContext.createLinearGradient(0, 0, 0, shot);
-  mask.addColorStop(0, 'rgba(0, 0, 0, 0)');
-  mask.addColorStop(0.2, 'rgba(0, 0, 0, 1)');
-  mask.addColorStop(0.85, 'rgba(0, 0, 0, 1)');
-  mask.addColorStop(1, 'rgba(0, 0, 0, 0)');
-  fadedContext.fillStyle = mask;
-  fadedContext.fillRect(0, 0, DEPTH, shot);
-  context.drawImage(faded, 0, HEIGHT - shot - DEPTH * 0.12);
   return panel;
 }
 

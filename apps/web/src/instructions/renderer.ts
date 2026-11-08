@@ -1,6 +1,7 @@
 import {
   AmbientLight,
   Box3,
+  CanvasTexture,
   Color,
   DirectionalLight,
   Fog,
@@ -9,12 +10,15 @@ import {
   LineSegments,
   Mesh,
   MeshBasicMaterial,
+  MeshDepthMaterial,
+  MeshNormalMaterial,
   MeshStandardMaterial,
   OrthographicCamera,
   PCFSoftShadowMap,
   PerspectiveCamera,
   PMREMGenerator,
   Scene,
+  SRGBColorSpace,
   Vector3,
   WebGLRenderTarget,
   WebGLRenderer,
@@ -35,11 +39,13 @@ import { coloredLDrawModel, loadLDrawModels } from '../ldraw';
 import { canBatchLDrawModel, createLDrawBatch } from '../ldraw-batches';
 import { colorMaterialProperties } from '../ldraw-materials';
 import {
+  DAYLIGHT,
   MOODS,
   createCinematicComposer,
   createCinematicRig,
   createStudioEnvironment,
   fogRange,
+  paintSky,
 } from '../cinematic-look';
 import type { CinematicMood } from '../cinematic-look';
 import { rgbCss } from './layout';
@@ -64,6 +70,11 @@ const BATCH_THRESHOLD = 300;
 const MAX_ZOOM = 2.5;
 /** Below this many pixels per stud, edge lines would bury the colors, so they're left out. */
 const MIN_EDGE_DETAIL = 10;
+/**
+ * Cinematic shots are lit like photos, where unlit edge lines read as a pale haze over the
+ * model, so only close-ups this sharp keep them.
+ */
+const MIN_CINEMATIC_EDGE_DETAIL = 28;
 /** Smallest stretch of the model, in studs across, a close-up step shows. */
 const FOCUS_SIZE = 16;
 /** Room left around a step's new pieces when its close-up moves. */
@@ -71,6 +82,13 @@ const FOCUS_MARGIN = 3;
 const VISIBILITY_SIZE = 160;
 /** Outline around each step's new pieces: a vivid pink-red few bricks share. */
 const HIGHLIGHT = [255, 45, 85, 255];
+
+export interface Rect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
 
 export interface StepImage {
   url: string;
@@ -98,6 +116,14 @@ function brickBounds(brick: Brick) {
 /** Baseplates and plate floors are the ground the model stands on, not what a step frames. */
 function isGround(brick: Brick) {
   return getPart(brick.partId).family === 'baseplate' || isFloorPlate(brick);
+}
+
+/** The outward direction of the box's long side that faces the camera of `view`. */
+function longSide(box: Box3, view: number) {
+  const side = VIEWS[view];
+  return box.max.x - box.min.x >= box.max.z - box.min.z
+    ? new Vector3(0, 0, Math.sign(side.z) || 1)
+    : new Vector3(Math.sign(side.x) || 1, 0, 0);
 }
 
 function corners(box: Box3) {
@@ -531,16 +557,34 @@ export class ManualRenderer {
     view: number,
     width: number,
     height: number,
-    hero: { x: number; y: number; width: number; height: number },
+    hero: Rect,
     mood: CinematicMood,
-    /** Part of the model to fill the hero with instead of all of it, for close-ups. */
-    detail?: Box3,
+    {
+      detail,
+      keepClear = [],
+      elevation = 0.42,
+      outdoor = false,
+      street = false,
+    }: {
+      /** Part of the model to fill the hero with instead of all of it, for close-ups. */
+      detail?: Box3;
+      /** Areas of the image, such as text, the model is shrunk or slid sideways to stay out of. */
+      keepClear?: Rect[];
+      /** How steeply the camera looks down: the rise per unit across. Low angles look up to it. */
+      elevation?: number;
+      /** Stands the model under a painted sky on open ground instead of in the dark studio. */
+      outdoor?: boolean;
+      /**
+       * Faces the model's long side nearly head-on from close by with a wider lens, so it looms
+       * like a building seen from across the street, instead of the corner from far off.
+       */
+      street?: boolean;
+    } = {},
   ): HTMLCanvasElement {
     const { renderer, scene } = this;
     const whole = this.placedBounds.isEmpty() ? this.sceneBounds : this.placedBounds;
     const bounds = detail ?? whole;
     const settings = MOODS[mood];
-    const rig = createCinematicRig(mood, whole, view);
     const environment = createStudioEnvironment(renderer, mood);
     const previous = {
       environment: scene.environment,
@@ -548,15 +592,28 @@ export class ManualRenderer {
       background: scene.background,
       fog: scene.fog,
     };
-    const camera = new PerspectiveCamera(30, hero.width / hero.height);
+    const camera = new PerspectiveCamera(street ? 42 : 30, hero.width / hero.height);
     const size = bounds.getSize(new Vector3());
-    // Small shots leave edge lines out, as the steps do, so they don't bury the colors.
-    if (Math.min(hero.width, hero.height) / Math.max(size.x, size.z, 1) >= MIN_EDGE_DETAIL)
+    if (
+      Math.min(hero.width, hero.height) / Math.max(size.x, size.z, 1) >=
+      MIN_CINEMATIC_EDGE_DETAIL
+    )
       camera.layers.enable(EDGE_LAYER);
-    const horizontal = VIEWS[view].clone().setY(0).normalize();
-    const direction = horizontal.setY(0.42).normalize();
+    const diagonal = VIEWS[view].clone().setY(0).normalize();
+    // Head-on to the long side, turned a little toward the corner so its depth still shows.
+    const horizontal = street
+      ? longSide(whole, view).addScaledVector(diagonal, 0.35).normalize()
+      : diagonal;
+    // The lights turn with the camera, in quarter turns from the first view as the rig counts them.
+    const first = VIEWS[0];
+    const turn =
+      -(Math.atan2(horizontal.x, horizontal.z) - Math.atan2(first.x, first.z)) / (Math.PI / 2);
+    const rig = createCinematicRig(mood, whole, street ? turn : view, outdoor);
+    const direction = horizontal.clone().setY(elevation).normalize();
     const focus = bounds.getCenter(new Vector3());
-    const distance = rig.radius / Math.sin((camera.fov * Math.PI) / 360);
+    const distance = street
+      ? rig.radius * 1.9
+      : rig.radius / Math.sin((camera.fov * Math.PI) / 360);
     camera.position.copy(focus).addScaledVector(direction, distance);
     camera.lookAt(focus);
     camera.near = distance * 0.05;
@@ -564,40 +621,74 @@ export class ManualRenderer {
     camera.updateProjectionMatrix();
     camera.updateMatrixWorld();
     // Zoom to the model's projected outline, then shift the view so it sits centred on the
-    // hero's bottom edge; the rest of the image extends the same view outwards.
-    const projected = new Box3().setFromPoints(
-      corners(bounds).map((point) => point.project(camera)),
+    // hero's bottom edge; the rest of the image extends the same view outwards. The whole model
+    // is fitted by its pieces rather than its bounding box, whose corners stick out well past
+    // a model that doesn't fill it. Close-ups fill the hero instead and crop what spills over.
+    const points = detail
+      ? corners(detail)
+      : [...this.bricks.values()].flatMap((brick) => corners(brickBounds(brick)));
+    const flat = points.map((point) => point.project(camera));
+    const projected = new Box3().setFromPoints(flat);
+    const fit = detail ? Math.max : Math.min;
+    const zoom =
+      (detail ? 1 : 0.98) *
+      fit(2 / (projected.max.x - projected.min.x), 2 / (projected.max.y - projected.min.y));
+    const middleX = (projected.max.x + projected.min.x) / 2;
+    const [scale, shift] = this.clearPlacement(
+      flat,
+      keepClear,
+      width,
+      height,
+      (point, scale, shift) => [
+        hero.x + hero.width / 2 + shift + (point.x - middleX) * zoom * scale * (hero.width / 2),
+        hero.y + hero.height - (point.y - projected.min.y) * zoom * scale * (hero.height / 2),
+      ],
     );
-    camera.zoom =
-      0.97 *
-      Math.min(2 / (projected.max.x - projected.min.x), 2 / (projected.max.y - projected.min.y));
-    const centerX =
-      ((((projected.max.x + projected.min.x) / 2) * camera.zoom + 1) / 2) * hero.width;
+    camera.zoom = zoom * scale;
+    const centerX = ((middleX * camera.zoom + 1) / 2) * hero.width;
     const bottom = ((1 - projected.min.y * camera.zoom) / 2) * hero.height;
+    const middle =
+      ((1 - ((projected.max.y + projected.min.y) / 2) * camera.zoom) / 2) * hero.height;
     camera.setViewOffset(
       hero.width,
       hero.height,
-      centerX - hero.x - hero.width / 2,
-      bottom - hero.y - hero.height,
+      centerX - hero.x - hero.width / 2 - shift,
+      detail ? middle - hero.y - hero.height / 2 : bottom - hero.y - hero.height,
       width,
       height,
     );
     this.lights.visible = false;
     scene.add(rig.group);
     scene.environment = environment;
-    scene.environmentIntensity = settings.environment;
-    scene.background = new Color(settings.background);
-    scene.fog = new Fog(settings.background, ...fogRange(rig.radius));
+    scene.environmentIntensity = settings.environment * (outdoor ? DAYLIGHT.environment : 1);
+    let sky: CanvasTexture | null = null;
+    if (outdoor) {
+      // The painted horizon runs just behind the back edge of the model's footprint, so the
+      // model stands in front of the water like a building on the shore.
+      const back = Math.min(
+        ...corners(whole)
+          .filter((point) => point.y === whole.min.y)
+          .map((point) => ((1 - point.project(camera).y) / 2) * height),
+      );
+      sky = new CanvasTexture(paintSky(mood, width, height, back));
+      sky.colorSpace = SRGBColorSpace;
+      scene.background = sky;
+      scene.fog = null;
+    } else {
+      scene.background = new Color(settings.background);
+      scene.fog = new Fog(settings.background, ...fogRange(rig.radius));
+    }
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = PCFSoftShadowMap;
     renderer.setSize(width, height, false);
     renderer.setClearColor(0x000000, 1);
-    const composer = createCinematicComposer(renderer, scene, camera, mood, width, height);
+    const composer = createCinematicComposer(renderer, scene, camera, mood, width, height, outdoor);
     try {
       composer.render();
       return renderer.domElement;
     } finally {
       composer.dispose();
+      sky?.dispose();
       scene.remove(rig.group);
       rig.dispose();
       environment.dispose();
@@ -608,6 +699,127 @@ export class ManualRenderer {
       renderer.shadowMap.enabled = false;
       this.lights.visible = true;
     }
+  }
+
+  /**
+   * The largest scale, up to a little past the fit, and the smallest sideways slide in pixels, at
+   * which none of the model's points land in the areas to keep clear or off the image's sides.
+   * Exactly the fit when there are none.
+   */
+  private clearPlacement(
+    points: Vector3[],
+    keepClear: Rect[],
+    width: number,
+    height: number,
+    place: (point: Vector3, scale: number, shift: number) => [number, number],
+  ): [number, number] {
+    if (!keepClear.length) return [1, 0];
+    // Whatever drops below the image is cut off by it anyway, so only what shows must fit the sides.
+    const fits = (scale: number, shift: number) =>
+      points.every((point) => {
+        const [x, y] = place(point, scale, shift);
+        return (
+          (y > height || (x >= 0 && x <= width)) &&
+          keepClear.every(
+            (rect) =>
+              x < rect.x || x > rect.x + rect.width || y < rect.y || y > rect.y + rect.height,
+          )
+        );
+      });
+    const slides = [0];
+    for (let step = 1; step <= 12; step++) slides.push(step * width * 0.01, -step * width * 0.01);
+    // Start larger than the fit: parts that run off the bottom no longer hold the model back.
+    for (let scale = 1.6; scale > 0.5; scale -= 0.02)
+      for (const shift of slides) if (fits(scale, shift)) return [scale, shift];
+    return [0.5, 0];
+  }
+
+  /**
+   * The model drawn as white line art on a transparent background, like an architect's elevation:
+   * seen straight on from the side of `view` that shows its long face, with lines wherever the
+   * surface turns or steps back. It sits centred on the image's bottom edge.
+   */
+  renderLineArt(view: number, width: number, height: number): HTMLCanvasElement {
+    const { renderer, scene } = this;
+    const bounds = this.placedBounds.isEmpty() ? this.sceneBounds : this.placedBounds;
+    const size = bounds.getSize(new Vector3());
+    const center = bounds.getCenter(new Vector3());
+    const axis = longSide(bounds, view);
+    const across = size.x >= size.z ? size.x : size.z;
+    const deep = size.x >= size.z ? size.z : size.x;
+    // Drawn at twice the size and scaled down, so the lines come out fine and smooth.
+    const [w, h] = [width * 2, height * 2];
+    const scale = Math.min((w * 0.98) / across, (h * 0.98) / size.y);
+    const camera = new OrthographicCamera(
+      -w / 2 / scale,
+      w / 2 / scale,
+      h / scale - size.y / 2,
+      -size.y / 2,
+      1,
+      deep + 2,
+    );
+    camera.position.copy(center).addScaledVector(axis, deep / 2 + 1);
+    camera.lookAt(center);
+    const previous = { background: scene.background, fog: scene.fog };
+    scene.background = null;
+    scene.fog = null;
+    renderer.setSize(w, h, false);
+    renderer.setClearColor(0x000000, 1);
+    const [normals, depth] = [new MeshNormalMaterial(), new MeshDepthMaterial()];
+    const pixels = (material: MeshNormalMaterial | MeshDepthMaterial) => {
+      scene.overrideMaterial = material;
+      renderer.render(scene, camera);
+      const copy = document.createElement('canvas');
+      copy.width = w;
+      copy.height = h;
+      const context = copy.getContext('2d', { willReadFrequently: true })!;
+      context.drawImage(renderer.domElement, 0, 0);
+      return context.getImageData(0, 0, w, h).data;
+    };
+    let normal: Uint8ClampedArray;
+    let distance: Uint8ClampedArray;
+    try {
+      normal = pixels(normals);
+      distance = pixels(depth);
+    } finally {
+      scene.overrideMaterial = null;
+      scene.background = previous.background;
+      scene.fog = previous.fog;
+      normals.dispose();
+      depth.dispose();
+    }
+    const lines = new ImageData(w, h);
+    const covered = (index: number) => normal[index] + normal[index + 1] + normal[index + 2] > 0;
+    const differs = (a: number, b: number) => {
+      if (covered(a) !== covered(b)) return true;
+      if (!covered(a)) return false;
+      if (Math.abs(distance[a] - distance[b]) > 2) return true;
+      const turn =
+        Math.abs(normal[a] - normal[b]) +
+        Math.abs(normal[a + 1] - normal[b + 1]) +
+        Math.abs(normal[a + 2] - normal[b + 2]);
+      return turn > 60;
+    };
+    const mark = (index: number) => {
+      lines.data[index] = lines.data[index + 1] = lines.data[index + 2] = 255;
+      lines.data[index + 3] = 230;
+    };
+    for (let y = 0; y < h - 1; y++)
+      for (let x = 0; x < w - 1; x++) {
+        const index = (y * w + x) * 4;
+        for (const other of [index + 4, index + w * 4]) if (differs(index, other)) mark(index);
+      }
+    const full = document.createElement('canvas');
+    full.width = w;
+    full.height = h;
+    full.getContext('2d')!.putImageData(lines, 0, 0);
+    const art = document.createElement('canvas');
+    art.width = width;
+    art.height = height;
+    const context = art.getContext('2d')!;
+    context.imageSmoothingQuality = 'high';
+    context.drawImage(full, 0, 0, width, height);
+    return art;
   }
 
   /** Places every piece at once, for pictures of the finished model without rendering steps. */
@@ -622,9 +834,65 @@ export class ManualRenderer {
     this.consolidate();
   }
 
-  /** The finished model without its baseplates, for framing close-ups. */
-  get modelExtent() {
-    return this.finalBounds.clone();
+  /**
+   * The busiest corners of the finished model for close-ups: the footprint is cut into squares,
+   * each scored by how many different pieces it holds and how tall it stands, and the best
+   * squares that aren't neighbours are framed at their top, from the side they face.
+   */
+  closeUps(count: number): { view: number; bounds: Box3 }[] {
+    const model = this.finalBounds;
+    const center = model.getCenter(new Vector3());
+    const height = Math.max(model.max.y - model.min.y, 1);
+    const cell = Math.max(Math.max(model.max.x - model.min.x, model.max.z - model.min.z) / 6, 6);
+    const cells = new Map<string, { column: number; row: number; kinds: Set<string>; box: Box3 }>();
+    for (const brick of this.bricks.values()) {
+      if (isGround(brick)) continue;
+      const bounds = brickBounds(brick);
+      const column = Math.floor((bounds.min.x - model.min.x) / cell);
+      const row = Math.floor((bounds.min.z - model.min.z) / cell);
+      const key = `${column}:${row}`;
+      let entry = cells.get(key);
+      if (!entry) {
+        entry = { column, row, kinds: new Set(), box: new Box3() };
+        cells.set(key, entry);
+      }
+      entry.kinds.add(`${brick.partId}:${brick.color}`);
+      entry.box.union(bounds);
+    }
+    const ranked = [...cells.values()]
+      .map((entry) => ({
+        ...entry,
+        score: entry.kinds.size * (1 + (entry.box.max.y - model.min.y) / height),
+      }))
+      .sort((a, b) => b.score - a.score);
+    const picked: typeof ranked = [];
+    // Small models have few squares, so neighbours are let in once the far-apart ones run out.
+    for (const spacing of [1, 0])
+      for (const entry of ranked) {
+        if (picked.length === count) break;
+        if (
+          picked.every(
+            (other) =>
+              Math.max(Math.abs(other.column - entry.column), Math.abs(other.row - entry.row)) >
+              spacing,
+          )
+        )
+          picked.push(entry);
+      }
+    return picked.map(({ box }) => {
+      const bounds = box.clone();
+      bounds.min.y = Math.max(bounds.min.y, bounds.max.y - cell * 1.2);
+      const offset = bounds.getCenter(new Vector3()).sub(center).setY(0);
+      // Look from the side the square sits on, so the rest of the model doesn't block it.
+      const view = offset.lengthSq()
+        ? VIEWS.reduce(
+            (best, direction, index) =>
+              direction.dot(offset) > VIEWS[best].dot(offset) ? index : best,
+            0,
+          )
+        : 0;
+      return { view, bounds };
+    });
   }
 
   /** One piece on its own, seen like the model, for parts callouts and the parts list. */
