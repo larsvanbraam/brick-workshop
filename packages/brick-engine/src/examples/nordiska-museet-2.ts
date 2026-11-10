@@ -1,6 +1,7 @@
 import { addAreaMap, addBondedMap, addRun, glazeWindows, turnAround } from './layout.ts';
 import type { RunKind } from './layout.ts';
 import type { ExampleBrickAdder, ExampleDefinition } from './types.ts';
+import { getConnectionSites, getPart } from '../core.ts';
 import type { Facing, Rotation } from '../core.ts';
 import { layPlateFloor } from '../board.ts';
 
@@ -20,6 +21,8 @@ const ROOFING = 0;
 const COPPER = 378;
 const LAWN = 2;
 const FOREST = 288;
+const LEAF = 10;
+const OLIVE = 330;
 const BARK = 70;
 const WATER = 1;
 const NAVY = 272;
@@ -578,14 +581,26 @@ const RAILINGS = [
     [ISLAND[0], ISLAND[2]].map((x) => [x, 16 + index * 4, 0] as const),
   ),
 ];
-/** Round trees as [x, z, colour, trunk courses]: two rows on the front lawn and one behind. */
+/**
+ * Leafy crowns, each as the green of its shaded underside, its body and its sunlit top: a pale
+ * lime, an olive oak and a dark horse chestnut.
+ */
+const CROWNS = [
+  [FOREST, LAWN, LEAF],
+  [FOREST, OLIVE, LAWN],
+  [FOREST, FOREST, LAWN],
+] as const;
+/**
+ * Trees as [x, z, crown, trunk courses], x and z the stud corner the trunk stands round: two
+ * rows on the front lawn and one behind, mirrored but each grown differently.
+ */
 const TREES = [
-  ...[8, 20, 32, 44].map((x, index) => [x, 76, index % 2 ? FOREST : LAWN, 3 - (index % 2)]),
-  ...[14, 26, 38].map((x, index) => [x, 85, index % 2 ? LAWN : FOREST, 2 + (index % 2)]),
-  ...[8, 22, 36, 50].map((x, index) => [x, 15, index % 2 ? LAWN : FOREST, 2]),
-].flatMap(([x, z, color, trunk]) => [
-  [x, z, color, trunk] as const,
-  [SIZE - 5 - x, z, color, trunk] as const,
+  ...[11, 23, 35, 47].map((x, index) => [x, 79, index % 3, 3 - (index % 2)]),
+  ...[17, 29, 41].map((x, index) => [x, 88, (index + 1) % 3, 2 + (index % 2)]),
+  ...[11, 25, 39, 53].map((x, index) => [x, 18, (index + 2) % 3, 2 + (index % 2)]),
+].flatMap(([x, z, crown, trunk]) => [
+  [x, z, crown, trunk] as const,
+  [SIZE - x, z, (crown + 1) % 3, trunk] as const,
 ]);
 /** The portal in front of the door: columns either side and a pier beyond each. */
 const COLUMNS = [57, 69];
@@ -740,11 +755,154 @@ function addSteeple(add: ExampleBrickAdder, x: number, y: number, z: number) {
   add('4589', GOLD, x + 2.5, y + 23, z + 2.5);
 }
 
-/** A round tree: a brown trunk of round bricks under an oval crown. */
-function addTree(add: ExampleBrickAdder, x: number, z: number, color: number, trunk: number) {
-  for (let course = 0; course < trunk; course++)
-    add('3062b', BARK, x + 2, LAWN_TOP + course * 3, z + 2);
-  add('3470', color, x, LAWN_TOP + trunk * 3, z);
+/** Small seeded random numbers, so every tree grows the same way each time. */
+function random(seed: number) {
+  return () => {
+    seed = (seed + 0x6d2b79f5) | 0;
+    let value = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    value = (value + Math.imul(value ^ (value >>> 7), 61 | value)) ^ value;
+    return ((value ^ (value >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/** Crown bricks, largest first, with the cells each covers at either quarter turn. */
+const CROWN_BRICKS = ['3001', '3002', '3003', '3010', '3622', '3004', '3005'].flatMap((partId) => {
+  const { width, depth } = getPart(partId);
+  return (width === depth ? [0] : [0, 90]).map((rotation) => ({
+    partId,
+    rotation: rotation as Rotation,
+    width: rotation ? depth : width,
+    depth: rotation ? width : depth,
+  }));
+});
+
+/**
+ * A broadleaf tree: a thick round trunk with branches reaching into a lumpy crown of bricks,
+ * built up course by course as the union of a main mass and a few smaller clumps round it, so
+ * no two trees match. Each brick holds onto the course below; the crown is darker underneath and
+ * catches the light on top, where leaf sprigs break up its outline.
+ */
+function addTree(
+  add: ExampleBrickAdder,
+  x: number,
+  z: number,
+  crown: number,
+  trunk: number,
+  seed: number,
+) {
+  const next = random(seed * 7919 + 17);
+  const [shade, body, light] = CROWNS[crown];
+  for (let course = 0; course <= trunk; course++)
+    add('3941', BARK, x - 1, LAWN_TOP + course * 3, z - 1);
+  // Clumps as [x, height, z, radius] in studs from the foot of the crown on the trunk's axis.
+  const courses = 6 + Math.round(next());
+  const clumps = [
+    [0, courses * 0.6, 0, 3.4 + next() * 0.5],
+    ...Array.from({ length: 4 }, (_, index) => {
+      const angle = (index / 4 + next() * 0.2) * Math.PI * 2;
+      const out = 1.6 + next() * 0.9;
+      return [
+        Math.cos(angle) * out,
+        courses * (0.45 + next() * 0.4),
+        Math.sin(angle) * out,
+        1.9 + next() * 0.8,
+      ];
+    }),
+  ];
+  const inCrown = (u: number, course: number, v: number) =>
+    Math.abs(u + 0.5) <= 4 &&
+    Math.abs(v + 0.5) <= 4 &&
+    clumps.some(
+      ([cx, cy, cz, radius]) =>
+        Math.hypot(u + 0.5 - cx, ((course + 0.5) * 1.2 - cy) * 1.1, v + 0.5 - cz) < radius,
+    );
+  const key = (u: number, v: number) => `${u},${v}`;
+  // The trunk carries the crown's first course, two branches reach out into it.
+  const stem = [key(-1, -1), key(0, -1), key(-1, 0), key(0, 0)];
+  let below = new Set(stem);
+  const tops = new Map<string, number>();
+  const branches = new Set(
+    [
+      [-3, -1],
+      [-2, -1],
+      [1, 0],
+      [2, 0],
+      [-1, 1],
+      [-1, 2],
+      [0, -2],
+      [0, -3],
+    ].map(([u, v]) => key(u, v)),
+  );
+  for (let course = 0; course < courses; course++) {
+    const y = LAWN_TOP + (trunk + 1 + course) * 3;
+    const cells = new Map<string, readonly [number, number]>();
+    for (let u = -4; u < 4; u++)
+      for (let v = -4; v < 4; v++)
+        if (inCrown(u, course, v) || (course === 0 && below.has(key(u, v))))
+          cells.set(key(u, v), [u, v]);
+    const placed = new Set<string>();
+    // Outer cells first, so their bricks reach in to the course below rather than being cut off.
+    const order = [...cells.values()]
+      .map(([u, v]) => ({ u, v, reach: Math.hypot(u + 0.5, v + 0.5) + next() * 0.8 }))
+      .sort((first, second) => second.reach - first.reach);
+    for (const { u, v } of order) {
+      if (placed.has(key(u, v))) continue;
+      const candidates = CROWN_BRICKS.flatMap((brick) =>
+        Array.from({ length: brick.width * brick.depth }, (_, index) => {
+          const u0 = u - (index % brick.width);
+          const v0 = v - Math.floor(index / brick.width);
+          const covered = Array.from(
+            { length: brick.width * brick.depth },
+            (_, cell) => key(u0 + (cell % brick.width), v0 + Math.floor(cell / brick.width)),
+          );
+          return { brick, u0, v0, covered };
+        }),
+      ).filter(
+        ({ covered }) =>
+          covered.every((cell) => cells.has(cell) && !placed.has(cell)) &&
+          covered.some((cell) => below.has(cell)),
+      );
+      if (!candidates.length) continue;
+      const best = Math.max(...candidates.map(({ covered }) => covered.length));
+      const choices = candidates.filter(({ covered }) => covered.length === best);
+      const { brick, u0, v0, covered } = choices[Math.floor(next() * choices.length)];
+      for (const cell of covered) placed.add(cell);
+      const underside = covered.filter((cell) => !below.has(cell)).length * 2 > covered.length;
+      const exposed = covered.some((cell) => {
+        const [cu, cv] = cells.get(cell)!;
+        return !inCrown(cu, course + 1, cv);
+      });
+      const color =
+        course === 0 && covered.every((cell) => stem.includes(cell) || branches.has(cell))
+          ? BARK
+          : underside || course === 0
+            ? shade
+            : exposed && next() < 0.55
+              ? light
+              : next() < 0.2
+                ? shade
+                : body;
+      add(brick.partId, color, x + u0, y, z + v0, brick.rotation);
+    }
+    for (const cell of placed) tops.set(cell, y + 3);
+    below = placed;
+  }
+  // Leaf sprigs on the studs left bare on top, where nothing higher would cover them.
+  const sprigged = new Set<string>();
+  for (const [cell, top] of tops) {
+    if (next() > 0.4) continue;
+    const [u, v] = cell.split(',').map(Number);
+    const rotation = ([0, 90, 180, 270] as const)[Math.floor(next() * 4)];
+    const receiver = getConnectionSites(
+      { id: '', partId: '32607', color: 0, x: 0, y: 0, z: 0, rotation },
+      'bottom',
+    )[0];
+    const [u0, v0] = [u - (receiver.x - 0.5), v - (receiver.z - 0.5)];
+    const footprint = [0, 1].flatMap((du) => [0, 1].map((dv) => key(u0 + du, v0 + dv)));
+    if (footprint.some((other) => sprigged.has(other) || (tops.get(other) ?? 0) > top)) continue;
+    for (const other of footprint) sprigged.add(other);
+    add('32607', next() < 0.6 ? light : body, x + u0, top, z + v0, rotation);
+  }
 }
 
 /**
@@ -802,7 +960,7 @@ export const nordiskaMuseet2: ExampleDefinition = {
     'park',
     'waterfront',
   ],
-  expectedPieceCount: 10208,
+  expectedPieceCount: 11091,
   buildArea: SIZE,
   brickIdPrefix: 'museet2',
   build(drawnAdd) {
@@ -1491,11 +1649,12 @@ export const nordiskaMuseet2: ExampleDefinition = {
     );
     for (const [x, z] of TURRETS) addSteeple(add, x + 1, towerTop + 1, z + 1);
 
-    // Grounds: a black railing round the quay with lamps between its runs, round trees on the
+    // Grounds: a black railing round the quay with lamps between its runs, leafy trees on the
     // front lawn and behind the museum, and a sailing boat moored off the front.
     for (const [x, z, rotation] of RAILINGS) add('3633', BLACK, x, LAWN_TOP, z, rotation);
     for (const x of QUAY_LAMPS) addLampPost(add, x, ISLAND[3]);
-    for (const [x, z, color, trunk] of TREES) addTree(add, x, z, color, trunk);
+    for (const [index, [x, z, crown, trunk]] of TREES.entries())
+      addTree(add, x, z, crown, trunk, index);
     addSailboat(add, 86, 110);
     for (const piece of pieces.toSorted((first, second) => first[3] - second[3]))
       drawnAdd(...piece);
