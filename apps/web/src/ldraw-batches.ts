@@ -47,6 +47,8 @@ type Surface = {
 /** Opaque and see-through edges are drawn apart, and conditional edges need their own shader. */
 const LINE_KINDS = ['edge', 'conditional', 'glassEdge', 'glassConditional'] as const;
 type LineKind = (typeof LINE_KINDS)[number];
+/** The kinds whose segments share their end vertices through an index. */
+const INDEXED_LINES: ReadonlySet<LineKind> = new Set(['edge', 'glassEdge']);
 /**
  * A part in one color with some regions left out, ready to place: faces per finish, and each
  * kind of edge it has. `users` counts the placements drawing it, so it can go once none do.
@@ -136,6 +138,66 @@ function segmentStarts(position: Float32Array) {
     out.set(position.subarray(segment, segment + 3), segment + 3);
   }
   return out;
+}
+
+/**
+ * An indexed geometry of `attributes`, with vertices that match bit for bit merged into one.
+ * Baked parts store every corner of every primitive apart, so neighbours repeat each vertex;
+ * sharing them runs the vertex shader (and its batched matrix fetch) about a third as often.
+ * Exact matches only, so nothing moves: the same LDraw point through the same matrix comes out
+ * the same. An open-addressed table keyed on the position's raw words keeps it linear and free
+ * of string keys. Takes over the arrays, which it compacts in place.
+ */
+function weld(attributes: ReadonlyMap<string, Float32Array>) {
+  const count = attributes.get('position')!.length / 3;
+  const layout = [...attributes].map(([name, data]) => {
+    // -0 draws the same as 0, so it counts as 0.
+    for (let i = 0; i < data.length; i++) if (data[i] === 0) data[i] = 0;
+    const words = new Uint32Array(data.buffer, data.byteOffset, data.length);
+    return { name, data, words, width: data.length / count };
+  });
+  const position = layout.find(({ name }) => name === 'position')!.words;
+  const index = new Uint32Array(count);
+  let unique = 0;
+  let mask = 1;
+  while (mask < count * 2) mask <<= 1;
+  // Kept vertex + 1 per slot, so a fresh table reads empty.
+  const table = new Int32Array(mask);
+  mask--;
+  const same = (a: number, b: number) => {
+    for (const { width, words } of layout)
+      for (let i = 0; i < width; i++)
+        if (words[a * width + i] !== words[b * width + i]) return false;
+    return true;
+  };
+  for (let vertex = 0; vertex < count; vertex++) {
+    const at = vertex * 3;
+    const hash =
+      Math.imul(position[at], 0x9e3779b1) ^
+      Math.imul(position[at + 1], 0x85ebca77) ^
+      Math.imul(position[at + 2], 0xc2b2ae3d);
+    for (let slot = (hash ^ (hash >>> 16)) & mask; ; slot = (slot + 1) & mask) {
+      const entry = table[slot] - 1;
+      if (entry < 0) {
+        // Kept vertices move down in place: `unique` never passes `vertex`.
+        if (unique !== vertex)
+          for (const { width, words } of layout)
+            for (let i = 0; i < width; i++) words[unique * width + i] = words[vertex * width + i];
+        table[slot] = unique + 1;
+        index[vertex] = unique++;
+        break;
+      }
+      if (same(entry, vertex)) {
+        index[vertex] = entry;
+        break;
+      }
+    }
+  }
+  const geometry = new BufferGeometry();
+  for (const { name, width, data } of layout)
+    geometry.setAttribute(name, new BufferAttribute(data.slice(0, unique * width), width));
+  geometry.setIndex(new BufferAttribute(index, 1));
+  return geometry;
 }
 
 /** The material each draw group of an object uses, with its vertex range. */
@@ -407,19 +469,9 @@ function bakeLook(baked: Baked, covered: ReadonlySet<string>, key: string): Look
   const surfaces: Surface[] = [];
   for (const { finish, material, split } of baked.faces) {
     const attributes = gather(split, covered);
-    const position = attributes.get('position');
-    if (!position?.length) continue;
-    const geometry = new BufferGeometry();
-    geometry.setAttribute('position', new BufferAttribute(position, 3));
-    geometry.setAttribute('normal', new BufferAttribute(attributes.get('normal')!, 3));
-    geometry.setAttribute(
-      'color',
-      new BufferAttribute(attributes.get('color')!, finish.endsWith(':glass') ? 4 : 3),
-    );
-    const count = position.length / 3;
-    const index = new Uint32Array(count);
-    for (let vertex = 0; vertex < count; vertex++) index[vertex] = vertex;
-    geometry.setIndex(new BufferAttribute(index, 1));
+    if (!attributes.get('position')?.length) continue;
+    // Indexed, also for the BVH: `indirect` leaves the welded index as it is.
+    const geometry = weld(attributes);
     geometry.computeBoundingBox();
     geometry.computeBoundingSphere();
     geometry.boundsTree = new MeshBVH(geometry, BVH_OPTIONS);
@@ -428,6 +480,12 @@ function bakeLook(baked: Baked, covered: ReadonlySet<string>, key: string): Look
   const lineGeometry = (kind: LineKind) => {
     const attributes = gather(baked.lines[kind], covered);
     if (!attributes.get('position')?.length) return null;
+    // Plain edges share their ends; conditional ones carry per-segment controls, so can't.
+    if (INDEXED_LINES.has(kind)) {
+      const geometry = weld(attributes);
+      geometry.computeBoundingSphere();
+      return geometry;
+    }
     const geometry = new BufferGeometry();
     for (const [name, data] of attributes)
       geometry.setAttribute(name, new BufferAttribute(data, itemSize(name)));
@@ -583,8 +641,9 @@ class BatchedLines extends BatchedMesh {
   readonly isLine = true;
   readonly isLineSegments = true;
 
-  constructor(material: Material) {
-    super(64, 8192, 0, material);
+  /** `indexed` lines share vertices between segments, which needs room for an index. */
+  constructor(material: Material, indexed: boolean) {
+    super(64, 8192, indexed ? 8192 : 0, material);
     (this as unknown as { isMesh: boolean }).isMesh = false;
     this.castShadow = false;
     this.receiveShadow = false;
@@ -747,7 +806,10 @@ export class LDrawBatch {
     this.lineLayers = Object.fromEntries(
       LINE_KINDS.map((kind): [LineKind, Layer] => {
         // three types `customSort` against its own class, so the subclass needs widening.
-        const mesh = new BatchedLines(lineMaterial(kind)) as unknown as BatchedMesh;
+        const mesh = new BatchedLines(
+          lineMaterial(kind),
+          INDEXED_LINES.has(kind),
+        ) as unknown as BatchedMesh;
         mesh.visible = false;
         if (fadeEdges) {
           // Faded edges blend, so they join the transparent queue: ahead of glass, which draws
@@ -1002,11 +1064,14 @@ export class LDrawBatch {
       mesh as unknown as { _nextVertexStart: number; _nextIndexStart: number };
     const segments = (kind: LineKind) => {
       const { mesh, sources, brickIds, size } = this.lineLayers[kind];
-      let vertices = 0;
-      for (let id = 0; id < size; id++)
-        if (brickIds[id] !== undefined)
-          vertices += sources[mesh.getGeometryIdAt(id)].getAttribute('position').count;
-      return vertices / 2;
+      // Two indices a segment when indexed, two vertices when not.
+      let ends = 0;
+      for (let id = 0; id < size; id++) {
+        if (brickIds[id] === undefined) continue;
+        const geometry = sources[mesh.getGeometryIdAt(id)];
+        ends += geometry.index?.count ?? geometry.getAttribute('position').count;
+      }
+      return ends / 2;
     };
     const hidden = [...this.placements.values()].flatMap(({ key }) =>
       key.split('|')[1].split(',').filter(Boolean),
@@ -1040,11 +1105,15 @@ export class LDrawBatch {
       layer.mesh.dispose();
       (layer.mesh.material as Material).dispose();
     }
-    for (const layer of Object.values(this.lineLayers)) {
+    for (const kind of LINE_KINDS) {
+      const layer = this.lineLayers[kind];
       layer.mesh.dispose();
       (layer.mesh.material as Material).dispose();
       // Left empty and hidden, ready to be filled again.
-      const mesh = new BatchedLines(layer.mesh.material as Material) as unknown as BatchedMesh;
+      const mesh = new BatchedLines(
+        layer.mesh.material as Material,
+        INDEXED_LINES.has(kind),
+      ) as unknown as BatchedMesh;
       Object.assign(mesh, {
         renderOrder: layer.mesh.renderOrder,
         onBeforeRender: layer.mesh.onBeforeRender,

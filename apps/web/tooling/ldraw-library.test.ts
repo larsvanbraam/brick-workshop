@@ -165,7 +165,8 @@ describe('local LDraw assets', () => {
     });
     const lower = brick('lower', 0);
     const batch = new LDrawBatch((part) => part);
-    const vertices = () => batch.stats().layers[0].vertices;
+    // Triangle corners: indices count them whether or not neighbours share vertices.
+    const vertices = () => batch.stats().layers[0].indices;
     batch.update([{ brick: lower, model }], 16);
     const single = vertices();
     const studVertices = stud.toNonIndexed().getAttribute('position').count;
@@ -219,7 +220,7 @@ describe('local LDraw assets', () => {
     grounded.update(entries(brick('lower', 0), brick('upper', 3)), 16);
     expect(grounded.stats().closedUndersides).toBe(2);
     const bodyVertices = body.toNonIndexed().getAttribute('position').count;
-    expect(grounded.stats().layers[0].vertices).toBe(bodyVertices);
+    expect(grounded.stats().layers[0].indices).toBe(bodyVertices);
     expect(tubeVertices).toBeGreaterThan(0);
     grounded.dispose();
 
