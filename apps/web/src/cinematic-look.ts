@@ -234,7 +234,15 @@ export function createCinematicRig(
   const texture = poolTexture(settings);
   const plane = new PlaneGeometry(radius * 8, radius * 8);
   const poolMaterial = new MeshBasicMaterial({ map: texture });
-  const shadowMaterial = new ShadowMaterial({ opacity: 0.6 });
+  // The catcher lies a hair above the pool, far closer than the depth buffer can tell apart
+  // once the camera pulls back: without an offset the two fight, and the shadow breaks into
+  // stripes wherever the pool wins.
+  const shadowMaterial = new ShadowMaterial({
+    opacity: 0.6,
+    polygonOffset: true,
+    polygonOffsetFactor: -1,
+    polygonOffsetUnits: -4,
+  });
   const pool = new Mesh(plane, poolMaterial);
   pool.visible = !outdoor;
   const shadow = new Mesh(plane, shadowMaterial);
