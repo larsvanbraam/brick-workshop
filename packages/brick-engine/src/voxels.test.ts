@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vite-plus/test';
-import { MAX_BUILD_AREA, MAX_VOXEL_LAYERS, describeVoxelModel, fillVoxelModel, getPart, isFloorPlate, styleVoxelFill, validateAssembly } from './index.ts';
+import {
+  MAX_BUILD_AREA,
+  MAX_VOXEL_LAYERS,
+  describeVoxelModel,
+  fillVoxelModel,
+  getPart,
+  isFloorPlate,
+  styleVoxelFill,
+  validateAssembly,
+} from './index.ts';
 import type { VoxelModel } from './index.ts';
 
 /** A hollow rectangular room: walls one stud thick, `layers` bricks tall. */
@@ -27,7 +36,9 @@ describe('voxel shell filling', () => {
     expect(covered).toBe(fill.filledCells);
     // Stacking identical footprints straight up is penalised, so some course must differ.
     const footprint = (y: number) =>
-      fill.assembly.bricks.filter((brick) => brick.y === y).map(({ x, z, partId, rotation }) => `${x},${z},${partId},${rotation}`);
+      fill.assembly.bricks
+        .filter((brick) => brick.y === y)
+        .map(({ x, z, partId, rotation }) => `${x},${z},${partId},${rotation}`);
     expect(footprint(3)).not.toEqual(footprint(0));
   });
 
@@ -35,21 +46,32 @@ describe('voxel shell filling', () => {
     const wide = room(40, 6, 1);
     expect(fillVoxelModel(wide).assembly.buildArea).toBe(40);
     const floating: VoxelModel = {
-      name: 'Floating', width: 4, depth: 1, layers: 2, cells: [4, null, null, null, null, null, null, 4],
+      name: 'Floating',
+      width: 4,
+      depth: 1,
+      layers: 2,
+      cells: [4, null, null, null, null, null, null, 4],
     };
     const fill = fillVoxelModel(floating);
     expect(fill.assembly.bricks).toHaveLength(1);
     expect(fill.skippedCells).toBe(1);
     expect(fill.addedCells).toBe(0);
-    const onlyOneByOne = fillVoxelModel(room(4, 4, 1), { colorAllowed: (partId) => partId === '3005' });
+    const onlyOneByOne = fillVoxelModel(room(4, 4, 1), {
+      colorAllowed: (partId) => partId === '3005',
+    });
     expect(onlyOneByOne.assembly.bricks.every((brick) => brick.partId === '3005')).toBe(true);
-    expect(fillVoxelModel(room(6, 6, 6), { maxPieces: 5 }).assembly.bricks.length).toBeLessThanOrEqual(5);
+    expect(
+      fillVoxelModel(room(6, 6, 6), { maxPieces: 5 }).assembly.bricks.length,
+    ).toBeLessThanOrEqual(5);
   });
 
   it('widens overhangs toward the course below and slopes the exposed step edges', () => {
     // A 45-degree slope: each layer's cell sits diagonally on the one below.
     const slope: VoxelModel = {
-      name: 'Slope', width: 4, depth: 1, layers: 3,
+      name: 'Slope',
+      width: 4,
+      depth: 1,
+      layers: 3,
       cells: [4, null, null, null, null, 4, null, null, null, null, 4, null],
     };
     const fill = fillVoxelModel(slope);
@@ -57,7 +79,14 @@ describe('voxel shell filling', () => {
     expect(fill.skippedCells).toBe(0);
     expect(fill.addedCells).toBe(2);
     expect(fill.details).toEqual({ slopes: 1, windows: 0, doors: 0, railings: 0 });
-    expect(fill.assembly.bricks.map(({ x, y, partId, rotation }) => [x - fill.origin.x, y, partId, rotation])).toEqual([
+    expect(
+      fill.assembly.bricks.map(({ x, y, partId, rotation }) => [
+        x - fill.origin.x,
+        y,
+        partId,
+        rotation,
+      ]),
+    ).toEqual([
       [0, 0, '3005', 0],
       // High side (studs) toward +x, where the next course sits.
       [0, 3, '3040b', 90],
@@ -71,7 +100,10 @@ describe('voxel shell filling', () => {
   it('frames openings with the nearest standard window or door frame', () => {
     // An 8-wide, 8-tall wall along x with a 2 x 2 window and a 3-wide door at the bottom.
     const wall: VoxelModel = {
-      name: 'Wall', width: 8, depth: 1, layers: 8,
+      name: 'Wall',
+      width: 8,
+      depth: 1,
+      layers: 8,
       cells: Array.from({ length: 64 }, () => 15),
       openings: [
         { kind: 'window', x: 5, z: 0, layer: 2, width: 2, height: 2, axis: 'x' },
@@ -82,7 +114,9 @@ describe('voxel shell filling', () => {
     expect(validateAssembly(fill.assembly)).toEqual([]);
     expect(fill.details).toEqual({ slopes: 0, windows: 1, doors: 1, railings: 0 });
     const frame = (id: string) => fill.assembly.bricks.find((brick) => brick.partId === id)!;
-    expect([frame('60592').x - fill.origin.x, frame('60592').y, frame('60592').rotation]).toEqual([5, 6, 90]);
+    expect([frame('60592').x - fill.origin.x, frame('60592').y, frame('60592').rotation]).toEqual([
+      5, 6, 90,
+    ]);
     expect([frame('3579').x - fill.origin.x, frame('3579').y]).toEqual([0, 0]);
     expect(fill.skippedCells).toBe(0);
   });
@@ -97,7 +131,11 @@ describe('voxel shell filling', () => {
       return x >= 1 && x <= 3 ? null : 15;
     });
     const fill = fillVoxelModel({
-      name: 'Balcony', width: 6, depth: 1, layers: 11, cells,
+      name: 'Balcony',
+      width: 6,
+      depth: 1,
+      layers: 11,
+      cells,
       openings: [{ kind: 'door', x: 1, z: 0, layer: 6, width: 3, height: 2, axis: 'x' }],
     });
     expect(validateAssembly(fill.assembly)).toEqual([]);
@@ -109,7 +147,10 @@ describe('voxel shell filling', () => {
   it('does not frame gaps in a railing, which have no wall above their top rail', () => {
     // Posts on every other stud at layer 2 under a two-course top rail, then open sky.
     const railing: VoxelModel = {
-      name: 'Railing', width: 8, depth: 1, layers: 6,
+      name: 'Railing',
+      width: 8,
+      depth: 1,
+      layers: 6,
       cells: Array.from({ length: 48 }, (_, cell) => {
         const [x, layer] = [cell % 8, Math.floor(cell / 8)];
         if (layer === 5) return null;
@@ -119,14 +160,20 @@ describe('voxel shell filling', () => {
     };
     expect(fillVoxelModel(railing).details.windows).toBe(0);
     // The same gap under a full wall is a window.
-    const wall = { ...railing, cells: railing.cells.map((cell, index) => (index >= 40 ? 0 : cell)) };
+    const wall = {
+      ...railing,
+      cells: railing.cells.map((cell, index) => (index >= 40 ? 0 : cell)),
+    };
     expect(fillVoxelModel(wall).details.windows).toBe(1);
   });
 
   it('turns posts with gaps under open air into a railing piece', () => {
     // A solid course, then posts on every other stud of a 9-stud line, then nothing.
     const balcony: VoxelModel = {
-      name: 'Balcony', width: 9, depth: 1, layers: 3,
+      name: 'Balcony',
+      width: 9,
+      depth: 1,
+      layers: 3,
       cells: Array.from({ length: 27 }, (_, cell) => {
         const [x, layer] = [cell % 9, Math.floor(cell / 9)];
         if (layer === 0) return 0;
@@ -146,8 +193,12 @@ describe('voxel shell filling', () => {
     expect(styled.style.floor).toBe(1);
     expect(styled.style.caps).toBeGreaterThan(0);
     // A single module needs only its one 16 x 16 plate, and everything else stands on it.
-    expect(styled.assembly.bricks.filter((brick) => brick.y === 0).map((brick) => brick.partId)).toEqual(['91405']);
-    expect(styled.assembly.bricks.filter((brick) => brick.partId !== '91405').length).toBeGreaterThan(fill.assembly.bricks.length);
+    expect(
+      styled.assembly.bricks.filter((brick) => brick.y === 0).map((brick) => brick.partId),
+    ).toEqual(['91405']);
+    expect(
+      styled.assembly.bricks.filter((brick) => brick.partId !== '91405').length,
+    ).toBeGreaterThan(fill.assembly.bricks.length);
   });
 
   it('lays an interlocked two-layer floor under builds wider than one module', () => {
@@ -157,25 +208,33 @@ describe('voxel shell filling', () => {
     const floor = styled.assembly.bricks.filter(isFloorPlate);
     expect(floor.length).toBe(styled.style.floor);
     expect(new Set(floor.map((brick) => brick.y))).toEqual(new Set([0, 1]));
-    expect(styled.assembly.bricks.filter((brick) => !isFloorPlate(brick)).every((brick) => brick.y >= 2)).toBe(true);
+    expect(
+      styled.assembly.bricks.filter((brick) => !isFloorPlate(brick)).every((brick) => brick.y >= 2),
+    ).toBe(true);
   });
 
   it('textures walls with short, mixed bricks and shaded stone', () => {
     const plain = fillVoxelModel(room(16, 16, 6, 72));
     const textured = fillVoxelModel(room(16, 16, 6, 72), { texture: true });
     expect(validateAssembly(textured.assembly)).toEqual([]);
-    const length = (brick: { partId: string }) => Math.max(getPart(brick.partId).width, getPart(brick.partId).depth);
+    const length = (brick: { partId: string }) =>
+      Math.max(getPart(brick.partId).width, getPart(brick.partId).depth);
     expect(plain.assembly.bricks.some((brick) => length(brick) > 4)).toBe(true);
     expect(textured.assembly.bricks.every((brick) => length(brick) <= 4)).toBe(true);
-    expect(new Set(textured.assembly.bricks.map((brick) => brick.partId)).size).toBeGreaterThanOrEqual(3);
+    expect(
+      new Set(textured.assembly.bricks.map((brick) => brick.partId)).size,
+    ).toBeGreaterThanOrEqual(3);
     const styled = styleVoxelFill(textured, room(16, 16, 6, 72));
     expect(validateAssembly(styled.assembly)).toEqual([]);
-    const colors = new Set(styled.assembly.bricks.filter((brick) => brick.partId !== '3867').map((brick) => brick.color));
+    const colors = new Set(
+      styled.assembly.bricks.filter((brick) => brick.partId !== '3867').map((brick) => brick.color),
+    );
     expect(colors.has(72) && colors.has(71)).toBe(true);
     // The same model always textures the same way.
-    expect(styleVoxelFill(fillVoxelModel(room(16, 16, 6, 72), { texture: true }), room(16, 16, 6, 72)).assembly).toEqual(
-      styled.assembly,
-    );
+    expect(
+      styleVoxelFill(fillVoxelModel(room(16, 16, 6, 72), { texture: true }), room(16, 16, 6, 72))
+        .assembly,
+    ).toEqual(styled.assembly);
   });
 
   it('supports left-out cells inside the building and brackets an eave, never posts outside', () => {
@@ -202,9 +261,18 @@ describe('voxel shell filling', () => {
   });
 
   it('continues a roof course through a short break, as a roof runs under a chimney', () => {
-    const course: VoxelModel = { name: 'Roof', width: 1, depth: 5, layers: 1, cells: [70, 70, null, 70, 70] };
+    const course: VoxelModel = {
+      name: 'Roof',
+      width: 1,
+      depth: 5,
+      layers: 1,
+      cells: [70, 70, null, 70, 70],
+    };
     const covered = (fill: ReturnType<typeof fillVoxelModel>) =>
-      fill.assembly.bricks.reduce((sum, brick) => sum + getPart(brick.partId).width * getPart(brick.partId).depth, 0);
+      fill.assembly.bricks.reduce(
+        (sum, brick) => sum + getPart(brick.partId).width * getPart(brick.partId).depth,
+        0,
+      );
     // Without slope hints it is just two walls; with them it is a roof course and is closed.
     expect(covered(fillVoxelModel(course))).toBe(4);
     expect(covered(fillVoxelModel({ ...course, slopes: course.cells.map(() => 'x-') }))).toBe(5);
@@ -223,14 +291,22 @@ describe('voxel shell filling', () => {
     expect(validateAssembly(fill.assembly)).toEqual([]);
     expect(fill.skippedCells).toBe(0);
     // The support is one course of grey bonded into the chimney, not a column from the ground.
-    const support = fill.assembly.bricks.filter((brick) => brick.y < 9 && brick.x - fill.origin.x < 3);
+    const support = fill.assembly.bricks.filter(
+      (brick) => brick.y < 9 && brick.x - fill.origin.x < 3,
+    );
     expect(support.every((brick) => brick.y === 6 && brick.color === 72)).toBe(true);
   });
 
   it('rejects malformed models', () => {
-    expect(() => fillVoxelModel({ name: 'x', width: 2, depth: 2, layers: 1, cells: [4] })).toThrow('cell count');
-    expect(() => fillVoxelModel(room(MAX_BUILD_AREA + 1, 4, 1))).toThrow(`${MAX_BUILD_AREA}-stud board`);
-    expect(() => fillVoxelModel(room(4, 4, MAX_VOXEL_LAYERS + 1))).toThrow(`${MAX_VOXEL_LAYERS} brick layers`);
+    expect(() => fillVoxelModel({ name: 'x', width: 2, depth: 2, layers: 1, cells: [4] })).toThrow(
+      'cell count',
+    );
+    expect(() => fillVoxelModel(room(MAX_BUILD_AREA + 1, 4, 1))).toThrow(
+      `${MAX_BUILD_AREA}-stud board`,
+    );
+    expect(() => fillVoxelModel(room(4, 4, MAX_VOXEL_LAYERS + 1))).toThrow(
+      `${MAX_VOXEL_LAYERS} brick layers`,
+    );
   });
 
   it('describes layers compactly with a color legend and collapsed repeats', () => {
@@ -249,7 +325,12 @@ describe('voxel shell filling', () => {
     expect(encoded).toContain('run-length encoded');
     expect(encoded).toContain('Layers 0-19:\na64\na.62a');
     // Alternate the layers so none collapse, and the budget runs out part way.
-    const striped: VoxelModel = { ...big, cells: big.cells.map((cell, index) => (cell !== null && Math.floor(index / 4096) % 2 ? 15 : cell)) };
+    const striped: VoxelModel = {
+      ...big,
+      cells: big.cells.map((cell, index) =>
+        cell !== null && Math.floor(index / 4096) % 2 ? 15 : cell,
+      ),
+    };
     const cut = describeVoxelModel(striped, { x: 0, z: 0 }, 4000);
     expect(cut.length).toBeLessThanOrEqual(4000);
     expect(cut).toMatch(/Layers \d+-19 omitted/);

@@ -60,7 +60,12 @@ if (values.help) {
     result = await runClaudeCodeBuild(prompt, session, buildOptions);
   } else {
     const client = new Anthropic({ timeout: 60_000, maxRetries: 0 });
-    result = await runClaudeBuild(prompt, session, (request) => client.messages.create(request), buildOptions);
+    result = await runClaudeBuild(
+      prompt,
+      session,
+      (request) => client.messages.create(request),
+      buildOptions,
+    );
   }
   const directory = resolve(values.out ?? 'output/claude-build');
   await mkdir(directory, { recursive: true });

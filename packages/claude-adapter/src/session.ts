@@ -99,7 +99,15 @@ const BRICK_COLUMNS = [
  * out because every shipped part is curated; per-part detail still reports it.
  */
 const PART_COLUMNS = [
-  'id', 'name', 'width', 'depth', 'height', 'kind', 'family', 'shape', 'contactPhysics',
+  'id',
+  'name',
+  'width',
+  'depth',
+  'height',
+  'kind',
+  'family',
+  'shape',
+  'contactPhysics',
 ] as const;
 
 /**
@@ -133,14 +141,24 @@ function changedBricks(before: Assembly, after: Assembly) {
 }
 
 export function compactAssembly(assembly: Assembly) {
-  return { name: assembly.name, buildArea: getBuildArea(assembly), bricks: compactBricks(assembly.bricks) };
+  return {
+    name: assembly.name,
+    buildArea: getBuildArea(assembly),
+    bricks: compactBricks(assembly.bricks),
+  };
 }
 
-const VEC3 = { type: 'array', items: { type: 'number', minimum: -MAX_BUILD_AREA, maximum: MAX_HEIGHT }, minItems: 3, maxItems: 3 };
+const VEC3 = {
+  type: 'array',
+  items: { type: 'number', minimum: -MAX_BUILD_AREA, maximum: MAX_HEIGHT },
+  minItems: 3,
+  maxItems: 3,
+};
 
 const regionSchema = {
   type: 'object',
-  description: 'Only list bricks whose minimum corner lies in this box (studs for x/z, plates for y).',
+  description:
+    'Only list bricks whose minimum corner lies in this box (studs for x/z, plates for y).',
   properties: Object.fromEntries(
     ['minX', 'maxX', 'minY', 'maxY', 'minZ', 'maxZ'].map((key) => [key, { type: 'number' }]),
   ),
@@ -200,7 +218,13 @@ export const BUILDER_TOOLS: readonly Anthropic.Tool[] = [
     input_schema: objectSchema(
       {
         includeUnverifiedColors: { type: 'boolean' },
-        partIds: { type: 'array', items: partIdSchema, minItems: 1, maxItems: 20, uniqueItems: true },
+        partIds: {
+          type: 'array',
+          items: partIdSchema,
+          minItems: 1,
+          maxItems: 20,
+          uniqueItems: true,
+        },
       },
       [],
     ),
@@ -273,7 +297,11 @@ export const BUILDER_TOOLS: readonly Anthropic.Tool[] = [
                 type: 'array',
                 minItems: 1,
                 maxItems: MAX_BUILD_AREA,
-                items: { type: 'string', maxLength: 4 * MAX_BUILD_AREA, pattern: '^([A-Za-z.][0-9]{0,3})*$' },
+                items: {
+                  type: 'string',
+                  maxLength: 4 * MAX_BUILD_AREA,
+                  pattern: '^([A-Za-z.][0-9]{0,3})*$',
+                },
               },
               repeat: { type: 'integer', minimum: 1, maximum: MAX_HEIGHT },
               plates: { type: 'boolean', description: 'One plate tall instead of one brick.' },
@@ -291,10 +319,31 @@ export const BUILDER_TOOLS: readonly Anthropic.Tool[] = [
       'Sculpt a rounded 3D subject from solid shapes; the engine samples them one stud across and one plate (or brick) tall and fills the result with staggered plates or bricks, so curved surfaces come out round in every direction. Coordinates are studs: x and z on the board, y up from the base (a plate is 0.4 studs, a brick 1.2). The front faces -z: the default and Front cameras look at the smallest z. Shapes apply in order: "add" fills with its color, "paint" recolors only cells earlier shapes filled (eyes, pupils, brows, emblems, buttons, overall straps on the surface), "cut" empties (an open mouth, a gap between legs). Paint and cut shapes must reach the surface to show. Hidden interiors deeper than shell studs stay hollow. Every shape needs support from below or within two studs sideways of something below it; floating parts are corbelled where possible and otherwise skipped. All pieces are added atomically under the host policies or nothing changes.',
     input_schema: objectSchema(
       {
-        y: { type: 'number', multipleOf: 0.5, minimum: 0, maximum: MAX_HEIGHT - 1, description: 'Plate height the base (y 0) stands on.' },
-        resolution: { type: 'string', enum: ['plate', 'brick'], description: 'Layer height; plate (default) is smoother and uses about three times the pieces.' },
-        preview: { type: 'boolean', description: 'Check the result (pieces, skipped cells, unseenShapes) without adding anything.' },
-        shell: { type: 'integer', minimum: 0, maximum: 6, description: 'Wall thickness in studs before the inside is left hollow; default 2, 0 for solid.' },
+        y: {
+          type: 'number',
+          multipleOf: 0.5,
+          minimum: 0,
+          maximum: MAX_HEIGHT - 1,
+          description: 'Plate height the base (y 0) stands on.',
+        },
+        resolution: {
+          type: 'string',
+          enum: ['plate', 'brick'],
+          description:
+            'Layer height; plate (default) is smoother and uses about three times the pieces.',
+        },
+        preview: {
+          type: 'boolean',
+          description:
+            'Check the result (pieces, skipped cells, unseenShapes) without adding anything.',
+        },
+        shell: {
+          type: 'integer',
+          minimum: 0,
+          maximum: 6,
+          description:
+            'Wall thickness in studs before the inside is left hollow; default 2, 0 for solid.',
+        },
         shapes: {
           type: 'array',
           minItems: 1,
@@ -311,10 +360,19 @@ export const BUILDER_TOOLS: readonly Anthropic.Tool[] = [
               from: { ...VEC3, description: 'capsule or cylinder axis start' },
               to: { ...VEC3, description: 'capsule or cylinder axis end' },
               radius: { type: 'number', exclusiveMinimum: 0, maximum: MAX_BUILD_AREA },
-              toRadius: { type: 'number', exclusiveMinimum: 0, maximum: MAX_BUILD_AREA, description: 'radius at "to", for tapered limbs' },
+              toRadius: {
+                type: 'number',
+                exclusiveMinimum: 0,
+                maximum: MAX_BUILD_AREA,
+                description: 'radius at "to", for tapered limbs',
+              },
               clipMin: { ...VEC3, description: 'keep only the part above these coordinates' },
               clipMax: { ...VEC3, description: 'keep only the part below these coordinates' },
-              note: { type: 'string', maxLength: 60, description: 'what this shape is, for your own bookkeeping' },
+              note: {
+                type: 'string',
+                maxLength: 60,
+                description: 'what this shape is, for your own bookkeeping',
+              },
             },
             ['type'],
           ),
@@ -333,7 +391,9 @@ export const BUILDER_TOOLS: readonly Anthropic.Tool[] = [
     name: 'brick_board',
     description:
       'Resize the square build board (studs per side). Existing pieces move with whole-stud shifts to stay centred where they fit; the result reports the shift. Resize before placing anything when the requested subject plus its surroundings does not fit the current board. Shrinking is rejected when the pieces would not fit. Not available with a reference 3D model.',
-    input_schema: objectSchema({ size: { type: 'integer', minimum: BUILD_AREA, maximum: MAX_BUILD_AREA } }),
+    input_schema: objectSchema({
+      size: { type: 'integer', minimum: BUILD_AREA, maximum: MAX_BUILD_AREA },
+    }),
   },
   {
     name: 'brick_physics',
@@ -381,7 +441,9 @@ export const BUILDER_TOOLS: readonly Anthropic.Tool[] = [
     name: 'model_layer',
     description:
       'Only with a reference 3D model: one brick layer of the model next to the same layer of the current build, one character per stud. Read only the layers you are working on.',
-    input_schema: objectSchema({ layer: { type: 'integer', minimum: 0, maximum: MAX_HEIGHT / 3 - 1 } }),
+    input_schema: objectSchema({
+      layer: { type: 'integer', minimum: 0, maximum: MAX_HEIGHT / 3 - 1 },
+    }),
   },
 ];
 
@@ -402,7 +464,8 @@ export const MODEL_TOOLS: readonly Anthropic.Tool[] = BUILDER_TOOLS.filter(
 }));
 
 function compactSchema(schema: unknown): unknown {
-  if (schema === partIdSchema) return { type: 'string', description: 'Part ID from brick_catalog.' };
+  if (schema === partIdSchema)
+    return { type: 'string', description: 'Part ID from brick_catalog.' };
   if (schema === colorSchema)
     return { type: 'integer', description: 'Color ID from brick_catalog.' };
   if (Array.isArray(schema)) return schema.map(compactSchema);
@@ -560,18 +623,28 @@ export function createBuilderSession(
     preview = false,
   ): BuilderToolResult {
     const board = getBuildArea(assembly);
-    const height = groups.reduce((total, group) => total + group.layers * (group.plates ? 1 : 3), 0);
+    const height = groups.reduce(
+      (total, group) => total + group.layers * (group.plates ? 1 : 3),
+      0,
+    );
     if (base + height > MAX_HEIGHT)
       return fail('out_of_bounds', `The layers reach above the ${MAX_HEIGHT}-plate height limit.`);
     if (!width || left + width > board || front + depth > board)
-      return fail('out_of_bounds', `A ${width} x ${depth} sculpt at x ${left}, z ${front} does not fit the ${board}-stud board; resize it with brick_board first.`);
+      return fail(
+        'out_of_bounds',
+        `A ${width} x ${depth} sculpt at x ${left}, z ${front} does not fit the ${board}-stud board; resize it with brick_board first.`,
+      );
     const colorAllowed = (partId: string, color: number) =>
-      !requireObservedColors || getPartColorStatus(partId, color, evidence).manufactured === 'observed';
+      !requireObservedColors ||
+      getPartColorStatus(partId, color, evidence).manufactured === 'observed';
     for (const plates of [false, true]) {
       const partIds = plates ? VOXEL_PLATE_PART_IDS : VOXEL_FILL_PART_IDS;
-      const used = new Set(groups.filter((group) => group.plates === plates).flatMap((group) => group.cells));
+      const used = new Set(
+        groups.filter((group) => group.plates === plates).flatMap((group) => group.cells),
+      );
       const unbuildable = [...used].filter(
-        (color): color is number => color !== null && !partIds.some((partId) => colorAllowed(partId, color)),
+        (color): color is number =>
+          color !== null && !partIds.some((partId) => colorAllowed(partId, color)),
       );
       if (unbuildable.length)
         return fail(
@@ -584,16 +657,33 @@ export function createBuilderSession(
     let [y, filledCells, skippedCells, supportCells] = [base, 0, 0, 0];
     for (const { plates, layers, cells } of groups) {
       const remaining = maxPieces - assembly.bricks.length - added.length;
-      if (remaining < 1) return fail('piece_limit', `The session allows at most ${maxPieces} pieces.`);
+      if (remaining < 1)
+        return fail('piece_limit', `The session allows at most ${maxPieces} pieces.`);
       const fill = fillVoxelModel(
         { name: assembly.name, width, depth, layers, cells },
-        { buildArea: board, maxPieces: remaining, supportGaps: true, details: false, plates, colorAllowed },
+        {
+          buildArea: board,
+          maxPieces: remaining,
+          supportGaps: true,
+          details: false,
+          plates,
+          colorAllowed,
+        },
       );
       if (fill.truncated)
-        return fail('piece_limit', `The sculpt needs more than the ${maxPieces - assembly.bricks.length} pieces left of the ${maxPieces}-piece budget. Hollow out hidden interiors or simplify.`);
+        return fail(
+          'piece_limit',
+          `The sculpt needs more than the ${maxPieces - assembly.bricks.length} pieces left of the ${maxPieces}-piece budget. Hollow out hidden interiors or simplify.`,
+        );
       for (const brick of fill.assembly.bricks) {
         while (assembly.bricks.some((piece) => piece.id === `ai-${nextId}`)) nextId += 1;
-        added.push({ ...brick, id: `ai-${nextId++}`, x: brick.x - fill.origin.x + left, y: brick.y + y, z: brick.z - fill.origin.z + front });
+        added.push({
+          ...brick,
+          id: `ai-${nextId++}`,
+          x: brick.x - fill.origin.x + left,
+          y: brick.y + y,
+          z: brick.z - fill.origin.z + front,
+        });
       }
       y += layers * (plates ? 1 : 3);
       filledCells += fill.filledCells;
@@ -601,13 +691,20 @@ export function createBuilderSession(
       supportCells += fill.addedCells;
     }
     if (!added.length)
-      return fail('unsupported', 'No cell could be filled: layer 0 needs studs or ground beneath it.');
+      return fail(
+        'unsupported',
+        'No cell could be filled: layer 0 needs studs or ground beneath it.',
+      );
     const next = { ...assembly, bricks: [...assembly.bricks, ...added] };
     const evaluation = evaluateAssemblyPolicy(next, editPolicy);
     if (!evaluation.allowed) {
       const issue = evaluation.issues[0];
       // Geometry issues list every clash; the first few are enough to fix the drawing.
-      return fail(issue.code, issue.message, Array.isArray(issue.details) ? issue.details.slice(0, 20) : issue.details);
+      return fail(
+        issue.code,
+        issue.message,
+        Array.isArray(issue.details) ? issue.details.slice(0, 20) : issue.details,
+      );
     }
     if (!preview) {
       assembly = next;
@@ -621,8 +718,19 @@ export function createBuilderSession(
       data: {
         ...(preview && { purpose: 'preview-only' }),
         pieceCount: next.bricks.length,
-        added: { pieces: added.length, ids: [added[0].id, added.at(-1)!.id], billOfMaterials: getBillOfMaterials({ ...assembly, bricks: added }) },
-        region: { minX: left, maxX: left + width - 1, minZ: front, maxZ: front + depth - 1, minY: base, maxY: base + height },
+        added: {
+          pieces: added.length,
+          ids: [added[0].id, added.at(-1)!.id],
+          billOfMaterials: getBillOfMaterials({ ...assembly, bricks: added }),
+        },
+        region: {
+          minX: left,
+          maxX: left + width - 1,
+          minZ: front,
+          maxZ: front + depth - 1,
+          minY: base,
+          maxY: base + height,
+        },
         filledCells,
         skippedCells,
         supportCells,
@@ -646,7 +754,11 @@ export function createBuilderSession(
       const reference = options.reference;
       if (!reference) return fail('no_reference', 'This build has no reference 3D model.');
       if (name === 'model_gaps')
-        return { ok: true, revision, data: findVoxelGaps(reference.model, reference.origin, assembly) };
+        return {
+          ok: true,
+          revision,
+          data: findVoxelGaps(reference.model, reference.origin, assembly),
+        };
       if ((args.layer as number) >= reference.model.layers)
         return fail('invalid_input', `The model has layers 0-${reference.model.layers - 1}.`);
       return {
@@ -742,7 +854,11 @@ export function createBuilderSession(
       // Consecutive layers of the same height are filled together, so their bricks stagger.
       const groups: { plates: boolean; grids: string[][] }[] = [];
       let height = 0;
-      for (const { rows, repeat = 1, plates = false } of args.layers as { rows: string[]; repeat?: number; plates?: boolean }[]) {
+      for (const { rows, repeat = 1, plates = false } of args.layers as {
+        rows: string[];
+        repeat?: number;
+        plates?: boolean;
+      }[]) {
         const expanded = rows.map((row) =>
           row.replace(/([A-Za-z.])(\d+)/g, (_, symbol: string, count: string) =>
             symbol.repeat(Math.min(Number(count), MAX_BUILD_AREA + 1)),
@@ -757,8 +873,11 @@ export function createBuilderSession(
       const grids = groups.flatMap((group) => group.grids);
       const width = Math.max(...grids.flatMap((rows) => rows.map((row) => row.length)));
       const depth = Math.max(...grids.map((rows) => rows.length));
-      const unknown = [...new Set(grids.flat().join('').replaceAll('.', ''))].filter((letter) => !(letter in palette));
-      if (unknown.length) return fail('invalid_input', `Letters missing from the palette: ${unknown.join(', ')}.`);
+      const unknown = [...new Set(grids.flat().join('').replaceAll('.', ''))].filter(
+        (letter) => !(letter in palette),
+      );
+      if (unknown.length)
+        return fail('invalid_input', `Letters missing from the palette: ${unknown.join(', ')}.`);
       return placeVoxels(
         args.x as number,
         args.z as number,
@@ -788,8 +907,14 @@ export function createBuilderSession(
         cylinder: ['from', 'to', 'radius'],
       };
       for (const [position, shape] of shapes.entries()) {
-        const missing = [...needs[shape.type], ...(shape.mode === 'cut' ? [] : ['color'])].filter((key) => shape[key] === undefined);
-        if (missing.length) return fail('invalid_input', `Shape ${position} (${shape.type}) needs ${missing.join(', ')}.`);
+        const missing = [...needs[shape.type], ...(shape.mode === 'cut' ? [] : ['color'])].filter(
+          (key) => shape[key] === undefined,
+        );
+        if (missing.length)
+          return fail(
+            'invalid_input',
+            `Shape ${position} (${shape.type}) needs ${missing.join(', ')}.`,
+          );
         if (shape.type === 'ellipsoid' && (shape.radii as number[]).some((radius) => radius <= 0))
           return fail('invalid_input', `Shape ${position} needs positive radii.`);
       }
@@ -799,17 +924,25 @@ export function createBuilderSession(
         layerStuds: plates ? PLATE_STUDS : PLATE_STUDS * 3,
         shell: (args.shell as number | undefined) ?? 2,
       });
-      if (!grid) return fail('invalid_input', 'The added shapes cover no cell on the board above y 0.');
-      const result = placeVoxels(grid.x, grid.z, (args.y as number | undefined) ?? 0, grid.width, grid.depth, [
-        { plates, layers: grid.layers, cells: grid.cells },
-      ], args.preview === true);
+      if (!grid)
+        return fail('invalid_input', 'The added shapes cover no cell on the board above y 0.');
+      const result = placeVoxels(
+        grid.x,
+        grid.z,
+        (args.y as number | undefined) ?? 0,
+        grid.width,
+        grid.depth,
+        [{ plates, layers: grid.layers, cells: grid.cells }],
+        args.preview === true,
+      );
       if (!result.ok || !grid.unseen.length) return result;
       return {
         ...result,
         data: {
           ...(result.data as object),
           unseenShapes: grid.unseen,
-          unseenDetail: 'These shapes changed no cell: a shape shows only where it covers cell centres (x and z at whole studs + 0.5, y at layer middles), so make small features at least one stud wide and centred on a stud, and paint only where earlier shapes filled the surface.',
+          unseenDetail:
+            'These shapes changed no cell: a shape shows only where it covers cell centres (x and z at whole studs + 0.5, y at layer middles), so make small features at least one stud wide and centred on a stud, and paint only where earlier shapes filled the surface.',
         },
       };
     }
@@ -830,36 +963,41 @@ export function createBuilderSession(
           // Connector cells and per-part colors are most of the catalogue and it stays in the
           // conversation for every later turn, so they are listed only for requested parts.
           ...(!args.partIds && {
-            detail: 'Call brick_catalog with partIds for the connector cells and observed colors of the parts you will use.',
+            detail:
+              'Call brick_catalog with partIds for the connector cells and observed colors of the parts you will use.',
           }),
           ...(!args.partIds && {
             partColumns: PART_COLUMNS,
             partRows: PARTS.map(({ id }) => {
               const part = getPartCapabilities(id);
               const row: unknown[] = PART_COLUMNS.map((column) => part[column]);
-              return part.matchingInsertFrameId ? [...row, { matchingInsertFrameId: part.matchingInsertFrameId }] : row;
+              return part.matchingInsertFrameId
+                ? [...row, { matchingInsertFrameId: part.matchingInsertFrameId }]
+                : row;
             }),
           }),
-          parts: PARTS.filter(({ id }) => (args.partIds as string[] | undefined)?.includes(id)).map(({ id }) => {
-            const { connections, collisionModel, matchingInsertFrameId, ...part } =
-              getPartCapabilities(id);
-            return {
-              ...part,
-              ...(matchingInsertFrameId ? { matchingInsertFrameId } : {}),
-              connections: Object.fromEntries(
-                Object.entries(connections).map(([key, cells]) => [
-                  key,
-                  compactCells(cells, part.width, part.depth),
-                ]),
-              ),
-              ...(collisionModel === getEngineCapabilities(assembly).collisionModel
-                ? {}
-                : { collisionModel }),
-              observedColors: COLORS.filter(
-                (color) => getPartColorStatus(id, color.id, evidence).manufactured === 'observed',
-              ).map((color) => color.id),
-            };
-          }),
+          parts: PARTS.filter(({ id }) => (args.partIds as string[] | undefined)?.includes(id)).map(
+            ({ id }) => {
+              const { connections, collisionModel, matchingInsertFrameId, ...part } =
+                getPartCapabilities(id);
+              return {
+                ...part,
+                ...(matchingInsertFrameId ? { matchingInsertFrameId } : {}),
+                connections: Object.fromEntries(
+                  Object.entries(connections).map(([key, cells]) => [
+                    key,
+                    compactCells(cells, part.width, part.depth),
+                  ]),
+                ),
+                ...(collisionModel === getEngineCapabilities(assembly).collisionModel
+                  ? {}
+                  : { collisionModel }),
+                observedColors: COLORS.filter(
+                  (color) => getPartColorStatus(id, color.id, evidence).manufactured === 'observed',
+                ).map((color) => color.id),
+              };
+            },
+          ),
           colors: COLORS.filter(
             (color) =>
               args.includeUnverifiedColors ||
@@ -925,7 +1063,9 @@ export function createBuilderSession(
       };
     }
     if (name === 'brick_inspect') {
-      const region = (args.region ?? {}) as Partial<Record<'minX' | 'maxX' | 'minY' | 'maxY' | 'minZ' | 'maxZ', number>>;
+      const region = (args.region ?? {}) as Partial<
+        Record<'minX' | 'maxX' | 'minY' | 'maxY' | 'minZ' | 'maxZ', number>
+      >;
       const inside = (brick: Brick) =>
         brick.x >= (region.minX ?? -Infinity) &&
         brick.x <= (region.maxX ?? Infinity) &&
@@ -964,7 +1104,11 @@ export function createBuilderSession(
         return fail('board_too_small', `The current pieces do not fit a ${args.size}-stud board.`);
       const evaluation = evaluateAssemblyPolicy(resized, editPolicy);
       if (!evaluation.allowed)
-        return fail('policy_rejected', 'The resized board violates host policy.', evaluation.issues);
+        return fail(
+          'policy_rejected',
+          'The resized board violates host policy.',
+          evaluation.issues,
+        );
       const first = assembly.bricks[0];
       const moved = resized.bricks[0];
       assembly = resized;
@@ -982,11 +1126,15 @@ export function createBuilderSession(
       };
     }
     if (name === 'brick_physics') {
-      const { masses, connections, assemblyOrder, ...summary } = structuredClone(physicalAssessment);
+      const { masses, connections, assemblyOrder, ...summary } =
+        structuredClone(physicalAssessment);
       // Per-piece lists grow to hundreds of thousands of characters on converted models, and
       // past MAX_PHYSICS_PIECES the solver has not run, so large builds get masses by part.
       const perPiece = assembly.bricks.length <= MAX_PHYSICS_PIECES;
-      const byPart = new Map<string, { partId: string; count: number; mass: (typeof masses)[number]['mass'] }>();
+      const byPart = new Map<
+        string,
+        { partId: string; count: number; mass: (typeof masses)[number]['mass'] }
+      >();
       for (const { partId, mass } of masses) {
         const entry = byPart.get(partId);
         if (entry) entry.count += 1;

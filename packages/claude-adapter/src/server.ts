@@ -4,13 +4,14 @@ import { createServer } from 'node:http';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { pathToFileURL } from 'node:url';
 import sharp from 'sharp';
-import { MAX_BUILD_AREA, MAX_PIECES, MAX_VOXEL_LAYERS, decodeVoxelModel } from '@brick-workshop/engine';
-import { createBuilderSession } from './session.ts';
 import {
-  DEFAULT_CLAUDE_MODEL,
-  runClaudeBuild,
-  validateReferenceImages,
-} from './runner.ts';
+  MAX_BUILD_AREA,
+  MAX_PIECES,
+  MAX_VOXEL_LAYERS,
+  decodeVoxelModel,
+} from '@brick-workshop/engine';
+import { createBuilderSession } from './session.ts';
+import { DEFAULT_CLAUDE_MODEL, runClaudeBuild, validateReferenceImages } from './runner.ts';
 import { runClaudeCodeBuild } from './claude-code-runner.ts';
 import type { ClaudeTransport, ReferenceImage } from './runner.ts';
 import type { EncodedVoxelModel } from '@brick-workshop/engine';
@@ -161,11 +162,17 @@ function json(response: ServerResponse, status: number, value: unknown) {
 }
 
 export function createWorkshopServer(
-  options: { apiKey?: string; model?: string; transport?: ClaudeTransport; claudeCode?: boolean } = {},
+  options: {
+    apiKey?: string;
+    model?: string;
+    transport?: ClaudeTransport;
+    claudeCode?: boolean;
+  } = {},
 ) {
   const model = options.model ?? DEFAULT_CLAUDE_MODEL;
   // Without an API key or transport, claudeCode runs builds on the local Claude Code login.
-  const backend = options.apiKey || options.transport ? 'api' : options.claudeCode ? 'claude-code' : null;
+  const backend =
+    options.apiKey || options.transport ? 'api' : options.claudeCode ? 'claude-code' : null;
   const configured = !!backend;
   const client = options.apiKey
     ? new Anthropic({ apiKey: options.apiKey, timeout: 60_000, maxRetries: 0 })
@@ -177,7 +184,14 @@ export function createWorkshopServer(
   const server = createServer(async (request, response) => {
     const pathname = new URL(request.url ?? '/', 'http://localhost').pathname;
     if (request.method === 'GET' && pathname === '/api/workshop/status') {
-      json(response, 200, { configured, backend, busy: !!active, model, maxImages: 4, maxPieces: MAX_PIECES });
+      json(response, 200, {
+        configured,
+        backend,
+        busy: !!active,
+        model,
+        maxImages: 4,
+        maxPieces: MAX_PIECES,
+      });
       return;
     }
     if (pathname !== '/api/workshop/generate') {

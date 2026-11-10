@@ -51,7 +51,9 @@ describe('Claude tool-use loop', () => {
     expect(requests[0].messages[0].content).toEqual([
       expect.objectContaining({
         type: 'text',
-        text: expect.stringContaining(`Board: 16 x 16 studs; brick_board resizes it up to ${MAX_BUILD_AREA}.`),
+        text: expect.stringContaining(
+          `Board: 16 x 16 studs; brick_board resizes it up to ${MAX_BUILD_AREA}.`,
+        ),
       }),
       { type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'aW1hZ2U=' } },
     ]);
@@ -63,7 +65,12 @@ describe('Claude tool-use loop', () => {
       revision: 1,
       pieces: 1,
     });
-    expect(events).toContainEqual({ type: 'usage', inputTokens: 20, cachedInputTokens: 0, outputTokens: 10 });
+    expect(events).toContainEqual({
+      type: 'usage',
+      inputTokens: 20,
+      cachedInputTokens: 0,
+      outputTokens: 10,
+    });
     expect(result.complete).toBe(true);
   });
 
@@ -537,28 +544,44 @@ describe('headless Claude builder tools', () => {
       ...column,
       layers: [{ rows: ['b2.2b2', 'b2.2b2'], repeat: 2 }],
     });
-    expect(legs).toMatchObject({ ok: true, revision: 1, data: { skippedCells: 0, region: { maxX: 7, maxY: 6 } } });
+    expect(legs).toMatchObject({
+      ok: true,
+      revision: 1,
+      data: { skippedCells: 0, region: { maxX: 7, maxY: 6 } },
+    });
     const body = session.runTool('brick_sculpt', {
       ...column,
       y: 6,
       layers: [{ rows: ['r6', 'r6'], repeat: 3 }],
     });
-    expect(body).toMatchObject({ ok: true, revision: 2, data: { filledCells: 36, skippedCells: 0 } });
+    expect(body).toMatchObject({
+      ok: true,
+      revision: 2,
+      data: { filledCells: 36, skippedCells: 0 },
+    });
     const assembly = session.snapshot();
     expect(validateAssembly(assembly)).toEqual([]);
     expect(new Set(assembly.bricks.map((brick) => brick.id)).size).toBe(assembly.bricks.length);
-    expect(assembly.bricks.filter((brick) => brick.y >= 6).every((brick) => brick.color === 4)).toBe(true);
+    expect(
+      assembly.bricks.filter((brick) => brick.y >= 6).every((brick) => brick.color === 4),
+    ).toBe(true);
 
     // Overlapping the body changes nothing.
-    expect(session.runTool('brick_sculpt', { ...column, layers: [{ rows: ['r'] }] })).toMatchObject({
-      ok: false,
-      revision: 2,
-    });
-    expect(session.runTool('brick_sculpt', { ...column, layers: [{ rows: ['q'] }] })).toMatchObject({
-      ok: false,
-      error: { code: 'invalid_input' },
-    });
-    expect(session.runTool('brick_sculpt', { ...column, x: 12, layers: [{ rows: ['r6'] }] })).toMatchObject({
+    expect(session.runTool('brick_sculpt', { ...column, layers: [{ rows: ['r'] }] })).toMatchObject(
+      {
+        ok: false,
+        revision: 2,
+      },
+    );
+    expect(session.runTool('brick_sculpt', { ...column, layers: [{ rows: ['q'] }] })).toMatchObject(
+      {
+        ok: false,
+        error: { code: 'invalid_input' },
+      },
+    );
+    expect(
+      session.runTool('brick_sculpt', { ...column, x: 12, layers: [{ rows: ['r6'] }] }),
+    ).toMatchObject({
       ok: false,
       error: { code: 'out_of_bounds' },
     });
@@ -570,12 +593,24 @@ describe('headless Claude builder tools', () => {
       x: 2,
       z: 3,
       y: 15,
-      layers: [{ rows: ['n6', 'n6'] }, { rows: ['nkn2kn', 'n6'], plates: true }, { rows: ['n6', 'n6'], plates: true, repeat: 2 }],
+      layers: [
+        { rows: ['n6', 'n6'] },
+        { rows: ['nkn2kn', 'n6'], plates: true },
+        { rows: ['n6', 'n6'], plates: true, repeat: 2 },
+      ],
     });
-    expect(face).toMatchObject({ ok: true, revision: 3, data: { skippedCells: 0, region: { maxY: 21 } } });
+    expect(face).toMatchObject({
+      ok: true,
+      revision: 3,
+      data: { skippedCells: 0, region: { maxY: 21 } },
+    });
     const plates = session.snapshot().bricks.filter((brick) => brick.y >= 18);
     expect(plates.map((brick) => brick.y).sort()).toContain(20);
-    expect(plates.filter((brick) => brick.color === 0).every((brick) => brick.partId === '3024' || brick.partId === '3023b')).toBe(true);
+    expect(
+      plates
+        .filter((brick) => brick.color === 0)
+        .every((brick) => brick.partId === '3024' || brick.partId === '3023b'),
+    ).toBe(true);
     expect(validateAssembly(session.snapshot())).toEqual([]);
   });
 
@@ -590,7 +625,11 @@ describe('headless Claude builder tools', () => {
       ],
     };
     const preview = session.runTool('brick_shape', { ...head, preview: true });
-    expect(preview).toMatchObject({ ok: true, revision: 0, data: { purpose: 'preview-only', unseenShapes: [2] } });
+    expect(preview).toMatchObject({
+      ok: true,
+      revision: 0,
+      data: { purpose: 'preview-only', unseenShapes: [2] },
+    });
     expect(session.snapshot().bricks).toEqual([]);
 
     const result = session.runTool('brick_shape', head);
@@ -598,13 +637,33 @@ describe('headless Claude builder tools', () => {
     const bricks = session.snapshot().bricks;
     expect(validateAssembly(session.snapshot())).toEqual([]);
     expect(bricks.map((brick) => brick.y)).toContain(7);
-    expect(bricks.every((brick) => ['3020', '3021', '3022', '3023b', '3024', '3710', '3623', '3666', '3460', '3034', '3795', '3832'].includes(brick.partId))).toBe(true);
+    expect(
+      bricks.every((brick) =>
+        [
+          '3020',
+          '3021',
+          '3022',
+          '3023b',
+          '3024',
+          '3710',
+          '3623',
+          '3666',
+          '3460',
+          '3034',
+          '3795',
+          '3832',
+        ].includes(brick.partId),
+      ),
+    ).toBe(true);
     // Rounded: the widest layer is wider than the bottom one, and the eye paint shows.
     const widths = (y: number) => bricks.filter((brick) => brick.y === y).length;
     expect(widths(7)).toBeGreaterThan(widths(0));
     expect(bricks.some((brick) => brick.color === 15)).toBe(true);
-    expect(session.runTool('brick_shape', { shapes: [{ type: 'capsule', from: [1, 0, 1], to: [1, 2, 1], color: 4 }] }))
-      .toMatchObject({ ok: false, error: { code: 'invalid_input' } });
+    expect(
+      session.runTool('brick_shape', {
+        shapes: [{ type: 'capsule', from: [1, 0, 1], to: [1, 2, 1], color: 4 }],
+      }),
+    ).toMatchObject({ ok: false, error: { code: 'invalid_input' } });
   });
 
   it('offers read-only candidates with color policy, physical coverage and engine capabilities', () => {
@@ -755,9 +814,9 @@ describe('headless Claude builder tools', () => {
     expect(session.runTool('brick_place', { ...placement, x: 63, z: 60 }).ok).toBe(false);
     expect(session.snapshot()).toEqual(before);
     expect(createBuilderSession().runTool('brick_place', { ...placement, x: 60 }).ok).toBe(false);
-    expect(() => createBuilderSession({ name: 'Bad board', bricks: [], buildArea: MAX_BUILD_AREA + 1 })).toThrow(
-      'Invalid initial assembly',
-    );
+    expect(() =>
+      createBuilderSession({ name: 'Bad board', bricks: [], buildArea: MAX_BUILD_AREA + 1 }),
+    ).toThrow('Invalid initial assembly');
   });
   it('resizes the board around existing pieces and refuses sizes they do not fit', () => {
     const session = createBuilderSession();
@@ -802,8 +861,18 @@ describe('headless Claude builder tools', () => {
     expect(rows).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ id: '2453b', height: 15, family: 'tall', shape: 'box' }),
-        expect.objectContaining({ id: '3039', family: 'slope', shape: 'slope', contactPhysics: 'not-assessed' }),
-        expect.objectContaining({ id: '3062b', family: 'round', shape: 'round', contactPhysics: 'not-assessed' }),
+        expect.objectContaining({
+          id: '3039',
+          family: 'slope',
+          shape: 'slope',
+          contactPhysics: 'not-assessed',
+        }),
+        expect.objectContaining({
+          id: '3062b',
+          family: 'round',
+          shape: 'round',
+          contactPhysics: 'not-assessed',
+        }),
       ]),
     );
     for (const partId of ['2453b', '3039', '3062b']) {

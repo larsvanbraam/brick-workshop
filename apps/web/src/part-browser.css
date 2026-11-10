@@ -45,7 +45,7 @@
 }
 .catalog-header h2 {
   font:
-    17px "Space Grotesk",
+    17px 'Space Grotesk',
     sans-serif;
   white-space: nowrap;
 }
@@ -151,7 +151,7 @@
   overflow-wrap: anywhere;
 }
 .catalog-result small > span {
-  font-family: "IBM Plex Sans", sans-serif;
+  font-family: 'IBM Plex Sans', sans-serif;
 }
 .supported-icon {
   color: var(--green);
@@ -245,7 +245,7 @@
 .catalog-preview-details h3 {
   margin: 0 0 10px;
   font:
-    16px "Space Grotesk",
+    16px 'Space Grotesk',
     sans-serif;
   overflow-wrap: anywhere;
 }

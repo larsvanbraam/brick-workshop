@@ -1,4 +1,14 @@
-import { Box3, BufferAttribute, BufferGeometry, Color, DoubleSide, Matrix4, Mesh, Ray, Vector3 } from 'three';
+import {
+  Box3,
+  BufferAttribute,
+  BufferGeometry,
+  Color,
+  DoubleSide,
+  Matrix4,
+  Mesh,
+  Ray,
+  Vector3,
+} from 'three';
 import type { Material, Object3D, Texture } from 'three';
 import { ColladaLoader } from 'three/addons/loaders/ColladaLoader.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
@@ -13,7 +23,12 @@ import {
   getPartColorStatus,
   styleVoxelFill,
 } from '@brick-workshop/engine';
-import type { PartColorEvidence, VoxelDirection, VoxelModel, VoxelOpening } from '@brick-workshop/engine';
+import type {
+  PartColorEvidence,
+  VoxelDirection,
+  VoxelModel,
+  VoxelOpening,
+} from '@brick-workshop/engine';
 
 /** World-space triangles, Y-up, any unit: 9 position values and 3 sRGB color values each. */
 export interface ModelTriangles {
@@ -91,7 +106,9 @@ export async function loadModelTriangles(file: File): Promise<ModelTriangles> {
       triangles = await skpTriangles(name, buffer);
       const thumbnail = extractThumbnail(buffer);
       if (thumbnail)
-        triangles.preview = new File([thumbnail.data as BlobPart], `${name} preview`, { type: thumbnail.mimeType });
+        triangles.preview = new File([thumbnail.data as BlobPart], `${name} preview`, {
+          type: thumbnail.mimeType,
+        });
     } catch (error) {
       throw new Error(
         `This SketchUp file could not be read (${error instanceof Error ? error.message : 'unknown error'}). Try the COLLADA (.dae) download instead.`,
@@ -130,7 +147,11 @@ async function skpTriangles(name: string, buffer: ArrayBuffer): Promise<ModelTri
     const unpainted =
       !pbr?.baseColorTexture &&
       tagColors.has([red, green, blue].map((value) => Math.round(value * 255)).join(','));
-    return { color: unpainted ? [1, 1, 1] : [red, green, blue], unpainted, texture: pbr?.baseColorTexture?.index ?? -1 };
+    return {
+      color: unpainted ? [1, 1, 1] : [red, green, blue],
+      unpainted,
+      texture: pbr?.baseColorTexture?.index ?? -1,
+    };
   });
   // See-through textures (a lattice, a fence) decide which cells their faces fill.
   const alphaMasks = await Promise.all(
@@ -214,7 +235,11 @@ async function skpTriangles(name: string, buffer: ArrayBuffer): Promise<ModelTri
  * standing beside them or a ground plane far larger than the model; either would set the scale
  * and shrink the model itself to a few studs.
  */
-export function keepMainObjects(triangles: ModelTriangles, objects: Uint32Array, names: string[]): ModelTriangles {
+export function keepMainObjects(
+  triangles: ModelTriangles,
+  objects: Uint32Array,
+  names: string[],
+): ModelTriangles {
   if (names.length < 2) return triangles;
   const boxes = names.map(() => new Box3());
   const areas = new Float64Array(names.length);
@@ -240,10 +265,13 @@ export function keepMainObjects(triangles: ModelTriangles, objects: Uint32Array,
   const kept = new Set([seed]);
   const cluster = boxes[seed].clone();
   const margin = size(boxes[seed]).length() * 0.05;
-  for (let grown = true; grown; ) {
+  for (let grown = true; grown;) {
     grown = false;
     for (const object of solid)
-      if (!kept.has(object) && boxes[object].intersectsBox(cluster.clone().expandByScalar(margin))) {
+      if (
+        !kept.has(object) &&
+        boxes[object].intersectsBox(cluster.clone().expandByScalar(margin))
+      ) {
         kept.add(object);
         cluster.union(boxes[object]);
         grown = true;
@@ -263,7 +291,8 @@ export function keepMainObjects(triangles: ModelTriangles, objects: Uint32Array,
   }
   if (kept.size === names.length) return triangles;
   let count = 0;
-  for (let triangle = 0; triangle < objects.length; triangle += 1) if (kept.has(objects[triangle])) count += 1;
+  for (let triangle = 0; triangle < objects.length; triangle += 1)
+    if (kept.has(objects[triangle])) count += 1;
   const positions = new Float32Array(count * 9);
   const colors = new Float32Array(count * 3);
   const unpainted = new Uint8Array(count);
@@ -298,11 +327,14 @@ function objectTriangles(name: string, root: Object3D): ModelTriangles {
   const meshes: { mesh: Mesh; object: number }[] = [];
   const collect = (node: Object3D, object: number) => {
     if (!node.visible) return;
-    if (node instanceof Mesh && node.geometry.getAttribute('position')) meshes.push({ mesh: node, object });
+    if (node instanceof Mesh && node.geometry.getAttribute('position'))
+      meshes.push({ mesh: node, object });
     for (const child of node.children) collect(child, object);
   };
   if (top instanceof Mesh) collect(top, objectNames.push(top.name || 'model') - 1);
-  else for (const child of top.children) collect(child, objectNames.push(child.name || 'unnamed object') - 1);
+  else
+    for (const child of top.children)
+      collect(child, objectNames.push(child.name || 'unnamed object') - 1);
   const total = meshes.reduce((sum, { mesh }) => {
     const geometry = mesh.geometry as BufferGeometry;
     return sum + (geometry.index ?? geometry.getAttribute('position')).count / 3;
@@ -332,12 +364,18 @@ function objectTriangles(name: string, root: Object3D): ModelTriangles {
     const count = (geometry.index ?? position).count;
     const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
     const resolved = materials.map(materialColor);
-    const groups = geometry.groups.length ? geometry.groups : [{ start: 0, count, materialIndex: 0 }];
+    const groups = geometry.groups.length
+      ? geometry.groups
+      : [{ start: 0, count, materialIndex: 0 }];
     for (const group of groups) {
       const color = resolved[group.materialIndex ?? 0];
       // Glass and other see-through faces become openings.
       if (color === null) continue;
-      for (let index = group.start; index < Math.min(count, group.start + group.count) - 2; index += 3, triangle += 1) {
+      for (
+        let index = group.start;
+        index < Math.min(count, group.start + group.count) - 2;
+        index += 3, triangle += 1
+      ) {
         for (let corner = 0; corner < 3; corner += 1) {
           const source = geometry.index ? geometry.index.getX(index + corner) : index + corner;
           vertex.fromBufferAttribute(position, source).applyMatrix4(mesh.matrixWorld);
@@ -349,7 +387,11 @@ function objectTriangles(name: string, root: Object3D): ModelTriangles {
     }
   }
   return keepMainObjects(
-    { name, positions: positions.subarray(0, triangle * 9), colors: colors.subarray(0, triangle * 3) },
+    {
+      name,
+      positions: positions.subarray(0, triangle * 9),
+      colors: colors.subarray(0, triangle * 3),
+    },
     objects.subarray(0, triangle),
     objectNames,
   );
@@ -384,7 +426,9 @@ async function decodeAlphaMask(source: Blob | CanvasImageSource): Promise<AlphaM
     for (let texel = 0; texel < opaque.length; texel += 1)
       if (data[texel * 4 + 3] >= 128) opaque[texel] = 1;
       else clear += 1;
-    return clear / opaque.length >= SEE_THROUGH ? { width: canvas.width, height: canvas.height, opaque } : null;
+    return clear / opaque.length >= SEE_THROUGH
+      ? { width: canvas.width, height: canvas.height, opaque }
+      : null;
   } catch {
     return null;
   }
@@ -418,7 +462,12 @@ function averageImageColor(source: CanvasImageSource): Color | null {
       weight += alpha;
     }
     if (!weight) return null;
-    return new Color().setRGB(red / weight / 255, green / weight / 255, blue / weight / 255, 'srgb');
+    return new Color().setRGB(
+      red / weight / 255,
+      green / weight / 255,
+      blue / weight / 255,
+      'srgb',
+    );
   } catch {
     return null;
   }
@@ -479,7 +528,11 @@ export function fitModel(
   const limit = Math.min(options.maxWidth, scaled);
   // One layer of headroom for the baseplate, caps and ridge pieces the styling adds on top.
   // The grid is one cell wider than the width, so stay a stud under the board limit.
-  const tallest = maxModelWidth(triangles, Math.min(limit, MAX_BUILD_AREA - 1), MAX_VOXEL_LAYERS - 1);
+  const tallest = maxModelWidth(
+    triangles,
+    Math.min(limit, MAX_BUILD_AREA - 1),
+    MAX_VOXEL_LAYERS - 1,
+  );
   // The search runs the full fill, hidden support columns included, so the budget holds;
   // set styling runs once on the result.
   const fillOptions = {
@@ -527,14 +580,24 @@ export function fitModel(
   }
   const limitedBy = unsupported
     ? 'support'
-    : best.width === scaled ? 'scale' : best.width === options.maxWidth ? null : best.width === tallest ? 'height' : 'pieces';
+    : best.width === scaled
+      ? 'scale'
+      : best.width === options.maxWidth
+        ? null
+        : best.width === tallest
+          ? 'height'
+          : 'pieces';
   // Set-style finishing runs once, on the chosen width.
   const fill = styleVoxelFill(best.fill, best.model, { colorAllowed: options.colorAllowed });
   return { ...best, fill, limitedBy } as const;
 }
 
 /** The widest conversion, at most `limit` studs, that stays within `maxLayers` brick layers. */
-export function maxModelWidth(triangles: ModelTriangles, limit: number, maxLayers = MAX_VOXEL_LAYERS) {
+export function maxModelWidth(
+  triangles: ModelTriangles,
+  limit: number,
+  maxLayers = MAX_VOXEL_LAYERS,
+) {
   const bounds = modelBounds(triangles);
   let width = limit;
   while (width > 1 && grid(bounds, width).layers > maxLayers) width -= 1;
@@ -563,7 +626,10 @@ export function voxelizeTriangles(
     );
   const palette = options.palette.map(({ id, hex }) => {
     const value = Number.parseInt(hex.slice(1), 16);
-    return { id, lab: lab(((value >> 16) & 255) / 255, ((value >> 8) & 255) / 255, (value & 255) / 255) };
+    return {
+      id,
+      lab: lab(((value >> 16) & 255) / 255, ((value >> 8) & 255) / 255, (value & 255) / 255),
+    };
   });
   // Perceptual (CIE76) distance: plain RGB distance prefers LDraw's blue-tinted Black over
   // Dark Bluish Grey for dark stone and wood.
@@ -592,7 +658,9 @@ export function voxelizeTriangles(
     a.fromArray(triangles.positions, triangle * 9);
     b.fromArray(triangles.positions, triangle * 9 + 3).sub(a);
     c.fromArray(triangles.positions, triangle * 9 + 6).sub(a);
-    b.cross(c).normalize().toArray(normals, triangle * 3);
+    b.cross(c)
+      .normalize()
+      .toArray(normals, triangle * 3);
   }
   // Triangles with a decoded see-through texture are sampled texel by texel below; the rest
   // are solid surfaces found through the BVH.
@@ -601,7 +669,8 @@ export function voxelizeTriangles(
     return mask >= 0 && !!triangles.alphaMasks?.[mask];
   };
   const solid: number[] = [];
-  for (let triangle = 0; triangle < count; triangle += 1) if (!masked(triangle)) solid.push(triangle);
+  for (let triangle = 0; triangle < count; triangle += 1)
+    if (!masked(triangle)) solid.push(triangle);
   const solidPositions = new Float32Array(Math.max(1, solid.length) * 9);
   solid.forEach((triangle, position) =>
     solidPositions.set(triangles.positions.subarray(triangle * 9, triangle * 9 + 9), position * 9),
@@ -611,7 +680,8 @@ export function voxelizeTriangles(
   // The BVH reorders the index; the triangle is its first vertex / 3, mapped back through solid.
   const bvh = new MeshBVH(geometry);
   const index = geometry.index!;
-  const originalOf = (triangleIndex: number) => solid[Math.floor(index.getX(triangleIndex * 3) / 3)] ?? -1;
+  const originalOf = (triangleIndex: number) =>
+    solid[Math.floor(index.getX(triangleIndex * 3) / 3)] ?? -1;
   const cellBox = (layer: number, x: number, z: number, box: Box3) => {
     // A hair of inset keeps faces that merely end on a boundary out of the neighbouring cell.
     const inset = 0.001;
@@ -635,14 +705,28 @@ export function voxelizeTriangles(
     for (let layer = 0; layer < layers; layer += 1)
       for (let z = 0; z < depth; z += 1)
         for (let x = 0; x < width; x += 1)
-          occupied[cellIndex(layer, x, z)] = bvh.intersectsBox(cellBox(layer, x, z, box), identity) ? 1 : 0;
-  const maskColor = sampleMasks(triangles, triangleColor, { start, stud, layerHeight, width, depth, layers });
+          occupied[cellIndex(layer, x, z)] = bvh.intersectsBox(cellBox(layer, x, z, box), identity)
+            ? 1
+            : 0;
+  const maskColor = sampleMasks(triangles, triangleColor, {
+    start,
+    stud,
+    layerHeight,
+    width,
+    depth,
+    layers,
+  });
   for (const [cell] of maskColor) occupied[cell] = 1;
   // Open air reachable from outside the grid, through empty cells.
   const outside = new Uint8Array(occupied.length);
   const queue: number[] = [];
   const directions = [
-    [1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1],
+    [1, 0, 0],
+    [-1, 0, 0],
+    [0, 1, 0],
+    [0, -1, 0],
+    [0, 0, 1],
+    [0, 0, -1],
   ] as const;
   const neighbour = (cell: number, [dx, dy, dz]: readonly [number, number, number]) => {
     const x = (cell % width) + dx;
@@ -691,30 +775,39 @@ export function voxelizeTriangles(
     const facing = new Map<number, number>();
     const any = new Map<number, number>();
     slopeNormal.set(0, 0, 0);
-    if (solid.length) bvh.shapecast({
-      intersectsBounds: (bounds) => bounds.intersectsBox(box),
-      intersectsTriangle: (triangle, triangleIndex) => {
-        if (!triangle.intersectsBox(box)) return;
-        const original = originalOf(triangleIndex);
-        const color = triangleColor[original];
-        // Faces vote by the area they cover inside this cell.
-        const weight =
-          (clippedArea(triangles.positions, original, box) || 1e-9) * (triangles.unpainted?.[original] ? 1e-6 : 1);
-        any.set(color, (any.get(color) ?? 0) + weight);
-        const faces = open.some(
-          ([dx, dy, dz]) =>
-            normals[original * 3] * dx + normals[original * 3 + 1] * dy + normals[original * 3 + 2] * dz > 0.2,
-        );
-        if (faces) facing.set(color, (facing.get(color) ?? 0) + weight);
-        // Face winding is unreliable in downloaded models, so orient each normal toward the open air.
-        const [nx, ny, nz] = [normals[original * 3], normals[original * 3 + 1], normals[original * 3 + 2]];
-        const toward = open.reduce((sum, [dx, dy, dz]) => sum + nx * dx + ny * dy + nz * dz, 0);
-        const sign = toward < 0 || (toward === 0 && ny < 0) ? -weight : weight;
-        slopeNormal.x += nx * sign;
-        slopeNormal.y += ny * sign;
-        slopeNormal.z += nz * sign;
-      },
-    });
+    if (solid.length)
+      bvh.shapecast({
+        intersectsBounds: (bounds) => bounds.intersectsBox(box),
+        intersectsTriangle: (triangle, triangleIndex) => {
+          if (!triangle.intersectsBox(box)) return;
+          const original = originalOf(triangleIndex);
+          const color = triangleColor[original];
+          // Faces vote by the area they cover inside this cell.
+          const weight =
+            (clippedArea(triangles.positions, original, box) || 1e-9) *
+            (triangles.unpainted?.[original] ? 1e-6 : 1);
+          any.set(color, (any.get(color) ?? 0) + weight);
+          const faces = open.some(
+            ([dx, dy, dz]) =>
+              normals[original * 3] * dx +
+                normals[original * 3 + 1] * dy +
+                normals[original * 3 + 2] * dz >
+              0.2,
+          );
+          if (faces) facing.set(color, (facing.get(color) ?? 0) + weight);
+          // Face winding is unreliable in downloaded models, so orient each normal toward the open air.
+          const [nx, ny, nz] = [
+            normals[original * 3],
+            normals[original * 3 + 1],
+            normals[original * 3 + 2],
+          ];
+          const toward = open.reduce((sum, [dx, dy, dz]) => sum + nx * dx + ny * dy + nz * dz, 0);
+          const sign = toward < 0 || (toward === 0 && ny < 0) ? -weight : weight;
+          slopeNormal.x += nx * sign;
+          slopeNormal.y += ny * sign;
+          slopeNormal.z += nz * sign;
+        },
+      });
     slopes[cell] = downhill(slopeNormal);
     const votes = facing.size ? facing : any;
     let best: number | null = null;
@@ -730,7 +823,9 @@ export function voxelizeTriangles(
     layers,
     cells: despeckle(cells, width, depth, layers),
     slopes,
-    openings: solid.length ? findOpenings(bvh, { start, stud, layerHeight, width, depth, layers }) : [],
+    openings: solid.length
+      ? findOpenings(bvh, { start, stud, layerHeight, width, depth, layers })
+      : [],
   };
 }
 
@@ -747,7 +842,14 @@ const MASK_COVERAGE = 0.1;
 function sampleMasks(
   triangles: ModelTriangles,
   triangleColor: Int32Array,
-  grid: { start: Vector3; stud: number; layerHeight: number; width: number; depth: number; layers: number },
+  grid: {
+    start: Vector3;
+    stud: number;
+    layerHeight: number;
+    width: number;
+    depth: number;
+    layers: number;
+  },
 ) {
   const { start, stud, layerHeight, width, depth, layers } = grid;
   const total = new Map<number, number>();
@@ -795,7 +897,8 @@ function sampleMasks(
         }
       }
   }
-  for (const [cell] of color) if ((opaque.get(cell) ?? 0) < MASK_COVERAGE * total.get(cell)!) color.delete(cell);
+  for (const [cell] of color)
+    if ((opaque.get(cell) ?? 0) < MASK_COVERAGE * total.get(cell)!) color.delete(cell);
   return color;
 }
 
@@ -805,8 +908,12 @@ function downhill(normal: Vector3): VoxelDirection | null {
   normal.normalize();
   if (normal.y < 0.25 || normal.y > 0.95) return null;
   return Math.abs(normal.x) >= Math.abs(normal.z)
-    ? normal.x > 0 ? 'x+' : 'x-'
-    : normal.z > 0 ? 'z+' : 'z-';
+    ? normal.x > 0
+      ? 'x+'
+      : 'x-'
+    : normal.z > 0
+      ? 'z+'
+      : 'z-';
 }
 
 /** Openings at most this many cells wide and layers tall; larger recesses are setbacks. */
@@ -819,7 +926,14 @@ const MAX_OPENING = { width: 6, height: 8 };
  */
 function findOpenings(
   bvh: MeshBVH,
-  grid: { start: Vector3; stud: number; layerHeight: number; width: number; depth: number; layers: number },
+  grid: {
+    start: Vector3;
+    stud: number;
+    layerHeight: number;
+    width: number;
+    depth: number;
+    layers: number;
+  },
 ): VoxelOpening[] {
   const { start, stud, layerHeight, layers } = grid;
   const openings: VoxelOpening[] = [];
@@ -859,7 +973,8 @@ function findOpenings(
         for (let dl = -3; dl <= 3; dl += 1)
           for (let du = -3; du <= 3; du += 1) {
             const [l, v] = [layer + dl, u + du];
-            if (l >= 0 && v >= 0 && l < layers && v < span && wall[l * span + v]) around.push(seen[l * span + v]);
+            if (l >= 0 && v >= 0 && l < layers && v < span && wall[l * span + v])
+              around.push(seen[l * span + v]);
           }
         if (around.length < 8) continue;
         around.sort((a, b) => a - b);
@@ -878,8 +993,20 @@ function findOpenings(
         const pixel = queue.pop()!;
         component.push(pixel);
         const [layer, u] = [Math.floor(pixel / span), pixel % span];
-        for (const [l, v] of [[layer + 1, u], [layer - 1, u], [layer, u + 1], [layer, u - 1]])
-          if (l >= 0 && v >= 0 && l < layers && v < span && recessed[l * span + v] && !visited[l * span + v]) {
+        for (const [l, v] of [
+          [layer + 1, u],
+          [layer - 1, u],
+          [layer, u + 1],
+          [layer, u - 1],
+        ])
+          if (
+            l >= 0 &&
+            v >= 0 &&
+            l < layers &&
+            v < span &&
+            recessed[l * span + v] &&
+            !visited[l * span + v]
+          ) {
             visited[l * span + v] = 1;
             queue.push(l * span + v);
           }
@@ -888,7 +1015,8 @@ function findOpenings(
       const ls = component.map((pixel) => Math.floor(pixel / span));
       const [u0, u1, l0, l1] = [Math.min(...us), Math.max(...us), Math.min(...ls), Math.max(...ls)];
       const [w, h] = [u1 - u0 + 1, l1 - l0 + 1];
-      if (w > MAX_OPENING.width || h > MAX_OPENING.height || component.length < 0.5 * w * h) continue;
+      if (w > MAX_OPENING.width || h > MAX_OPENING.height || component.length < 0.5 * w * h)
+        continue;
       // Most of the ring around it must be wall, so the edge of a setback does not count.
       let ring = 0;
       let solid = 0;
@@ -916,19 +1044,27 @@ function findOpenings(
           Math.abs(a.depthIn - b.depthIn) < 0.5 * stud &&
           Math.max(a.l1, b.l1) - a.l0 + 1 <= MAX_OPENING.height
         ) {
-          boxes[lower] = { ...a, u0: Math.min(a.u0, b.u0), u1: Math.max(a.u1, b.u1), l1: Math.max(a.l1, b.l1) };
+          boxes[lower] = {
+            ...a,
+            u0: Math.min(a.u0, b.u0),
+            u1: Math.max(a.u1, b.u1),
+            l1: Math.max(a.l1, b.l1),
+          };
           boxes.splice(upper, 1);
           upper = lower;
         }
       }
     for (const { u0, u1, l0, l1, depthIn } of boxes) {
-      const plane = Math.floor((sign > 0 ? across * stud - depthIn : depthIn) / stud + (sign > 0 ? -0.05 : 0.05));
+      const plane = Math.floor(
+        (sign > 0 ? across * stud - depthIn : depthIn) / stud + (sign > 0 ? -0.05 : 0.05),
+      );
       if (!(plane >= 0 && plane < across)) continue;
       // A window has wall flush with the facade below it; a door has only ground, steps or nothing.
       let wallBelow = false;
       for (let l = 0; l < l0 && !wallBelow; l += 1)
         for (let v = u0; v <= u1; v += 1)
-          if (wall[l * span + v] && Math.abs(seen[l * span + v] - depthIn) <= 0.15 * stud) wallBelow = true;
+          if (wall[l * span + v] && Math.abs(seen[l * span + v] - depthIn) <= 0.15 * stud)
+            wallBelow = true;
       const h = l1 - l0 + 1;
       openings.push({
         kind: h >= 3 && !wallBelow ? 'door' : 'window',
@@ -947,16 +1083,23 @@ function findOpenings(
 
 /** Area of a triangle (by index into 9-value positions) inside a box, by polygon clipping. */
 function clippedArea(positions: Float32Array, triangle: number, box: Box3) {
-  let polygon = [0, 1, 2].map((corner) => new Vector3().fromArray(positions, triangle * 9 + corner * 3));
+  let polygon = [0, 1, 2].map((corner) =>
+    new Vector3().fromArray(positions, triangle * 9 + corner * 3),
+  );
   for (const axis of ['x', 'y', 'z'] as const)
-    for (const [limit, sign] of [[box.min[axis], 1], [box.max[axis], -1]] as const) {
+    for (const [limit, sign] of [
+      [box.min[axis], 1],
+      [box.max[axis], -1],
+    ] as const) {
       const inside = (point: Vector3) => (point[axis] - limit) * sign >= 0;
       const clipped: Vector3[] = [];
       polygon.forEach((point, position) => {
         const next = polygon[(position + 1) % polygon.length];
         if (inside(point)) clipped.push(point);
         if (inside(point) !== inside(next))
-          clipped.push(point.clone().lerp(next, (limit - point[axis]) / (next[axis] - point[axis])));
+          clipped.push(
+            point.clone().lerp(next, (limit - point[axis]) / (next[axis] - point[axis])),
+          );
       });
       polygon = clipped;
       if (polygon.length < 3) return 0;
@@ -977,7 +1120,8 @@ function lab(red: number, green: number, blue: number): [number, number, number]
   const [r, g, b] = [red, green, blue].map((value) =>
     value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4,
   );
-  const f = (value: number) => (value > 216 / 24389 ? Math.cbrt(value) : (24389 / 27 * value + 16) / 116);
+  const f = (value: number) =>
+    value > 216 / 24389 ? Math.cbrt(value) : ((24389 / 27) * value + 16) / 116;
   const x = f((0.4124 * r + 0.3576 * g + 0.1805 * b) / 0.95047);
   const y = f(0.2126 * r + 0.7152 * g + 0.0722 * b);
   const z = f((0.0193 * r + 0.1192 * g + 0.9505 * b) / 1.08883);
@@ -1000,12 +1144,21 @@ function despeckle(cells: (number | null)[], width: number, depth: number, layer
           for (let dz = -1; dz <= 1; dz += 1)
             for (let dx = -1; dx <= 1; dx += 1) {
               const [nx, ny, nz] = [x + dx, layer + dy, z + dz];
-              if ((!dx && !dy && !dz) || nx < 0 || nz < 0 || ny < 0 || nx >= width || nz >= depth || ny >= layers)
+              if (
+                (!dx && !dy && !dz) ||
+                nx < 0 ||
+                nz < 0 ||
+                ny < 0 ||
+                nx >= width ||
+                nz >= depth ||
+                ny >= layers
+              )
                 continue;
               const color = cells[(ny * depth + nz) * width + nx];
               if (color !== null) counts.set(color, (counts.get(color) ?? 0) + 1);
             }
-        if (counts.has(own) || [...counts.values()].reduce((sum, count) => sum + count, 0) < 2) continue;
+        if (counts.has(own) || [...counts.values()].reduce((sum, count) => sum + count, 0) < 2)
+          continue;
         result[(layer * depth + z) * width + x] = [...counts].sort((a, b) => b[1] - a[1])[0][0];
       }
   return result;

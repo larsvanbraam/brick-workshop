@@ -1061,12 +1061,24 @@ describe('architectural part families', () => {
       rotation: 90 as const,
     }));
     const posts = [0, 5].map((x) => ({ ...base, id: `post-${x}`, partId: '3005', x, y: 3 }));
-    const fanlight = { ...base, id: 'fanlight', partId: '20309', x: 1, y: 6, rotation: 90 as const };
+    const fanlight = {
+      ...base,
+      id: 'fanlight',
+      partId: '20309',
+      x: 1,
+      y: 6,
+      rotation: 90 as const,
+    };
     const arch = { ...base, id: 'arch', partId: '15254', y: 6, rotation: 90 as const };
     const bricks = [...jambs, ...frames, ...posts, fanlight, arch];
     expect(validateAssembly({ ...empty, bricks })).toEqual([]);
     // Turned the other way round it still fits; off centre it runs into the arch's legs.
-    expect(validateAssembly({ ...empty, bricks: [...bricks.slice(0, -2), { ...fanlight, rotation: 270 }, arch] })).toEqual([]);
+    expect(
+      validateAssembly({
+        ...empty,
+        bricks: [...bricks.slice(0, -2), { ...fanlight, rotation: 270 }, arch],
+      }),
+    ).toEqual([]);
     expect(
       validateAssembly({ ...empty, bricks: [...bricks.slice(0, -2), { ...fanlight, x: 2 }, arch] }),
     ).not.toEqual([]);

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Box,
   Download,
@@ -10,7 +10,7 @@ import {
   Square,
   Trash2,
   X,
-} from "lucide-react";
+} from 'lucide-react';
 import {
   encodeVoxelModel,
   evaluateAssemblyPolicy,
@@ -19,20 +19,16 @@ import {
   MAX_HEIGHT,
   MAX_PIECES,
   MAX_VOXEL_LAYERS,
-} from "@brick-workshop/engine";
-import type {
-  Assembly,
-  EditPolicy,
-  EncodedVoxelModel,
-} from "@brick-workshop/engine";
-import { Scene } from "./Scene";
-import { useLDrawLibrary } from "./ldraw";
-import { captureCanvas, preparePhoto, streamGeneration } from "./generation";
-import type { ModelTriangles } from "./model-reference";
+} from '@brick-workshop/engine';
+import type { Assembly, EditPolicy, EncodedVoxelModel } from '@brick-workshop/engine';
+import { Scene } from './Scene';
+import { useLDrawLibrary } from './ldraw';
+import { captureCanvas, preparePhoto, streamGeneration } from './generation';
+import type { ModelTriangles } from './model-reference';
 
 // The model converter (openskp, three.js loaders) is loaded on first use.
-const loadModelReference = () => import("./model-reference");
-const MODEL_ACCEPT = ".skp,.dae,.glb";
+const loadModelReference = () => import('./model-reference');
+const MODEL_ACCEPT = '.skp,.dae,.glb';
 /**
  * Pieces a model conversion may use. More pieces allow a wider, more detailed model, but a
  * revision sends the whole draft to Claude, so token use grows with it.
@@ -43,61 +39,55 @@ const MODEL_PROMPT =
 /** Earlier default briefs, replaced when a model is converted again. */
 const MODEL_PROMPTS = [
   MODEL_PROMPT,
-  "Finish this brick model converted from the reference 3D model. Keep the walls, roof slopes and window and door frames that are already placed. Close gaps where the roof or walls are missing, add details the layer maps show but the build lacks (railings, chimney tops, ridge caps), and fix colors.",
-  "Refine this shell converted from the reference 3D model: add sloped roof pieces where the roof layers were skipped, door and window frames where the model has openings, and fix colors. Keep the existing walls.",
-  "Refine this shell converted from the reference 3D model: replace the stepped roof edges with sloped roof pieces, add door and window frames where the model has openings, and fix colors. Keep the existing walls.",
+  'Finish this brick model converted from the reference 3D model. Keep the walls, roof slopes and window and door frames that are already placed. Close gaps where the roof or walls are missing, add details the layer maps show but the build lacks (railings, chimney tops, ridge caps), and fix colors.',
+  'Refine this shell converted from the reference 3D model: add sloped roof pieces where the roof layers were skipped, door and window frames where the model has openings, and fix colors. Keep the existing walls.',
+  'Refine this shell converted from the reference 3D model: replace the stepped roof edges with sloped roof pieces, add door and window frames where the model has openings, and fix colors. Keep the existing walls.',
 ];
-import type {
-  DraftResult,
-  GenerationEvent,
-  PhotoReference,
-} from "./generation";
-import "./generation.css";
+import type { DraftResult, GenerationEvent, PhotoReference } from './generation';
+import './generation.css';
 
 const ignore = () => {};
 
 /** What each workshop tool call means, shown while Claude works. */
 const TOOL_ACTIVITY: Record<string, string> = {
-  brick_catalog: "Browsing the brick catalog",
-  brick_techniques: "Looking up building techniques",
-  brick_candidates: "Choosing parts",
-  brick_color_status: "Checking colors",
-  brick_board: "Reviewing the board",
-  brick_inspect: "Inspecting the build",
-  brick_connection: "Checking connections",
-  brick_physics: "Testing stability",
-  brick_preview_patch: "Trying out pieces",
-  brick_apply_patch: "Placing bricks",
-  brick_place: "Placing bricks",
-  brick_remove: "Removing bricks",
-  brick_export: "Finishing the draft",
+  brick_catalog: 'Browsing the brick catalog',
+  brick_techniques: 'Looking up building techniques',
+  brick_candidates: 'Choosing parts',
+  brick_color_status: 'Checking colors',
+  brick_board: 'Reviewing the board',
+  brick_inspect: 'Inspecting the build',
+  brick_connection: 'Checking connections',
+  brick_physics: 'Testing stability',
+  brick_preview_patch: 'Trying out pieces',
+  brick_apply_patch: 'Placing bricks',
+  brick_place: 'Placing bricks',
+  brick_remove: 'Removing bricks',
+  brick_export: 'Finishing the draft',
 };
 function describeActivity(event: GenerationEvent | undefined) {
-  if (!event) return "Reading the brief";
-  if (event.type === "text") return "Planning the build";
-  const activity = TOOL_ACTIVITY[event.tool ?? ""] ?? "Working";
+  if (!event) return 'Reading the brief';
+  if (event.type === 'text') return 'Planning the build';
+  const activity = TOOL_ACTIVITY[event.tool ?? ''] ?? 'Working';
   return event.ok === false ? `${activity} (retrying)` : activity;
 }
 function formatElapsed(seconds: number) {
-  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
 }
 
 interface ServerStatus {
   configured: boolean;
-  backend?: "api" | "claude-code" | null;
+  backend?: 'api' | 'claude-code' | null;
   busy: boolean;
   model: string;
 }
-async function readServerStatus(
-  signal?: AbortSignal,
-): Promise<ServerStatus | null> {
+async function readServerStatus(signal?: AbortSignal): Promise<ServerStatus | null> {
   try {
-    const response = await fetch("/api/workshop/status", { signal });
+    const response = await fetch('/api/workshop/status', { signal });
     if (!response.ok) return null;
     const value = await response.json();
-    return typeof value.configured === "boolean" &&
-      typeof value.busy === "boolean" &&
-      typeof value.model === "string"
+    return typeof value.configured === 'boolean' &&
+      typeof value.busy === 'boolean' &&
+      typeof value.model === 'string'
       ? value
       : null;
   } catch {
@@ -108,7 +98,7 @@ async function readServerStatus(
 export function GenerationPanel({
   assembly,
   policy,
-  initialPrompt = "",
+  initialPrompt = '',
   onClose,
   onApply,
   onExport,
@@ -128,14 +118,12 @@ export function GenerationPanel({
   const scene = useRef<HTMLDivElement>(null);
   const [status, setStatus] = useState<ServerStatus | null>(null);
   const [prompt, setPrompt] = useState(initialPrompt);
-  const [source, setSource] = useState<"new" | "current" | "draft">("new");
+  const [source, setSource] = useState<'new' | 'current' | 'draft'>('new');
   const [maxPieces, setMaxPieces] = useState(600);
   const [maxTurns, setMaxTurns] = useState(24);
   const [observedOnly, setObservedOnly] = useState(true);
   const [photos, setPhotos] = useState<PhotoReference[]>([]);
-  const [modelTriangles, setModelTriangles] = useState<ModelTriangles | null>(
-    null,
-  );
+  const [modelTriangles, setModelTriangles] = useState<ModelTriangles | null>(null);
   const [modelWidth, setModelWidth] = useState(MAX_BUILD_AREA);
   // Minifig scale suits doors, windows and railings; off, the model grows to the piece budget.
   const [minifigScale, setMinifigScale] = useState(true);
@@ -151,22 +139,16 @@ export function GenerationPanel({
   const [events, setEvents] = useState<GenerationEvent[]>([]);
   const [turn, setTurn] = useState(0);
   const [elapsed, setElapsed] = useState(0);
-  const [usage, setUsage] = useState<DraftResult["usage"]>({
+  const [usage, setUsage] = useState<DraftResult['usage']>({
     inputTokens: 0,
     outputTokens: 0,
   });
-  const [error, setError] = useState("");
-  const [view, setView] = useState<"perspective" | "top" | "front">(
-    "perspective",
-  );
+  const [error, setError] = useState('');
+  const [view, setView] = useState<'perspective' | 'top' | 'front'>('perspective');
   const [cameraRevision, setCameraRevision] = useState(0);
-  const [previewMode, setPreviewMode] = useState<"draft" | "reference">(
-    "draft",
-  );
+  const [previewMode, setPreviewMode] = useState<'draft' | 'reference'>('draft');
   const [photoIndex, setPhotoIndex] = useState(0);
-  const library = useLDrawLibrary(
-    result?.assembly.bricks.map((brick) => brick.partId) ?? [],
-  );
+  const library = useLDrawLibrary(result?.assembly.bricks.map((brick) => brick.partId) ?? []);
   const assessment = useMemo(
     () => (result ? evaluateAssemblyPolicy(result.assembly, policy) : null),
     [result, policy],
@@ -178,10 +160,7 @@ export function GenerationPanel({
     if (!busy) return;
     const started = Date.now();
     setElapsed(0);
-    const timer = setInterval(
-      () => setElapsed(Math.floor((Date.now() - started) / 1000)),
-      1000,
-    );
+    const timer = setInterval(() => setElapsed(Math.floor((Date.now() - started) / 1000)), 1000);
     return () => clearInterval(timer);
   }, [busy]);
 
@@ -206,9 +185,9 @@ export function GenerationPanel({
 
   async function addPhotos(files: FileList | null) {
     if (!files?.length) return;
-    setError("");
+    setError('');
     if (photos.length + files.length > 4) {
-      setError("Use at most four reference photos.");
+      setError('Use at most four reference photos.');
       return;
     }
     setProcessing(true);
@@ -218,9 +197,7 @@ export function GenerationPanel({
       setPhotos((current) => [...current, ...next]);
       setConsent(false);
     } catch (error) {
-      setError(
-        error instanceof Error ? error.message : "Photo could not be decoded.",
-      );
+      setError(error instanceof Error ? error.message : 'Photo could not be decoded.');
     } finally {
       setProcessing(false);
     }
@@ -231,14 +208,10 @@ export function GenerationPanel({
     maxWidth: number,
     observedColors = observedOnly,
   ) {
-    setError("");
+    setError('');
     try {
-      const { MINIFIG_STUD_METERS, fitModel, modelColorPolicy } =
-        await loadModelReference();
-      const { palette, colorAllowed } = modelColorPolicy(
-        policy.evidence,
-        observedColors,
-      );
+      const { MINIFIG_STUD_METERS, fitModel, modelColorPolicy } = await loadModelReference();
+      const { palette, colorAllowed } = modelColorPolicy(policy.evidence, observedColors);
       const { width, model, fill, limitedBy } = fitModel(triangles, {
         maxWidth,
         pieceBudget: MODEL_PIECE_BUDGET,
@@ -253,49 +226,47 @@ export function GenerationPanel({
       setResult({
         assembly: { ...fill.assembly, name: `${triangles.name} (model)` },
         complete: true,
-        reason: "model-fill",
+        reason: 'model-fill',
         text: [
           `Converted ${triangles.name} into ${pieces} pieces without AI, ${width} studs wide`,
-          limitedBy === "support"
-            ? " (smaller than the scale asked for: larger, too much of it overhangs with nothing under it)."
-            : limitedBy === "scale"
-            ? " (minifig scale, about 34 cm per stud, so doors and windows fit)."
-            : limitedBy === "height"
-            ? ` (the widest that stays within ${MAX_VOXEL_LAYERS} brick layers).`
-            : limitedBy === "pieces"
-              ? ` (the widest that fits ${MODEL_PIECE_BUDGET} pieces).`
-              : ".",
+          limitedBy === 'support'
+            ? ' (smaller than the scale asked for: larger, too much of it overhangs with nothing under it).'
+            : limitedBy === 'scale'
+              ? ' (minifig scale, about 34 cm per stud, so doors and windows fit).'
+              : limitedBy === 'height'
+                ? ` (the widest that stays within ${MAX_VOXEL_LAYERS} brick layers).`
+                : limitedBy === 'pieces'
+                  ? ` (the widest that fits ${MODEL_PIECE_BUDGET} pieces).`
+                  : '.',
           ` Details: ${slopes} roof slopes, ${windows} window and ${doors} door frames, ${inserts} windows and doors in them, ${railings} railings, ${masonry} masonry bricks, ${caps} wall caps, ${ridges} ridge pieces, ${floor} floor plates.`,
           triangles.omitted?.length &&
-            ` Left out as separate from the model: ${triangles.omitted.join(", ")}.`,
+            ` Left out as separate from the model: ${triangles.omitted.join(', ')}.`,
           fill.skippedCells > 0 &&
             ` ${fill.skippedCells} of ${fill.filledCells} cells had no support or no part in their color and were left out.`,
           observedColors &&
             ` Observed colors only allows ${palette.length} colors; turn it off for greys, browns and tans.`,
         ]
           .filter(Boolean)
-          .join(""),
+          .join(''),
         usage: { inputTokens: 0, outputTokens: 0 },
       });
       setModelReference({ ...encodeVoxelModel(model), origin: fill.origin });
-      setSource("draft");
+      setSource('draft');
       setMaxPieces((current) => Math.min(MAX_PIECES, Math.max(current, pieces + 100)));
       setPrompt((current) =>
         !current || MODEL_PROMPTS.includes(current) ? MODEL_PROMPT : current,
       );
       setEvents([]);
-      setPreviewMode("draft");
+      setPreviewMode('draft');
       setCameraRevision((current) => current + 1);
     } catch (error) {
-      setError(
-        error instanceof Error ? error.message : "Model conversion failed.",
-      );
+      setError(error instanceof Error ? error.message : 'Model conversion failed.');
     }
   }
 
   async function addModel(file: File | undefined) {
     if (!file) return;
-    setError("");
+    setError('');
     setProcessing(true);
     try {
       const { loadModelTriangles } = await loadModelReference();
@@ -308,14 +279,15 @@ export function GenerationPanel({
       if (triangles.preview && photos.length < 4) {
         const preview = await preparePhoto(triangles.preview).catch(() => null);
         if (preview) {
-          setPhotos((current) => [...current.filter((photo) => !photo.name.endsWith(" preview")), preview]);
+          setPhotos((current) => [
+            ...current.filter((photo) => !photo.name.endsWith(' preview')),
+            preview,
+          ]);
           setConsent(false);
         }
       }
     } catch (error) {
-      setError(
-        error instanceof Error ? error.message : "Model could not be read.",
-      );
+      setError(error instanceof Error ? error.message : 'Model could not be read.');
     } finally {
       setProcessing(false);
     }
@@ -324,21 +296,21 @@ export function GenerationPanel({
   async function generate() {
     if (busy || !consent || stale) return;
     const initial =
-      source === "current"
+      source === 'current'
         ? original
-        : source === "draft" && result
+        : source === 'draft' && result
           ? result.assembly
-          : { name: "AI draft", buildArea: getBuildArea(original), bricks: [] };
+          : { name: 'AI draft', buildArea: getBuildArea(original), bricks: [] };
     // The draft preview shows Claude what it is revising; large drafts are not listed in full.
     const canvas =
-      source === "draft" && result && previewMode === "draft"
-        ? scene.current?.querySelector("canvas")
+      source === 'draft' && result && previewMode === 'draft'
+        ? scene.current?.querySelector('canvas')
         : null;
     const render = canvas ? captureCanvas(canvas) : null;
     const controller = new AbortController();
     abort.current = controller;
     setBusy(true);
-    setError("");
+    setError('');
     setEvents([]);
     setTurn(0);
     setUsage({ inputTokens: 0, outputTokens: 0 });
@@ -348,10 +320,8 @@ export function GenerationPanel({
           prompt,
           initial,
           images: photos.map(({ mediaType, data }) => ({ mediaType, data })),
-          ...(render ? { render: { mediaType: "image/jpeg", data: render } } : {}),
-          ...(source === "draft" && modelReference
-            ? { model: modelReference }
-            : {}),
+          ...(render ? { render: { mediaType: 'image/jpeg', data: render } } : {}),
+          ...(source === 'draft' && modelReference ? { model: modelReference } : {}),
           consent,
           maxPieces,
           maxTurns,
@@ -364,33 +334,33 @@ export function GenerationPanel({
         },
         controller.signal,
         (event) => {
-          if (event.type === "turn") setTurn(event.turn ?? 0);
-          if (event.type === "usage")
+          if (event.type === 'turn') setTurn(event.turn ?? 0);
+          if (event.type === 'usage')
             setUsage({
               inputTokens: event.inputTokens ?? 0,
               cachedInputTokens: event.cachedInputTokens ?? 0,
               outputTokens: event.outputTokens ?? 0,
             });
-          if (event.type === "tool" || event.type === "text")
+          if (event.type === 'tool' || event.type === 'text')
             setEvents((current) => [...current, event].slice(-12));
         },
       );
       setResult(next);
-      setSource("draft");
+      setSource('draft');
       // Leave room for a revision to add pieces as well as rework them.
       setMaxPieces((current) =>
         Math.min(MAX_PIECES, Math.max(current, next.assembly.bricks.length + 300)),
       );
       setUsage(next.usage);
-      setPreviewMode("draft");
+      setPreviewMode('draft');
       setCameraRevision((current) => current + 1);
     } catch (error) {
       setError(
         controller.signal.aborted
-          ? "Generation cancelled. Any earlier draft is retained."
+          ? 'Generation cancelled. Any earlier draft is retained.'
           : error instanceof Error
             ? error.message
-            : "Generation failed.",
+            : 'Generation failed.',
       );
     } finally {
       setBusy(false);
@@ -409,7 +379,7 @@ export function GenerationPanel({
         onClose();
       }}
       onKeyDown={(event) => {
-        if (event.key === "Escape") {
+        if (event.key === 'Escape') {
           event.preventDefault();
           onClose();
         }
@@ -423,12 +393,12 @@ export function GenerationPanel({
         <div className="generation-server">
           <span>
             {!status
-              ? "Server offline"
+              ? 'Server offline'
               : !status.configured
-                ? "API key not configured"
+                ? 'API key not configured'
                 : status.busy && !busy
-                  ? "Server busy"
-                  : status.backend === "claude-code"
+                  ? 'Server busy'
+                  : status.backend === 'claude-code'
                     ? `${status.model} · Claude Code login`
                     : status.model}
           </span>
@@ -464,11 +434,7 @@ export function GenerationPanel({
             <legend>Starting Point</legend>
             <div className="generation-source">
               {(
-                ["new", "current", ...(result ? ["draft"] : [])] as (
-                  | "new"
-                  | "current"
-                  | "draft"
-                )[]
+                ['new', 'current', ...(result ? ['draft'] : [])] as ('new' | 'current' | 'draft')[]
               ).map((value) => (
                 <label key={value}>
                   <input
@@ -478,17 +444,10 @@ export function GenerationPanel({
                     checked={source === value}
                     onChange={() => {
                       setSource(value);
-                      if (value === "current")
-                        setMaxPieces(Math.max(600, original.bricks.length));
+                      if (value === 'current') setMaxPieces(Math.max(600, original.bricks.length));
                     }}
                   />
-                  <span>
-                    {value === "new"
-                      ? "New"
-                      : value === "current"
-                        ? "Current"
-                        : "Draft"}
-                  </span>
+                  <span>{value === 'new' ? 'New' : value === 'current' ? 'Current' : 'Draft'}</span>
                 </label>
               ))}
             </div>
@@ -513,7 +472,7 @@ export function GenerationPanel({
               aria-label="Reference photos"
               onChange={(event) => {
                 void addPhotos(event.target.files);
-                event.target.value = "";
+                event.target.value = '';
               }}
             />
             <input
@@ -524,7 +483,7 @@ export function GenerationPanel({
               aria-label="3D model"
               onChange={(event) => {
                 void addModel(event.target.files?.[0]);
-                event.target.value = "";
+                event.target.value = '';
               }}
             />
             <div className="generation-attachments">
@@ -536,20 +495,16 @@ export function GenerationPanel({
                 onClick={() => upload.current?.click()}
               >
                 <ImagePlus size={16} />
-                {processing ? "Processing" : `Photos${photos.length ? ` ${photos.length}/4` : ""}`}
+                {processing ? 'Processing' : `Photos${photos.length ? ` ${photos.length}/4` : ''}`}
               </button>
               <button
                 type="button"
                 className="secondary"
-                title={`Convert a ${MODEL_ACCEPT.replaceAll(",", ", ")} model into bricks in your browser, without AI`}
+                title={`Convert a ${MODEL_ACCEPT.replaceAll(',', ', ')} model into bricks in your browser, without AI`}
                 onClick={() => modelUpload.current?.click()}
               >
                 <Box size={16} />
-                {processing
-                  ? "Processing"
-                  : modelTriangles
-                    ? "Replace model"
-                    : "3D model"}
+                {processing ? 'Processing' : modelTriangles ? 'Replace model' : '3D model'}
               </button>
             </div>
             {modelTriangles && (
@@ -567,13 +522,10 @@ export function GenerationPanel({
                       title={`View ${photo.name}`}
                       onClick={() => {
                         setPhotoIndex(index);
-                        setPreviewMode("reference");
+                        setPreviewMode('reference');
                       }}
                     >
-                      <img
-                        src={`data:${photo.mediaType};base64,${photo.data}`}
-                        alt={photo.name}
-                      />
+                      <img src={`data:${photo.mediaType};base64,${photo.data}`} alt={photo.name} />
                     </button>
                     <figcaption>
                       <span title={photo.name}>{photo.name}</span>
@@ -584,13 +536,11 @@ export function GenerationPanel({
                         title="Remove photo"
                         onClick={() => {
                           setPhotos((current) =>
-                            current.filter(
-                              (_photo, position) => position !== index,
-                            ),
+                            current.filter((_photo, position) => position !== index),
                           );
                           setPhotoIndex(0);
                           setConsent(false);
-                          if (photos.length === 1) setPreviewMode("draft");
+                          if (photos.length === 1) setPreviewMode('draft');
                         }}
                       >
                         <Trash2 size={13} />
@@ -649,9 +599,7 @@ export function GenerationPanel({
                     type="button"
                     className="secondary"
                     disabled={
-                      !Number.isInteger(modelWidth) ||
-                      modelWidth < 4 ||
-                      modelWidth > MAX_BUILD_AREA
+                      !Number.isInteger(modelWidth) || modelWidth < 4 || modelWidth > MAX_BUILD_AREA
                     }
                     onClick={() => void convertModel(modelTriangles, modelWidth)}
                   >
@@ -667,15 +615,14 @@ export function GenerationPanel({
                   onChange={(event) => setMinifigScale(event.target.checked)}
                 />
                 <span>
-                  Minifig scale: about 34 cm per stud, so doors and windows fit.
-                  Off, the model grows to the piece budget.
+                  Minifig scale: about 34 cm per stud, so doors and windows fit. Off, the model
+                  grows to the piece budget.
                 </span>
               </label>
               <p className="generation-hint">
-                Converted in your browser without AI, finished like a set (roof
-                slopes, windows and doors, railings, masonry, caps, ridge,
-                plate floor), as wide as the piece budget allows. Revise the draft
-                for specific additions.
+                Converted in your browser without AI, finished like a set (roof slopes, windows and
+                doors, railings, masonry, caps, ridge, plate floor), as wide as the piece budget
+                allows. Revise the draft for specific additions.
               </p>
             </details>
           </fieldset>
@@ -687,25 +634,21 @@ export function GenerationPanel({
               onChange={(event) => setConsent(event.target.checked)}
             />
             <span>
-              Send the brief, build, policy data and photos to Anthropic.{" "}
-              {status?.backend === "claude-code"
-                ? "Uses your Claude Code subscription limits."
-                : "API usage is billed."}
+              Send the brief, build, policy data and photos to Anthropic.{' '}
+              {status?.backend === 'claude-code'
+                ? 'Uses your Claude Code subscription limits.'
+                : 'API usage is billed.'}
             </span>
           </label>
           {(error || stale) && (
             <p className="generation-error" role="alert">
               {stale
-                ? "The current build changed. Reopen generation before applying a draft."
+                ? 'The current build changed. Reopen generation before applying a draft.'
                 : error}
             </p>
           )}
           {busy ? (
-            <button
-              type="button"
-              className="secondary"
-              onClick={() => abort.current?.abort()}
-            >
+            <button type="button" className="secondary" onClick={() => abort.current?.abort()}>
               <Square size={14} />
               Cancel generation
             </button>
@@ -729,39 +672,34 @@ export function GenerationPanel({
               }
             >
               <Sparkles size={16} />
-              {result && source === "draft" ? "Revise draft" : "Generate draft"}
+              {result && source === 'draft' ? 'Revise draft' : 'Generate draft'}
             </button>
           )}
           <div className="generation-progress" role="status">
             <span>
-              {busy && (
-                <LoaderCircle size={12} className="generation-spinner" />
-              )}
+              {busy && <LoaderCircle size={12} className="generation-spinner" />}
               {busy
                 ? `Turn ${turn} / ${maxTurns} · ${formatElapsed(elapsed)}`
                 : result
                   ? result.complete
-                    ? "Draft ready"
-                    : "Partial draft"
-                  : "Not started"}
+                    ? 'Draft ready'
+                    : 'Partial draft'
+                  : 'Not started'}
             </span>
             <span>
               {usage.inputTokens.toLocaleString()} new input
               {usage.cachedInputTokens
                 ? ` + ${usage.cachedInputTokens.toLocaleString()} cached`
-                : ""}{" "}
+                : ''}{' '}
               / {usage.outputTokens.toLocaleString()} output tokens
             </span>
           </div>
           {events.length > 0 && (
             <ol className="generation-events">
               {events.map((event, index) => (
-                <li
-                  key={index}
-                  className={event.ok === false ? "rejected" : ""}
-                >
-                  {event.type === "tool"
-                    ? `${event.tool} / ${event.ok ? "accepted" : "rejected"} / ${event.pieces} pieces`
+                <li key={index} className={event.ok === false ? 'rejected' : ''}>
+                  {event.type === 'tool'
+                    ? `${event.tool} / ${event.ok ? 'accepted' : 'rejected'} / ${event.pieces} pieces`
                     : event.text}
                 </li>
               ))}
@@ -774,8 +712,8 @@ export function GenerationPanel({
               <button
                 type="button"
                 role="tab"
-                aria-selected={previewMode === "draft"}
-                onClick={() => setPreviewMode("draft")}
+                aria-selected={previewMode === 'draft'}
+                onClick={() => setPreviewMode('draft')}
               >
                 Draft
               </button>
@@ -783,21 +721,19 @@ export function GenerationPanel({
                 <button
                   type="button"
                   role="tab"
-                  aria-selected={previewMode === "reference"}
-                  onClick={() => setPreviewMode("reference")}
+                  aria-selected={previewMode === 'reference'}
+                  onClick={() => setPreviewMode('reference')}
                 >
                   Reference
                 </button>
               )}
             </div>
-            {result && previewMode === "draft" && (
+            {result && previewMode === 'draft' && (
               <div className="generation-view-controls">
                 <select
                   aria-label="Draft view"
                   value={view}
-                  onChange={(event) =>
-                    setView(event.target.value as typeof view)
-                  }
+                  onChange={(event) => setView(event.target.value as typeof view)}
                 >
                   <option value="perspective">Perspective</option>
                   <option value="top">Top</option>
@@ -816,7 +752,7 @@ export function GenerationPanel({
             )}
           </div>
           <div className="generation-scene" ref={scene}>
-            {previewMode === "reference" && photos[photoIndex] ? (
+            {previewMode === 'reference' && photos[photoIndex] ? (
               <img
                 className="generation-reference"
                 src={`data:image/jpeg;base64,${photos[photoIndex].data}`}
@@ -842,9 +778,9 @@ export function GenerationPanel({
                 <span>No draft</span>
               </div>
             )}
-            {busy && previewMode === "draft" && (
+            {busy && previewMode === 'draft' && (
               <div
-                className={`generation-working${result ? " over-draft" : ""}`}
+                className={`generation-working${result ? ' over-draft' : ''}`}
                 aria-hidden="true"
               >
                 <div className="generation-bricks">
@@ -853,7 +789,7 @@ export function GenerationPanel({
                   <span />
                 </div>
                 <strong>
-                  {result ? "Claude is revising the draft" : "Claude is building a draft"}
+                  {result ? 'Claude is revising the draft' : 'Claude is building a draft'}
                 </strong>
                 <span key={activity} className="generation-activity">
                   {activity}…
@@ -882,30 +818,22 @@ export function GenerationPanel({
                 <div>
                   <dt>Board</dt>
                   <dd>
-                    {getBuildArea(result.assembly)} x{" "}
-                    {getBuildArea(result.assembly)} studs
+                    {getBuildArea(result.assembly)} x {getBuildArea(result.assembly)} studs
                   </dd>
                 </div>
                 <div>
                   <dt>Geometry</dt>
-                  <dd>
-                    {assessment?.geometry.length ? "Rejected" : "Validated"}
-                  </dd>
+                  <dd>{assessment?.geometry.length ? 'Rejected' : 'Validated'}</dd>
                 </div>
                 <div>
                   <dt>Gravity</dt>
-                  <dd>{assessment?.physical?.gravity ?? "Unknown"}</dd>
+                  <dd>{assessment?.physical?.gravity ?? 'Unknown'}</dd>
                 </div>
               </dl>
               <p>{result.text || `Partial result: ${result.reason}.`}</p>
-              <p>
-                Construction sequence, strength and physical buildability are
-                not certified.
-              </p>
+              <p>Construction sequence, strength and physical buildability are not certified.</p>
               {assessment && !assessment.allowed && (
-                <p className="generation-error">
-                  {assessment.issues[0].message}
-                </p>
+                <p className="generation-error">{assessment.issues[0].message}</p>
               )}
             </div>
           )}
@@ -924,16 +852,10 @@ export function GenerationPanel({
         <button
           type="button"
           className="primary"
-          disabled={
-            !result?.assembly.bricks.length ||
-            busy ||
-            stale ||
-            !assessment?.allowed
-          }
+          disabled={!result?.assembly.bricks.length || busy || stale || !assessment?.allowed}
           onClick={() => {
             if (result && onApply(result.assembly, original)) onClose();
-            else
-              setError("Draft could not be applied under the current policy.");
+            else setError('Draft could not be applied under the current policy.');
           }}
         >
           <Sparkles size={15} />

@@ -38,15 +38,22 @@ export const PLATE_STUDS = 0.4;
 function bounds(shape: SculptShape): [Vec3, Vec3] {
   const [min, max] = solidBounds(shape);
   return [
-    [0, 1, 2].map((axis) => Math.max(min[axis], shape.clipMin?.[axis] ?? -Infinity)) as unknown as Vec3,
-    [0, 1, 2].map((axis) => Math.min(max[axis], shape.clipMax?.[axis] ?? Infinity)) as unknown as Vec3,
+    [0, 1, 2].map((axis) =>
+      Math.max(min[axis], shape.clipMin?.[axis] ?? -Infinity),
+    ) as unknown as Vec3,
+    [0, 1, 2].map((axis) =>
+      Math.min(max[axis], shape.clipMax?.[axis] ?? Infinity),
+    ) as unknown as Vec3,
   ];
 }
 
 function solidBounds(shape: SculptShape): [Vec3, Vec3] {
   if (shape.type === 'ellipsoid') {
     const [c, r] = [shape.center, shape.radii];
-    return [[c[0] - r[0], c[1] - r[1], c[2] - r[2]], [c[0] + r[0], c[1] + r[1], c[2] + r[2]]];
+    return [
+      [c[0] - r[0], c[1] - r[1], c[2] - r[2]],
+      [c[0] + r[0], c[1] + r[1], c[2] + r[2]],
+    ];
   }
   if (shape.type === 'box') return [shape.min, shape.max];
   const radius = Math.max(shape.radius, shape.toRadius ?? shape.radius);
@@ -59,7 +66,12 @@ function solidBounds(shape: SculptShape): [Vec3, Vec3] {
 
 function contains(shape: SculptShape, x: number, y: number, z: number) {
   const point = [x, y, z];
-  if (point.some((value, axis) => value < (shape.clipMin?.[axis] ?? -Infinity) || value > (shape.clipMax?.[axis] ?? Infinity)))
+  if (
+    point.some(
+      (value, axis) =>
+        value < (shape.clipMin?.[axis] ?? -Infinity) || value > (shape.clipMax?.[axis] ?? Infinity),
+    )
+  )
     return false;
   if (shape.type === 'ellipsoid') {
     const [c, r] = [shape.center, shape.radii];
@@ -70,7 +82,9 @@ function contains(shape: SculptShape, x: number, y: number, z: number) {
   const [a, b] = [shape.from, shape.to];
   const axis = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
   const length = axis[0] ** 2 + axis[1] ** 2 + axis[2] ** 2;
-  const raw = length ? ((x - a[0]) * axis[0] + (y - a[1]) * axis[1] + (z - a[2]) * axis[2]) / length : 0;
+  const raw = length
+    ? ((x - a[0]) * axis[0] + (y - a[1]) * axis[1] + (z - a[2]) * axis[2]) / length
+    : 0;
   if (shape.type === 'cylinder' && (raw < 0 || raw > 1)) return false;
   const t = Math.min(1, Math.max(0, raw));
   const radius = shape.radius + ((shape.toRadius ?? shape.radius) - shape.radius) * t;
@@ -97,7 +111,10 @@ export function voxelizeShapes(
   const width = Math.min(board, Math.ceil(Math.max(...boxes.map(([, max]) => max[0])))) - x;
   const depth = Math.min(board, Math.ceil(Math.max(...boxes.map(([, max]) => max[2])))) - z;
   const top = Math.max(...boxes.map(([, max]) => max[1]));
-  const layers = Math.min(Math.ceil(top / layerStuds), Math.floor(MAX_HEIGHT * (PLATE_STUDS / layerStuds)));
+  const layers = Math.min(
+    Math.ceil(top / layerStuds),
+    Math.floor(MAX_HEIGHT * (PLATE_STUDS / layerStuds)),
+  );
   if (width < 1 || depth < 1 || layers < 1) return null;
   const cells: (number | null)[] = new Array(width * depth * layers).fill(null);
   const unseen: number[] = [];
@@ -105,9 +122,18 @@ export function voxelizeShapes(
     const mode = shape.mode ?? 'add';
     let touched = false;
     const [min, max] = bounds(shape);
-    const [x0, x1] = [Math.max(0, Math.floor(min[0]) - x), Math.min(width - 1, Math.ceil(max[0]) - x)];
-    const [z0, z1] = [Math.max(0, Math.floor(min[2]) - z), Math.min(depth - 1, Math.ceil(max[2]) - z)];
-    const [l0, l1] = [Math.max(0, Math.floor(min[1] / layerStuds)), Math.min(layers - 1, Math.ceil(max[1] / layerStuds))];
+    const [x0, x1] = [
+      Math.max(0, Math.floor(min[0]) - x),
+      Math.min(width - 1, Math.ceil(max[0]) - x),
+    ];
+    const [z0, z1] = [
+      Math.max(0, Math.floor(min[2]) - z),
+      Math.min(depth - 1, Math.ceil(max[2]) - z),
+    ];
+    const [l0, l1] = [
+      Math.max(0, Math.floor(min[1] / layerStuds)),
+      Math.min(layers - 1, Math.ceil(max[1] / layerStuds)),
+    ];
     for (let layer = l0; layer <= l1; layer += 1)
       for (let k = z0; k <= z1; k += 1)
         for (let i = x0; i <= x1; i += 1) {

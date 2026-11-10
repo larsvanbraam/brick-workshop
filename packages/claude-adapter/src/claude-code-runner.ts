@@ -40,7 +40,10 @@ export async function runClaudeCodeBuild(
   if (options.signal?.aborted) return result(false, 'cancelled', 'Generation cancelled.');
   const controller = new AbortController();
 
-  const server = new McpServer({ name: SERVER_NAME, version: '0.0.0' }, { capabilities: { tools: {} } });
+  const server = new McpServer(
+    { name: SERVER_NAME, version: '0.0.0' },
+    { capabilities: { tools: {} } },
+  );
   server.server.setRequestHandler(ListToolsRequestSchema, () => ({
     tools: MODEL_TOOLS.map((tool) => ({
       name: tool.name,
@@ -53,12 +56,18 @@ export async function runClaudeCodeBuild(
       return { content: [{ type: 'text', text: 'Generation cancelled.' }], isError: true };
     const response = session.runTool(request.params.name, request.params.arguments ?? {});
     trace.push({ tool: request.params.name, ok: response.ok, revision: response.revision });
-    options.onProgress?.({ type: 'tool', turn: turns, tool: request.params.name, ok: response.ok,
-      revision: response.revision, pieces: session.snapshot().bricks.length });
+    options.onProgress?.({
+      type: 'tool',
+      turn: turns,
+      tool: request.params.name,
+      ok: response.ok,
+      revision: response.revision,
+      pieces: session.snapshot().bricks.length,
+    });
     return { content: [{ type: 'text', text: JSON.stringify(response) }], isError: !response.ok };
   });
 
-  const abort =() => controller.abort();
+  const abort = () => controller.abort();
   options.signal?.addEventListener('abort', abort, { once: true });
   // In-process MCP servers require streaming input, so the prompt is a one-message iterable.
   async function* input(): AsyncGenerator<SDKUserMessage> {
@@ -82,7 +91,11 @@ export async function runClaudeCodeBuild(
         persistSession: false,
         // brick_catalog returns ~35k tokens; Claude Code's default 25k MCP output cap would
         // divert it to a file that Claude cannot read without the disabled built-in tools.
-        env: { ...process.env, ENABLE_CLAUDEAI_MCP_SERVERS: 'false', MAX_MCP_OUTPUT_TOKENS: '100000' },
+        env: {
+          ...process.env,
+          ENABLE_CLAUDEAI_MCP_SERVERS: 'false',
+          MAX_MCP_OUTPUT_TOKENS: '100000',
+        },
         abortController: controller,
       },
     })) {
@@ -120,9 +133,16 @@ export async function runClaudeCodeBuild(
   outputTokens = final.usage.output_tokens;
   options.onProgress?.({ type: 'usage', inputTokens, cachedInputTokens, outputTokens });
   if (final.subtype === 'error_max_turns')
-    return result(false, 'turn-limit',
-      'Claude reached the configured turn limit. The assembly is a partial result.');
+    return result(
+      false,
+      'turn-limit',
+      'Claude reached the configured turn limit. The assembly is a partial result.',
+    );
   if (final.subtype !== 'success') return result(false, final.subtype, final.errors.join('\n'));
   if (final.stop_reason === 'max_tokens') return result(false, 'output-limit', final.result);
-  return result(!final.is_error, final.is_error ? 'error' : final.stop_reason ?? 'end_turn', final.result);
+  return result(
+    !final.is_error,
+    final.is_error ? 'error' : (final.stop_reason ?? 'end_turn'),
+    final.result,
+  );
 }

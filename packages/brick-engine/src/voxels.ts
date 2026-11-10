@@ -1,4 +1,12 @@
-import { BUILD_AREA, COLORS, MAX_BUILD_AREA, MAX_HEIGHT, MAX_PIECES, getPart, validateAssembly } from './core.ts';
+import {
+  BUILD_AREA,
+  COLORS,
+  MAX_BUILD_AREA,
+  MAX_HEIGHT,
+  MAX_PIECES,
+  getPart,
+  validateAssembly,
+} from './core.ts';
 import type { Assembly, Brick } from './core.ts';
 import { FLOOR_PART_IDS, layPlateFloor } from './board.ts';
 
@@ -89,11 +97,31 @@ const MAX_OVERHANG_REACH = 2;
 
 /** Upright wall bricks used for shells, largest first. */
 export const VOXEL_FILL_PART_IDS = Object.freeze([
-  '2456', '3001', '3002', '3003', '3008', '3009', '3010', '3622', '3004', '3005',
+  '2456',
+  '3001',
+  '3002',
+  '3003',
+  '3008',
+  '3009',
+  '3010',
+  '3622',
+  '3004',
+  '3005',
 ]);
 /** Plates used instead in plate-tall layers, largest first. */
 export const VOXEL_PLATE_PART_IDS = Object.freeze([
-  '3832', '3034', '3795', '3020', '3021', '3022', '3460', '3666', '3710', '3623', '3023b', '3024',
+  '3832',
+  '3034',
+  '3795',
+  '3020',
+  '3021',
+  '3022',
+  '3460',
+  '3666',
+  '3710',
+  '3623',
+  '3023b',
+  '3024',
 ]);
 /** 45-degree slopes 1 to 4 studs wide; studs on the high row only. */
 const SLOPE_PART_IDS = ['3040b', '3039', '3038', '3037'];
@@ -105,7 +133,10 @@ const DETAIL_FALLBACK_COLORS = [15, 72, 71, 0, 19, 70];
 export const MAX_VOXEL_LAYERS = Math.floor(MAX_HEIGHT / 3);
 
 const DIRECTIONS: readonly [VoxelDirection, number, number][] = [
-  ['x+', 1, 0], ['x-', -1, 0], ['z+', 0, 1], ['z-', 0, -1],
+  ['x+', 1, 0],
+  ['x-', -1, 0],
+  ['z+', 0, 1],
+  ['z-', 0, -1],
 ];
 
 /** A small, stable integer hash, so textures look random but convert the same way every time. */
@@ -125,7 +156,9 @@ export function validateVoxelModel(model: VoxelModel, maxLayers = MAX_VOXEL_LAYE
   if (model.width > MAX_BUILD_AREA || model.depth > MAX_BUILD_AREA)
     throw new Error(`Voxel models must fit a ${MAX_BUILD_AREA}-stud board.`);
   if (model.layers > maxLayers)
-    throw new Error(`Voxel models are limited to ${maxLayers} ${maxLayers === MAX_VOXEL_LAYERS ? 'brick ' : ''}layers.`);
+    throw new Error(
+      `Voxel models are limited to ${maxLayers} ${maxLayers === MAX_VOXEL_LAYERS ? 'brick ' : ''}layers.`,
+    );
   if (model.cells.length !== model.width * model.depth * model.layers)
     throw new Error('Voxel cell count does not match the model dimensions.');
   if (model.slopes && model.slopes.length !== model.cells.length)
@@ -187,7 +220,8 @@ export function fillVoxelModel(model: VoxelModel, options: VoxelFillOptions = {}
       }
     }
   }
-  const enclosed = (layer: number, x: number, z: number) => sides[(layer * depth + z) * width + x] === 15;
+  const enclosed = (layer: number, x: number, z: number) =>
+    sides[(layer * depth + z) * width + x] === 15;
   let total = 0;
   const position = (layer: number, x: number, z: number) => (layer * depth + z) * width + x;
   const inside = (layer: number, x: number, z: number) =>
@@ -198,7 +232,11 @@ export function fillVoxelModel(model: VoxelModel, options: VoxelFillOptions = {}
    * down, that ends on something solid or against a wall it can bond into, like a brick laid
    * into a chimney's course under a roof. The steps take the colour of what they bond into.
    */
-  const corbel = (x: number, z: number, layer: number): { cells: number[]; color: number } | null => {
+  const corbel = (
+    x: number,
+    z: number,
+    layer: number,
+  ): { cells: number[]; color: number } | null => {
     const start = [layer - 1, x, z] as const;
     if (!inside(...start) || at(...start) !== null) return null;
     // Steps point back to the step they came from; the path is rebuilt only for the answer.
@@ -206,7 +244,8 @@ export function fillVoxelModel(model: VoxelModel, options: VoxelFillOptions = {}
     const queue: Step[] = [{ layer: start[0], x, z, dir: -1, run: 0, parent: -1 }];
     const pathTo = (head: number) => {
       const path: number[] = [];
-      for (let at = head; at !== -1; at = queue[at].parent) path.unshift(position(queue[at].layer, queue[at].x, queue[at].z));
+      for (let at = head; at !== -1; at = queue[at].parent)
+        path.unshift(position(queue[at].layer, queue[at].x, queue[at].z));
       return path;
     };
     // Each cell is visited once, and the search stops after MAX_CORBEL_SEARCH cells: a lattice
@@ -217,7 +256,14 @@ export function fillVoxelModel(model: VoxelModel, options: VoxelFillOptions = {}
       // Resting on a solid cell, or on the ground inside the building (never a post outside).
       if (
         at(step.layer - 1, step.x, step.z) !== null ||
-        (step.layer === 0 && pathTo(head).every((cell) => enclosed(Math.floor(cell / (width * depth)), cell % width, Math.floor(cell / width) % depth)))
+        (step.layer === 0 &&
+          pathTo(head).every((cell) =>
+            enclosed(
+              Math.floor(cell / (width * depth)),
+              cell % width,
+              Math.floor(cell / width) % depth,
+            ),
+          ))
       )
         return { cells: pathTo(head), color: cells[position(layer, x, z)]! };
       // Sideways first: between equally short staircases, bonding into a wall beats going down.
@@ -225,9 +271,11 @@ export function fillVoxelModel(model: VoxelModel, options: VoxelFillOptions = {}
       const moves: [number, number, number, number][] = [];
       if (step.run <= MAX_OVERHANG_REACH)
         DIRECTIONS.forEach(([, dx, dz], dir) => {
-          if (step.dir === -1 || step.dir === dir) moves.push([step.layer, step.x + dx, step.z + dz, dir]);
+          if (step.dir === -1 || step.dir === dir)
+            moves.push([step.layer, step.x + dx, step.z + dz, dir]);
         });
-      if (step.layer - 1 >= layer - 1 - MAX_CORBEL_DEPTH) moves.push([step.layer - 1, step.x, step.z, -1]);
+      if (step.layer - 1 >= layer - 1 - MAX_CORBEL_DEPTH)
+        moves.push([step.layer - 1, step.x, step.z, -1]);
       for (const [nextLayer, nx, nz, dir] of moves) {
         if (!inside(nextLayer, nx, nz)) continue;
         const value = at(nextLayer, nx, nz);
@@ -242,7 +290,14 @@ export function fillVoxelModel(model: VoxelModel, options: VoxelFillOptions = {}
         const key = position(nextLayer, nx, nz);
         if (seen.has(key)) continue;
         seen.add(key);
-        queue.push({ layer: nextLayer, x: nx, z: nz, dir: dir === -1 ? -1 : dir, run, parent: head });
+        queue.push({
+          layer: nextLayer,
+          x: nx,
+          z: nz,
+          dir: dir === -1 ? -1 : dir,
+          run,
+          parent: head,
+        });
       }
     }
     return null;
@@ -251,7 +306,11 @@ export function fillVoxelModel(model: VoxelModel, options: VoxelFillOptions = {}
   for (let round = 0; round < 4 && fill.leftOut.length; round += 1) {
     let columns = 0;
     for (const cell of fill.leftOut) {
-      const [x, z, layer] = [cell % width, Math.floor(cell / width) % depth, Math.floor(cell / (width * depth))];
+      const [x, z, layer] = [
+        cell % width,
+        Math.floor(cell / width) % depth,
+        Math.floor(cell / (width * depth)),
+      ];
       if (layer === 0 || cells[cell] === null) continue;
       const steps = corbel(x, z, layer);
       if (steps) {
@@ -280,7 +339,10 @@ export function fillVoxelModel(model: VoxelModel, options: VoxelFillOptions = {}
   return { ...fill.result, skippedCells, addedCells: fill.result.addedCells + total };
 }
 
-function fillOnce(model: VoxelModel, options: VoxelFillOptions): { result: VoxelFill; leftOut: number[] } {
+function fillOnce(
+  model: VoxelModel,
+  options: VoxelFillOptions,
+): { result: VoxelFill; leftOut: number[] } {
   // Plates per layer.
   const unit = options.plates ? 1 : 3;
   validateVoxelModel(model, Math.floor(MAX_HEIGHT / unit));
@@ -293,7 +355,9 @@ function fillOnce(model: VoxelModel, options: VoxelFillOptions): { result: Voxel
   const origin = { x: Math.floor((buildArea - width) / 2), z: Math.floor((buildArea - depth) / 2) };
   const maxPieces = Math.min(options.maxPieces ?? MAX_PIECES, MAX_PIECES);
   const allowed = options.colorAllowed ?? (() => true);
-  const parts = (options.plates ? VOXEL_PLATE_PART_IDS : VOXEL_FILL_PART_IDS).map((id) => getPart(id));
+  const parts = (options.plates ? VOXEL_PLATE_PART_IDS : VOXEL_FILL_PART_IDS).map((id) =>
+    getPart(id),
+  );
   const shapes = parts.flatMap((part) =>
     (part.width === part.depth ? [0] : [0, 90]).map((rotation) => ({
       part,
@@ -304,10 +368,13 @@ function fillOnce(model: VoxelModel, options: VoxelFillOptions): { result: Voxel
   );
   const index = (layer: number, x: number, z: number) => (layer * depth + z) * width + x;
   const at = (layer: number, x: number, z: number) =>
-    layer < 0 || layer >= layers || x < 0 || z < 0 || x >= width || z >= depth ? null : cells[index(layer, x, z)];
+    layer < 0 || layer >= layers || x < 0 || z < 0 || x >= width || z >= depth
+      ? null
+      : cells[index(layer, x, z)];
 
   let addedCells = 0;
-  if (model.slopes) for (let layer = 0; layer < layers; layer += 1) addedCells += continueRoof(layer);
+  if (model.slopes)
+    for (let layer = 0; layer < layers; layer += 1) addedCells += continueRoof(layer);
   for (let layer = 1; layer < layers; layer += 1) addedCells += widenOverhangs(layer);
 
   /**
@@ -390,7 +457,11 @@ function fillOnce(model: VoxelModel, options: VoxelFillOptions): { result: Voxel
     for (let z = 0; z < depth; z += 1)
       for (let x = 0; x < width; x += 1) {
         const color = cells[index(layer, x, z)];
-        if (color === null || owner[index(layer, x, z)] !== -1 || reserved[index(layer, x, z)] !== -1)
+        if (
+          color === null ||
+          owner[index(layer, x, z)] !== -1 ||
+          reserved[index(layer, x, z)] !== -1
+        )
           continue;
         if (bricks.length >= maxPieces) continue;
         let best: { shape: (typeof shapes)[number]; score: number } | null = null;
@@ -423,13 +494,23 @@ function fillOnce(model: VoxelModel, options: VoxelFillOptions): { result: Voxel
             below.size === 1 &&
             (() => {
               const rect = rects[[...below][0]];
-              return rect.x === x && rect.z === z && rect.width === shape.width && rect.depth === shape.depth;
+              return (
+                rect.x === x &&
+                rect.z === z &&
+                rect.width === shape.width &&
+                rect.depth === shape.depth
+              );
             })();
           // On textured walls a fixed per-position preference mixes 1 x 2, 1 x 3 and 1 x 4
           // stones instead of always taking the longest.
-          const variety = wall && area > 1 ? hash(x, layer, z, shape.width * 8 + shape.depth) % 16 : 0;
+          const variety =
+            wall && area > 1 ? hash(x, layer, z, shape.width * 8 + shape.depth) % 16 : 0;
           const score =
-            area * 10 + Math.max(0, below.size - 1) * 6 - (area - supported) - (stacked ? 15 : 0) + variety;
+            area * 10 +
+            Math.max(0, below.size - 1) * 6 -
+            (area - supported) -
+            (stacked ? 15 : 0) +
+            variety;
           if (!best || score > best.score) best = { shape, score };
         }
         if (!best) continue;
@@ -452,7 +533,9 @@ function fillOnce(model: VoxelModel, options: VoxelFillOptions): { result: Voxel
       }
     addedCells += bridgeLeftovers(layer);
   }
-  const truncated = bricks.length >= maxPieces && cells.some((cell, position) => cell !== null && owner[position] === -1);
+  const truncated =
+    bricks.length >= maxPieces &&
+    cells.some((cell, position) => cell !== null && owner[position] === -1);
 
   /**
    * Cells with nothing under them get their bricks before the rest of the course, so a brick
@@ -464,15 +547,27 @@ function fillOnce(model: VoxelModel, options: VoxelFillOptions): { result: Voxel
       for (let x = 0; x < width; x += 1) {
         const cell = index(layer, x, z);
         const color = cells[cell];
-        if (color === null || owner[cell] !== -1 || reserved[cell] !== -1 || cells[index(layer - 1, x, z)] !== null)
+        if (
+          color === null ||
+          owner[cell] !== -1 ||
+          reserved[cell] !== -1 ||
+          cells[index(layer - 1, x, z)] !== null
+        )
           continue;
         if (bricks.length >= maxPieces) return;
-        let best: { shape: (typeof shapes)[number]; x: number; z: number; covered: number[]; score: number } | null = null;
+        let best: {
+          shape: (typeof shapes)[number];
+          x: number;
+          z: number;
+          covered: number[];
+          score: number;
+        } | null = null;
         for (const shape of shapes) {
           if (!allowed(shape.part.id, color)) continue;
           for (let sz = z - shape.depth + 1; sz <= z; sz += 1)
             for (let sx = x - shape.width + 1; sx <= x; sx += 1) {
-              if (sx < 0 || sz < 0 || sx + shape.width > width || sz + shape.depth > depth) continue;
+              if (sx < 0 || sz < 0 || sx + shape.width > width || sz + shape.depth > depth)
+                continue;
               const covered: number[] = [];
               let supported = 0;
               let fits = true;
@@ -515,20 +610,34 @@ function fillOnce(model: VoxelModel, options: VoxelFillOptions): { result: Voxel
   function bridgeLeftovers(layer: number) {
     if (layer === 0) return 0;
     let added = 0;
-    const straight = shapes.filter((shape) => (shape.width === 1 || shape.depth === 1) && shape.width * shape.depth > 1);
+    const straight = shapes.filter(
+      (shape) => (shape.width === 1 || shape.depth === 1) && shape.width * shape.depth > 1,
+    );
     for (let z = 0; z < depth; z += 1)
       for (let x = 0; x < width; x += 1) {
         const cell = index(layer, x, z);
         const color = cells[cell];
-        if (color === null || owner[cell] !== -1 || reserved[cell] !== -1 || bricks.length >= maxPieces) continue;
-        let best: { shape: (typeof straight)[number]; x: number; z: number; covered: number[]; score: number } | null =
-          null;
+        if (
+          color === null ||
+          owner[cell] !== -1 ||
+          reserved[cell] !== -1 ||
+          bricks.length >= maxPieces
+        )
+          continue;
+        let best: {
+          shape: (typeof straight)[number];
+          x: number;
+          z: number;
+          covered: number[];
+          score: number;
+        } | null = null;
         for (const shape of straight) {
           if (!allowed(shape.part.id, color)) continue;
           // Every placement of the shape that includes this cell.
           for (let sz = z - shape.depth + 1; sz <= z; sz += 1)
             for (let sx = x - shape.width + 1; sx <= x; sx += 1) {
-              if (sx < 0 || sz < 0 || sx + shape.width > width || sz + shape.depth > depth) continue;
+              if (sx < 0 || sz < 0 || sx + shape.width > width || sz + shape.depth > depth)
+                continue;
               const covered: number[] = [];
               let supported = 0;
               let empty = 0;
@@ -537,7 +646,11 @@ function fillOnce(model: VoxelModel, options: VoxelFillOptions): { result: Voxel
                 for (let dx = 0; dx < shape.width; dx += 1) {
                   const target = index(layer, sx + dx, sz + dz);
                   const value = cells[target];
-                  if (owner[target] !== -1 || reserved[target] !== -1 || (value !== null && value !== color)) {
+                  if (
+                    owner[target] !== -1 ||
+                    reserved[target] !== -1 ||
+                    (value !== null && value !== color)
+                  ) {
                     fits = false;
                     break;
                   }
@@ -584,12 +697,27 @@ function fillOnce(model: VoxelModel, options: VoxelFillOptions): { result: Voxel
       const color = cells[index(layer, x, z)];
       // Nearest reach first; each step must be an empty cell in this layer.
       search: for (let reach = 1; reach <= MAX_OVERHANG_REACH; reach += 1)
-        for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-          const steps = Array.from({ length: reach }, (_, step) => [x + dx * (step + 1), z + dz * (step + 1)]);
+        for (const [dx, dz] of [
+          [1, 0],
+          [-1, 0],
+          [0, 1],
+          [0, -1],
+        ]) {
+          const steps = Array.from({ length: reach }, (_, step) => [
+            x + dx * (step + 1),
+            z + dz * (step + 1),
+          ]);
           if (steps.some(([sx, sz]) => sx < 0 || sz < 0 || sx >= width || sz >= depth)) continue;
           const [tx, tz] = steps[reach - 1];
           if (!supported(tx, tz)) continue;
-          if (steps.slice(0, -1).some(([sx, sz]) => cells[index(layer, sx, sz)] !== null && cells[index(layer, sx, sz)] !== color))
+          if (
+            steps
+              .slice(0, -1)
+              .some(
+                ([sx, sz]) =>
+                  cells[index(layer, sx, sz)] !== null && cells[index(layer, sx, sz)] !== color,
+              )
+          )
             continue;
           // An occupied target bridges only in the same color, which the fill already does.
           if (cells[index(layer, tx, tz)] !== null) continue;
@@ -615,7 +743,10 @@ function fillOnce(model: VoxelModel, options: VoxelFillOptions): { result: Voxel
           const along = (opening.axis === 'x' ? opening.x : opening.z) + offset;
           const [x, z] = opening.axis === 'x' ? [along, plane] : [plane, along];
           const inside =
-            layer >= opening.layer && layer < opening.layer + opening.height && offset >= 0 && offset < opening.width;
+            layer >= opening.layer &&
+            layer < opening.layer + opening.height &&
+            offset >= 0 &&
+            offset < opening.width;
           if (at(layer, x, z) !== null) filled += inside ? -1 : 1;
         }
       return filled;
@@ -635,7 +766,9 @@ function fillOnce(model: VoxelModel, options: VoxelFillOptions): { result: Voxel
     const along = opening.axis === 'x' ? 'x' : 'z';
     const plane = (layer: number, u: number) => {
       const [x, z] = opening.axis === 'x' ? [u, opening.z] : [opening.x, u];
-      return x < 0 || z < 0 || x >= width || z >= depth ? undefined : model.cells[index(layer, x, z)];
+      return x < 0 || z < 0 || x >= width || z >= depth
+        ? undefined
+        : model.cells[index(layer, x, z)];
     };
     const [u0, u1] = [opening[along], opening[along] + opening.width - 1];
     const [top, bottom] = [opening.layer + opening.height - 1, opening.layer];
@@ -644,7 +777,7 @@ function fillOnce(model: VoxelModel, options: VoxelFillOptions): { result: Voxel
     let best: [number, number, number] | null = null;
     let bestOverlap = 0;
     for (let u = u0 - 1; u <= u1 + 1; u += 1)
-      for (let layer = 0; layer < layers; ) {
+      for (let layer = 0; layer < layers;) {
         if (plane(layer, u) !== null) {
           layer += 1;
           continue;
@@ -663,7 +796,9 @@ function fillOnce(model: VoxelModel, options: VoxelFillOptions): { result: Voxel
     // An arch narrows the top, so a column counts when its bottom and most of it are open.
     const open = (u: number) =>
       plane(low, u) === null &&
-      Array.from({ length: high - low + 1 }, (_, step) => plane(low + step, u)).filter((cell) => cell === null).length >=
+      Array.from({ length: high - low + 1 }, (_, step) => plane(low + step, u)).filter(
+        (cell) => cell === null,
+      ).length >=
         (high - low + 1) / 2;
     // Follow the void sideways from that column, as far as the widest frame (the detected
     // patch can be a sliver of a doorway partly hidden from the side).
@@ -675,20 +810,25 @@ function fillOnce(model: VoxelModel, options: VoxelFillOptions): { result: Voxel
     const walled = (layer: number) =>
       Array.from({ length: b - a + 1 }, (_, step) => plane(layer, a + step)).filter(
         (cell) => cell !== null && cell !== undefined,
-      ).length >= (b - a + 1) / 2;
+      ).length >=
+      (b - a + 1) / 2;
     if (![1, 2, 3].every((above) => walled(high + above))) return null;
     // Tall enough for a door and standing on the ground or on a step in front: a door, even
     // when the side view only saw part of it.
-    const [outX, outZ] = opening.facing ? DIRECTIONS.find(([direction]) => direction === opening.facing)!.slice(1) : [0, 0];
+    const [outX, outZ] = opening.facing
+      ? DIRECTIONS.find(([direction]) => direction === opening.facing)!.slice(1)
+      : [0, 0];
     // A step is solid down to the ground (at least at its sides); a balcony floor in front of
     // an upper window or door has open space under it.
-    const stepInFront = Array.from({ length: b - a + 3 }, (_, step) => {
-      const [x, z] = opening.axis === 'x' ? [a - 1 + step, opening.z] : [opening.x, a - 1 + step];
-      return Array.from({ length: low }, (_, layer) => at(layer, x + (outX as number), z + (outZ as number))).every(
-        (cell) => cell !== null,
-      );
-    }).some(Boolean) && low > 0;
-    const kind = high - low + 1 >= 3 && b - a >= 1 && (low <= 1 || stepInFront) ? 'door' : opening.kind;
+    const stepInFront =
+      Array.from({ length: b - a + 3 }, (_, step) => {
+        const [x, z] = opening.axis === 'x' ? [a - 1 + step, opening.z] : [opening.x, a - 1 + step];
+        return Array.from({ length: low }, (_, layer) =>
+          at(layer, x + (outX as number), z + (outZ as number)),
+        ).every((cell) => cell !== null);
+      }).some(Boolean) && low > 0;
+    const kind =
+      high - low + 1 >= 3 && b - a >= 1 && (low <= 1 || stepInFront) ? 'door' : opening.kind;
     return { ...opening, kind, [along]: a, width: b - a + 1, layer: low, height: high - low + 1 };
   }
 
@@ -697,29 +837,42 @@ function fillOnce(model: VoxelModel, options: VoxelFillOptions): { result: Voxel
     if (!opening) return;
     const partId =
       opening.kind === 'door'
-        ? opening.width <= 3 ? '3579' : '60596'
-        : opening.width <= 2 ? (opening.height <= 2 ? '60592' : '60593') : '60594';
+        ? opening.width <= 3
+          ? '3579'
+          : '60596'
+        : opening.width <= 2
+          ? opening.height <= 2
+            ? '60592'
+            : '60593'
+          : '60594';
     const part = getPart(partId);
     const along = part.depth;
     const tall = part.height / 3;
     const alongAxis = opening.axis === 'x' ? opening.x : opening.z;
     const start = Math.round(alongAxis + opening.width / 2 - along / 2);
     const centered =
-      opening.kind === 'door' ? opening.layer : Math.max(0, Math.round(opening.layer + opening.height / 2 - tall / 2));
+      opening.kind === 'door'
+        ? opening.layer
+        : Math.max(0, Math.round(opening.layer + opening.height / 2 - tall / 2));
     const limit = opening.axis === 'x' ? width : depth;
     if (start < 0 || start + along > limit) return;
     const position = (layer: number, offset: number) =>
-      opening.axis === 'x' ? index(layer, start + offset, opening.z) : index(layer, opening.x, start + offset);
+      opening.axis === 'x'
+        ? index(layer, start + offset, opening.z)
+        : index(layer, opening.x, start + offset);
     // Most of the frame's bottom must sit on the model itself (not on cells added to carry
     // overhangs), not just a corner.
     const resting = (layer: number) =>
       layer === 0 ||
       Array.from({ length: along }, (_, offset) => position(layer - 1, offset)).filter(
         (cell) => model.cells[cell] !== null,
-      ).length >= along / 2;
+      ).length >=
+        along / 2;
     const touching = (layer: number) =>
       layer === 0 ||
-      Array.from({ length: along }, (_, offset) => position(layer - 1, offset)).some((cell) => model.cells[cell] !== null);
+      Array.from({ length: along }, (_, offset) => position(layer - 1, offset)).some(
+        (cell) => model.cells[cell] !== null,
+      );
     // Nothing directly outside the doorway at a layer: not a step or stair in front of it.
     const [outX, outZ] = opening.facing
       ? DIRECTIONS.find(([direction]) => direction === opening.facing)!.slice(1)
@@ -727,7 +880,8 @@ function fillOnce(model: VoxelModel, options: VoxelFillOptions): { result: Voxel
     const clearInFront = (layer: number) =>
       !opening.facing ||
       Array.from({ length: along }, (_, offset) => {
-        const [x, z] = opening.axis === 'x' ? [start + offset, opening.z] : [opening.x, start + offset];
+        const [x, z] =
+          opening.axis === 'x' ? [start + offset, opening.z] : [opening.x, start + offset];
         return at(layer, x + (outX as number), z + (outZ as number));
       }).every((cell) => cell === null);
     // Wall on both sides of the frame at a layer: still inside the doorway, not open space.
@@ -744,19 +898,25 @@ function fillOnce(model: VoxelModel, options: VoxelFillOptions): { result: Voxel
     // stair in front of them; windows may shift a layer onto a sill.
     const tries = [centered];
     if (opening.kind === 'door')
-      for (let layer = centered; layer > 0 && !resting(layer) && flanked(layer - 1) && clearInFront(layer - 1); layer -= 1)
+      for (
+        let layer = centered;
+        layer > 0 && !resting(layer) && flanked(layer - 1) && clearInFront(layer - 1);
+        layer -= 1
+      )
         tries.push(layer - 1);
     else tries.push(centered - 1, centered + 1);
     // Failing that, a frame may stand on a single stud, as on a narrow threshold.
     const bottom =
-      tries.find((candidate) => candidate >= 0 && candidate + tall <= layers && resting(candidate)) ??
-      (centered + tall <= layers && touching(centered) ? centered : undefined);
+      tries.find(
+        (candidate) => candidate >= 0 && candidate + tall <= layers && resting(candidate),
+      ) ?? (centered + tall <= layers && touching(centered) ? centered : undefined);
     if (bottom === undefined) return;
     const covered: number[] = [];
     for (let layer = bottom; layer < bottom + tall; layer += 1)
       for (let offset = 0; offset < along; offset += 1) covered.push(position(layer, offset));
     const counts = new Map<number, number>();
-    for (const cell of covered) if (cells[cell] !== null) counts.set(cells[cell]!, (counts.get(cells[cell]!) ?? 0) + 1);
+    for (const cell of covered)
+      if (cells[cell] !== null) counts.set(cells[cell]!, (counts.get(cells[cell]!) ?? 0) + 1);
     const color = detailColor(partId, [...counts].sort((a, b) => b[1] - a[1])[0]?.[0] ?? 15);
     if (color === undefined) return;
     const piece: PlannedPiece = {
@@ -774,9 +934,12 @@ function fillOnce(model: VoxelModel, options: VoxelFillOptions): { result: Voxel
     for (const cell of covered) cells[cell] = color;
     // Above a frame shorter than its opening (an arched doorway), wall closes the gap.
     for (let layer = bottom + tall; layer < layers && flanked(layer); layer += 1) {
-      const gap = Array.from({ length: along }, (_, offset) => position(layer, offset)).filter((cell) => cells[cell] === null);
+      const gap = Array.from({ length: along }, (_, offset) => position(layer, offset)).filter(
+        (cell) => cells[cell] === null,
+      );
       if (!gap.length) break;
-      const wall = opening.axis === 'x' ? at(layer, start - 1, opening.z) : at(layer, opening.x, start - 1);
+      const wall =
+        opening.axis === 'x' ? at(layer, start - 1, opening.z) : at(layer, opening.x, start - 1);
       for (const cell of gap) {
         cells[cell] = wall;
         addedCells += 1;
@@ -820,28 +983,36 @@ function fillOnce(model: VoxelModel, options: VoxelFillOptions): { result: Voxel
             (cell(layer, end + 1) === null) !== (cell(layer, end) === null)
           )
             end += 1;
-          const posts = Array.from({ length: end - u + 1 }, (_, step) => cell(layer, u + step)).filter((value) => value !== null);
+          const posts = Array.from({ length: end - u + 1 }, (_, step) =>
+            cell(layer, u + step),
+          ).filter((value) => value !== null);
           if (!railing(u) || end - u + 1 < 5 || posts.length < 3) {
             u = end + 1;
             continue;
           }
           // A railing has open air above its top rail; a row of holes in a wall does not.
           const openAbove = [1, 2, 3].some((above) =>
-            Array.from({ length: end - u + 1 }, (_, step) => cell(layer + above, u + step)).every((value) => value === null),
+            Array.from({ length: end - u + 1 }, (_, step) => cell(layer + above, u + step)).every(
+              (value) => value === null,
+            ),
           );
           if (!openAbove) {
             u = end + 1;
             continue;
           }
           const color = posts[0]!;
-          const topRail = Array.from({ length: end - u + 1 }, (_, step) => cell(layer + 1, u + step)).every((value) => value !== null);
+          const topRail = Array.from({ length: end - u + 1 }, (_, step) =>
+            cell(layer + 1, u + step),
+          ).every((value) => value !== null);
           const partId = topRail ? '30055' : '3633';
           const tall = topRail ? 2 : 1;
           for (let start = u; start + 4 <= end + 1; start += 4) {
             const covered: number[] = [];
             for (let l = layer; l < layer + tall; l += 1)
               for (let step = 0; step < 4; step += 1)
-                covered.push(runsAlongX ? index(l, start + step, line) : index(l, line, start + step));
+                covered.push(
+                  runsAlongX ? index(l, start + step, line) : index(l, line, start + step),
+                );
             const allowedColor = detailColor(partId, color);
             if (allowedColor === undefined) continue;
             if (
@@ -874,8 +1045,13 @@ function fillOnce(model: VoxelModel, options: VoxelFillOptions): { result: Voxel
       const edge = (x: number, z: number) => {
         const cell = index(layer, x, z);
         const inner = index(layer, x + dx, z + dz);
-        if (cells[cell] === null || at(layer + 1, x, z) !== null || reserved[cell] !== -1) return false;
-        if (at(layer, x + dx, z + dz) === null || at(layer + 1, x + dx, z + dz) === null || reserved[inner] !== -1)
+        if (cells[cell] === null || at(layer + 1, x, z) !== null || reserved[cell] !== -1)
+          return false;
+        if (
+          at(layer, x + dx, z + dz) === null ||
+          at(layer + 1, x + dx, z + dz) === null ||
+          reserved[inner] !== -1
+        )
           return false;
         if (at(layer, x - dx, z - dz) !== null) return false;
         return !model.slopes || model.slopes[cell] === downhill || model.slopes[inner] === downhill;
@@ -891,7 +1067,10 @@ function fillOnce(model: VoxelModel, options: VoxelFillOptions): { result: Voxel
             const partId = SLOPE_PART_IDS[chunk.length - 1];
             const color = cells[index(layer, x, z)]!;
             if (!allowed(partId, color)) continue;
-            const covered = chunk.flatMap(([cx, cz]) => [index(layer, cx, cz), index(layer, cx + dx, cz + dz)]);
+            const covered = chunk.flatMap(([cx, cz]) => [
+              index(layer, cx, cz),
+              index(layer, cx + dx, cz + dz),
+            ]);
             // At rotation 0 the studs (high side) face +z; quarter turns follow the engine.
             const rotation = ({ 'z-': 0, 'x-': 90, 'z+': 180, 'x+': 270 } as const)[downhill];
             reserve({
@@ -910,7 +1089,8 @@ function fillOnce(model: VoxelModel, options: VoxelFillOptions): { result: Voxel
         for (let along = 0; along < (runsAlongX ? width : depth); along += 1) {
           const [x, z] = runsAlongX ? [along, line] : [line, along];
           const last = run.at(-1);
-          if (edge(x, z) && (!last || cells[index(layer, ...last)] === cells[index(layer, x, z)])) run.push([x, z]);
+          if (edge(x, z) && (!last || cells[index(layer, ...last)] === cells[index(layer, x, z)]))
+            run.push([x, z]);
           else {
             flush();
             if (edge(x, z)) run.push([x, z]);
@@ -934,22 +1114,28 @@ function fillOnce(model: VoxelModel, options: VoxelFillOptions): { result: Voxel
     if (kept.has(brick.id)) for (const cell of brickCells[position]) placed.add(cell);
   });
   const filled = cells.filter((cell) => cell !== null).length;
-  const count = (ids: string[]) => assembly.bricks.filter((brick) => ids.includes(brick.partId)).length;
-  const leftOut = cells.flatMap((cell, position) => (cell !== null && !placed.has(position) ? [position] : []));
-  return { leftOut, result: {
-    assembly,
-    origin,
-    filledCells: filled,
-    skippedCells: leftOut.length,
-    addedCells,
-    details: {
-      slopes: count(SLOPE_PART_IDS),
-      windows: count(WINDOW_PART_IDS),
-      doors: count(DOOR_PART_IDS),
-      railings: count(RAILING_PART_IDS),
+  const count = (ids: string[]) =>
+    assembly.bricks.filter((brick) => ids.includes(brick.partId)).length;
+  const leftOut = cells.flatMap((cell, position) =>
+    cell !== null && !placed.has(position) ? [position] : [],
+  );
+  return {
+    leftOut,
+    result: {
+      assembly,
+      origin,
+      filledCells: filled,
+      skippedCells: leftOut.length,
+      addedCells,
+      details: {
+        slopes: count(SLOPE_PART_IDS),
+        windows: count(WINDOW_PART_IDS),
+        doors: count(DOOR_PART_IDS),
+        railings: count(RAILING_PART_IDS),
+      },
+      truncated,
     },
-    truncated,
-  } };
+  };
 }
 
 /** Longest layer description sent to Claude; larger models are run-length encoded, then cut. */
@@ -971,7 +1157,10 @@ export function describeVoxelModel(
   if (used.length > letters.length) throw new Error('Voxel models are limited to 52 colors.');
   const letter = new Map(used.map((color, position) => [color, letters[position]]));
   const legend = used
-    .map((color) => `${letter.get(color)}=${COLORS.find((entry) => entry.id === color)?.name ?? 'Unknown'} (${color})`)
+    .map(
+      (color) =>
+        `${letter.get(color)}=${COLORS.find((entry) => entry.id === color)?.name ?? 'Unknown'} (${color})`,
+    )
     .join(', ');
   const header = [
     `Model "${model.name}": ${model.width} x ${model.depth} studs, ${model.layers} brick layers.`,
@@ -980,7 +1169,10 @@ export function describeVoxelModel(
   ];
   const describe = (encoded: boolean) => {
     const lines = encoded
-      ? [...header, 'Rows are run-length encoded: a symbol followed by its repeat count, e.g. ".3a5" is 3 empty then 5 a.']
+      ? [
+          ...header,
+          'Rows are run-length encoded: a symbol followed by its repeat count, e.g. ".3a5" is 3 empty then 5 a.',
+        ]
       : [...header];
     let length = lines.join('\n').length;
     const runs: { start: number; end: number; text: string }[] = [];
@@ -992,7 +1184,13 @@ export function describeVoxelModel(
           const cell = model.cells[(layer * model.depth + z) * model.width + x];
           row += cell === null ? '.' : letter.get(cell);
         }
-        rows.push(encoded ? row.replace(/(.)\1*/g, (run, symbol: string) => (run.length > 1 ? symbol + run.length : symbol)) : row);
+        rows.push(
+          encoded
+            ? row.replace(/(.)\1*/g, (run, symbol: string) =>
+                run.length > 1 ? symbol + run.length : symbol,
+              )
+            : row,
+        );
       }
       const text = rows.join('\n');
       const last = runs.at(-1);
@@ -1003,7 +1201,14 @@ export function describeVoxelModel(
       const label = end > start ? `Layers ${start}-${end}:` : `Layer ${start}:`;
       const omitted = `Layers ${start}-${model.layers - 1} omitted: the model is too large to describe.`;
       // Keep room for the omission note itself.
-      if (length + label.length + text.length + 2 + (position < runs.length - 1 ? omitted.length + 1 : 0) > maxChars) {
+      if (
+        length +
+          label.length +
+          text.length +
+          2 +
+          (position < runs.length - 1 ? omitted.length + 1 : 0) >
+        maxChars
+      ) {
         lines.push(omitted);
         return lines.join('\n');
       }
@@ -1031,10 +1236,18 @@ export interface EncodedVoxelModel {
 export function encodeVoxelModel(model: VoxelModel): EncodedVoxelModel {
   validateVoxelModel(model);
   const colors = [...new Set(model.cells.filter((cell): cell is number => cell !== null))];
-  if (colors.length > CELL_LETTERS.length) throw new Error('Voxel models are limited to 52 colors.');
+  if (colors.length > CELL_LETTERS.length)
+    throw new Error('Voxel models are limited to 52 colors.');
   const letter = new Map(colors.map((color, position) => [color, CELL_LETTERS[position]]));
   const { name, width, depth, layers } = model;
-  return { name, width, depth, layers, colors, cells: model.cells.map((cell) => (cell === null ? '.' : letter.get(cell))).join('') };
+  return {
+    name,
+    width,
+    depth,
+    layers,
+    colors,
+    cells: model.cells.map((cell) => (cell === null ? '.' : letter.get(cell))).join(''),
+  };
 }
 
 export function decodeVoxelModel(encoded: EncodedVoxelModel): VoxelModel {
@@ -1057,7 +1270,8 @@ function coveredCells(model: VoxelModel, origin: { x: number; z: number }, assem
   const covered = new Uint8Array(model.cells.length);
   for (const brick of assembly.bricks) {
     const part = getPart(brick.partId);
-    const [width, depth] = brick.rotation % 180 ? [part.depth, part.width] : [part.width, part.depth];
+    const [width, depth] =
+      brick.rotation % 180 ? [part.depth, part.width] : [part.width, part.depth];
     const top = Math.ceil((brick.y + part.height) / 3);
     for (let layer = Math.floor(brick.y / 3); layer < Math.min(top, model.layers); layer += 1)
       for (let dz = 0; dz < Math.ceil(depth); dz += 1)
@@ -1113,7 +1327,14 @@ export function findVoxelGaps(
       const x = cell % width;
       const z = Math.floor(cell / width) % depth;
       const layer = Math.floor(cell / (width * depth));
-      for (const [dx, dy, dz] of [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]]) {
+      for (const [dx, dy, dz] of [
+        [1, 0, 0],
+        [-1, 0, 0],
+        [0, 1, 0],
+        [0, -1, 0],
+        [0, 0, 1],
+        [0, 0, -1],
+      ]) {
         const [nx, ny, nz] = [x + dx, layer + dy, z + dz];
         if (nx < 0 || nz < 0 || ny < 0 || nx >= width || nz >= depth || ny >= layers) continue;
         const next = (ny * depth + nz) * width + nx;
@@ -1136,7 +1357,10 @@ export function findVoxelGaps(
       z: [origin.z + Math.min(...zs), origin.z + Math.max(...zs)],
       y: [lowest * 3, (Math.max(...ls) + 1) * 3],
       color: [...counts].sort((a, b) => b[1] - a[1])[0][0],
-      support: gapSupport(region.filter((_, position) => ls[position] === lowest), lowest),
+      support: gapSupport(
+        region.filter((_, position) => ls[position] === lowest),
+        lowest,
+      ),
     });
   }
   // Gaps that can be closed come first; the rest need support built before any brick fits.
@@ -1153,7 +1377,11 @@ export function findVoxelGaps(
   function gapSupport(bottom: number[], lowest: number): VoxelGap['support'] {
     if (lowest === 0) return 'supported';
     const below = (x: number, z: number) =>
-      x >= 0 && z >= 0 && x < width && z < depth && covered[((lowest - 1) * depth + z) * width + x] === 1;
+      x >= 0 &&
+      z >= 0 &&
+      x < width &&
+      z < depth &&
+      covered[((lowest - 1) * depth + z) * width + x] === 1;
     // Free in the gap's own layer, so a new brick can run through it.
     const free = (x: number, z: number) =>
       x >= 0 && z >= 0 && x < width && z < depth && !covered[(lowest * depth + z) * width + x];
@@ -1161,7 +1389,12 @@ export function findVoxelGaps(
     for (const cell of bottom) {
       const [x, z] = [cell % width, Math.floor(cell / width) % depth];
       if (below(x, z)) return 'supported';
-      for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]])
+      for (const [dx, dz] of [
+        [1, 0],
+        [-1, 0],
+        [0, 1],
+        [0, -1],
+      ])
         for (let reach = 1; reach <= 2 && free(x + dx * reach, z + dz * reach); reach += 1)
           if (below(x + dx * reach, z + dz * reach)) support = 'bridgeable';
     }
@@ -1198,9 +1431,14 @@ export function describeVoxelLayer(
       }
   }
   const rows = (cell: (x: number, z: number) => string) =>
-    Array.from({ length: depth }, (_, z) => Array.from({ length: width }, (_, x) => cell(x, z)).join('')).join('\n');
+    Array.from({ length: depth }, (_, z) =>
+      Array.from({ length: width }, (_, x) => cell(x, z)).join(''),
+    ).join('\n');
   const legend = colors
-    .map((color) => `${letter.get(color)}=${COLORS.find((entry) => entry.id === color)?.name ?? 'Unknown'} (${color})`)
+    .map(
+      (color) =>
+        `${letter.get(color)}=${COLORS.find((entry) => entry.id === color)?.name ?? 'Unknown'} (${color})`,
+    )
     .join(', ');
   return [
     `Layer ${layer} (y = ${layer * 3} plates). Column c is x = ${origin.x} + c, row r is z = ${origin.z} + r.`,
@@ -1228,15 +1466,33 @@ const STONE_COLORS = new Set([72, 71, 8, 7, 19, 28]);
  * brown roofs and thatch a darker brown and dark tan.
  */
 const MATERIAL_SHADES: Readonly<Record<number, readonly (readonly [number, number])[]>> = {
-  72: [[71, 18], [28, 6]],
-  71: [[72, 18], [19, 6]],
+  72: [
+    [71, 18],
+    [28, 6],
+  ],
+  71: [
+    [72, 18],
+    [19, 6],
+  ],
   8: [[7, 18]],
   7: [[8, 18]],
-  19: [[28, 15], [84, 6]],
-  28: [[19, 15], [72, 6]],
-  70: [[308, 20], [28, 4]],
+  19: [
+    [28, 15],
+    [84, 6],
+  ],
+  28: [
+    [19, 15],
+    [72, 6],
+  ],
+  70: [
+    [308, 20],
+    [28, 4],
+  ],
   308: [[70, 20]],
-  84: [[70, 15], [19, 8]],
+  84: [
+    [70, 15],
+    [19, 8],
+  ],
   4: [[320, 15]],
   320: [[4, 15]],
 };
@@ -1244,8 +1500,16 @@ const MATERIAL_SHADES: Readonly<Record<number, readonly (readonly [number, numbe
 const SHADED_PART_IDS = new Set([...VOXEL_FILL_PART_IDS, '98283', '15533', ...SLOPE_PART_IDS]);
 /** Tiles by footprint ("width x depth" before rotation), for capping exposed tops. */
 const CAP_TILES: Readonly<Record<string, string>> = {
-  '1x1': '3070b', '1x2': '3069b', '1x3': '63864', '1x4': '2431', '1x6': '6636', '1x8': '4162',
-  '2x2': '3068b', '2x3': '26603', '2x4': '87079', '2x6': '69729',
+  '1x1': '3070b',
+  '1x2': '3069b',
+  '1x3': '63864',
+  '1x4': '2431',
+  '1x6': '6636',
+  '1x8': '4162',
+  '2x2': '3068b',
+  '2x3': '26603',
+  '2x4': '87079',
+  '2x6': '69729',
 };
 const PLAIN_PART_IDS = new Set([...VOXEL_FILL_PART_IDS, ...Object.values(MASONRY_SWAPS)]);
 const RIDGE_PART_ID = '35464';
@@ -1287,24 +1551,37 @@ export function styleVoxelFill(
   const id = (kind: string) => `style-${kind}-${next++}`;
   const footprint = (brick: Brick) => {
     const part = getPart(brick.partId);
-    return brick.rotation % 180 ? { width: part.depth, depth: part.width } : { width: part.width, depth: part.depth };
+    return brick.rotation % 180
+      ? { width: part.depth, depth: part.width }
+      : { width: part.width, depth: part.depth };
   };
   // Stone walls: grey bricks that are not part of a roof.
   const roofCell = (brick: Brick, dx: number, dz: number) => {
-    const [x, z, layer] = [brick.x - origin.x + dx, brick.z - origin.z + dz, Math.floor(brick.y / 3)];
-    if (x < 0 || z < 0 || x >= model.width || z >= model.depth || layer >= model.layers) return false;
+    const [x, z, layer] = [
+      brick.x - origin.x + dx,
+      brick.z - origin.z + dz,
+      Math.floor(brick.y / 3),
+    ];
+    if (x < 0 || z < 0 || x >= model.width || z >= model.depth || layer >= model.layers)
+      return false;
     return Boolean(model.slopes?.[(layer * model.depth + z) * model.width + x]);
   };
   const isRoof = (brick: Brick) => {
     const { width, depth } = footprint(brick);
-    for (let dz = 0; dz < depth; dz += 1) for (let dx = 0; dx < width; dx += 1) if (roofCell(brick, dx, dz)) return true;
+    for (let dz = 0; dz < depth; dz += 1)
+      for (let dx = 0; dx < width; dx += 1) if (roofCell(brick, dx, dz)) return true;
     return false;
   };
   let bricks = fill.assembly.bricks.map((brick) => {
     if (!SHADED_PART_IDS.has(brick.partId)) return brick;
     let styled = brick;
     const masonry = MASONRY_SWAPS[brick.partId];
-    if (masonry && STONE_COLORS.has(brick.color) && !isRoof(brick) && allowed(masonry, brick.color)) {
+    if (
+      masonry &&
+      STONE_COLORS.has(brick.color) &&
+      !isRoof(brick) &&
+      allowed(masonry, brick.color)
+    ) {
       styled = { ...styled, partId: masonry };
       style.masonry += 1;
     }
@@ -1331,12 +1608,15 @@ export function styleVoxelFill(
     const part = getPart(brick.partId);
     for (let dz = 0; dz < Math.ceil(depth); dz += 1)
       for (let dx = 0; dx < Math.ceil(width); dx += 1)
-        for (let y = brick.y; y < brick.y + part.height; y += 1) top.add(`${Math.floor(brick.x) + dx},${Math.floor(y)},${Math.floor(brick.z) + dz}`);
+        for (let y = brick.y; y < brick.y + part.height; y += 1)
+          top.add(`${Math.floor(brick.x) + dx},${Math.floor(y)},${Math.floor(brick.z) + dz}`);
   }
   const exposed = (brick: Brick) => {
     const { width, depth } = footprint(brick);
     const y = brick.y + getPart(brick.partId).height;
-    for (let dz = 0; dz < depth; dz += 1) for (let dx = 0; dx < width; dx += 1) if (top.has(`${brick.x + dx},${y},${brick.z + dz}`)) return false;
+    for (let dz = 0; dz < depth; dz += 1)
+      for (let dx = 0; dx < width; dx += 1)
+        if (top.has(`${brick.x + dx},${y},${brick.z + dz}`)) return false;
     return true;
   };
   const additions: Brick[] = [];
@@ -1357,17 +1637,41 @@ export function styleVoxelFill(
           for (let nz = -1; nz <= 1 && !higher; nz += 1)
             for (let nx = -1; nx <= 1; nx += 1) {
               const [cx, cz] = [x + nx, z + nz];
-              if (cx < 0 || cz < 0 || cx >= model.width || cz >= model.depth || layer >= model.layers) continue;
-              if (model.cells[(layer * model.depth + cz) * model.width + cx] !== null) higher = true;
+              if (
+                cx < 0 ||
+                cz < 0 ||
+                cx >= model.width ||
+                cz >= model.depth ||
+                layer >= model.layers
+              )
+                continue;
+              if (model.cells[(layer * model.depth + cz) * model.width + cx] !== null)
+                higher = true;
             }
           if (!higher)
-            additions.push({ id: id('ridge'), partId: RIDGE_PART_ID, color: brick.color, x: brick.x + dx, y, z: brick.z + dz, rotation: 0 });
+            additions.push({
+              id: id('ridge'),
+              partId: RIDGE_PART_ID,
+              color: brick.color,
+              x: brick.x + dx,
+              y,
+              z: brick.z + dz,
+              rotation: 0,
+            });
         }
       continue;
     }
     const tile = CAP_TILES[`${part.width}x${part.depth}`];
     if (tile && allowed(tile, brick.color))
-      additions.push({ id: id('cap'), partId: tile, color: brick.color, x: brick.x, y, z: brick.z, rotation: brick.rotation });
+      additions.push({
+        id: id('cap'),
+        partId: tile,
+        color: brick.color,
+        x: brick.x,
+        y,
+        z: brick.z,
+        rotation: brick.rotation,
+      });
   }
   // Inserts sit half a stud into their frame; the side depends on the frame's turn, so the
   // engine decides between the candidate offsets.
@@ -1398,11 +1702,14 @@ export function styleVoxelFill(
 
   // A plate floor under the ground course; everything else rises onto its studs.
   const ground = bricks.filter((brick) => brick.y === 0);
-  const floorColors = FLOOR_COLORS.filter((color) => FLOOR_PART_IDS.every((partId) => allowed(partId, color)));
+  const floorColors = FLOOR_COLORS.filter((color) =>
+    FLOOR_PART_IDS.every((partId) => allowed(partId, color)),
+  );
   // The board grows (to the engine maximum) so whole floor modules fit under the footprint.
   let boardArea = fill.assembly.buildArea ?? BUILD_AREA;
   if (ground.length && floorColors.length) {
-    const extent = (values: number[]) => Math.ceil((Math.max(...values) - Math.min(...values) + 2) / 16) * 16;
+    const extent = (values: number[]) =>
+      Math.ceil((Math.max(...values) - Math.min(...values) + 2) / 16) * 16;
     const needed = Math.max(
       extent(ground.flatMap((brick) => [brick.x, brick.x + footprint(brick).width])),
       extent(ground.flatMap((brick) => [brick.z, brick.z + footprint(brick).depth])),
@@ -1427,14 +1734,24 @@ export function styleVoxelFill(
     const zs = ground.flatMap((brick) => [brick.z, brick.z + footprint(brick).depth]);
     const span = (low: number, high: number) => {
       const count = Math.min(Math.ceil((high - low + 2) / 16), Math.floor(buildArea / 16));
-      const start = Math.max(0, Math.min(buildArea - count * 16, Math.floor((low + high) / 2 - count * 8)));
+      const start = Math.max(
+        0,
+        Math.min(buildArea - count * 16, Math.floor((low + high) / 2 - count * 8)),
+      );
       return { start, size: count * 16 };
     };
-    const [sx, sz] = [span(Math.min(...xs), Math.max(...xs)), span(Math.min(...zs), Math.max(...zs))];
-    floor = layPlateFloor({ x: sx.start, z: sz.start, width: sx.size, depth: sz.size }, floorColors[0], {
-      colorAllowed: allowed,
-      id: () => id('floor'),
-    });
+    const [sx, sz] = [
+      span(Math.min(...xs), Math.max(...xs)),
+      span(Math.min(...zs), Math.max(...zs)),
+    ];
+    floor = layPlateFloor(
+      { x: sx.start, z: sz.start, width: sx.size, depth: sz.size },
+      floorColors[0],
+      {
+        colorAllowed: allowed,
+        id: () => id('floor'),
+      },
+    );
   }
 
   const name = fill.assembly.name;
@@ -1464,8 +1781,15 @@ export function styleVoxelFill(
     const rejected = new Set(valid(decorated).map((issue) => issue.brickId));
     if (!rejected.size) break;
     // Only additions are dropped; if a styled original is rejected, fall back to the fill.
-    if ([...rejected].some((brickId) => !brickId.startsWith('style-cap') && !brickId.startsWith('style-ridge')))
-      return { ...fill, style: { masonry: 0, accents: 0, caps: 0, ridges: 0, inserts: 0, floor: 0 } };
+    if (
+      [...rejected].some(
+        (brickId) => !brickId.startsWith('style-cap') && !brickId.startsWith('style-ridge'),
+      )
+    )
+      return {
+        ...fill,
+        style: { masonry: 0, accents: 0, caps: 0, ridges: 0, inserts: 0, floor: 0 },
+      };
     decorated = decorated.filter((brick) => !rejected.has(brick.id));
   }
   style.caps = decorated.filter((brick) => brick.id.startsWith('style-cap')).length;

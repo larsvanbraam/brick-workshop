@@ -510,7 +510,7 @@
 }
 .generation-bricks span::before,
 .generation-bricks span::after {
-  content: "";
+  content: '';
   position: absolute;
   top: -4px;
   width: 12px;
