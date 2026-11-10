@@ -35,7 +35,6 @@ import {
   INSERT_FRAME_PARTS,
   MAX_HEIGHT,
   PARTS,
-  assessPhysicalFeasibility,
   applyPatch,
   previewPatch,
   evaluateAssemblyPolicy,
@@ -55,6 +54,8 @@ import {
   isRuntimePart,
   registerPart,
   resizeBuildArea,
+  sharedPhysicalAssessment,
+  validateAddition,
   validateAssembly,
 } from '@lego-builder/brick-engine';
 import type {
@@ -265,6 +266,11 @@ function placementFor(
 }
 
 /** A short, plain reason a placement or removal was refused. */
+const PLACEMENT_KEYS = ['partId', 'color', 'x', 'y', 'z', 'rotation', 'facing'] as const;
+
+/** How long the pointer rests on a spot before the ghost's physical check runs. */
+const PREVIEW_REST_MS = 120;
+
 function refusal(result: Extract<PatchResult, { ok: false }>) {
   const code = result.assessment?.geometry[0]?.code;
   if (code === 'collision') return 'That spot is already taken.';
@@ -406,9 +412,10 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [message]);
   const buildArea = getBuildArea(assembly);
+  // Shared with the preview that checked this build, so read only.
   const physical = useMemo(
     () =>
-      assessPhysicalFeasibility(assembly, {
+      sharedPhysicalAssessment(assembly, {
         data: physicalData,
         estimateMissingMasses,
         useCatalogMasses,
@@ -427,13 +434,27 @@ export default function App() {
   );
   const visibleLayer = Math.min(layer, height);
   const removing = tool === 'erase' || (tool === 'place' && shiftHeld);
-  const ghost = useMemo(
-    () =>
+  // The ghost keeps its identity while the pointer stays on one spot, and gets an ID of its own
+  // so that its preview can be committed as is.
+  const ghostRef = useRef<{ assembly: Assembly; ghost: Brick | null }>({ assembly, ghost: null });
+  const ghost = useMemo(() => {
+    const brick =
       tool === 'place' && !shiftHeld && target
         ? placementFor(target, partId, color, rotation, buildArea)
-        : null,
-    [tool, shiftHeld, target, partId, color, rotation, buildArea],
-  );
+        : null;
+    const previous = ghostRef.current;
+    if (
+      brick &&
+      previous.ghost &&
+      previous.assembly === assembly &&
+      PLACEMENT_KEYS.every((key) => brick[key] === previous.ghost![key])
+    )
+      return previous.ghost;
+    return brick && { ...brick, id: crypto.randomUUID() };
+  }, [assembly, tool, shiftHeld, target, partId, color, rotation, buildArea]);
+  useLayoutEffect(() => {
+    ghostRef.current = { assembly, ghost };
+  }, [assembly, ghost]);
   const editPolicy = useMemo<EditPolicy>(
     () => ({
       evidence,
@@ -447,17 +468,45 @@ export default function App() {
   useLayoutEffect(() => {
     policyRef.current = editPolicy;
   }, [editPolicy]);
-  const candidate = useMemo(
-    () =>
-      ghost
-        ? previewPatch(
+  const [settled, setSettled] = useState<{
+    assembly: Assembly;
+    ghost: Brick;
+    policy: EditPolicy;
+    result: PatchResult;
+  } | null>(null);
+  const preview = useMemo(() => {
+    if (!ghost) return null;
+    if (settled?.assembly === assembly && settled.ghost === ghost && settled.policy === editPolicy)
+      return settled.result;
+    // Shape and support are checked at once. The physical check covers the whole build, so on
+    // a spot that fits it waits until the pointer rests.
+    const added = validateAddition(assembly, ghost);
+    if (added && !added.issues.length) return 'pending';
+    return previewPatch(
+      assembly,
+      { operations: [{ type: 'add', brick: ghost }] },
+      { policy: editPolicy },
+    );
+  }, [assembly, ghost, editPolicy, settled]);
+  useEffect(() => {
+    if (preview !== 'pending' || !ghost) return;
+    const timer = setTimeout(
+      () =>
+        setSettled({
+          assembly,
+          ghost,
+          policy: editPolicy,
+          result: previewPatch(
             assembly,
             { operations: [{ type: 'add', brick: ghost }] },
             { policy: editPolicy },
-          )
-        : null,
-    [assembly, ghost, editPolicy],
-  );
+          ),
+        }),
+      PREVIEW_REST_MS,
+    );
+    return () => clearTimeout(timer);
+  }, [preview, assembly, ghost, editPolicy]);
+  const candidate = preview === 'pending' ? null : preview;
   // With a piece selected, the color controls recolor that piece instead of the brush.
   const editingSelection = tool === 'select' && selected !== undefined;
   const activeColor = editingSelection ? selected.color : color;
@@ -500,7 +549,7 @@ export default function App() {
     });
     setMessage('');
   }
-  function addBrick(brick: Brick, notify = true) {
+  function addBrick(brick: Brick) {
     const result = applyPatch(
       assembly,
       { operations: [{ type: 'add', brick: { ...brick, id: crypto.randomUUID() } }] },
@@ -509,7 +558,7 @@ export default function App() {
     if (result.ok) {
       commit(result.assembly);
       setLayer(MAX_HEIGHT);
-    } else if (notify) setMessage(refusal(result));
+    } else setMessage(refusal(result));
   }
   function removeBrick(id: string) {
     const result = applyPatch(
@@ -572,12 +621,21 @@ export default function App() {
       return;
     }
     const brick = placementFor(hit, partId, color, rotation, buildArea);
-    // When the click lands on the previewed spot, the hint above the dock already explains a refusal.
     const previewed =
       ghost !== null &&
       brick !== null &&
       (['x', 'y', 'z', 'rotation'] as const).every((key) => ghost[key] === brick[key]);
-    if (brick) addBrick(brick, !previewed);
+    // On the previewed spot the preview already holds the checked build, or the refusal that the
+    // hint above the dock explains.
+    if (previewed && candidate) {
+      if (candidate.ok) {
+        commit(candidate.assembly);
+        setLayer(MAX_HEIGHT);
+      }
+      return;
+    }
+    // Clicked before the preview settled: no hint explains a refusal yet.
+    if (brick) addBrick(brick);
   }
   function undo() {
     const previous = history.past.at(-1);
@@ -1143,7 +1201,7 @@ export default function App() {
               onPointerDevice={detectDevice}
               onActivate={activate}
               ghost={cinematic ? null : ghost}
-              ghostValid={candidate?.ok ?? false}
+              ghostValid={preview === 'pending' || (candidate?.ok ?? false)}
               layer={visibleLayer}
               explode={explode}
               view={view}

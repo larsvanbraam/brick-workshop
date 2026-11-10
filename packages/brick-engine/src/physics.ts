@@ -306,9 +306,61 @@ function worldCenter(brick: Brick, mass: PartMass) {
   return { x: brick.x + x, z: brick.z + z };
 }
 
+/**
+ * The latest assessment of each bricks array, for the options it ran with. Like validations,
+ * assemblies and physical data are treated as immutable.
+ */
+const assessments = new WeakMap<
+  readonly Brick[],
+  {
+    buildArea: number | undefined;
+    data: PhysicalData | undefined;
+    estimateMissingMasses: boolean | undefined;
+    useCatalogMasses: boolean | undefined;
+    report: PhysicalAssessment;
+  }
+>();
+
 export function assessPhysicalFeasibility(
   assembly: Assembly,
   options: PhysicalOptions = {},
+): PhysicalAssessment {
+  return structuredClone(sharedPhysicalAssessment(assembly, options));
+}
+
+/**
+ * assessPhysicalFeasibility without the copy: the report is shared by everyone who asks for
+ * the same assembly and options, so it must not be changed.
+ */
+export function sharedPhysicalAssessment(
+  assembly: Assembly,
+  options: PhysicalOptions = {},
+): PhysicalAssessment {
+  const cached = assessments.get(assembly.bricks);
+  if (
+    cached &&
+    cached.buildArea === assembly.buildArea &&
+    cached.data === options.data &&
+    cached.estimateMissingMasses === options.estimateMissingMasses &&
+    cached.useCatalogMasses === options.useCatalogMasses
+  )
+    return cached.report;
+  const report = computePhysicalAssessment(assembly, options);
+  // Registering a part can make invalid geometry valid, so only valid builds are kept.
+  if (report.status !== 'invalid-geometry')
+    assessments.set(assembly.bricks, {
+      buildArea: assembly.buildArea,
+      data: options.data,
+      estimateMissingMasses: options.estimateMissingMasses,
+      useCatalogMasses: options.useCatalogMasses,
+      report,
+    });
+  return report;
+}
+
+function computePhysicalAssessment(
+  assembly: Assembly,
+  options: PhysicalOptions,
 ): PhysicalAssessment {
   const data = importPhysicalData(options.data ?? { version: 1, parts: {} });
   const hasRuntimeParts = assembly.bricks.some((brick) => isRuntimePart(brick.partId));

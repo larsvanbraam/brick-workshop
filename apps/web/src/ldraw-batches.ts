@@ -608,6 +608,36 @@ function placementKey(
 ) {
   return `${PLACEMENT_KEYS.map((name) => String(brick[name] ?? '')).join(':')}:${model.uuid}:${buildArea}:${explode}|${covered}`;
 }
+/** What the batch knows of a brick since the last update. */
+type Tracked = {
+  brick: Brick;
+  model: Group;
+  /** Where its model's studs are, as site keys in `shape.studs` order; only for opaque bricks. */
+  studSites: readonly string[];
+  /** Its receivers and studs as site keys, when it is opaque and so covers or closes them off. */
+  receivers: readonly string[];
+  studs: readonly string[];
+  /** Whether its underside is left out once every receiver sits on an opaque stud. */
+  closable: boolean;
+  covered: string;
+  key: string;
+};
+
+const samePlacement = (first: Brick, second: Brick) =>
+  first === second || PLACEMENT_KEYS.every((name) => first[name] === second[name]);
+
+function addTo(map: Map<string, Set<string>>, key: string, id: string) {
+  const ids = map.get(key);
+  if (ids) ids.add(id);
+  else map.set(key, new Set([id]));
+}
+function removeFrom(map: Map<string, Set<string>>, key: string, id: string) {
+  const ids = map.get(key);
+  if (!ids) return;
+  ids.delete(id);
+  if (!ids.size) map.delete(key);
+}
+
 const probe = new Mesh();
 const probeSphere = new Sphere();
 
@@ -753,11 +783,15 @@ export class LDrawBatch {
   /** Looks no placement uses since the last update, freed when it finishes. */
   private readonly idle = new Set<Look>();
   private readonly shapes = new WeakMap<Group, PartShape>();
-  private coverageCache?: {
-    entries: readonly BatchEntry[];
-    explode: boolean;
-    covered: Map<string, string>;
-  };
+  /** Each brick's coverage and placement key, kept up to date for the last entries. */
+  private readonly tracked = new Map<string, Tracked>();
+  private trackedFor?: { entries: readonly BatchEntry[]; buildArea: number; explode: boolean };
+  /** Opaque bricks' receivers and studs by site key, with the bricks that have one there. */
+  private readonly receiverSites = new Map<string, Set<string>>();
+  private readonly studSites = new Map<string, Set<string>>();
+  /** Bricks by the sites of their model studs, and by their receivers when closable. */
+  private readonly studOwners = new Map<string, Set<string>>();
+  private readonly underOwners = new Map<string, Set<string>>();
   private readonly placements = new Map<string, Placement>();
   private readonly lineLayers: Record<LineKind, Layer>;
 
@@ -889,14 +923,10 @@ export class LDrawBatch {
 
   /** How many changed bricks `entries` would place, to decide between the two ways to update. */
   changes(entries: readonly BatchEntry[], buildArea: number, explode = false) {
-    const covered = this.coverage(entries, explode);
+    const tracked = this.track(entries, buildArea, explode);
     let count = 0;
-    for (const { brick, model } of entries)
-      if (
-        this.placements.get(brick.id)?.key !==
-        placementKey(brick, model, buildArea, explode, covered.get(brick.id))
-      )
-        count++;
+    for (const { brick } of entries)
+      if (this.placements.get(brick.id)?.key !== tracked.get(brick.id)!.key) count++;
     return count;
   }
 
@@ -911,53 +941,139 @@ export class LDrawBatch {
   }
 
   /**
-   * What of each brick no camera can see, as a sorted list of region keys per brick id: the
-   * studs an opaque brick is pressed onto, and the underside when the brick is opaque and its
-   * bottom is closed off, by the ground or by opaque studs under every one of its receivers.
-   * Exploded bricks float apart, so nothing is covered then.
+   * Brings each brick's coverage and placement key in line with `entries`. What of a brick no
+   * camera can see is a sorted list of region keys: the studs an opaque brick is pressed onto,
+   * and the underside when the brick is opaque and its bottom is closed off, by the ground or by
+   * opaque studs under every one of its receivers. Exploded bricks float apart, so nothing is
+   * covered then. Only bricks that changed, and those whose studs or receivers meet theirs, are
+   * worked out again.
    */
-  private coverage(entries: readonly BatchEntry[], explode: boolean) {
-    const cached = this.coverageCache;
-    if (cached?.entries === entries && cached.explode === explode) return cached.covered;
-    const covered = new Map<string, string>();
-    this.coverageCache = { entries, explode, covered };
-    if (!this.hideCovered || explode) return covered;
-    const receivers = new Set<string>();
-    const studs = new Set<string>();
-    for (const { brick } of entries) {
-      if (!OPAQUE_COLORS.has(brick.color)) continue;
-      for (const site of getConnectionSites(brick, 'bottom'))
-        receivers.add(siteKey(site.x, site.y, site.z));
-      for (const site of getConnectionSites(brick, 'top'))
-        studs.add(siteKey(site.x, site.y, site.z));
+  private track(entries: readonly BatchEntry[], buildArea: number, explode: boolean) {
+    const last = this.trackedFor;
+    const tracked = this.tracked;
+    if (last?.entries === entries && last.buildArea === buildArea && last.explode === explode)
+      return tracked;
+    // A new board size or exploding changes every key, and exploding every coverage.
+    const rekey = !last || last.buildArea !== buildArea || last.explode !== explode;
+    const recover = !last || last.explode !== explode;
+    this.trackedFor = { entries, buildArea, explode };
+    const changed: BatchEntry[] = [];
+    const seen = new Set<string>();
+    for (const entry of entries) {
+      seen.add(entry.brick.id);
+      const current = tracked.get(entry.brick.id);
+      if (!current || current.model !== entry.model || !samePlacement(current.brick, entry.brick))
+        changed.push(entry);
     }
-    for (const { brick, model } of entries) {
+    // Sites where an opaque receiver or stud came or went: what meets them may change.
+    const receiversMoved = new Set<string>();
+    const studsMoved = new Set<string>();
+    const forget = (id: string, current: Tracked) => {
+      for (const key of current.receivers) {
+        removeFrom(this.receiverSites, key, id);
+        receiversMoved.add(key);
+      }
+      for (const key of current.studs) {
+        removeFrom(this.studSites, key, id);
+        studsMoved.add(key);
+      }
+      for (const key of current.studSites) removeFrom(this.studOwners, key, id);
+      if (current.closable)
+        for (const key of current.receivers) removeFrom(this.underOwners, key, id);
+    };
+    if (seen.size < tracked.size)
+      for (const [id, current] of tracked)
+        if (!seen.has(id)) {
+          forget(id, current);
+          tracked.delete(id);
+        }
+    const coverable = this.hideCovered && !explode;
+    for (const { brick, model } of changed) {
+      const current = tracked.get(brick.id);
+      if (current) forget(brick.id, current);
+      const opaque = OPAQUE_COLORS.has(brick.color);
+      const sites = (surface: 'top' | 'bottom') =>
+        opaque
+          ? getConnectionSites(brick, surface).map((site) => siteKey(site.x, site.y, site.z))
+          : [];
+      let studSites: string[] = [];
+      let closable = false;
       // Side-mounted parts point their studs and underside sideways, and see-through ones show
       // what is inside them.
-      if (brick.facing || !OPAQUE_COLORS.has(brick.color)) continue;
-      const shape = this.shapeOf(model);
-      const { x, y, z, matrix } = getLDrawTransform(brick);
-      const hidden = shape.studs.filter((stud) => {
-        const [studX, studZ] = stud.split(':').map(Number);
-        return receivers.has(
-          siteKey(
+      if (opaque && !brick.facing) {
+        const shape = this.shapeOf(model);
+        const { x, y, z, matrix } = getLDrawTransform(brick);
+        studSites = shape.studs.map((stud) => {
+          const [studX, studZ] = stud.split(':').map(Number);
+          return siteKey(
             (matrix[0] * studX + matrix[2] * studZ + x) / 20,
             -(matrix[3] * studX + matrix[5] * studZ + y) / 8,
             (matrix[6] * studX + matrix[8] * studZ + z) / 20,
-          ),
-        );
-      });
-      if (shape.underside && closedSides(brick.partId)) {
-        const bottom = getConnectionSites(brick, 'bottom');
+          );
+        });
+        closable = shape.underside && closedSides(brick.partId);
+      }
+      const next: Tracked = {
+        brick,
+        model,
+        studSites,
+        receivers: sites('bottom'),
+        studs: sites('top'),
+        closable,
+        covered: '',
+        key: '',
+      };
+      for (const key of next.receivers) {
+        addTo(this.receiverSites, key, brick.id);
+        receiversMoved.add(key);
+      }
+      for (const key of next.studs) {
+        addTo(this.studSites, key, brick.id);
+        studsMoved.add(key);
+      }
+      for (const key of studSites) addTo(this.studOwners, key, brick.id);
+      if (closable) for (const key of next.receivers) addTo(this.underOwners, key, brick.id);
+      tracked.set(brick.id, next);
+    }
+    const affected = new Set<string>(
+      recover ? tracked.keys() : changed.map(({ brick }) => brick.id),
+    );
+    if (!recover) {
+      for (const key of receiversMoved)
+        for (const id of this.studOwners.get(key) ?? []) affected.add(id);
+      for (const key of studsMoved)
+        for (const id of this.underOwners.get(key) ?? []) affected.add(id);
+    }
+    for (const id of affected) {
+      const current = tracked.get(id)!;
+      let covered = '';
+      if (coverable && current.studSites.length + Number(current.closable) > 0) {
+        const { studs } = this.shapeOf(current.model);
+        const hidden = studs.filter((_, index) => this.receiverSites.has(current.studSites[index]));
         if (
-          (this.solidGround && brick.y === 0) ||
-          (bottom.length > 0 && bottom.every((site) => studs.has(siteKey(site.x, site.y, site.z))))
+          current.closable &&
+          ((this.solidGround && current.brick.y === 0) ||
+            (current.receivers.length > 0 &&
+              current.receivers.every((key) => this.studSites.has(key))))
         )
           hidden.push(UNDERSIDE);
+        covered = hidden.join(',');
       }
-      if (hidden.length) covered.set(brick.id, hidden.join(','));
+      if (covered !== current.covered || !current.key) {
+        current.covered = covered;
+        current.key = '';
+      }
     }
-    return covered;
+    for (const current of tracked.values())
+      if (rekey || !current.key)
+        current.key = placementKey(
+          current.brick,
+          current.model,
+          buildArea,
+          explode,
+          current.covered || undefined,
+        );
+    return tracked;
   }
 
   private run = 0;
@@ -969,20 +1085,14 @@ export class LDrawBatch {
     explode: boolean,
     progress = { done: 0, total: 0 },
   ): Generator<void, void> {
-    const covered = this.coverage(entries, explode);
-    const seen = new Set<string>();
+    const tracked = this.track(entries, buildArea, explode);
     const changed: BatchEntry[] = [];
-    for (const entry of entries) {
-      seen.add(entry.brick.id);
-      if (
-        this.placements.get(entry.brick.id)?.key !==
-        placementKey(entry.brick, entry.model, buildArea, explode, covered.get(entry.brick.id))
-      )
+    for (const entry of entries)
+      if (this.placements.get(entry.brick.id)?.key !== tracked.get(entry.brick.id)!.key)
         changed.push(entry);
-    }
     let removed = false;
     for (const [id, placement] of this.placements)
-      if (!seen.has(id)) {
+      if (!tracked.has(id)) {
         this.release(placement);
         this.placements.delete(id);
         removed = true;
@@ -991,16 +1101,12 @@ export class LDrawBatch {
     if (!changed.length && !removed) return this.collect();
     progress.total = changed.length;
     for (const [index, { brick, model }] of changed.entries()) {
-      const hidden = covered.get(brick.id);
-      const key = placementKey(brick, model, buildArea, explode, hidden);
+      const { covered: hidden, key } = tracked.get(brick.id)!;
       const current = this.placements.get(brick.id);
       // A cancelled run may have placed this brick already.
       if (current?.key === key) continue;
       if (current) this.release(current);
-      this.placements.set(
-        brick.id,
-        this.place(brick, model, key, buildArea, explode, hidden ?? ''),
-      );
+      this.placements.set(brick.id, this.place(brick, model, key, buildArea, explode, hidden));
       progress.done = index + 1;
       yield;
     }
@@ -1147,7 +1253,10 @@ export class LDrawBatch {
     this.looks.clear();
     this.idle.clear();
     this.placements.clear();
-    this.coverageCache = undefined;
+    this.tracked.clear();
+    this.trackedFor = undefined;
+    for (const sites of [this.receiverSites, this.studSites, this.studOwners, this.underOwners])
+      sites.clear();
   }
 
   private look(brick: Brick, model: Group, hidden: string) {

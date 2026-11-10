@@ -236,6 +236,75 @@ describe('local LDraw assets', () => {
     batch.dispose();
   });
 
+  it('keeps coverage up to date through edits as if built afresh', () => {
+    // A 1 x 1 brick with a stud on top and a tube in its hollow underside.
+    const model = new Group().add(
+      new Mesh(new BoxGeometry(20, 24, 20).translate(0, 12, 0), new MeshStandardMaterial()),
+      new Mesh(new CylinderGeometry(6, 6, 4, 16).translate(0, -2, 0), new MeshStandardMaterial()),
+      new Mesh(new BoxGeometry(8, 16, 8).translate(0, 14, 0), new MeshStandardMaterial()),
+    );
+    let seed = 5;
+    const random = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    const pick = <T>(values: readonly T[]) => values[Math.floor(random() * values.length)];
+    const keys = (batch: LDrawBatch) =>
+      new Map(
+        [...(batch as unknown as { placements: Map<string, { key: string }> }).placements].map(
+          ([id, placement]) => [id, placement.key],
+        ),
+      );
+    type Piece = {
+      id: string;
+      partId: string;
+      color: number;
+      x: number;
+      y: number;
+      z: number;
+      rotation: 0;
+    };
+    let bricks: Piece[] = [];
+    let explode = false;
+    let area = 16;
+    const batch = new LDrawBatch((part) => part, { solidGround: true });
+    let hidden = 0;
+    for (let step = 0; step < 300; step++) {
+      const roll = random();
+      if (roll < 0.45 || bricks.length < 4) {
+        const [x, z] = [pick([0, 1, 2]), pick([0, 1, 2])];
+        const top = Math.max(
+          0,
+          ...bricks.filter((b) => b.x === x && b.z === z).map((b) => b.y + 3),
+        );
+        bricks = [
+          ...bricks,
+          { id: `b${step}`, partId: '3005', color: pick([4, 4, 1, 47]), x, y: top, z, rotation: 0 },
+        ];
+      } else if (roll < 0.7) bricks = bricks.filter((brick) => brick !== pick(bricks));
+      else if (roll < 0.85) {
+        const target = pick(bricks);
+        bricks = bricks.map((brick) =>
+          brick === target ? { ...brick, color: brick.color === 47 ? 4 : 47 } : brick,
+        );
+      } else if (roll < 0.95) {
+        const target = pick(bricks);
+        bricks = bricks.map((brick) =>
+          brick === target ? { ...brick, x: pick([0, 1, 2]), y: pick([0, 3, 6]) } : { ...brick },
+        );
+      } else if (roll < 0.98) explode = !explode;
+      else area = area === 16 ? 32 : 16;
+      const entries = bricks.map((brick) => ({ brick, model }));
+      batch.update(entries, area, explode);
+      const fresh = new LDrawBatch((part) => part, { solidGround: true });
+      fresh.update(entries, area, explode);
+      expect(keys(batch)).toEqual(keys(fresh));
+      expect(batch.stats().coveredStuds).toBe(fresh.stats().coveredStuds);
+      expect(batch.stats().closedUndersides).toBe(fresh.stats().closedUndersides);
+      hidden += fresh.stats().coveredStuds + fresh.stats().closedUndersides;
+      fresh.dispose();
+    }
+    expect(hidden).toBeGreaterThan(100);
+    batch.dispose();
+  });
+
   it('places big rebuilds in slices, and a newer update cancels a running one', async () => {
     const geometry = new BoxGeometry(20, 24, 20).translate(0, 12, 0);
     const model = new Group().add(new Mesh(geometry, new MeshStandardMaterial()));

@@ -7,12 +7,13 @@ import {
   getBillOfMaterials,
   getPart,
   isMatchingInsertFrame,
+  validateAddition,
   validateAssembly,
 } from './core.ts';
 import type { Assembly, Brick } from './core.ts';
 import { getPartColorStatus, importPartColorEvidence } from './part-colors.ts';
 import type { PartColorEvidence } from './part-colors.ts';
-import { assessPhysicalFeasibility, getBuildabilityReport, importPhysicalData } from './physics.ts';
+import { getBuildabilityReport, importPhysicalData, sharedPhysicalAssessment } from './physics.ts';
 import type { PhysicalAssessment, PhysicalOptions } from './physics.ts';
 
 export const MAX_PATCH_OPERATIONS = 100;
@@ -168,11 +169,9 @@ export function evaluateAssemblyPolicy(assembly: Assembly, policy: EditPolicy = 
     for (const name of ['useCatalogMasses', 'estimateMissingMasses'] as const)
       if (policy.physical?.[name] !== undefined && typeof policy.physical[name] !== 'boolean')
         throw new Error('Invalid physical option');
-    const physicalOptions = {
-      ...policy.physical,
-      data: importPhysicalData(policy.physical?.data ?? { version: 1, parts: {} }),
-    };
-    if (!geometry.length) physical = assessPhysicalFeasibility(assembly, physicalOptions);
+    importPhysicalData(policy.physical?.data ?? { version: 1, parts: {} });
+    // The assessment imports the data itself; passing the caller's object lets it be cached.
+    if (!geometry.length) physical = sharedPhysicalAssessment(assembly, { ...policy.physical });
   } catch {
     issues.push({ code: 'invalid_policy', message: 'Invalid physical data or options.' });
   }
@@ -361,10 +360,41 @@ export function previewPatch(
         issues: initialIssues,
       },
     };
+  const next = applyOperations(assembly, patch.operations);
+  if ('code' in next) return fail(next.code, next.message);
+  const assessment = evaluateAssemblyPolicy(next, context.policy);
+  if (!assessment.allowed) {
+    const issue = assessment.issues[0];
+    return {
+      ok: false,
+      revision,
+      error: { code: issue.code, message: issue.message, issues: issue.details },
+      assessment,
+    };
+  }
+  return { ok: true, revision, assembly: next, assessment };
+}
+
+function applyOperations(
+  assembly: Assembly,
+  operations: readonly PatchOperation[],
+): Assembly | { code: string; message: string } {
+  const [first] = operations;
+  if (
+    operations.length === 1 &&
+    validOperation(first) &&
+    first.type === 'add' &&
+    !assembly.bricks.some((brick) => brick.id === first.brick.id)
+  ) {
+    // A single new piece, the common edit, is checked on its own against the valid assembly.
+    const added = validateAddition(assembly, structuredClone(first.brick));
+    if (added) return added.assembly;
+  }
+  const fail = (code: string, message: string) => ({ code, message });
   const next = structuredClone(assembly);
   const bricks = new Map(next.bricks.map((brick) => [brick.id, brick]));
   const targets = new Set<string>();
-  for (const operation of patch.operations) {
+  for (const operation of operations) {
     if (!validOperation(operation))
       return fail(
         'invalid_patch',
@@ -385,17 +415,7 @@ export function previewPatch(
     }
   }
   next.bricks = [...bricks.values()];
-  const assessment = evaluateAssemblyPolicy(next, context.policy);
-  if (!assessment.allowed) {
-    const issue = assessment.issues[0];
-    return {
-      ok: false,
-      revision,
-      error: { code: issue.code, message: issue.message, issues: issue.details },
-      assessment,
-    };
-  }
-  return { ok: true, revision, assembly: next, assessment };
+  return next;
 }
 
 export function applyPatch(

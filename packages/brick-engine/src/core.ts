@@ -878,6 +878,8 @@ export const PARTS: readonly Part[] = [
 const PARTS_BY_ID = new Map(PARTS.map((part) => [part.id, part]));
 const COLOR_IDS = new Set(COLORS.map((color) => color.id));
 const RUNTIME_PARTS = new Map<string, Part>();
+/** Counts registered parts, which can make cached validations stale. */
+let partsVersion = 0;
 
 export function registerPart(part: Part): void {
   if (PARTS_BY_ID.has(part.id)) return;
@@ -905,6 +907,7 @@ export function registerPart(part: Part): void {
   )
     throw new Error(`Invalid runtime part definition: ${part.id}`);
   RUNTIME_PARTS.set(part.id, part);
+  partsVersion += 1;
 }
 
 export function isRuntimePart(partId: string): boolean {
@@ -1268,32 +1271,126 @@ function hasEnvelopeContact(upper: Brick, lower: Brick): boolean {
   );
 }
 
-export function validateAssembly(assembly: Assembly): Issue[] {
+type Size = ReturnType<typeof footprint>;
+
+/**
+ * What validating a valid assembly leaves behind, so that one more piece can be checked on its
+ * own: every piece is grounded or hung, so these are the studs and spaces the next one meets.
+ */
+interface ValidationIndex {
+  bricks: readonly Brick[];
+  ids: ReadonlySet<string>;
+  /** Top studs of upright pieces, keyed `${y}:${x}:${z}`. */
+  groundedStuds: ReadonlySet<string>;
+  /** Upright pieces by the height of their top, for the envelope contacts of runtime parts. */
+  groundedByTopHeight: ReadonlyMap<number, readonly Brick[]>;
+  runtimeBricks: number;
+  /** Side studs keyed like getSideStuds, with the pieces that offer them. */
+  sideStuds: ReadonlyMap<string, readonly string[]>;
+  /** The pass that hung each piece: 0 for upright pieces, 1 and up for mounted ones. */
+  rounds: ReadonlyMap<string, number>;
+  hosts: ReadonlyMap<string, ReadonlySet<string>>;
+  /** Side studs that mounted pieces sit on. */
+  mountedReceivers: ReadonlySet<string>;
+  bounds: readonly Size[];
+  /** Pieces by the 4 x 3 x 4 cells they reach into, as indices into `bricks`. */
+  buckets: ReadonlyMap<string, readonly number[]>;
+  /** Each mounted piece's hosts, down to the upright piece the chain hangs from. */
+  chains: Map<string, Set<string>>;
+}
+
+interface Validation {
+  buildArea: number | undefined;
+  partsVersion: number;
+  issues: readonly Issue[];
+  /** Only for valid assemblies; built on first use for those checked one piece at a time. */
+  index: ValidationIndex | (() => ValidationIndex) | null;
+}
+
+/**
+ * Validations by bricks array. Assemblies are treated as immutable: an array whose pieces are
+ * changed in place after validating keeps its old result.
+ */
+const validations = new WeakMap<readonly Brick[], Validation>();
+
+const INVALID_MESSAGE =
+  'Use a unique ID, supported part/color, quarter-turn rotation, and a half-unit grid position inside the build area.';
+const UNSUPPORTED_MESSAGE = 'No stud connection to a grounded brick below this piece.';
+const UNMOUNTED_MESSAGE =
+  'No side stud on a grounded piece pointing the way this mounted piece faces.';
+
+const studKey = (site: { x: number; y: number; z: number }) => `${site.y}:${site.x}:${site.z}`;
+
+function bucketKeys(brick: Brick, size: Size): string[] {
+  const keys: string[] = [];
+  for (
+    let horizontal = Math.floor(brick.x / 4);
+    horizontal < Math.ceil((brick.x + size.width) / 4);
+    horizontal++
+  )
+    for (
+      let vertical = Math.floor(brick.y / 3);
+      vertical < Math.ceil((brick.y + size.height) / 3);
+      vertical++
+    )
+      for (
+        let depth = Math.floor(brick.z / 4);
+        depth < Math.ceil((brick.z + size.depth) / 4);
+        depth++
+      )
+        keys.push(`${horizontal}:${vertical}:${depth}`);
+  return keys;
+}
+
+function overlaps(brick: Brick, size: Size, other: Brick, otherSize: Size): boolean {
+  return (
+    brick.x < other.x + otherSize.width - EPSILON &&
+    brick.x + size.width - EPSILON > other.x &&
+    brick.z < other.z + otherSize.depth - EPSILON &&
+    brick.z + size.depth - EPSILON > other.z &&
+    brick.y < other.y + otherSize.height &&
+    brick.y + size.height > other.y
+  );
+}
+
+function chainOf(index: ValidationIndex, id: string): Set<string> {
+  let ids = index.chains.get(id);
+  if (!ids) {
+    ids = new Set(index.hosts.get(id));
+    for (const host of index.hosts.get(id) ?? [])
+      for (const below of chainOf(index, host)) ids.add(below);
+    index.chains.set(id, ids);
+  }
+  return ids;
+}
+
+function computeValidation(assembly: Assembly): Validation {
+  const result = (issues: Issue[], index: ValidationIndex | null = null): Validation => ({
+    buildArea: assembly.buildArea,
+    partsVersion,
+    issues,
+    index,
+  });
   if (
     assembly.buildArea !== undefined &&
     (!Number.isInteger(assembly.buildArea) ||
       assembly.buildArea < BUILD_AREA ||
       assembly.buildArea > MAX_BUILD_AREA)
   )
-    return [
+    return result([
       {
         brickId: '',
         code: 'invalid',
         message: `Build area must be a whole number from ${BUILD_AREA} to ${MAX_BUILD_AREA} studs.`,
       },
-    ];
+    ]);
   const buildArea = getBuildArea(assembly);
   const issues: Issue[] = [];
   const seen = new Set<string>();
   const valid: Brick[] = [];
   for (const brick of assembly.bricks) {
     if (!isValid(brick, buildArea) || seen.has(brick.id)) {
-      issues.push({
-        brickId: brick.id,
-        code: 'invalid',
-        message:
-          'Use a unique ID, supported part/color, quarter-turn rotation, and a half-unit grid position inside the build area.',
-      });
+      issues.push({ brickId: brick.id, code: 'invalid', message: INVALID_MESSAGE });
     } else {
       valid.push(brick);
     }
@@ -1305,11 +1402,12 @@ export function validateAssembly(assembly: Assembly): Issue[] {
   );
   const groundedByTopHeight = new Map<number, Brick[]>();
   const sideStuds = new Map<string, string[]>();
+  const rounds = new Map<string, number>();
   for (const brick of valid
     .filter((brick) => !brick.facing)
     .toSorted((first, second) => first.y - second.y)) {
     const hasStudSupport = getConnectionSites(brick, 'bottom').some((site) =>
-      groundedStuds.has(`${site.y}:${site.x}:${site.z}`),
+      groundedStuds.has(studKey(site)),
     );
     const hasUnknownEnvelopeSupport =
       (runtimeBrickIds.has(brick.id) || runtimeBrickIds.size > 0) &&
@@ -1324,31 +1422,31 @@ export function validateAssembly(assembly: Assembly): Issue[] {
       hasStudSupport ||
       hasUnknownEnvelopeSupport
     ) {
-      for (const site of getConnectionSites(brick, 'top'))
-        groundedStuds.add(`${site.y}:${site.x}:${site.z}`);
+      for (const site of getConnectionSites(brick, 'top')) groundedStuds.add(studKey(site));
       for (const key of getSideStuds(brick))
         sideStuds.set(key, [...(sideStuds.get(key) ?? []), brick.id]);
+      rounds.set(brick.id, 0);
       const topHeight = brick.y + footprint(brick).height;
       const groundedAtHeight = groundedByTopHeight.get(topHeight) ?? [];
       groundedAtHeight.push(brick);
       groundedByTopHeight.set(topHeight, groundedAtHeight);
     } else {
-      issues.push({
-        brickId: brick.id,
-        code: 'unsupported',
-        message: 'No stud connection to a grounded brick below this piece.',
-      });
+      issues.push({ brickId: brick.id, code: 'unsupported', message: UNSUPPORTED_MESSAGE });
     }
   }
   // Mounted pieces hang off grounded side studs, or off the faces of pieces mounted before them.
   const hosts = new Map<string, Set<string>>();
+  const mountedReceivers = new Set<string>();
   let pending = valid.filter((brick) => brick.facing);
-  for (let progress = true; progress && pending.length;) {
+  for (let progress = true, round = 1; progress && pending.length; round += 1) {
     progress = false;
     pending = pending.filter((brick) => {
-      const ids = getSideReceivers(brick).flatMap((key) => sideStuds.get(key) ?? []);
+      const receivers = getSideReceivers(brick);
+      const ids = receivers.flatMap((key) => sideStuds.get(key) ?? []);
       if (!ids.length) return true;
       hosts.set(brick.id, new Set(ids));
+      rounds.set(brick.id, round);
+      for (const key of receivers) mountedReceivers.add(key);
       for (const key of getSideStuds(brick))
         sideStuds.set(key, [...(sideStuds.get(key) ?? []), brick.id]);
       progress = true;
@@ -1356,69 +1454,47 @@ export function validateAssembly(assembly: Assembly): Issue[] {
     });
   }
   for (const brick of pending)
-    issues.push({
-      brickId: brick.id,
-      code: 'unsupported',
-      message: 'No side stud on a grounded piece pointing the way this mounted piece faces.',
-    });
+    issues.push({ brickId: brick.id, code: 'unsupported', message: UNMOUNTED_MESSAGE });
   // A mounted piece reaches into the recess or stud space of the pieces that hold it, down to
   // the upright brick the whole chain hangs from.
-  const chains = new Map<string, Set<string>>();
-  const chain = (id: string): Set<string> => {
-    let ids = chains.get(id);
-    if (!ids) {
-      ids = new Set(hosts.get(id));
-      for (const host of hosts.get(id) ?? []) for (const below of chain(host)) ids.add(below);
-      chains.set(id, ids);
-    }
-    return ids;
-  };
-  const holds = (piece: Brick, host: Brick) => !!piece.facing && chain(piece.id).has(host.id);
   const bounds = valid.map((brick) => footprint(brick));
   const buckets = new Map<string, number[]>();
   const cells = valid.map((brick, index) => {
-    const size = bounds[index];
-    const keys: string[] = [];
-    for (
-      let horizontal = Math.floor(brick.x / 4);
-      horizontal < Math.ceil((brick.x + size.width) / 4);
-      horizontal++
-    )
-      for (
-        let vertical = Math.floor(brick.y / 3);
-        vertical < Math.ceil((brick.y + size.height) / 3);
-        vertical++
-      )
-        for (
-          let depth = Math.floor(brick.z / 4);
-          depth < Math.ceil((brick.z + size.depth) / 4);
-          depth++
-        ) {
-          const key = `${horizontal}:${vertical}:${depth}`;
-          keys.push(key);
-          const occupants = buckets.get(key);
-          if (occupants) occupants.push(index);
-          else buckets.set(key, [index]);
-        }
+    const keys = bucketKeys(brick, bounds[index]);
+    for (const key of keys) {
+      const occupants = buckets.get(key);
+      if (occupants) occupants.push(index);
+      else buckets.set(key, [index]);
+    }
     return keys;
   });
-  for (let index = 0; index < valid.length; index += 1) {
-    const brick = valid[index];
-    const size = bounds[index];
+  const index: ValidationIndex = {
+    bricks: valid,
+    ids: seen,
+    groundedStuds,
+    groundedByTopHeight,
+    runtimeBricks: runtimeBrickIds.size,
+    sideStuds,
+    rounds,
+    hosts,
+    mountedReceivers,
+    bounds,
+    buckets,
+    chains: new Map(),
+  };
+  const holds = (piece: Brick, host: Brick) =>
+    !!piece.facing && chainOf(index, piece.id).has(host.id);
+  for (let brickIndex = 0; brickIndex < valid.length; brickIndex += 1) {
+    const brick = valid[brickIndex];
+    const size = bounds[brickIndex];
     const candidates = new Set<number>();
-    for (const key of cells[index])
+    for (const key of cells[brickIndex])
       for (const otherIndex of buckets.get(key)!)
-        if (otherIndex > index) candidates.add(otherIndex);
+        if (otherIndex > brickIndex) candidates.add(otherIndex);
     for (const otherIndex of [...candidates].sort((first, second) => first - second)) {
       const other = valid[otherIndex];
-      const otherSize = bounds[otherIndex];
       if (
-        brick.x < other.x + otherSize.width - EPSILON &&
-        brick.x + size.width - EPSILON > other.x &&
-        brick.z < other.z + otherSize.depth - EPSILON &&
-        brick.z + size.depth - EPSILON > other.z &&
-        brick.y < other.y + otherSize.height &&
-        brick.y + size.height > other.y &&
+        overlaps(brick, size, other, bounds[otherIndex]) &&
         !isMatchingInsertFrame(brick, other) &&
         !isMatchingInsertFrame(other, brick) &&
         !holds(brick, other) &&
@@ -1437,12 +1513,163 @@ export function validateAssembly(assembly: Assembly): Issue[] {
       }
     }
   }
-  return issues;
+  return result(issues, issues.length ? null : index);
+}
+
+function getValidation(assembly: Assembly): Validation {
+  const cached = validations.get(assembly.bricks);
+  if (
+    cached &&
+    cached.buildArea === assembly.buildArea &&
+    // Registering a part can make pieces that use it valid.
+    cached.partsVersion === partsVersion
+  )
+    return cached;
+  const validation = computeValidation(assembly);
+  validations.set(assembly.bricks, validation);
+  return validation;
+}
+
+function resolveIndex(validation: Validation): ValidationIndex | null {
+  if (typeof validation.index === 'function') validation.index = validation.index();
+  return validation.index;
+}
+
+export function validateAssembly(assembly: Assembly): Issue[] {
+  return getValidation(assembly).issues.map((issue) => ({ ...issue }));
+}
+
+/**
+ * Validates the assembly with one more piece, which gives the same issues as validating it in
+ * full. A new piece can't unground others, so only it is checked: its own fields, its support
+ * and what it overlaps. The result is remembered for the new assembly, and the index for the
+ * next addition is built from this one when it is first needed.
+ *
+ * Returns null when the assembly itself is invalid, or when the piece offers side studs that a
+ * mounted piece already sits on, which can change how others hang: validate in full then.
+ */
+export function validateAddition(
+  assembly: Assembly,
+  brick: Brick,
+): { assembly: Assembly; issues: Issue[] } | null {
+  const base = getValidation(assembly);
+  const index = base.issues.length ? null : resolveIndex(base);
+  if (!index) return null;
+  const bricks = [...assembly.bricks, brick];
+  const next: Assembly = { ...assembly, bricks };
+  const issues: Issue[] = [];
+  let derive: (() => ValidationIndex) | null = null;
+  if (!isValid(brick, getBuildArea(assembly)) || index.ids.has(brick.id)) {
+    issues.push({ brickId: brick.id, code: 'invalid', message: INVALID_MESSAGE });
+  } else {
+    const offered = getSideStuds(brick);
+    if (offered.some((key) => index.mountedReceivers.has(key))) return null;
+    let round = 0;
+    let hosts: Set<string> | null = null;
+    let receivers: string[] = [];
+    if (!brick.facing) {
+      const runtime = isRuntimePart(brick.partId);
+      const supported =
+        brick.y === 0 ||
+        isSupportedInsert(brick, bricks) ||
+        getConnectionSites(brick, 'bottom').some((site) =>
+          index.groundedStuds.has(studKey(site)),
+        ) ||
+        ((runtime || index.runtimeBricks > 0) &&
+          (index.groundedByTopHeight.get(brick.y) ?? []).some(
+            (support) =>
+              (runtime || isRuntimePart(support.partId)) && hasEnvelopeContact(brick, support),
+          ));
+      if (!supported)
+        issues.push({ brickId: brick.id, code: 'unsupported', message: UNSUPPORTED_MESSAGE });
+    } else {
+      receivers = getSideReceivers(brick);
+      const providers = receivers.flatMap((key) => index.sideStuds.get(key) ?? []);
+      if (providers.length) {
+        // The full pass hangs it in the first round that offers one of its studs, after the
+        // pieces already hung that round: it comes last.
+        round = Math.max(1, Math.min(...providers.map((id) => index.rounds.get(id)!)));
+        hosts = new Set(providers.filter((id) => index.rounds.get(id)! <= round));
+      } else issues.push({ brickId: brick.id, code: 'unsupported', message: UNMOUNTED_MESSAGE });
+    }
+    let chain: Set<string> | null = null;
+    if (hosts) {
+      chain = new Set(hosts);
+      for (const host of hosts) for (const below of chainOf(index, host)) chain.add(below);
+    }
+    const size = footprint(brick);
+    const cells = bucketKeys(brick, size);
+    const candidates = new Set<number>();
+    for (const key of cells)
+      for (const otherIndex of index.buckets.get(key) ?? []) candidates.add(otherIndex);
+    for (const otherIndex of [...candidates].sort((first, second) => first - second)) {
+      const other = index.bricks[otherIndex];
+      if (
+        overlaps(other, index.bounds[otherIndex], brick, size) &&
+        !isMatchingInsertFrame(other, brick) &&
+        !isMatchingInsertFrame(brick, other) &&
+        !chain?.has(other.id)
+      ) {
+        issues.push({
+          brickId: other.id,
+          code: 'collision',
+          message: `Overlaps piece ${brick.id}.`,
+        });
+        issues.push({
+          brickId: brick.id,
+          code: 'collision',
+          message: `Overlaps piece ${other.id}.`,
+        });
+      }
+    }
+    if (!issues.length)
+      derive = () => {
+        const groundedStuds = new Set(index.groundedStuds);
+        const groundedByTopHeight = new Map(index.groundedByTopHeight);
+        if (!brick.facing) {
+          for (const site of getConnectionSites(brick, 'top')) groundedStuds.add(studKey(site));
+          const topHeight = brick.y + size.height;
+          groundedByTopHeight.set(topHeight, [
+            ...(groundedByTopHeight.get(topHeight) ?? []),
+            brick,
+          ]);
+        }
+        const sideStuds = new Map(index.sideStuds);
+        for (const key of offered) sideStuds.set(key, [...(sideStuds.get(key) ?? []), brick.id]);
+        const buckets = new Map(index.buckets);
+        for (const key of cells)
+          buckets.set(key, [...(buckets.get(key) ?? []), index.bricks.length]);
+        return {
+          bricks,
+          ids: new Set(index.ids).add(brick.id),
+          groundedStuds,
+          groundedByTopHeight,
+          runtimeBricks: index.runtimeBricks + (isRuntimePart(brick.partId) ? 1 : 0),
+          sideStuds,
+          rounds: new Map(index.rounds).set(brick.id, round),
+          hosts: hosts ? new Map(index.hosts).set(brick.id, hosts) : index.hosts,
+          mountedReceivers: receivers.length
+            ? new Set([...index.mountedReceivers, ...receivers])
+            : index.mountedReceivers,
+          bounds: [...index.bounds, size],
+          buckets,
+          chains: new Map(),
+        };
+      };
+  }
+  validations.set(bricks, {
+    buildArea: assembly.buildArea,
+    partsVersion,
+    issues,
+    index: derive,
+  });
+  return { assembly: next, issues: issues.map((issue) => ({ ...issue })) };
 }
 
 export function placeBrick(assembly: Assembly, brick: Brick): PlacementResult {
-  const next = { ...assembly, bricks: [...assembly.bricks, brick] };
-  const issues = validateAssembly(next);
+  const added = validateAddition(assembly, brick);
+  const next = added?.assembly ?? { ...assembly, bricks: [...assembly.bricks, brick] };
+  const issues = added?.issues ?? validateAssembly(next);
   return issues.length ? { ok: false, issues } : { ok: true, assembly: next };
 }
 
