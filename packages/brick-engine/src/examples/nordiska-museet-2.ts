@@ -16,21 +16,21 @@ const SANDSTONE = 28;
 const TRIM = 19;
 const GRANITE = 71;
 const SLATE = 72;
-/** The steep roofs, spires and dome read as dark slate, as on the real museum. */
-const ROOFING = 0;
+/** The steep roofs, spires and dome are dark grey slate with visible tile rows, as on the box. */
+const ROOFING = 72;
 const COPPER = 378;
 const LAWN = 2;
 const FOREST = 288;
-const LEAF = 10;
-const OLIVE = 330;
 const BARK = 70;
 const WATER = 1;
 const NAVY = 272;
 const WHITE = 15;
 /** Trans-black glass, dark behind the window frames as in the real museum's deep reveals. */
 const PANES = 40;
-/** Window frames and casements are reddish brown, like the real museum's joinery. */
-const JOINERY = 70;
+/** Window frames and casements are medium nougat: wood a shade darker than the stone, as on the box. */
+const JOINERY = 84;
+/** A warmer stone that turns up here and there among the sandstone blocks. */
+const NOUGAT = 84;
 const BLACK = 0;
 const GOLD = 297;
 
@@ -303,8 +303,8 @@ const OPENINGS: readonly (readonly [number, number, 0 | 90])[] = [
   [EAST + 8, 46, 0],
 ];
 const MAIN_WINDOWS: readonly Window[] = OPENINGS.flatMap(([x, z, rotation]) => [
-  // The ground-floor lights start at the sill course, so all six courses fit under the arch.
-  { x, z, rotation, width: 4, frame: 'tall', course: 2, arch: '15254', archCourse: 8 },
+  // The ground-floor lights start at the sill course: tall, square-headed under a tan lintel.
+  { x, z, rotation, width: 4, frame: 'tall', course: 2, arch: '3009', archCourse: 8 },
   { x, z, rotation, width: 4, frame: 'casements', course: 11, arch: '3009', archCourse: 14 },
 ]);
 /** Each turret has a window on each outside face at four levels, two of them above the eaves. */
@@ -466,16 +466,11 @@ for (let course = BANNER_COURSES[0]; course <= BANNER_COURSES[1]; course++)
   );
 const isOpen = (x: number, z: number, course: number) =>
   OPEN_CELLS.get(course)?.has(key(x, z)) ?? false;
-const JAMBS = new Set(
-  WINDOWS.flatMap((window) => [
-    ...windowCells(window, -1, 1),
-    ...windowCells(window, window.width, 1),
-  ]),
-);
 
 /**
- * Dentils under the cornice: every other cell of straight outside wall in the top band is a
- * headlight brick with a flat tile on its side stud. The portal hides the pavilion front.
+ * Corbels under the cornice: every other cell of straight outside wall in the top band is a
+ * 1 x 2 brick laid across the wall, standing a stud proud of it under the overhanging ceiling,
+ * so the row reads as blocks with shadows between. The portal hides the pavilion front.
  */
 const dentil = (x: number, z: number, course: number) =>
   course === COURSES - 1 &&
@@ -487,30 +482,38 @@ const dentil = (x: number, z: number, course: number) =>
   !(z === PAVILION_FRONT && x >= PAVILION_WEST && x <= PAVILION_EAST);
 
 /**
- * Sandstone walls mix plain bricks with patches of masonry profile bricks, rusticated low down
- * and only here and there above.
+ * Sandstone walls are small ashlar blocks of mixed tones, like the real museum's stonework:
+ * along each course blocks two and three studs long alternate, their joints shifting from course
+ * to course. Every other block is tan; the rest are dark tan, now and then a warmer nougat. As
+ * neighbouring blocks never match they stay separate bricks, never long runs.
  */
-const stone = (x: number, z: number, course: number, density: number) => {
-  const patch = Math.floor((x + z + (course % 2) * 2) / 4);
-  return (patch * 7 + course * 3) % 10 < density ? 'm' : 'w';
+const stone = (x: number, z: number, course: number) => {
+  const at = x + z + course * 2;
+  const block = Math.floor(at / 5) * 2 + (at % 5 < 2 ? 0 : 1);
+  if (block % 2) return 'l';
+  return (Math.imul(block * 31 + course, 2654435761) >>> 0) % 10 < 3 ? 'n' : 'w';
 };
 /**
- * Wall courses: a granite plinth, tan bands, and sandstone between with tan quoins at corners
- * and window jambs on every other course. Hidden partitions are plain sandstone.
+ * Wall courses: a granite plinth, tan bands, and even sandstone between with tan quoins at
+ * corners on every other course. Hidden partitions are plain sandstone.
  */
 const material = (x: number, z: number, course: number) => {
   if (PARTITIONS.has(key(x, z))) return 'w';
   if (course <= 1) return 'p';
+  // The towers wear copper bands at the eaves and under their steeples.
+  if (TURRET_WALLS.has(key(x, z)) && (course === COURSES - 1 || course === TURRET_COURSES - 1))
+    return 'c';
   if (BANDS.has(course)) return 'b';
-  if (course % 2 === 1 && (isCorner(x, z) || JAMBS.has(key(x, z)))) return 'b';
-  return stone(x, z, course, course < 8 ? 6 : course < 10 ? 4 : 3);
+  if (course % 2 === 1 && isCorner(x, z)) return 'b';
+  return stone(x, z, course);
 };
 
 const WALL_LEGEND: Readonly<Record<string, readonly [RunKind, number]>> = {
   p: ['masonry', GRANITE],
   q: ['masonry', SLATE],
   w: ['brick', SANDSTONE],
-  m: ['masonry', SANDSTONE],
+  l: ['brick', TRIM],
+  n: ['brick', NOUGAT],
   d: ['brick', SLATE],
   c: ['brick', COPPER],
   b: ['brick', TRIM],
@@ -545,6 +548,12 @@ const TOWER_ROUND = cellSet(
 const CROSSING = TOWER[1] - BACK - 1;
 /** The pavilion's walls rise this many courses past the eaves before its own roof starts. */
 const ATTIC = 2;
+/**
+ * The pavilion's crow-stepped gable starts stepping in this many courses past the eaves, so it
+ * stands as a parapet clear above its roof and the main ridge, leading the eye up to the tower.
+ */
+const GABLE_ATTIC = 5;
+const GABLE_COURSES = ROOF_STEPS + GABLE_ATTIC - ATTIC;
 /** Each bay's dormer has walls this many courses high under its own little roof. */
 const DORMER = 4;
 /** Chimneys astride the ridge either side of the tower, by their western stud. */
@@ -570,9 +579,9 @@ const GABLE_WINDOWS: readonly Window[] = [
     rotation: 90,
     width: 4,
     frame: 'tall',
-    course: 3,
+    course: 4,
     arch: '15254',
-    archCourse: 9,
+    archCourse: 10,
   },
 ];
 /** The end apses' windows above the eaves, in their outer faces. */
@@ -586,18 +595,22 @@ const RISE_WINDOWS: readonly Window[] = [WEST - 8, EAST + 8].map((x) => ({
   arch: '15254',
   archCourse: 3,
 }));
+/** Courses of the tower's dark slate octagon above the ridge, the top one a copper cornice. */
+const TOWER_COURSES = 8;
 /** Tower windows: one in each straight face of the octagon. */
 const TOWER_WINDOWS: readonly Window[] = [
   ...[TOWER[1], TOWER[3]].map((z) => ({ x: 62, z, rotation: 90 as const })),
   ...[TOWER[0], TOWER[2]].map((x) => ({ x, z: 46, rotation: 0 as const })),
-].map((opening) => ({
-  ...opening,
-  width: 4,
-  frame: 'wide',
-  course: 1,
-  arch: '15254',
-  archCourse: 3,
-}));
+].flatMap((opening) =>
+  [2].map((course) => ({
+    ...opening,
+    width: 4 as const,
+    frame: 'wide',
+    course,
+    arch: '15254',
+    archCourse: course + 2,
+  })),
+);
 
 /**
  * The island quay rising from the water, with a promenade along its front edge and the name
@@ -626,22 +639,22 @@ const RAILINGS = [
   ),
 ];
 /**
- * Leafy crowns, each as the green of its shaded underside, its body and its sunlit top: a pale
- * lime, an olive oak and a dark horse chestnut.
+ * Leafy crowns, each as the green of its shaded underside, its body and its sunlit top: deep,
+ * dark greens like the box's lime trees, an elm and a horse chestnut.
  */
 const CROWNS = [
-  [FOREST, LAWN, LEAF],
-  [FOREST, OLIVE, LAWN],
+  [FOREST, LAWN, LAWN],
   [FOREST, FOREST, LAWN],
+  [FOREST, LAWN, FOREST],
 ] as const;
 /**
  * Trees as [x, z, crown, trunk courses], x and z the stud corner the trunk stands round: two
  * rows on the front lawn and one behind, mirrored but each grown differently.
  */
 const TREES = [
-  ...[11, 23, 35, 47].map((x, index) => [x, 79, index % 3, 3 - (index % 2)]),
-  ...[17, 29, 41].map((x, index) => [x, 88, (index + 1) % 3, 2 + (index % 2)]),
-  ...[11, 25, 39, 53].map((x, index) => [x, 18, (index + 2) % 3, 2 + (index % 2)]),
+  ...[11, 23, 35, 47].map((x, index) => [x, 79, index % 3, 4 - (index % 2)]),
+  ...[17, 29, 41].map((x, index) => [x, 88, (index + 1) % 3, 3 + (index % 2)]),
+  ...[11, 25, 39, 53].map((x, index) => [x, 18, (index + 2) % 3, 3 + (index % 2)]),
 ].flatMap(([x, z, crown, trunk]) => [
   [x, z, crown, trunk] as const,
   [SIZE - x, z, (crown + 1) % 3, trunk] as const,
@@ -785,8 +798,8 @@ function addSkirtRoof(add: ExampleBrickAdder, x: number, y: number, z: number) {
 }
 
 /**
- * A steeple on a 6 x 6 base: a copper band, a dark skirt and cone, a copper lantern under a
- * gold ring, a dark spire and a gilded point.
+ * A steeple on a 6 x 6 base: a copper band, a dark skirt and bell, a two-stage copper lantern
+ * with gold and copper rings, a tall dark spire and a gilded point.
  */
 function addSteeple(add: ExampleBrickAdder, x: number, y: number, z: number) {
   add('3958', COPPER, x, y, z);
@@ -794,9 +807,12 @@ function addSteeple(add: ExampleBrickAdder, x: number, y: number, z: number) {
   add('3943b', ROOFING, x + 1, y + 4, z + 1);
   add('3941', COPPER, x + 2, y + 10, z + 2);
   add('4032a', GOLD, x + 2, y + 13, z + 2);
-  add('3942c', ROOFING, x + 2, y + 14, z + 2);
-  add('3062b', COPPER, x + 2.5, y + 20, z + 2.5);
-  add('4589', GOLD, x + 2.5, y + 23, z + 2.5);
+  add('3941', COPPER, x + 2, y + 14, z + 2);
+  add('4032a', COPPER, x + 2, y + 17, z + 2);
+  add('3942c', ROOFING, x + 2, y + 18, z + 2);
+  add('3062b', ROOFING, x + 2.5, y + 24, z + 2.5);
+  add('3062b', COPPER, x + 2.5, y + 27, z + 2.5);
+  add('4589', GOLD, x + 2.5, y + 30, z + 2.5);
 }
 
 /** Small seeded random numbers, so every tree grows the same way each time. */
@@ -949,20 +965,20 @@ function addTree(
 }
 
 /**
- * A candelabra lamp: a tall black post with a crossbar carrying three white globes, each under
- * a black cap, the middle one raised on a short stem.
+ * A candelabra lamp: a slim black post about a storey high, with a crossbar carrying three
+ * white globes, each under a black cap, the middle one raised on a short stem.
  */
 function addLampPost(add: ExampleBrickAdder, x: number, z: number, y = LAWN_TOP) {
-  for (const post of [0, 15]) add('2453b', BLACK, x, y + post, z);
-  add('3623', BLACK, x - 1, y + 30, z, 90);
+  add('2453b', BLACK, x, y, z);
+  add('3623', BLACK, x - 1, y + 15, z, 90);
   for (const [dx, stem] of [
     [-1, 0],
     [0, 3],
     [1, 0],
   ]) {
-    if (stem) add('3062b', BLACK, x + dx, y + 31, z);
-    add('3062b', WHITE, x + dx, y + 31 + stem, z);
-    add('98138', BLACK, x + dx, y + 34 + stem, z);
+    if (stem) add('3062b', BLACK, x + dx, y + 16, z);
+    add('3062b', WHITE, x + dx, y + 16 + stem, z);
+    add('98138', BLACK, x + dx, y + 19 + stem, z);
   }
 }
 
@@ -1003,7 +1019,7 @@ export const nordiskaMuseet2: ExampleDefinition = {
     'park',
     'waterfront',
   ],
-  expectedPieceCount: 11089,
+  expectedPieceCount: 11557,
   buildArea: SIZE,
   brickIdPrefix: 'museet2',
   build(drawnAdd) {
@@ -1153,9 +1169,19 @@ export const nordiskaMuseet2: ExampleDefinition = {
         for (const cell of WALLS) {
           const [x, z] = cell.split(':').map(Number);
           if (!dentil(x, z, course)) continue;
-          const [, , rotation, facing, dx, dz] = outward(x, z)!;
-          add('4070', TRIM, x, y, z, rotation);
-          add('3070b', TRIM, x + dx, y + 0.5, z + dz, 0, facing);
+          const [dx, dz] = outward(x, z)!;
+          addRun(
+            add,
+            'brick',
+            TRIM,
+            dx ? 'x' : 'z',
+            Math.min(x, x + dx),
+            y,
+            Math.min(z, z + dz),
+            2,
+          );
+          // Where no ceiling overhangs a corbel, a tile smooths its top.
+          if (!inCeiling(x + dx, z + dz)) add('3070b', TRIM, x + dx, y + 3, z + dz);
         }
       if (course === 1)
         for (const cell of BASEMENT_CELLS) {
@@ -1335,7 +1361,7 @@ export const nordiskaMuseet2: ExampleDefinition = {
         (x, z) => {
           if (!standing(x, z) || ROUND_CELLS.has(key(x, z))) return ' ';
           if (PARTITIONS.has(key(x, z))) return 'w';
-          return band ? 'b' : stone(x, z, course, 3);
+          return band ? 'b' : stone(x, z, course);
         },
         y,
         course,
@@ -1542,8 +1568,8 @@ export const nordiskaMuseet2: ExampleDefinition = {
         ...windowCells(window, window.width, 1),
       ]),
     );
-    const gableStep = (course: number) => Math.max(0, Math.floor((course - ATTIC) / 2));
-    for (let course = 0; course < ROOF_STEPS; course++) {
+    const gableStep = (course: number) => Math.max(0, Math.floor((course - GABLE_ATTIC) / 2));
+    for (let course = 0; course < GABLE_COURSES; course++) {
       const y = ROOF + course * 3;
       const inset = gableStep(course) * 2;
       const [west, east] = [PAVILION_WEST + inset, PAVILION_EAST - inset];
@@ -1558,7 +1584,7 @@ export const nordiskaMuseet2: ExampleDefinition = {
           if (!standing(x, z) || opens(GABLE_WINDOWS, x, z, course)) return ' ';
           if (course % 2 === 1 && (x === west || x === east || gableJambs.has(key(x, z))))
             return 'b';
-          return stone(x, z, course, 3);
+          return stone(x, z, course);
         },
         y,
         course,
@@ -1577,15 +1603,16 @@ export const nordiskaMuseet2: ExampleDefinition = {
             add('3070b', TRIM, inner, y, PAVILION_FRONT);
           } else add('3069b', TRIM, Math.min(outer, inner), y, PAVILION_FRONT, 90);
     }
-    const gableTop = ROOF + ROOF_STEPS * 3;
+    const gableTop = ROOF + GABLE_COURSES * 3;
     addRun(add, 'brick', TRIM, 'x', 62, gableTop, PAVILION_FRONT, 4);
     for (const x of [62, 65]) add('3070b', TRIM, x, gableTop + 3, PAVILION_FRONT);
     addFinial(add, 63, gableTop + 3, PAVILION_FRONT, GOLD);
 
-    // The tower: a plain shaft up through the roof to a slab at the ridge, then the slate
-    // octagon with an arched window in each face under a copper cornice, a copper gallery with
-    // railings, an arcaded copper lantern, a dark mansard, and a copper spire in tiers between
-    // gold rings up to a gilded point.
+    // The tower tapers in tiers like the one on the box: a plain shaft up through the roof to a
+    // slab at the ridge, a tall dark slate octagon with an arched window in each face under a
+    // copper cornice, a copper gallery with railings and corner pinnacles, an arcaded copper
+    // lantern under a steep green bell, a smaller copper lantern under a green cone, and a copper
+    // spire in tiers between gold rings up to a gilded point.
     for (let course = 0; course < ROOF_STEPS; course++)
       addWallCourse((x, z) => (rim(x, z, ...TOWER) ? 'd' : ' '), ROOF + course * 3, course);
     addAreaMap(
@@ -1595,9 +1622,10 @@ export const nordiskaMuseet2: ExampleDefinition = {
       { s: ['plate', SLATE] },
       (x, z) => rim(x, z, ...TOWER),
     );
-    for (let course = 0; course < 6; course++) {
+    for (let course = 0; course < TOWER_COURSES; course++) {
       const y = CAP + course * 3;
-      const material = course === 5 ? 'c' : 'd';
+      const top = course === TOWER_COURSES - 1;
+      const material = top ? 'c' : 'd';
       const standing = (x: number, z: number) =>
         TOWER_RIM.has(key(x, z)) && !opens(TOWER_WINDOWS, x, z, course);
       addWallCourse(
@@ -1607,11 +1635,11 @@ export const nordiskaMuseet2: ExampleDefinition = {
       );
       for (const cell of TOWER_ROUND) {
         const [x, z] = cell.split(':').map(Number);
-        if (standing(x, z)) add('3062b', WALL_LEGEND[material][1], x, y, z);
+        if (standing(x, z)) add('3062b', top ? COPPER : SLATE, x, y, z);
       }
       addWindows(add, open, TOWER_WINDOWS, course, y);
     }
-    const balcony = CAP + 18;
+    const balcony = CAP + TOWER_COURSES * 3;
     addAreaMap(
       add,
       plan((x, z) => (within(x, z, ...TOWER) ? 'g' : ' ')),
@@ -1631,7 +1659,11 @@ export const nordiskaMuseet2: ExampleDefinition = {
       const [x, z] = post.split(':').map(Number);
       add('3062b', COPPER, x, balcony + 1, z);
       const corner = (x === TOWER[0] || x === TOWER[2]) && (z === TOWER[1] || z === TOWER[3]);
-      add(corner ? '4589' : '98138', corner ? ROOFING : GOLD, x, balcony + 4, z);
+      // Corner pinnacles stand taller than the railing posts between them.
+      if (corner) {
+        add('3062b', COPPER, x, balcony + 4, z);
+        add('4589', ROOFING, x, balcony + 7, z);
+      } else add('98138', GOLD, x, balcony + 4, z);
     }
     for (const at of [1, 7]) {
       for (const z of [TOWER[1], TOWER[3]]) add('3633', COPPER, TOWER[0] + at, balcony + 1, z, 90);
@@ -1666,28 +1698,44 @@ export const nordiskaMuseet2: ExampleDefinition = {
       add('3005', COPPER, x, lantern + 6, z);
       add('3062b', COPPER, x, lantern + 9, z);
     }
+    // The bell: a copper plate over the lantern, then a ring of steep copper slopes round a
+    // brick core, narrowing it from eight studs to four.
     const dome = lantern + 12;
-    add('41539', ROOFING, 60, dome, 44);
+    add('41539', COPPER, 60, dome, 44);
+    for (const x of [60, 62, 64, 66]) {
+      add('3678b', COPPER, x, dome + 1, 44, 0);
+      add('3678b', COPPER, x, dome + 1, 50, 180);
+    }
+    for (const z of [46, 48]) {
+      add('3678b', COPPER, 60, dome + 1, z, 90);
+      add('3678b', COPPER, 66, dome + 1, z, 270);
+    }
+    for (const y of [1, 4])
+      for (const x of [62, 64]) for (const z of [46, 48]) add('3003', COPPER, x, dome + y, z);
+    // The upper lantern: copper corner posts and a window in each face on the bell's field of
+    // studs, under a copper plate and a copper cone.
+    const upper = dome + 7;
     for (const [x, z] of [
-      [60, 44],
-      [67, 44],
-      [60, 51],
-      [67, 51],
-    ]) {
-      add('3062b', TRIM, x, dome + 1, z);
-      add('4589', GOLD, x, dome + 4, z);
+      [62, 46],
+      [65, 46],
+      [62, 49],
+      [65, 49],
+    ])
+      for (const y of [0, 3]) add('3062b', COPPER, x, upper + y, z);
+    for (const z of [46, 49]) add('60592', JOINERY, 63, upper, z, 90);
+    for (const x of [62, 65]) add('60592', JOINERY, x, upper, 47, 0);
+    add('3031', COPPER, 62, upper + 6, 46);
+    add('3943b', COPPER, 62, upper + 7, 46);
+    const spire = upper + 13;
+    for (const [index, y] of [0, 4].entries()) {
+      add('3941', COPPER, 63, spire + y, 47);
+      add('4032a', index ? COPPER : GOLD, 63, spire + y + 3, 47);
     }
-    addSkirtRoof(add, 61, dome + 1, 45);
-    add('60474', COPPER, 62, dome + 4, 46);
-    add('3943b', COPPER, 62, dome + 5, 46);
-    for (const [index, y] of [11, 15, 19].entries()) {
-      add('3941', COPPER, 63, dome + y, 47);
-      if (index < 2) add('4032a', GOLD, 63, dome + y + 3, 47);
-    }
-    add('3942c', COPPER, 63, dome + 22, 47);
-    add('3062b', GOLD, 63.5, dome + 28, 47.5);
-    add('3062b', COPPER, 63.5, dome + 31, 47.5);
-    add('4589', GOLD, 63.5, dome + 34, 47.5);
+    add('3942c', COPPER, 63, spire + 8, 47);
+    add('3062b', GOLD, 63.5, spire + 14, 47.5);
+    add('3062b', COPPER, 63.5, spire + 17, 47.5);
+    add('3062b', COPPER, 63.5, spire + 20, 47.5);
+    add('4589', GOLD, 63.5, spire + 23, 47.5);
 
     // The towers end in an octagonal tan slab under their steeples.
     const towerTop = BASE + TURRET_COURSES * 3;
