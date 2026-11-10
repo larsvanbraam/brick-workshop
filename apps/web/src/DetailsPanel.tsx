@@ -6,7 +6,7 @@ import {
   getPart,
   getPartColorStatus,
   resizeBuildArea,
-} from '@lego-builder/brick-engine';
+} from '@brick-workshop/engine';
 import type {
   Assembly,
   BuildabilityReport,
@@ -14,7 +14,7 @@ import type {
   PartColorEvidence,
   PhysicalAssessment,
   PhysicalData,
-} from '@lego-builder/brick-engine';
+} from '@brick-workshop/engine';
 
 const CHECK_STATUS = {
   passed: 'Passed (model)',

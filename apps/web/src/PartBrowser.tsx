@@ -17,8 +17,8 @@ import {
   X,
 } from 'lucide-react';
 import { ColorPicker } from './ColorPicker';
-import { getPart } from '@lego-builder/brick-engine';
-import type { Part } from '@lego-builder/brick-engine';
+import { getPart } from '@brick-workshop/engine';
+import type { Part } from '@brick-workshop/engine';
 import type { CatalogPart, LibraryCatalog } from '../tooling/ldraw-library';
 import { loadLDrawCatalog, loadLDrawPart } from './ldraw';
 import { LDrawMesh, WorkshopEnvironment } from './Scene';

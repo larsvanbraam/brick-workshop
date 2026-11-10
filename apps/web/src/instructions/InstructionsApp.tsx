@@ -5,8 +5,8 @@ import {
   createExampleAssembly,
   getBillOfMaterials,
   planInstructionSteps,
-} from '@lego-builder/brick-engine';
-import type { Assembly } from '@lego-builder/brick-engine';
+} from '@brick-workshop/engine';
+import type { Assembly } from '@brick-workshop/engine';
 import { listSavedBuilds, loadSavedBuild, openBuildDocument, readAutosave } from '../saved-builds';
 import type { SavedBuildSummary } from '../saved-builds';
 import { PAGE_SIZES, STEP_SIZES, countPages, deriveManualTheme, rgbCss } from './layout';

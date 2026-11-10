@@ -1,6 +1,6 @@
 import { useId, useState } from 'react';
 import { Check, Search } from 'lucide-react';
-import { COLORS } from '@lego-builder/brick-engine';
+import { COLORS } from '@brick-workshop/engine';
 import { displayHex } from './ldraw-materials';
 import './color-picker.css';
 

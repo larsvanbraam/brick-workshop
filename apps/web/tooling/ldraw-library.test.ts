@@ -28,7 +28,7 @@ import { createFallbackGeometry } from '../src/fallback-geometry';
 import { getLDrawModelOffset, getMaxZoomDistance, getSceneFrame } from '../src/scene-frame';
 import { LDrawLoader } from 'three/addons/loaders/LDrawLoader.js';
 import { LDrawConditionalLineMaterial } from 'three/addons/materials/LDrawConditionalLineMaterial.js';
-import { PARTS, footprint, getLDrawTransform } from '@lego-builder/brick-engine';
+import { PARTS, footprint, getLDrawTransform } from '@brick-workshop/engine';
 import { cloneLDrawModel } from '../src/ldraw-materials';
 import { loadLDrawModels } from '../src/ldraw';
 import { inferLDrawPartDefinition, searchCatalog } from '../src/catalog';

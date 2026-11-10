@@ -19,7 +19,7 @@ import {
   WebGLRenderer,
 } from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import type { Assembly } from '@lego-builder/brick-engine';
+import type { Assembly } from '@brick-workshop/engine';
 import type { CinematicMood } from '../cinematic-look';
 import { ManualRenderer } from './renderer';
 

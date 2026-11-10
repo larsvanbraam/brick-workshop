@@ -1,6 +1,6 @@
 import { jsPDF } from 'jspdf';
-import { COLORS, getBillOfMaterials, getPart } from '@lego-builder/brick-engine';
-import type { Assembly, InstructionStep } from '@lego-builder/brick-engine';
+import { COLORS, getBillOfMaterials, getPart } from '@brick-workshop/engine';
+import type { Assembly, InstructionStep } from '@brick-workshop/engine';
 import {
   deriveManualTheme,
   getInventoryGrid,

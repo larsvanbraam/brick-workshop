@@ -1,5 +1,5 @@
-import { importAssembly } from '@lego-builder/brick-engine';
-import type { Assembly } from '@lego-builder/brick-engine';
+import { importAssembly } from '@brick-workshop/engine';
+import type { Assembly } from '@brick-workshop/engine';
 
 export interface PhotoReference {
   name: string;

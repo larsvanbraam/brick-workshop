@@ -134,7 +134,7 @@ separate files are not loaded, so those models use their material colors. Respec
 - `data`: instructions for the local, Git-ignored LDraw parts library.
 - Root `vite.config.ts`: shared formatting, linting, and engine tests.
 
-The web app consumes `@lego-builder/brick-engine` through a workspace dependency.
+The web app consumes `@brick-workshop/engine` through a workspace dependency.
 Source is exported directly for development. The engine's separate build also
 produces an ESM bundle and declarations under its `dist` directory.
 
@@ -521,7 +521,7 @@ stud as proof of adequate support. It accounts for mass ratios, rotations,
 supplied centers of mass, and loads propagated through multiple joints.
 
 ```ts
-import { assessPhysicalFeasibility, createExampleAssembly } from '@lego-builder/brick-engine';
+import { assessPhysicalFeasibility, createExampleAssembly } from '@brick-workshop/engine';
 
 const assessment = assessPhysicalFeasibility(createExampleAssembly('catalog-sampler'), {
   estimateMissingMasses: true,
@@ -823,7 +823,7 @@ strength, real access, stock, and visual fidelity remain uncertified even when
 Claude ends its turn successfully.
 
 Use `createBuilderSession`, `BUILDER_TOOLS`, and `runClaudeBuild` from
-`@lego-builder/claude-adapter` for another local host. The transport is injectable;
+`@brick-workshop/claude-adapter` for another local host. The transport is injectable;
 tests cover the official SDK with mocked HTTP responses, dependency ordering,
 error recovery, input validation, immutable snapshots, and partial results.
 A live Claude generation requires a locally supplied key and is not part of

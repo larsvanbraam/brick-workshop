@@ -2,7 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { parseArgs } from 'node:util';
-import { importPhysicalData } from '@lego-builder/brick-engine';
+import { importPhysicalData } from '@brick-workshop/engine';
 import { createBuilderSession, runClaudeBuild, runClaudeCodeBuild } from './index.ts';
 
 const { values, positionals } = parseArgs({

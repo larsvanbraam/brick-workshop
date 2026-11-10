@@ -1,7 +1,7 @@
 import type Anthropic from '@anthropic-ai/sdk';
 import { MODEL_TOOLS, compactAssembly } from './session.ts';
-import { MAX_BUILD_AREA, getBuildArea } from '@lego-builder/brick-engine';
-import type { findVoxelGaps } from '@lego-builder/brick-engine';
+import { MAX_BUILD_AREA, getBuildArea } from '@brick-workshop/engine';
+import type { findVoxelGaps } from '@brick-workshop/engine';
 import type { BuilderSession } from './session.ts';
 
 export const DEFAULT_CLAUDE_MODEL = 'claude-sonnet-5-5';

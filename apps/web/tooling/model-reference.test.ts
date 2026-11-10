@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vite-plus/test';
-import { MAX_VOXEL_LAYERS, fillVoxelModel, validateAssembly } from '@lego-builder/brick-engine';
+import { MAX_VOXEL_LAYERS, fillVoxelModel, validateAssembly } from '@brick-workshop/engine';
 import { keepMainObjects, maxModelWidth, voxelizeTriangles } from '../src/model-reference.ts';
 import type { ModelTriangles } from '../src/model-reference.ts';
 

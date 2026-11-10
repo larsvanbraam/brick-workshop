@@ -12,8 +12,8 @@ import {
   fillVoxelModel,
   getPartColorStatus,
   styleVoxelFill,
-} from '@lego-builder/brick-engine';
-import type { PartColorEvidence, VoxelDirection, VoxelModel, VoxelOpening } from '@lego-builder/brick-engine';
+} from '@brick-workshop/engine';
+import type { PartColorEvidence, VoxelDirection, VoxelModel, VoxelOpening } from '@brick-workshop/engine';
 
 /** World-space triangles, Y-up, any unit: 9 position values and 3 sRGB color values each. */
 export interface ModelTriangles {

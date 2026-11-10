@@ -4,7 +4,7 @@ import { createServer } from 'node:http';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { pathToFileURL } from 'node:url';
 import sharp from 'sharp';
-import { MAX_BUILD_AREA, MAX_PIECES, MAX_VOXEL_LAYERS, decodeVoxelModel } from '@lego-builder/brick-engine';
+import { MAX_BUILD_AREA, MAX_PIECES, MAX_VOXEL_LAYERS, decodeVoxelModel } from '@brick-workshop/engine';
 import { createBuilderSession } from './session.ts';
 import {
   DEFAULT_CLAUDE_MODEL,
@@ -13,7 +13,7 @@ import {
 } from './runner.ts';
 import { runClaudeCodeBuild } from './claude-code-runner.ts';
 import type { ClaudeTransport, ReferenceImage } from './runner.ts';
-import type { EncodedVoxelModel } from '@lego-builder/brick-engine';
+import type { EncodedVoxelModel } from '@brick-workshop/engine';
 
 const MAX_BODY_BYTES = 12_000_000;
 const schema = new Ajv({ allErrors: true }).compile({

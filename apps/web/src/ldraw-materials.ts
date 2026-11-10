@@ -1,8 +1,8 @@
 import { Group, LineSegments, Mesh } from 'three';
 import type { Material } from 'three';
 import type { LDrawLoader } from 'three/addons/loaders/LDrawLoader.js';
-import { COLORS } from '@lego-builder/brick-engine';
-import type { LDrawColor } from '@lego-builder/brick-engine';
+import { COLORS } from '@brick-workshop/engine';
+import type { LDrawColor } from '@brick-workshop/engine';
 
 /**
  * Display colours that differ from LDraw's. LDraw draws Black as blue-grey #1B2A34 so edges stay

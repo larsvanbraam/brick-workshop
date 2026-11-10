@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vite-plus/test';
 import type { Server } from 'node:http';
 import type Anthropic from '@anthropic-ai/sdk';
 import sharp from 'sharp';
-import { MAX_PIECES } from '@lego-builder/brick-engine';
+import { MAX_PIECES } from '@brick-workshop/engine';
 import { createWorkshopServer } from './server.ts';
 
 const servers: Server[] = [];

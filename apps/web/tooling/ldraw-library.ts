@@ -3,7 +3,7 @@ import { readFile, readdir, realpath } from 'node:fs/promises';
 import { isAbsolute, relative, resolve, sep } from 'node:path';
 import { createInterface } from 'node:readline';
 import type { Plugin, ViteDevServer } from 'vite-plus';
-import { PARTS } from '@lego-builder/brick-engine';
+import { PARTS } from '@brick-workshop/engine';
 
 export interface LibraryManifest {
   available: boolean;

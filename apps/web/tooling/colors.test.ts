@@ -9,7 +9,7 @@ import {
 } from 'three';
 import { LDrawLoader } from 'three/addons/loaders/LDrawLoader.js';
 import { LDrawConditionalLineMaterial } from 'three/addons/materials/LDrawConditionalLineMaterial.js';
-import { COLORS, parseLDrawColors } from '@lego-builder/brick-engine';
+import { COLORS, parseLDrawColors } from '@brick-workshop/engine';
 import { COLOR_CONFIG, cloneLDrawModel, colorMaterialProperties, displayHex } from '../src/ldraw-materials';
 import { Readable } from 'node:stream';
 import { gzipSync } from 'node:zlib';

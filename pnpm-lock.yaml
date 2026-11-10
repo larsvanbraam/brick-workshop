@@ -188,7 +188,7 @@ importers:
 
   apps/web:
     dependencies:
-      '@lego-builder/brick-engine':
+      '@brick-workshop/engine':
         specifier: workspace:*
         version: link:../../packages/brick-engine
       '@react-three/drei':
@@ -268,7 +268,7 @@ importers:
       '@anthropic-ai/sdk':
         specifier: ^1.3.0
         version: 1.3.0(zod@4.6.7)
-      '@lego-builder/brick-engine':
+      '@brick-workshop/engine':
         specifier: workspace:*
         version: link:../brick-engine
       '@modelcontextprotocol/sdk':

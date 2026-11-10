@@ -19,12 +19,12 @@ import {
   MAX_HEIGHT,
   MAX_PIECES,
   MAX_VOXEL_LAYERS,
-} from "@lego-builder/brick-engine";
+} from "@brick-workshop/engine";
 import type {
   Assembly,
   EditPolicy,
   EncodedVoxelModel,
-} from "@lego-builder/brick-engine";
+} from "@brick-workshop/engine";
 import { Scene } from "./Scene";
 import { useLDrawLibrary } from "./ldraw";
 import { captureCanvas, preparePhoto, streamGeneration } from "./generation";

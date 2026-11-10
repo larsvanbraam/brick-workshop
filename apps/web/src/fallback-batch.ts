@@ -1,7 +1,7 @@
 import { BatchedMesh, Color, Group, Matrix4, MeshStandardMaterial } from 'three';
 import type { BufferGeometry, Material } from 'three';
-import { COLORS, PLATE_HEIGHT, footprint } from '@lego-builder/brick-engine';
-import type { Brick, LDrawColor } from '@lego-builder/brick-engine';
+import { COLORS, PLATE_HEIGHT, footprint } from '@brick-workshop/engine';
+import type { Brick, LDrawColor } from '@brick-workshop/engine';
 import { createFallbackBrickGeometry, fallbackShapeKey } from './fallback-geometry';
 import { colorMaterialProperties } from './ldraw-materials';
 

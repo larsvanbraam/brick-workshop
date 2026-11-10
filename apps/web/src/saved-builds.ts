@@ -1,5 +1,5 @@
-import { PARTS, importAssembly, registerPart } from '@lego-builder/brick-engine';
-import type { Assembly, Part } from '@lego-builder/brick-engine';
+import { PARTS, importAssembly, registerPart } from '@brick-workshop/engine';
+import type { Assembly, Part } from '@brick-workshop/engine';
 
 const AUTOSAVE_KEY = 'brick-workshop-current-build-v1';
 

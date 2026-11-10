@@ -16,8 +16,8 @@ import {
 import type { Color, Intersection, Material, Raycaster } from 'three';
 import { MeshBVH, acceleratedRaycast } from 'three-mesh-bvh';
 import { LDrawConditionalLineMaterial } from 'three/addons/materials/LDrawConditionalLineMaterial.js';
-import { COLORS, getConnectionSites, getLDrawTransform, getPart } from '@lego-builder/brick-engine';
-import type { Brick } from '@lego-builder/brick-engine';
+import { COLORS, getConnectionSites, getLDrawTransform, getPart } from '@brick-workshop/engine';
+import type { Brick } from '@brick-workshop/engine';
 import { coloredLDrawModel } from './ldraw';
 
 Mesh.prototype.raycast = acceleratedRaycast;

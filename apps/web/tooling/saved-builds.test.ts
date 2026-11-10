@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promis
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
-import { createExampleAssembly, importAssembly } from '@lego-builder/brick-engine';
+import { createExampleAssembly, importAssembly } from '@brick-workshop/engine';
 import { createBuildDocument, openBuildDocument } from '../src/saved-builds';
 import { savedBuildsPlugin, slugify } from './saved-builds';
 

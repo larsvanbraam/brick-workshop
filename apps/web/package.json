@@ -1,5 +1,5 @@
 {
-  "name": "@lego-builder/web",
+  "name": "@brick-workshop/web",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -9,7 +9,7 @@
     "preview": "vp preview"
   },
   "dependencies": {
-    "@lego-builder/brick-engine": "workspace:*",
+    "@brick-workshop/engine": "workspace:*",
     "@react-three/drei": "^10.7.9",
     "@react-three/fiber": "^9.8.2",
     "@react-three/postprocessing": "^3.2.2",

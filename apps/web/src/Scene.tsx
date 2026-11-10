@@ -27,8 +27,8 @@ import {
   footprint,
   getBuildArea,
   getLDrawTransform,
-} from '@lego-builder/brick-engine';
-import type { Assembly, Brick } from '@lego-builder/brick-engine';
+} from '@brick-workshop/engine';
+import type { Assembly, Brick } from '@brick-workshop/engine';
 import { DebugHelpers, DebugOverlay, DebugProbe, DebugStore, useDebugOptions } from './scene-debug';
 
 /** Where the pointer rests on the board, in stud and plate units. */

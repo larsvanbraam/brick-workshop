@@ -57,7 +57,7 @@ import {
   sharedPhysicalAssessment,
   validateAddition,
   validateAssembly,
-} from '@lego-builder/brick-engine';
+} from '@brick-workshop/engine';
 import type {
   Assembly,
   Brick,
@@ -67,7 +67,7 @@ import type {
   Part,
   Rotation,
   EditPolicy,
-} from '@lego-builder/brick-engine';
+} from '@brick-workshop/engine';
 import { Scene, captureScene } from './Scene';
 import { MOODS } from './cinematic';
 import type { CinematicMood } from './cinematic';

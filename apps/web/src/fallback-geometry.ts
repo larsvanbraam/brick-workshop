@@ -1,8 +1,8 @@
 import { BoxGeometry, CylinderGeometry, ExtrudeGeometry, Path, Shape, SphereGeometry } from 'three';
 import type { BufferGeometry } from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { PLATE_HEIGHT, footprint, getConnectionSites, getPart } from '@lego-builder/brick-engine';
-import type { Brick } from '@lego-builder/brick-engine';
+import { PLATE_HEIGHT, footprint, getConnectionSites, getPart } from '@brick-workshop/engine';
+import type { Brick } from '@brick-workshop/engine';
 
 export function createFallbackGeometry(brick: Brick) {
   const part = getPart(brick.partId);

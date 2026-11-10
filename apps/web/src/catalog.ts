@@ -1,4 +1,4 @@
-import type { Part } from '@lego-builder/brick-engine';
+import type { Part } from '@brick-workshop/engine';
 import type { CatalogPart } from '../tooling/ldraw-library';
 
 export function inferLDrawPartDefinition(

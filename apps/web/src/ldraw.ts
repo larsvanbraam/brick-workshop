@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { Group } from 'three';
 import { LDrawLoader } from 'three/addons/loaders/LDrawLoader.js';
 import { LDrawConditionalLineMaterial } from 'three/addons/materials/LDrawConditionalLineMaterial.js';
-import { PARTS } from '@lego-builder/brick-engine';
+import { PARTS } from '@brick-workshop/engine';
 import type { LibraryCatalog } from '../tooling/ldraw-library';
 import { COLOR_CONFIG, cloneLDrawModel } from './ldraw-materials';
 

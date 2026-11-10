@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vite-plus/test';
-import { MAX_BUILD_AREA, validateAssembly } from '@lego-builder/brick-engine';
+import { MAX_BUILD_AREA, validateAssembly } from '@brick-workshop/engine';
 import { MODEL_TOOLS, createBuilderSession, runClaudeBuild } from './index.ts';
 import type { ClaudeTransport } from './index.ts';
 import Anthropic from '@anthropic-ai/sdk';

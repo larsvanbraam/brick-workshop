@@ -31,8 +31,8 @@ import {
   isFloorPlate,
   getLDrawTransform,
   getPart,
-} from '@lego-builder/brick-engine';
-import type { Assembly, Brick } from '@lego-builder/brick-engine';
+} from '@brick-workshop/engine';
+import type { Assembly, Brick } from '@brick-workshop/engine';
 import { createFallbackGeometry } from '../fallback-geometry';
 import { coloredLDrawModel, loadLDrawModels } from '../ldraw';
 import { LDrawBatch, canBatchLDrawModel } from '../ldraw-batches';

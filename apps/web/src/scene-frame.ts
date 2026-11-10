@@ -1,6 +1,6 @@
 import { Box3, Sphere, Vector3 } from 'three';
-import { BUILD_AREA, PLATE_HEIGHT, footprint, getLDrawTransform } from '@lego-builder/brick-engine';
-import type { Assembly, Brick } from '@lego-builder/brick-engine';
+import { BUILD_AREA, PLATE_HEIGHT, footprint, getLDrawTransform } from '@brick-workshop/engine';
+import type { Assembly, Brick } from '@brick-workshop/engine';
 
 export function getSceneHeight(assembly: Assembly, explode = false) {
   return Math.max(

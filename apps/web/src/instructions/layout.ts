@@ -1,5 +1,5 @@
-import { COLORS } from '@lego-builder/brick-engine';
-import type { Assembly } from '@lego-builder/brick-engine';
+import { COLORS } from '@brick-workshop/engine';
+import type { Assembly } from '@brick-workshop/engine';
 import { displayHex } from '../ldraw-materials';
 
 /** ISO and North American paper sizes, portrait, in millimetres. */

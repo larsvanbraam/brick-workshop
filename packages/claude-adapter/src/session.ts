@@ -39,7 +39,7 @@ import {
   voxelizeShapes,
   PLATE_STUDS,
   MAX_PHYSICS_PIECES,
-} from '@lego-builder/brick-engine';
+} from '@brick-workshop/engine';
 import type {
   Assembly,
   Brick,
@@ -51,7 +51,7 @@ import type {
   InventoryEntry,
   VoxelModel,
   SculptShape,
-} from '@lego-builder/brick-engine';
+} from '@brick-workshop/engine';
 
 const partIdSchema = { type: 'string', enum: PARTS.map((part) => part.id) };
 const colorSchema = { type: 'integer', enum: COLORS.map((color) => color.id) };
