@@ -11,4 +11,5 @@ peerDependencyRules:
     vite: '1.4.0'
 
 allowBuilds:
+  core-js: false
   esbuild: true
