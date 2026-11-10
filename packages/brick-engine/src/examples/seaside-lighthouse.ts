@@ -32,12 +32,17 @@ const TIMBER = 70;
 const ROOF = 272;
 const GLASS = 47;
 const LAMP = 46;
+// Doors are 1 x 4 x 6 leaves hung on the pins of a 1 x 4 x 6 frame in the front wall: four panes
+// on the lighthouse, smooth on the cottage.
+const DOOR_X = 3;
+const DOOR_Z = 7;
+const COTTAGE_DOOR_X = 9;
 
 export const seasideLighthouse: ExampleDefinition = {
   id: 'seaside-lighthouse',
   name: 'Seaside Lighthouse',
   tags: ['coastal', 'lighthouse', 'cottage', 'jetty', 'rowboat', 'island', 'striped-tower'],
-  expectedPieceCount: 399,
+  expectedPieceCount: 415,
   brickIdPrefix: 'lighthouse',
   build(drawnAdd) {
     const add = glazeWindows(turnAround(drawnAdd));
@@ -95,10 +100,10 @@ export const seasideLighthouse: ExampleDefinition = {
       }),
     );
 
-    // Lighthouse plinth: four masonry courses with an arched-in door and a slit window.
-    add('3579', WHITE, 4, 3, 7, 90);
-    add('3193a', RED, 4, 3, 6.5, 90);
-    for (let course = 0; course < 4; course++) {
+    // Lighthouse plinth: six masonry courses with a framed door and a slit window.
+    add('60596', WHITE, DOOR_X, 3, DOOR_Z, 90);
+    add('60623', RED, DOOR_X, 3, DOOR_Z - 0.5, 90);
+    for (let course = 0; course < 6; course++) {
       addRing(
         add,
         'masonry',
@@ -110,16 +115,16 @@ export const seasideLighthouse: ExampleDefinition = {
         3 + course * 3,
         course,
         (x, z) =>
-          (z === 7 && x >= 4 && x <= 6) ||
+          (z === 7 && x >= DOOR_X && x <= DOOR_X + 3) ||
           (course >= 1 && course <= 2 && x === 7 && z >= 4 && z <= 5),
       );
       if (course === 1) add('60592', WHITE, 7, 6, 4);
     }
-    add('3958', ROCK, 2, 15, 2);
+    add('3958', ROCK, 2, 21, 2);
 
     // Striped tower: pairs of white and red courses with staggered corners and two windows.
     for (let course = 0; course < 8; course++) {
-      const y = 16 + course * 3;
+      const y = 22 + course * 3;
       addRing(
         add,
         'brick',
@@ -139,32 +144,32 @@ export const seasideLighthouse: ExampleDefinition = {
     }
 
     // Gallery with a white lattice railing and black corner posts.
-    add('3958', BLACK, 2, 40, 2);
+    add('3958', BLACK, 2, 46, 2);
     for (const x of [2, 7])
       for (const z of [2, 7]) {
-        add('3062b', BLACK, x, 41, z);
-        add('98138', BLACK, x, 44, z);
+        add('3062b', BLACK, x, 47, z);
+        add('98138', BLACK, x, 50, z);
       }
-    for (const z of [2, 7]) add('3633', WHITE, 3, 41, z, 90);
-    for (const x of [2, 7]) add('3633', WHITE, x, 41, 3);
+    for (const z of [2, 7]) add('3633', WHITE, 3, 47, z, 90);
+    for (const x of [2, 7]) add('3633', WHITE, x, 47, 3);
 
     // Lantern room: glazed walls around a glowing lamp, capped by a red cone and lightning rod.
-    for (const y of [41, 44]) {
+    for (const y of [47, 50]) {
       for (const x of [3, 6]) for (const z of [3, 6]) add('3062b', BLACK, x, y, z);
       for (const z of [3, 6]) add('3004', GLASS, 4, y, z, 90);
       for (const x of [3, 6]) add('3004', GLASS, x, y, 4);
       add('3941', LAMP, 4, y, 4);
     }
-    add('3031', RED, 3, 47, 3);
-    add('3943b', RED, 3, 48, 3);
-    add('3942c', BLACK, 4, 54, 4);
-    add('6141', BLACK, 4.5, 60, 4.5);
-    add('4589', BLACK, 4.5, 61, 4.5);
+    add('3031', RED, 3, 53, 3);
+    add('3943b', RED, 3, 54, 3);
+    add('3942c', BLACK, 4, 60, 4);
+    add('6141', BLACK, 4.5, 66, 4.5);
+    add('4589', BLACK, 4.5, 67, 4.5);
 
     // Keeper's cottage: stone footing course, whitewashed walls, blue door and three windows.
-    add('3579', WHITE, 10, 3, 6, 90);
-    add('3193a', 1, 10, 3, 5.5, 90);
-    for (let course = 0; course < 4; course++) {
+    add('60596', WHITE, COTTAGE_DOOR_X, 3, DOOR_Z - 1, 90);
+    add('60616a', 1, COTTAGE_DOOR_X, 3, DOOR_Z - 1.5, 90);
+    for (let course = 0; course < 6; course++) {
       addRing(
         add,
         course === 0 ? 'masonry' : 'brick',
@@ -176,7 +181,7 @@ export const seasideLighthouse: ExampleDefinition = {
         3 + course * 3,
         course,
         (x, z) =>
-          (z === 6 && x >= 10 && x <= 12) ||
+          (z === 6 && x >= COTTAGE_DOOR_X && x <= COTTAGE_DOOR_X + 3) ||
           (course >= 1 && x === 13 && z >= 3 && z <= 4) ||
           (course >= 1 && course <= 2 && z === 2 && x >= 10 && x <= 11),
       );
@@ -187,25 +192,25 @@ export const seasideLighthouse: ExampleDefinition = {
     }
 
     // Pitched slate-blue roof with gable fill and a tiled ridge.
-    for (const x of [9, 13]) add('3004', WHITE, x, 15, 4);
+    for (const x of [9, 13]) add('3004', WHITE, x, 21, 4);
     for (const [y, backZ, frontZ] of [
-      [15, 2, 6],
-      [18, 3, 5],
+      [21, 2, 6],
+      [24, 3, 5],
     ] as const) {
       add('3037', ROOF, 8, y, backZ);
       add('3038', ROOF, 12, y, backZ);
       add('3037', ROOF, 8, y, frontZ, 180);
       add('3038', ROOF, 12, y, frontZ, 180);
     }
-    add('3795', ROOF, 8, 21, 4, 90);
-    add('3023b', ROOF, 14, 21, 4);
-    for (const z of [4, 5]) addRun(add, 'tile', ROCK, 'x', 8, 22, z, 7);
+    add('3795', ROOF, 8, 27, 4, 90);
+    add('3023b', ROOF, 14, 27, 4);
+    for (const z of [4, 5]) addRun(add, 'tile', ROCK, 'x', 8, 28, z, 7);
 
     // Chimney behind the cottage with two clay pots.
-    for (let course = 0; course < 7; course++)
+    for (let course = 0; course < 9; course++)
       add('98283', course % 2 ? STONE : ROCK, 11, 2 + course * 3, 1, 90);
-    add('3023b', ROCK, 11, 23, 1, 90);
-    for (const x of [11, 12]) add('3062b', 6, x, 24, 1);
+    add('3023b', ROCK, 11, 29, 1, 90);
+    for (const x of [11, 12]) add('3062b', 6, x, 30, 1);
 
     // Window box under the side window, a rain barrel, woodpile and potted plants by the door.
     for (const y of [2, 5]) add('3004', TIMBER, 14, y, 3);
@@ -217,7 +222,7 @@ export const seasideLighthouse: ExampleDefinition = {
     add('30136', TIMBER, 8, 3, 5);
     add('30136', 6, 8, 6, 4);
     for (const [x, bloom] of [
-      [9, RED],
+      [8, RED],
       [13, 14],
     ] as const) {
       add('3062b', TIMBER, x, 3, 7);
@@ -243,7 +248,7 @@ export const seasideLighthouse: ExampleDefinition = {
     add('98138', 13, 9, 4, 10);
     for (const [x, z, color] of [
       [1, 7, RED],
-      [3, 8, 14],
+      [2, 8, 14],
       [3, 9, WHITE],
       [3, 10, RED],
       [7, 9, 14],

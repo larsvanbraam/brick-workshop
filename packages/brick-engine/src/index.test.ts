@@ -1774,8 +1774,8 @@ describe('mixed-part engine builds', () => {
     expect(validateAssembly(assembly)).toEqual([]);
     const tower = assembly.bricks.filter(
       (brick) =>
-        brick.y >= 16 &&
-        brick.y < 40 &&
+        brick.y >= 22 &&
+        brick.y < 46 &&
         brick.x >= 9 &&
         brick.x <= 12 &&
         brick.z >= 9 &&
@@ -1786,23 +1786,23 @@ describe('mixed-part engine builds', () => {
         new Set(
           tower
             .filter(
-              (brick) => brick.y === 16 + course * 3 && !['60592', '60601'].includes(brick.partId),
+              (brick) => brick.y === 22 + course * 3 && !['60592', '60601'].includes(brick.partId),
             )
             .map((brick) => brick.color),
         ),
       ).toEqual(new Set([course % 4 < 2 ? 15 : 4]));
     expect(assembly.bricks.filter((brick) => brick.partId === '60592')).toHaveLength(4);
-    const doors = assembly.bricks.filter((brick) => brick.partId === '3193a');
-    expect(doors.map(({ x, y, z }) => ({ x, y, z }))).toEqual([
-      { x: 9, y: 3, z: 7.5 },
-      { x: 3, y: 3, z: 8.5 },
+    const doors = assembly.bricks.filter((brick) => ['60616a', '60623'].includes(brick.partId));
+    expect(doors.map(({ partId, x, y, z }) => ({ partId, x, y, z }))).toEqual([
+      { partId: '60623', x: 9, y: 3, z: 7.5 },
+      { partId: '60616a', x: 3, y: 3, z: 8.5 },
     ]);
     expect(
       assembly.bricks.filter((brick) => brick.partId === '3941' && brick.color === 46),
     ).toHaveLength(2);
     expect(assembly.bricks.filter((brick) => brick.partId === '3633')).toHaveLength(4);
     const summit = assembly.bricks.reduce((top, brick) => (brick.y > top.y ? brick : top));
-    expect(summit).toMatchObject({ partId: '4589', y: 61 });
+    expect(summit).toMatchObject({ partId: '4589', y: 67 });
     expect(
       assembly.bricks.filter((brick) => brick.partId === '3069b' && brick.y === 5),
     ).toHaveLength(3);

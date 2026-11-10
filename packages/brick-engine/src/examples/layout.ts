@@ -145,8 +145,8 @@ export function addRing(
   }
 }
 
-const DOOR_FRAMES = new Set(['3579']);
-const DOORS = new Set(['3193a']);
+const DOOR_FRAMES = new Set(['3579', '60596']);
+const DOORS = new Set(['3193a', '60616a', '60623']);
 
 /**
  * Turns a build a half turn about the board centre, so plans can be drawn with their front at
