@@ -1,0 +1,17 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
+  "installCommand": "npx -y pnpm@12.16.1 install --frozen-lockfile",
+  "buildCommand": "node apps/web/tooling/fetch-ldraw.ts && VITE_WORKSHOP_GENERATION=false ./node_modules/.bin/vp -C apps/web build",
+  "outputDirectory": "apps/web/dist",
+  "headers": [
+    {
+      "source": "/assets/(.*)",
+      "headers": [{ "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }]
+    },
+    {
+      "source": "/ldraw/(.*)",
+      "headers": [{ "key": "Cache-Control", "value": "public, max-age=86400" }]
+    }
+  ]
+}

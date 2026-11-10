@@ -11,6 +11,7 @@
     "typecheck": "tsc -p packages/brick-engine/tsconfig.json && tsc -p packages/claude-adapter/tsconfig.json && tsc -b apps/web",
     "fmt": "vp fmt",
     "preview": "vp -C apps/web preview",
+    "ldraw:fetch": "node apps/web/tooling/fetch-ldraw.ts",
     "colors:import": "node apps/web/tooling/import-colors.ts",
     "colors:inventory": "node apps/web/tooling/import-inventory.ts",
     "claude:build": "node --env-file-if-exists=.env packages/claude-adapter/src/cli.ts",

@@ -1,6 +1,9 @@
 import { importAssembly } from '@brick-workshop/engine';
 import type { Assembly } from '@brick-workshop/engine';
 
+/** Set VITE_WORKSHOP_GENERATION=false at build time to hide AI generation (e.g. static hosting). */
+export const GENERATION_ENABLED = import.meta.env.VITE_WORKSHOP_GENERATION !== 'false';
+
 export interface PhotoReference {
   name: string;
   mediaType: 'image/jpeg';
@@ -54,15 +57,15 @@ export async function preparePhoto(file: File): Promise<PhotoReference> {
 export function captureCanvas(source: HTMLCanvasElement): string | null {
   if (!source.width || !source.height) return null;
   const scale = Math.min(1, 1024 / Math.max(source.width, source.height));
-  const canvas = document.createElement("canvas");
+  const canvas = document.createElement('canvas');
   canvas.width = Math.max(1, Math.round(source.width * scale));
   canvas.height = Math.max(1, Math.round(source.height * scale));
-  const context = canvas.getContext("2d");
+  const context = canvas.getContext('2d');
   if (!context) return null;
-  context.fillStyle = "#ffffff";
+  context.fillStyle = '#ffffff';
   context.fillRect(0, 0, canvas.width, canvas.height);
   context.drawImage(source, 0, 0, canvas.width, canvas.height);
-  const data = canvas.toDataURL("image/jpeg", 0.85).split(",")[1];
+  const data = canvas.toDataURL('image/jpeg', 0.85).split(',')[1];
   return data && data.length <= 2_796_204 ? data : null;
 }
 

@@ -79,6 +79,7 @@ import { PartBrowser } from './PartBrowser';
 import { usePartThumbnail } from './part-thumbnails';
 import { ColorPicker } from './ColorPicker';
 import { GenerationPanel } from './GenerationPanel';
+import { GENERATION_ENABLED } from './generation';
 import { BOARD_SIZES, DetailsPanel } from './DetailsPanel';
 import { Menu } from './Menu';
 import {
@@ -1133,10 +1134,12 @@ export default function App() {
               },
             ]}
           />
-          <button className="primary compact generate-button" onClick={() => openGeneration()}>
-            <Sparkles size={15} />
-            Generate
-          </button>
+          {GENERATION_ENABLED && (
+            <button className="primary compact generate-button" onClick={() => openGeneration()}>
+              <Sparkles size={15} />
+              Generate
+            </button>
+          )}
         </div>
       </header>
       <main
@@ -1405,29 +1408,35 @@ export default function App() {
             <div className="empty-state floating">
               <Sparkles size={22} className="empty-icon" />
               <h2>What do you want to build?</h2>
-              <p>Describe it and Claude drafts it, or build it yourself brick by brick.</p>
-              <form
-                className="prompt-field"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  openGeneration(brief);
-                }}
-              >
-                <input
-                  aria-label="Describe a build"
-                  placeholder="A small cottage with a red roof"
-                  value={brief}
-                  onChange={(event) => setBrief(event.target.value)}
-                />
-                <button
-                  className="primary icon-button"
-                  type="submit"
-                  aria-label="Generate"
-                  title="Generate"
+              <p>
+                {GENERATION_ENABLED
+                  ? 'Describe it and Claude drafts it, or build it yourself brick by brick.'
+                  : 'Build it yourself brick by brick, or start from an example.'}
+              </p>
+              {GENERATION_ENABLED && (
+                <form
+                  className="prompt-field"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    openGeneration(brief);
+                  }}
                 >
-                  <ArrowUp size={17} />
-                </button>
-              </form>
+                  <input
+                    aria-label="Describe a build"
+                    placeholder="A small cottage with a red roof"
+                    value={brief}
+                    onChange={(event) => setBrief(event.target.value)}
+                  />
+                  <button
+                    className="primary icon-button"
+                    type="submit"
+                    aria-label="Generate"
+                    title="Generate"
+                  >
+                    <ArrowUp size={17} />
+                  </button>
+                </form>
+              )}
               <div className="board-setting">
                 <span>Board</span>
                 <div className="segmented" role="group" aria-label="Board size">
@@ -1662,7 +1671,7 @@ export default function App() {
           />
         )}
       </main>
-      {generation && (
+      {GENERATION_ENABLED && generation && (
         <GenerationPanel
           assembly={assembly}
           policy={editPolicy}

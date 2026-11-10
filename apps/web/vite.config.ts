@@ -15,6 +15,7 @@ export default defineConfig(({ mode }) => {
     },
   };
   return {
+    envDir: workspaceRoot,
     server: { host: '127.0.0.1', proxy },
     preview: { host: '127.0.0.1', proxy },
     build: {

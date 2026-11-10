@@ -726,6 +726,16 @@ The LDraw palette is derived from the community-maintained LDraw.org
 configuration, not LEGO-authored data. Preserve applicable LDraw attribution
 and licenses when redistributing palette or mesh data.
 
+## Deploying To Vercel
+
+`vercel.json` deploys the web app as a static site. The build downloads the official
+LDraw library (`pnpm ldraw:fetch`, skipped when `data/ldraw` already exists) so the
+output ships real geometry, then builds `apps/web` with `VITE_WORKSHOP_GENERATION=false`.
+That flag hides the Generate button, the empty-state prompt and the generation dialog,
+since the static host has no workshop server. Saving to the `builds/` folder and
+arbitrary full-library previews also need the local dev/preview server; the hosted app
+keeps autosave, examples, file import/export and building instructions.
+
 ## Local LDraw Download
 
 Keep the entire library, including `parts/`, `parts/s/`, `p/`, `LDConfig.ldr`,
