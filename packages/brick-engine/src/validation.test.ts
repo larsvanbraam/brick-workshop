@@ -126,7 +126,7 @@ describe('validating one added piece', () => {
 
   it('matches full validation across a run of additions', () => {
     // The upper courses go back one by one, each checked against the index derived from the last.
-    const example = createExampleAssembly('nordiska-museet');
+    const example = createExampleAssembly('courtyard-house');
     const upper = example.bricks
       .filter((brick) => brick.y >= 12)
       .toSorted(
@@ -204,11 +204,7 @@ describe('validating one added piece', () => {
       expect(validateAddition(window, arch)?.issues).toEqual(fullValidation(window, arch));
     const frame: Assembly = {
       name: 'Casements',
-      bricks: [
-        at('sill', '3010', 0, 0),
-        at('frame', '60594', 0, 3),
-        at('left', '60608', 2, 3),
-      ],
+      bricks: [at('sill', '3010', 0, 0), at('frame', '60594', 0, 3), at('left', '60608', 2, 3)],
     };
     for (const pane of [
       { ...at('right', '60608', 0, 3), upsideDown: true as const },
