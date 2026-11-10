@@ -355,9 +355,15 @@ describe('local LDraw assets', () => {
     };
     (lines.material as ShaderMaterial).onBeforeCompile(shader as never, undefined as never);
     expect(shader.vertexShader).toContain('#include <batching_vertex>');
-    for (const input of ['position', 'control0', 'control1', 'position + direction'])
+    for (const input of ['position', 'control0', 'control1', 'segmentStart + direction'])
       expect(shader.vertexShader).toContain(`batchingMatrix * vec4( ${input}, 1.0 )`);
     expect(shader.vertexShader).not.toMatch(/modelViewMatrix \* vec4\(/);
+    // Both ends test the segment from its start, so they agree on dropping it.
+    expect(shader.vertexShader).toContain('batchingMatrix * vec4( segmentStart, 1.0 )');
+    expect(shader.vertexShader).toContain('if (discardFlag > 0.5) gl_Position =');
+    expect(
+      new Vector3().fromBufferAttribute(lines.geometry.getAttribute('segmentStart'), 1).toArray(),
+    ).toEqual([1, 2, 3]);
     batch.dispose();
     geometry.dispose();
   });

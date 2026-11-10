@@ -124,6 +124,20 @@ function fill(color: Color, count: number, alpha?: number) {
 
 const itemSize = (name: string) => (name === 'color' ? 4 : 3);
 
+/**
+ * The first end of each segment, on both of its vertices. The conditional line shader tests a
+ * segment from each end; fed the same numbers, both ends reach the same verdict, so a rejected
+ * segment can be dropped whole in the vertex shader (one dropped end would streak).
+ */
+function segmentStarts(position: Float32Array) {
+  const out = new Float32Array(position.length);
+  for (let segment = 0; segment < position.length; segment += 6) {
+    out.set(position.subarray(segment, segment + 3), segment);
+    out.set(position.subarray(segment, segment + 3), segment + 3);
+  }
+  return out;
+}
+
 /** The material each draw group of an object uses, with its vertex range. */
 function drawGroups(object: Mesh | LineSegments, count: number) {
   const materials: Material[] = Array.isArray(object.material)
@@ -371,6 +385,7 @@ function bakePart(
           attributes.control0 = slice('control0', group.start, group.count, 'point');
           attributes.control1 = slice('control1', group.start, group.count, 'point');
           attributes.direction = slice('direction', group.start, group.count, 'vector');
+          attributes.segmentStart = segmentStarts(attributes.position);
         }
         splitPrimitives(lines[kind], shape, attributes, 2);
       }
@@ -580,14 +595,36 @@ class BatchedLines extends BatchedMesh {
 }
 
 /**
+ * Where a vertex goes to not be drawn: outside the clip volume, so when both ends of a segment
+ * go there the GPU drops it before rasterizing. A fragment `discard` would still pay for every
+ * pixel of the segment.
+ */
+const OFFSCREEN = 'vec4(2.0, 2.0, 2.0, 1.0)';
+
+/**
  * Teaches LDraw's conditional line shader the batched matrices: its line ends, control points
- * and direction all move with the brick. (The basic line shader knows them already.)
+ * and direction all move with the brick. (The basic line shader knows them already.) It also
+ * tests from `segmentStart` rather than each vertex's own position, so both ends agree, and
+ * drops a hidden segment in the vertex shader; the fragment discard stays as a backstop.
  */
 function batchConditionalLines(shader: { vertexShader: string }) {
   shader.vertexShader = shader.vertexShader
-    .replace('#include <common>', '#include <common>\n#include <batching_pars_vertex>')
+    .replace(
+      '#include <common>',
+      '#include <common>\nattribute vec3 segmentStart;\n#include <batching_pars_vertex>',
+    )
     .replace('#include <color_vertex>', '#include <color_vertex>\n#include <batching_vertex>')
-    .replaceAll('modelViewMatrix * vec4(', 'modelViewMatrix * batchingMatrix * vec4(');
+    .replace(
+      'vec4 p0 = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );',
+      'vec4 p0 = projectionMatrix * modelViewMatrix * vec4( segmentStart, 1.0 );',
+    )
+    .replace('vec4( position + direction, 1.0 )', 'vec4( segmentStart + direction, 1.0 )')
+    .replaceAll('modelViewMatrix * vec4(', 'modelViewMatrix * batchingMatrix * vec4(')
+    .replace(
+      '#include <logdepthbuf_vertex>',
+      `#include <logdepthbuf_vertex>
+      if (discardFlag > 0.5) gl_Position = ${OFFSCREEN};`,
+    );
 }
 
 /** How many device pixels a stud has to span before edges start to show, and fully show. */
@@ -613,9 +650,17 @@ function fadeWithZoom(material: Material, viewport: { value: number }) {
       .replace(
         '#include <logdepthbuf_vertex>',
         `#include <logdepthbuf_vertex>
-        // Pixels one world unit (a stud) spans at this depth, for perspective and ortho alike.
-        float studPixels = projectionMatrix[1][1] * 0.5 * edgeViewport / gl_Position.w;
-        vEdgeFade = smoothstep(${EDGE_FADE_PIXELS.hidden.toFixed(1)}, ${EDGE_FADE_PIXELS.full.toFixed(1)}, studPixels);`,
+        // Pixels one world unit (a stud) spans at the brick's origin, for perspective and ortho
+        // alike. One depth per brick gives all its vertices the same fade, so a faded-out
+        // segment loses both ends here; a brick around the camera counts as close.
+        vec4 edgeOrigin = vec4(0.0, 0.0, 0.0, 1.0);
+        #ifdef USE_BATCHING
+          edgeOrigin = batchingMatrix[3];
+        #endif
+        float edgeDepth = max((projectionMatrix * modelViewMatrix * edgeOrigin).w, 1e-3);
+        float studPixels = projectionMatrix[1][1] * 0.5 * edgeViewport / edgeDepth;
+        vEdgeFade = smoothstep(${EDGE_FADE_PIXELS.hidden.toFixed(1)}, ${EDGE_FADE_PIXELS.full.toFixed(1)}, studPixels);
+        if (vEdgeFade <= 0.0) gl_Position = ${OFFSCREEN};`,
       );
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', '#include <common>\nvarying float vEdgeFade;')
