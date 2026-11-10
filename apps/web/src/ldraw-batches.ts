@@ -596,7 +596,16 @@ function brickMatrix(brick: Brick, buildArea: number, explode: boolean) {
     );
 }
 
-const PLACEMENT_KEYS = ['partId', 'color', 'x', 'y', 'z', 'rotation', 'facing'] as const;
+const PLACEMENT_KEYS = [
+  'partId',
+  'color',
+  'x',
+  'y',
+  'z',
+  'rotation',
+  'facing',
+  'upsideDown',
+] as const;
 
 /** Everything a brick's placement depends on; the same key means nothing to redo. */
 function placementKey(
@@ -998,11 +1007,12 @@ export class LDrawBatch {
           : [];
       let studSites: string[] = [];
       let closable = false;
-      // Side-mounted parts point their studs and underside sideways, and see-through ones show
-      // what is inside them.
-      if (opaque && !brick.facing) {
+      // Side-mounted and upside-down parts point their studs and underside elsewhere, and
+      // see-through ones show what is inside them.
+      const transform = opaque && !brick.facing ? getLDrawTransform(brick) : undefined;
+      if (transform && transform.matrix[4] === 1) {
         const shape = this.shapeOf(model);
-        const { x, y, z, matrix } = getLDrawTransform(brick);
+        const { x, y, z, matrix } = transform;
         studSites = shape.studs.map((stud) => {
           const [studX, studZ] = stud.split(':').map(Number);
           return siteKey(

@@ -41,6 +41,7 @@ import type { Assembly, Brick, ExampleDefinition } from './index';
 import { parseLDrawColors } from './colors.ts';
 import { getPartColorStatus, importPartColorEvidence } from './part-colors.ts';
 import { COLORS, DEFAULT_PART_COLOR_EVIDENCE } from './index.ts';
+import { planInstructionSteps } from './instructions.ts';
 
 const empty: Assembly = { name: 'Test', bricks: [] };
 const base: Brick = { id: 'base', partId: '3001', color: 4, x: 0, y: 0, z: 0, rotation: 0 };
@@ -109,6 +110,13 @@ const architecturalExpansionIds = [
   '60602',
   '86210',
   '2494',
+  '60607',
+  '60608',
+  '57894',
+  '15254',
+  '20309',
+  '30044',
+  '57895',
 ];
 
 describe('connection-aware placement planning', () => {
@@ -855,7 +863,7 @@ describe('architectural part families', () => {
     const included = assembly.bricks.filter((brick) =>
       architecturalParts.some((part) => part.id === brick.partId),
     );
-    expect(included).toHaveLength(81);
+    expect(included).toHaveLength(88);
     expect(new Set(included.map((brick) => brick.partId))).toEqual(
       new Set(architecturalParts.map((part) => part.id)),
     );
@@ -995,6 +1003,91 @@ describe('architectural part families', () => {
       expect(placeBrick(placed, { ...door, z: 1 }).ok, partId).toBe(false);
       expect(placeBrick({ ...empty, bricks: [support] }, door).ok, partId).toBe(false);
     }
+  });
+  it('hangs latticed casements in both ends of a 1 x 4 x 3 frame, one upside down', () => {
+    const support = { ...base, partId: '3010', rotation: 90 as const };
+    const frame = { ...base, id: 'frame', partId: '60594', y: 3, rotation: 90 as const };
+    const placed = { ...empty, bricks: [support, frame] };
+    // Turned like the frame the pane hangs from its pin at the frame's native -x end, which a
+    // quarter-turned frame (native turn 180) puts at high world x.
+    const left = { ...base, id: 'left', partId: '60607', x: 2, y: 3, rotation: 90 as const };
+    const right: Brick = { ...left, id: 'right', x: 0, upsideDown: true };
+    expect(placeBrick(placed, left).ok).toBe(true);
+    expect(placeBrick({ ...placed, bricks: [...placed.bricks, left] }, right).ok).toBe(true);
+    expect(placeBrick(placed, { ...left, x: 0 }).ok).toBe(false);
+    expect(placeBrick(placed, { ...right, x: 2 }).ok).toBe(false);
+    // Turned round, either pane would face into the building, away from the frame's pockets.
+    expect(placeBrick(placed, { ...left, rotation: 270 }).ok).toBe(false);
+    expect(placeBrick(placed, { ...right, rotation: 270 }).ok).toBe(false);
+    expect(placeBrick({ ...empty, bricks: [support] }, left).ok).toBe(false);
+    // Only parts that declare it can be fitted upside down.
+    expect(placeBrick(placed, { ...frame, id: 'other', x: 4, upsideDown: true }).ok).toBe(false);
+    // A whole build turned half round stays valid: the flag turns with it.
+    const turned = [support, frame, left, right].map((brick) => ({
+      ...brick,
+      x: 8 - brick.x - footprint(brick).width,
+      z: 8 - brick.z - footprint(brick).depth,
+      rotation: ((brick.rotation + 180) % 360) as Brick['rotation'],
+    }));
+    expect(validateAssembly({ ...empty, buildArea: 16, bricks: turned })).toEqual([]);
+    // The barred pane hangs the same way.
+    const barred = [left, right].map((pane) => ({ ...pane, partId: '60608' }));
+    expect(validateAssembly({ ...placed, bricks: [...placed.bricks, ...barred] })).toEqual([]);
+    // The far pane is the same moulding upside down: its pin is at the bottom of the opening.
+    const frameTransform = getLDrawTransform(frame);
+    expect(getLDrawTransform(left)).toMatchObject({
+      x: frameTransform.x + 33,
+      y: frameTransform.y + 4,
+      z: frameTransform.z - 3.5,
+      matrix: [0, 0, 1, 0, 1, 0, -1, 0, 0],
+    });
+    expect(getLDrawTransform(right)).toMatchObject({
+      x: frameTransform.x - 33,
+      y: frameTransform.y + 68,
+      z: frameTransform.z - 3.5,
+      matrix: [0, 0, -1, 0, -1, 0, -1, 0, 0],
+    });
+    // A casement hangs where the frame's opening glass would, so the two do not share a frame.
+    const glass = { ...frame, id: 'glass', partId: '86210' };
+    expect(placeBrick({ ...placed, bricks: [...placed.bricks, glass] }, left).ok).toBe(false);
+  });
+  it('fills a thin-top 1 x 6 x 2 arch with a half-round window set in before it', () => {
+    const jambs = [0, 5].map((x) => ({ ...base, id: `jamb-${x}`, partId: '3005', x }));
+    const frames = [1, 3].map((x) => ({
+      ...base,
+      id: `frame-${x}`,
+      partId: '60592',
+      x,
+      rotation: 90 as const,
+    }));
+    const posts = [0, 5].map((x) => ({ ...base, id: `post-${x}`, partId: '3005', x, y: 3 }));
+    const fanlight = { ...base, id: 'fanlight', partId: '20309', x: 1, y: 6, rotation: 90 as const };
+    const arch = { ...base, id: 'arch', partId: '15254', y: 6, rotation: 90 as const };
+    const bricks = [...jambs, ...frames, ...posts, fanlight, arch];
+    expect(validateAssembly({ ...empty, bricks })).toEqual([]);
+    // Turned the other way round it still fits; off centre it runs into the arch's legs.
+    expect(validateAssembly({ ...empty, bricks: [...bricks.slice(0, -2), { ...fanlight, rotation: 270 }, arch] })).toEqual([]);
+    expect(
+      validateAssembly({ ...empty, bricks: [...bricks.slice(0, -2), { ...fanlight, x: 2 }, arch] }),
+    ).not.toEqual([]);
+    // Other arches leave no room for it.
+    expect(
+      validateAssembly({ ...empty, bricks: [...bricks.slice(0, -1), { ...arch, partId: '3307' }] }),
+    ).not.toEqual([]);
+    // The arch comes down over the window, not the other way round.
+    const steps = planInstructionSteps({ ...empty, bricks });
+    const order = steps.flatMap((step) => step.brickIds);
+    expect(order.indexOf('fanlight')).toBeLessThan(order.indexOf('arch'));
+  });
+  it('glazes the three-light 1 x 4 x 6 frame', () => {
+    const support = { ...base, partId: '3010', rotation: 90 as const };
+    const frame = { ...base, id: 'frame', partId: '57894', y: 3, rotation: 90 as const };
+    const glass = { ...frame, id: 'glass', partId: '57895' };
+    expect(placeBrick({ ...empty, bricks: [support, frame] }, glass).ok).toBe(true);
+    expect(placeBrick({ ...empty, bricks: [support] }, glass).ok).toBe(false);
+    // The glass hangs 4.5 LDU below the top of the frame and 3 LDU in front of its middle.
+    const pins = getLDrawTransform(frame);
+    expect(getLDrawTransform(glass)).toMatchObject({ x: pins.x, y: pins.y + 4.5, z: pins.z + 3 });
   });
   it('swaps legacy 1 x 3 x 3 doors for the doors that fit 1 x 3 x 4 frames on import', () => {
     const support = { ...base, partId: '3001' };
@@ -1189,18 +1282,18 @@ describe('upright brick engine', () => {
       ).toEqual(expected);
     }
   });
-  it('contains 170 unique building and foliage parts with explicit connection sites', () => {
-    expect(PARTS).toHaveLength(170);
-    expect(new Set(PARTS.map((part) => part.id)).size).toBe(170);
+  it('contains 177 unique building and foliage parts with explicit connection sites', () => {
+    expect(PARTS).toHaveLength(177);
+    expect(new Set(PARTS.map((part) => part.id)).size).toBe(177);
     expect(PARTS.filter((part) => part.family === 'tall')).toHaveLength(10);
     expect(PARTS.filter((part) => part.family === 'slope')).toHaveLength(21);
     expect(PARTS.filter((part) => part.family === 'round')).toHaveLength(8);
     for (const [family, count] of [
-      ['arch', 6],
+      ['arch', 7],
       ['baseplate', 2],
       ['cone', 4],
       ['door', 7],
-      ['window', 10],
+      ['window', 16],
       ['detail', 24],
       ['foliage', 10],
     ] as const)
@@ -1592,7 +1685,7 @@ describe('upright brick engine', () => {
 
 describe('mixed-part engine builds', () => {
   it('lays complete catalogue and tile displays on one larger board without stacking', () => {
-    for (const [id, count] of [['catalog-sampler', 170]] as const) {
+    for (const [id, count] of [['catalog-sampler', 177]] as const) {
       const assembly = createExampleAssembly(id);
       expect(assembly.buildArea).toBe(64);
       expect(assembly.bricks).toHaveLength(count);

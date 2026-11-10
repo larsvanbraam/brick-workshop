@@ -403,7 +403,7 @@ export function LDrawMesh({
   model: Group;
   color: number;
   rotation: number;
-  /** The full LDraw turn, row-major; pieces mounted on side studs need more than `rotation`. */
+  /** The full LDraw turn, row-major; side-mounted and upside-down pieces need more than `rotation`. */
   matrix?: readonly number[];
 }) {
   const key = matrix?.join(' ');
@@ -468,6 +468,8 @@ const BrickMesh = memo(function BrickMesh({
   const color = overrideColor ?? displayHex(definition);
   const actualOpacity = overrideColor ? opacity : opacity * material.opacity;
   const elevation = brick.y * PLATE_HEIGHT + (explode ? brick.y * 0.18 : 0);
+  // Side-mounted and upside-down pieces need the full LDraw turn, not just the quarter turns.
+  const transform = getLDrawTransform(brick);
   return (
     <group
       position={[
@@ -483,8 +485,8 @@ const BrickMesh = memo(function BrickMesh({
             key={`${brick.partId}:${brick.color}`}
             model={model}
             color={brick.color}
-            rotation={getLDrawTransform(brick).rotation}
-            matrix={brick.facing ? getLDrawTransform(brick).matrix : undefined}
+            rotation={transform.rotation}
+            matrix={brick.facing || transform.matrix[4] !== 1 ? transform.matrix : undefined}
           />
         </group>
       ) : (

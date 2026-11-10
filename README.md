@@ -147,7 +147,7 @@ pnpm build      # Typecheck, web build, standalone engine build
 pnpm fmt       # Format the workspace
 ```
 
-Engine tests construct the complete 170-design catalogue sampler through
+Engine tests construct the complete 177-design catalogue sampler through
 `placeBrick`, placing every supported part exactly once on a 64 x 64 board at
 Y=0 with half-stud gaps. This includes all supported tiles, architectural
 details and foliage. Focused tests separately cover connection, support-removal
@@ -162,7 +162,7 @@ preview and can be undone. These checks are not physical-strength certification.
 | Example             | Pieces | Detail                                                                                                                                                                                                                                     |
 | ------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Courtyard House     | 383    | Stone hall with corbelled, jettied half-timbered upper storey, stepped slate roof and chimney; crenellated watchtower with brazier; gated wall, roofed well, vegetable garden with scarecrow, tree; 46 designs, 17 colors, 48 plates high. |
-| Catalog sampler     | 170    | Every supported design exactly once, including all architectural details and foliage, on one 64 x 64 ground-level board.                                                                                                                   |
+| Catalog sampler     | 177    | Every supported design exactly once, including all architectural details and foliage, on one 64 x 64 ground-level board.                                                                                                                   |
 | Seaside Lighthouse  | 399    | Striped tower with gallery, lantern and cone roof on a rocky island, keeper's cottage, jetty, rowboat, buoy and garden; 46 designs, 16 colors, 64 plates high.                                                                             |
 | Flower Market Stall | 351    | Booth with bonded shelf, striped stepped awning and sign, flower buckets, pots, crates, shade tree, lamp, bench and cobbled square; 36 designs, 16 colors.                                                                                 |
 
@@ -185,7 +185,7 @@ part/color diversity, and picking still considers individual instances.
 The canvas renders on demand, including orbit movement, selection and edits.
 
 Startup loads only the designs used by the initial assembly plus the selected
-part (currently 47 designs for Courtyard House), not all 170 supported designs.
+part (currently 47 designs for Courtyard House), not all 177 supported designs.
 Supported parts share selective manifests and cached model promises; selecting
 or placing another design loads only missing geometry while retaining the
 current scene. Failed model requests are evicted so later requests can retry.
@@ -265,7 +265,7 @@ host's board through a placement tool. Existing models retain their 16 x 16 boar
 without modifying their input. The Claude tool adapter calls these
 same APIs. Removing a piece is rejected if it leaves unsupported pieces.
 
-The catalog currently contains 170 curated building designs and 320 official LDraw
+The catalog currently contains 177 curated building designs and 320 official LDraw
 colors. If the local library is installed, the viewer uses real LDraw meshes,
 including studs, underside geometry, and edge lines. Otherwise it explicitly
 falls back to simplified bodies and studs. Manufactured combinations are tracked
@@ -288,13 +288,15 @@ sideways SNOT attachment, clips, hinges, Technic and other special connections r
 Side-stud bricks can be placed upright using their vertical connections only;
 their protruding side studs reserve additional clearance. `family` identifies these
 parts independently of the brick/plate/tile `kind`; height is always in plates.
-The picker searches all 170 IDs and has dedicated Details and Foliage filters.
+The picker searches all 177 IDs and has dedicated Details and Foliage filters.
 
-Architectural starter IDs are arches `3659`, `4490`, `6182`, `3307`; baseplates
+Architectural starter IDs are arches `3659`, `4490`, `6182`, `3307`, `15254` (thin top); baseplates
 `3865` (8 x 16), `3867` (16 x 16); cones `4589`, `3942c`, `3943b`, `6233`;
 doors/frames `3193a`, `3192a`, `3861c`, `3579`, `60616a`, `60623`, `60596`; windows/frames
-`60592`, `60593`, `60594`, `2493b`, `4035`, `3853`; and window glass `60601`, `60602`,
-`86210`, `2494`. Baseplates are half a plate thick,
+`60592`, `60593`, `60594`, `57894` (1 x 4 x 6, three lights), `30044` (rounded top), `20309`
+(half-round fanlight), `2493b`, `4035`, `3853`; window
+glass `60601`, `60602`, `86210`, `57895`, `2494`; and casement panes `60607` (latticed) and
+`60608` (two bars). Baseplates are half a plate thick,
 have no underside receivers, and must stay on the ground. Larger boards do not
 add new baseplate designs to the supported catalogue. Arches accept underside studs only at their
 legs; cone tops use their actual centred one- or four-stud layouts. Integral
@@ -303,7 +305,12 @@ their own hinge stud at either end of a `3579` frame; `60616a`/`60623` hang on t
 pins of a `60596` frame, turned half round for the other end. Imports swap the legacy
 1 x 3 x 3 doors `801a`/`802a`, which fit no supported frame, for `3193a`/`3192a`.
 Glass sits in its frame's own cells, turned like the frame: `60601` in `60592`, `60602` in
-`60593`, the top-hung `86210` in `60594` and `2494` in `2493b`. Windows `4035` and `3853`
+`60593`, the top-hung `86210` in `60594`, `57895` in `57894` and `2494` in `2493b`. Casements
+`60607`/`60608` hang by their corner pins in place of `86210`, one at each end of a `60594`
+frame and turned like it; the far one is the same pane fitted `upsideDown`, a brick flag only
+parts marked `flippable` accept. The web picker seats a casement in the half nearest the pointer.
+Fanlight `20309` fills the opening of a `15254` arch: it stands on the studs below, level with
+and centred between the arch's legs, and goes in before the arch comes down over it. Windows `4035` and `3853`
 are complete windows that stand on studs; imports turn one found inside a `60593`/`60594`
 frame into that frame's glass. Example windows are glazed in trans-clear.
 Modern four-wide frames expose only the reviewed two centre top studs where
@@ -522,8 +529,9 @@ const assessment = assessPhysicalFeasibility(createExampleAssembly('catalog-samp
 ```
 
 By default the engine API uses the bundled **catalogue-reported** nominal weights
-for 105 of the 170 supported parts. Tall brick `39266`, the 56 new architectural
-and foliage designs and the fitted doors and glass have no verified bundled weight and remain missing unless a
+for 105 of the 177 supported parts. Tall brick `39266`, the 56 new architectural
+and foliage designs, the fitted doors and glass, the casement panes, the three-light,
+rounded and half-round windows and the thin-top arch have no verified bundled weight and remain missing unless a
 host supplies one or enables estimates. New designs likewise have no bundled
 manufacturing-colour observations; rendering support does not establish availability.
 Lookup order is host-supplied `data.parts` overrides,

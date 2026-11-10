@@ -9,6 +9,8 @@ export type ExampleBrickAdder = (
   rotation?: Rotation,
   /** Mounts the piece on its side, on side studs pointing this way. */
   facing?: Facing,
+  /** Fits a flippable piece, such as the far casement of a frame, upside down. */
+  upsideDown?: boolean,
 ) => void;
 
 export interface ExampleMetadata {

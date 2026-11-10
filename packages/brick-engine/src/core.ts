@@ -54,6 +54,11 @@ export interface Part {
     | 'foliage';
   ldrawCenter?: { x: number; z: number };
   ldrawBaseY?: number;
+  /**
+   * Can be fitted upside down (`Brick.upsideDown`): one moulding then serves as both
+   * mirror-image halves, like the casement panes hung at either end of a window frame.
+   */
+  flippable?: true;
   clearance?: 'reserved';
   ldrawRotation: Rotation;
   connections: {
@@ -115,7 +120,9 @@ function architecturalPart(
   depth: number,
   height: number,
   family: 'arch' | 'baseplate' | 'cone' | 'door' | 'window',
-  options: Partial<Pick<Part, 'connections' | 'ldrawRotation' | 'ldrawCenter' | 'ldrawBaseY'>> = {},
+  options: Partial<
+    Pick<Part, 'connections' | 'ldrawRotation' | 'ldrawCenter' | 'ldrawBaseY' | 'flippable'>
+  > = {},
 ): Part {
   const grid =
     Number.isInteger(width) && Number.isInteger(depth)
@@ -787,6 +794,8 @@ export const PARTS: readonly Part[] = [
   architecturalPart('3307', 'Arch 1 x 6 x 2', 1, 6, 6, 'arch'),
   architecturalPart('3308', 'Arch 1 x 8 x 2', 1, 8, 6, 'arch'),
   architecturalPart('92950', 'Raised arch 1 x 6', 1, 6, 3, 'arch'),
+  // Its opening is a half circle two studs round from the base, which a half-round window fills.
+  architecturalPart('15254', 'Arch 1 x 6 x 2, thin top', 1, 6, 6, 'arch'),
   architecturalPart('3865', 'Baseplate 8 x 16', 8, 16, 0.5, 'baseplate'),
   architecturalPart('3867', 'Baseplate 16 x 16', 16, 16, 0.5, 'baseplate'),
   architecturalPart('4589', 'Cone 1 x 1', 1, 1, 3, 'cone', { connections: coneConnections(1, 1) }),
@@ -859,6 +868,46 @@ export const PARTS: readonly Part[] = [
     ldrawBaseY: 67,
     connections: { topStuds: [], bottomReceivers: [] },
   }),
+  // Hung by its corner pins in the pockets at either end of the 1 x 4 x 3 frame, in place of
+  // its glass: native pin at frame-local (-33, 4, 3.5), the pane reaching 31.5 LDU along -z.
+  // The pane for the other end is the same one upside down.
+  architecturalPart('60607', 'Window pane 1 x 2 x 3, latticed', 1, 2, 9, 'window', {
+    ldrawRotation: 0,
+    ldrawCenter: { x: -3.5, z: -13 },
+    ldrawBaseY: 68,
+    flippable: true,
+    connections: { topStuds: [], bottomReceivers: [] },
+  }),
+  // The same hanging, with two glazing bars across instead of a lattice: a pair makes a grid.
+  architecturalPart('60608', 'Window pane 1 x 2 x 3, two bars', 1, 2, 9, 'window', {
+    ldrawRotation: 0,
+    ldrawCenter: { x: -3.5, z: -13 },
+    ldrawBaseY: 68,
+    flippable: true,
+    connections: { topStuds: [], bottomReceivers: [] },
+  }),
+  architecturalPart('57894', 'Window frame 1 x 4 x 6, three lights', 1, 4, 18, 'window', {
+    connections: {
+      topStuds: [
+        { x: 0, z: 1 },
+        { x: 0, z: 2 },
+      ],
+      bottomReceivers: rectangularConnections(1, 4).bottomReceivers,
+    },
+  }),
+  // Pinned into the frame's top holes, 4.5 LDU down and 3 LDU in front of its origin.
+  architecturalPart('57895', 'Glass for window 1 x 4 x 6', 1, 4, 18, 'window', {
+    ldrawCenter: { x: 0, z: 3 },
+    ldrawBaseY: 139.5,
+    connections: { topStuds: [], bottomReceivers: [] },
+  }),
+  // A half-round fanlight with three radial bars: its native base is 8 LDU below the origin and
+  // its curve, two studs round about the middle of the base, fills a 1 x 6 x 2 arch's opening.
+  architecturalPart('20309', 'Window 1 x 4 x 1 2/3, half round', 1, 4, 5, 'window', {
+    ldrawBaseY: 8,
+    connections: { topStuds: [], bottomReceivers: rectangularConnections(1, 4).bottomReceivers },
+  }),
+  architecturalPart('30044', 'Window 1 x 2 x 2 2/3, rounded top', 1, 2, 8, 'window'),
   architecturalPart('2493b', 'Window frame 1 x 4 x 5, hollow studs', 1, 4, 15, 'window'),
   architecturalPart('2494', 'Glass for window 1 x 4 x 5', 1, 4, 15, 'window', {
     connections: { topStuds: [], bottomReceivers: [] },
@@ -929,6 +978,12 @@ export interface Brick {
    * is in 0.1 stud (2 LDU) steps.
    */
   facing?: Facing;
+  /**
+   * Fitted upside down, turned half round about its width through the middle of its cells, so
+   * it keeps its cells. Only parts that declare `flippable` can be, such as a casement pane,
+   * which hangs this way at the far end of its frame. Left out when false.
+   */
+  upsideDown?: true;
 }
 
 export interface Assembly {
@@ -1177,6 +1232,8 @@ function isValid(brick: Brick, buildArea: number): boolean {
     !COLOR_IDS.has(brick.color) ||
     ![0, 90, 180, 270].includes(brick.rotation) ||
     (brick.facing !== undefined && !FACINGS.includes(brick.facing)) ||
+    (brick.upsideDown !== undefined &&
+      (brick.upsideDown !== true || !!brick.facing || !getPart(brick.partId).flippable)) ||
     ![brick.x, brick.y, brick.z].every((value) => Number.isFinite(value) && value >= 0) ||
     !onGrid(brick.x, step('x')) ||
     !onGrid(brick.y, 0.5) ||
@@ -1195,6 +1252,9 @@ export const INSERT_FRAME_PARTS: Readonly<Record<string, string>> = Object.freez
   '60601': '60592',
   '60602': '60593',
   '86210': '60594',
+  '60607': '60594',
+  '60608': '60594',
+  '57895': '57894',
   '2494': '2493b',
   '3193a': '3579',
   '3192a': '3579',
@@ -1202,10 +1262,36 @@ export const INSERT_FRAME_PARTS: Readonly<Record<string, string>> = Object.freez
   '60623': '60596',
 });
 
+/**
+ * Pieces that fill an arch's opening, and the arch each fits. The infill stands on the studs
+ * below and goes in first; the arch then comes down over it.
+ */
+export const ARCH_INFILL_PARTS: Readonly<Record<string, string>> = Object.freeze({
+  '20309': '15254',
+});
+
+/** Whether `infill` fills the opening of `arch`: level with it and centred between its legs. */
+export function isArchInfill(infill: Brick, arch: Brick): boolean {
+  if (
+    ARCH_INFILL_PARTS[infill.partId] !== arch.partId ||
+    infill.y !== arch.y ||
+    infill.rotation % 180 !== arch.rotation % 180 ||
+    infill.facing ||
+    arch.facing
+  )
+    return false;
+  const along = footprint(arch).width > footprint(arch).depth;
+  return along
+    ? infill.x === arch.x + 1 && infill.z === arch.z
+    : infill.z === arch.z + 1 && infill.x === arch.x;
+}
+
 /** Doors hung on their own hinge stud, which stands at one end of the frame's opening. */
 const HINGED_DOORS = new Set(['3193a', '3192a']);
 /** Doors hung on the frame's hinge pins: native origin at frame-local (±32, 5), turned to match. */
 const PINNED_DOORS = new Set(['60616a', '60623']);
+/** Panes hung by their corner pins in the pockets at either end of a frame's opening. */
+const CASEMENT_PANES = new Set(['60607', '60608']);
 
 export function isMatchingInsertFrame(insert: Brick, frame: Brick): boolean {
   const framePartId = INSERT_FRAME_PARTS[insert.partId];
@@ -1214,7 +1300,8 @@ export function isMatchingInsertFrame(insert: Brick, frame: Brick): boolean {
     frame.partId !== framePartId ||
     frame.y !== insert.y ||
     insert.facing ||
-    frame.facing
+    frame.facing ||
+    frame.upsideDown
   )
     return false;
 
@@ -1244,6 +1331,21 @@ export function isMatchingInsertFrame(insert: Brick, frame: Brick): boolean {
     return (
       door.x === pins.x + cosine * hingeX + sine * 5 &&
       door.z === pins.z - sine * hingeX + cosine * 5
+    );
+  }
+  if (CASEMENT_PANES.has(insert.partId)) {
+    // Turned like the frame, the pane hangs at the frame-local -x end; upside down it hangs at
+    // the +x end with its pin at the bottom. Turned round, it would face into the building.
+    if (insert.rotation !== frame.rotation) return false;
+    const pin = insert.upsideDown ? [33, 68] : [-33, 4];
+    const pane = getLDrawTransform(insert);
+    const pockets = getLDrawTransform(frame);
+    const cosine = Math.round(Math.cos((pockets.rotation * Math.PI) / 180));
+    const sine = Math.round(Math.sin((pockets.rotation * Math.PI) / 180));
+    return (
+      pane.x === pockets.x + cosine * pin[0] + sine * 3.5 &&
+      pane.y === pockets.y + pin[1] &&
+      pane.z === pockets.z - sine * pin[0] + cosine * 3.5
     );
   }
   // Glass fills its frame's own cells, turned the same way.
@@ -1497,6 +1599,8 @@ function computeValidation(assembly: Assembly): Validation {
         overlaps(brick, size, other, bounds[otherIndex]) &&
         !isMatchingInsertFrame(brick, other) &&
         !isMatchingInsertFrame(other, brick) &&
+        !isArchInfill(brick, other) &&
+        !isArchInfill(other, brick) &&
         !holds(brick, other) &&
         !holds(other, brick)
       ) {
@@ -1608,6 +1712,8 @@ export function validateAddition(
         overlaps(other, index.bounds[otherIndex], brick, size) &&
         !isMatchingInsertFrame(other, brick) &&
         !isMatchingInsertFrame(brick, other) &&
+        !isArchInfill(other, brick) &&
+        !isArchInfill(brick, other) &&
         !chain?.has(other.id)
       ) {
         issues.push({
@@ -1726,6 +1832,28 @@ export function getLDrawTransform(brick: Brick): {
     };
   }
   const size = footprint(brick);
+  if (brick.upsideDown) {
+    // Turned as usual, then half round about the part's width through the middle of its cells.
+    const turned = getLDrawTransform({ ...brick, upsideDown: undefined });
+    const flip = brick.rotation % 180 === 0 ? [1, -1, -1] : [-1, -1, 1];
+    const center = [
+      (brick.x + size.width / 2) * 20,
+      -(brick.y + size.height / 2) * 8,
+      (brick.z + size.depth / 2) * 20,
+    ];
+    const [x, y, z] = [turned.x, turned.y, turned.z].map(
+      (value, axis) => center[axis] + flip[axis] * (value - center[axis]) + 0,
+    );
+    return {
+      x,
+      y,
+      z,
+      rotation: turned.rotation,
+      matrix: turned.matrix.map(
+        (value, index) => flip[Math.floor(index / 3)] * value + 0,
+      ) as unknown as Matrix,
+    };
+  }
   const rotation = ((brick.rotation + part.ldrawRotation) % 360) as Rotation;
   const cosine = Math.round(Math.cos((rotation * Math.PI) / 180));
   const sine = Math.round(Math.sin((rotation * Math.PI) / 180));

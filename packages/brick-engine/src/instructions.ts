@@ -1,8 +1,10 @@
 import {
+  ARCH_INFILL_PARTS,
   INSERT_FRAME_PARTS,
   PLATE_HEIGHT,
   footprint,
   getSideMountHosts,
+  isArchInfill,
   isMatchingInsertFrame,
   validateAssembly,
 } from './core.ts';
@@ -96,6 +98,15 @@ function buildNodes(bricks: readonly Brick[]): Node[] {
     if (list) list.push(node);
     else frames.set(node.brick.partId, [node]);
   }
+  /** Arch infills by the arch part they fill. */
+  const infills = new Map<string, Node[]>();
+  for (const node of nodes) {
+    const archPartId = ARCH_INFILL_PARTS[node.brick.partId];
+    if (!archPartId) continue;
+    const list = infills.get(archPartId);
+    if (list) list.push(node);
+    else infills.set(archPartId, [node]);
+  }
   const indexes = new Map(nodes.map((node) => [node.brick.id, node.index]));
   const hosts = getSideMountHosts(bricks);
   for (const node of nodes) {
@@ -115,6 +126,9 @@ function buildNodes(bricks: readonly Brick[]): Node[] {
           )
             below.add(other);
         }
+    // An arch comes down over the infill that fills its opening.
+    for (const infill of infills.get(node.brick.partId) ?? [])
+      if (isArchInfill(infill.brick, node.brick)) below.add(infill.index);
     const framePartId = INSERT_FRAME_PARTS[node.brick.partId];
     if (framePartId) {
       const frame = frames

@@ -204,18 +204,40 @@ function download(contents: string | Blob, name: string, type: string) {
 
 /**
  * A door or pane seated in the frame under the pointer, turned as chosen when that fits and
- * otherwise half or a quarter turn round (which picks the hinge end of a door).
+ * otherwise half or a quarter turn round (which picks the hinge end of a door). A casement goes
+ * in the half of the frame nearest the pointer, upside down when that is the far end.
  */
-function seatInFrame(frame: Brick, insert: Brick): Brick | null {
+function seatInFrame(
+  frame: Brick,
+  insert: Brick,
+  pointer?: { x: number; z: number },
+): Brick | null {
+  const flips = getPart(insert.partId).flippable ? [false, true] : [false];
+  const seats: Brick[] = [];
   for (const turn of [0, 180, 90, 270]) {
     const rotation = ((insert.rotation + turn) % 360) as Rotation;
-    for (const dx of [0, -0.5, 0.5])
-      for (const dz of [0, -0.5, 0.5]) {
-        const seated = { ...insert, rotation, x: frame.x + dx, y: frame.y, z: frame.z + dz };
-        if (isMatchingInsertFrame(seated, frame)) return seated;
-      }
+    for (const upsideDown of flips)
+      for (const dx of [0, -0.5, 0.5, -2, 2])
+        for (const dz of [0, -0.5, 0.5, -2, 2]) {
+          const { upsideDown: _, ...upright } = insert;
+          const seated: Brick = {
+            ...upright,
+            rotation,
+            x: frame.x + dx,
+            y: frame.y,
+            z: frame.z + dz,
+            ...(upsideDown ? { upsideDown: true as const } : {}),
+          };
+          if (isMatchingInsertFrame(seated, frame)) seats.push(seated);
+        }
+    if (seats.length) break;
   }
-  return null;
+  if (!pointer) return seats[0] ?? null;
+  const distance = (brick: Brick) => {
+    const size = footprint(brick);
+    return Math.hypot(brick.x + size.width / 2 - pointer.x, brick.z + size.depth / 2 - pointer.z);
+  };
+  return seats.sort((first, second) => distance(first) - distance(second))[0] ?? null;
 }
 
 /**
@@ -232,7 +254,7 @@ function placementFor(
   const brick: Brick = { id: 'placement-preview', partId, color, x: 0, y: 0, z: 0, rotation };
   const size = footprint(brick);
   const hit = target.brick;
-  if (hit && INSERT_FRAME_PARTS[partId] === hit.partId) return seatInFrame(hit, brick);
+  if (hit && INSERT_FRAME_PARTS[partId] === hit.partId) return seatInFrame(hit, brick, target);
   if (!hit && (target.x < 0 || target.z < 0 || target.x > area || target.z > area)) return null;
   const offsetX = hit ? hit.x % 1 : 0;
   const offsetZ = hit ? hit.z % 1 : 0;

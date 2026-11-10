@@ -21,7 +21,7 @@ configuration files, not the downloaded library or generated geometry caches.
 
 An existing library outside the repo can also be used: set `LDRAW_LIBRARY_PATH`
 in the repo root's local `.env` to its absolute path, then restart the dev server.
-The viewer loads 164 engine-supported building designs: bricks, plates, tiles,
+The viewer loads 171 engine-supported building designs: bricks, plates, tiles,
 tall bricks, roof slopes, round parts, arches, baseplates, cones, doors, windows,
 architectural details and ten foliage designs
 with Three.js's LDrawLoader.
@@ -47,7 +47,7 @@ The original tiles retain grooved IDs `3070b`, `3069b`, `3068b`, plus `63864`,
 tops and do not support studs above. Upright slopes expose their high rear stud
 row; inverted slopes expose rear underside receivers, while smooth roof caps
 have no top studs. The shared transform corrects off-centre native origins and
-bottom-origin plant/roof geometry. Installed mesh tests check all 164 supported
+bottom-origin plant/roof geometry. Installed mesh tests check all 171 supported
 native models, including containment inside reserved hardware/sill/canopy envelopes.
 Procedural fallback distinguishes rectangular, sloped, round and conical bodies,
 open arches/frames, closed integral doors, railings, trees, grass and leaves, while

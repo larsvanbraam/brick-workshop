@@ -69,6 +69,12 @@ const placementProperties = {
     description:
       'Omit for upright pieces. Mounts the piece on its side (SNOT): its top points this way and its underside must sit on side studs pointing the same way (headlight brick 4070, side-stud bricks 87087/11211/30414, or another mounted piece). Its depth stands up at 2.5 plates a stud and its height becomes 0.4 studs of thickness; x/z stay the min corner, on 0.1 stud steps along the facing and 0.5 across it.',
   },
+  upsideDown: {
+    type: 'boolean',
+    enum: [true],
+    description:
+      'Omit unless needed. Only for flippable parts: latticed casement 60607 hangs in a 60594 frame turned like the frame, upright in the frame half its own hinge end shows, and upside down in the other half, both at the frame y. It keeps its cells.',
+  },
 };
 function objectSchema(
   properties: Record<string, unknown> = {},
@@ -77,7 +83,17 @@ function objectSchema(
   return { type: 'object' as const, properties, required, additionalProperties: false };
 }
 
-const BRICK_COLUMNS = ['id', 'partId', 'color', 'x', 'y', 'z', 'rotation', 'facing'] as const;
+const BRICK_COLUMNS = [
+  'id',
+  'partId',
+  'color',
+  'x',
+  'y',
+  'z',
+  'rotation',
+  'facing',
+  'upsideDown',
+] as const;
 /**
  * Catalogue overview columns; one row per part instead of repeated keys. connectorFit is left
  * out because every shipped part is curated; per-part detail still reports it.

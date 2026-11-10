@@ -593,8 +593,12 @@ describe('local LDraw assets', () => {
               const origin = new Group();
               origin.position.fromArray(getLDrawModelOffset(brick));
               const native = model.clone(true);
-              native.scale.set(0.05, -0.05, 0.05);
-              native.rotation.y = (getLDrawTransform(brick).rotation * Math.PI) / 180;
+              // The full LDraw turn: some parts show upside down when turned half round.
+              const [a, b, c, d, e, f, g, h, i] = getLDrawTransform(brick).matrix;
+              native.matrixAutoUpdate = false;
+              native.matrix
+                .set(a, b, c, 0, d, e, f, 0, g, h, i, 0, 0, 0, 0, 1)
+                .premultiply(new Matrix4().makeScale(0.05, -0.05, 0.05));
               native.traverse((object) => {
                 object.userData.brickId = brick.id;
                 if (object instanceof LineSegments) object.raycast = () => {};
@@ -653,6 +657,9 @@ describe('local LDraw assets', () => {
               '60601',
               '60602',
               '86210',
+              '60607',
+              '60608',
+              '57895',
               '2494',
               '3861c',
               '3853',
@@ -689,7 +696,13 @@ describe('local LDraw assets', () => {
             (quarterTurn ? part.width : part.depth) * 20,
             2,
           );
-          expect(bounds.max.y, `${part.id} body height`).toBeCloseTo(part.height * 8, 2);
+          expect(bounds.max.y, `${part.id} body height`).toBeCloseTo(
+            part.ldrawBaseY ?? part.height * 8,
+            2,
+          );
+          expect(bounds.min.y, `${part.id} top`).toBeGreaterThanOrEqual(
+            (part.ldrawBaseY ?? part.height * 8) - part.height * 8 - 4.01,
+          );
           expect((bounds.max.x + bounds.min.x) / 2, `${part.id} centre X`).toBeCloseTo(
             part.ldrawCenter?.x ?? 0,
             2,

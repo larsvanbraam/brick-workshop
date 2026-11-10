@@ -1,7 +1,7 @@
 import { addAreaMap, addBondedMap, addRun, glazeWindows, turnAround } from './layout.ts';
 import type { RunKind } from './layout.ts';
 import type { ExampleBrickAdder, ExampleDefinition } from './types.ts';
-import { getConnectionSites, getPart } from '../core.ts';
+import { getConnectionSites, getPart, isMatchingInsertFrame } from '../core.ts';
 import type { Facing, Rotation } from '../core.ts';
 import { layPlateFloor } from '../board.ts';
 
@@ -27,8 +27,10 @@ const BARK = 70;
 const WATER = 1;
 const NAVY = 272;
 const WHITE = 15;
-/** Trans-black glass, so the white window frames stand out against dark panes. */
+/** Trans-black glass, dark behind the window frames as in the real museum's deep reveals. */
 const PANES = 40;
+/** Window frames and casements are reddish brown, like the real museum's joinery. */
+const JOINERY = 70;
 const BLACK = 0;
 const GOLD = 297;
 
@@ -242,8 +244,8 @@ const ROUND_CELLS = cellSet(
 
 /**
  * Windows: `width` studs from [x, z] along x (rotation 90) or z (rotation 0), set in at `course`,
- * with an arch over them at `archCourse` whose legs stand on the jambs. `frame` is a frame part
- * or one of the styles in LIGHTS, which divide the opening into small lights two studs wide.
+ * with an arch or lintel over them at `archCourse` whose ends stand on the jambs. `frame` is a
+ * frame part or one of the styles in LIGHTS, which divide the opening into lights.
  */
 interface Window {
   x: number;
@@ -256,34 +258,39 @@ interface Window {
   archCourse: number;
 }
 const FRAME_COURSES: Readonly<Record<string, number>> = {
-  tall: 5,
-  wide: 3,
-  grand: 6,
+  tall: 6,
+  wide: 2,
+  casements: 3,
+  rounded: 3,
   '60593': 3,
   '60592': 2,
 };
 /**
- * Window styles as rows of [frame part or 'transom', plates above the sill]: a transom is a tan
- * brick across the opening, between the lights below and above it.
+ * Window styles as rows of [frame part, 'casements' or 'transom', plates above the sill]. Frames
+ * repeat along the opening. Casements are a 1 x 4 x 3 frame with a two-bar casement hung at
+ * each end in place of glass, the far one upside down: a grid of six lights like the many
+ * small panes of the real upper windows. A transom is a tan brick across the opening, between
+ * the lights below and above it.
  */
 const LIGHTS: Readonly<Record<string, readonly (readonly [string, number])[]>> = {
-  tall: [
-    ['60592', 0],
-    ['transom', 6],
-    ['60592', 9],
-  ],
-  wide: [['60593', 0]],
-  grand: [
-    ['60593', 0],
-    ['transom', 9],
-    ['60592', 12],
+  // Three tall lights, like the real ground-floor windows.
+  tall: [['57894', 0]],
+  wide: [['60592', 0]],
+  casements: [['casements', 0]],
+  // A tan sill plate under a window whose own rounded head fills its top, with no arch to
+  // leave a gap.
+  rounded: [
+    ['3023b', 0],
+    ['30044', 1],
   ],
 };
 const ARCH_COURSES: Readonly<Record<string, number>> = {
-  '3308': 2,
-  '3307': 2,
-  '92950': 1,
-  '3659': 1,
+  /** A window with its own head, under plain wall. */
+  none: 0,
+  /** A tan 1 x 6 lintel squares off the head, as over the real upper windows. */
+  '3009': 1,
+  /** Over a half-round fanlight that fills its opening, so the head has no gap. */
+  '15254': 2,
 };
 
 /** Window openings in the walls, as [x, z, rotation]: each a tall window and one above it. */
@@ -296,8 +303,9 @@ const OPENINGS: readonly (readonly [number, number, 0 | 90])[] = [
   [EAST + 8, 46, 0],
 ];
 const MAIN_WINDOWS: readonly Window[] = OPENINGS.flatMap(([x, z, rotation]) => [
-  { x, z, rotation, width: 4, frame: 'tall', course: 3, arch: '3307', archCourse: 8 },
-  { x, z, rotation, width: 4, frame: 'wide', course: 11, arch: '92950', archCourse: 14 },
+  // The ground-floor lights start at the sill course, so all six courses fit under the arch.
+  { x, z, rotation, width: 4, frame: 'tall', course: 2, arch: '15254', archCourse: 8 },
+  { x, z, rotation, width: 4, frame: 'casements', course: 11, arch: '3009', archCourse: 14 },
 ]);
 /** Each turret has a window on each outside face at four levels, two of them above the eaves. */
 const TURRET_WINDOWS: readonly Window[] = TURRETS.flatMap(([tx, tz]) =>
@@ -316,9 +324,9 @@ const TURRET_WINDOWS: readonly Window[] = TURRETS.flatMap(([tx, tz]) =>
         z,
         rotation,
         width: 2,
-        frame: '60593',
+        frame: 'rounded',
         course,
-        arch: '3659',
+        arch: 'none',
         archCourse: course + 3,
       })),
     ),
@@ -330,9 +338,9 @@ const PAVILION_WINDOWS: readonly Window[] = [PAVILION_WEST, PAVILION_EAST].flatM
     z: FRONT + 3,
     rotation: 0,
     width: 2,
-    frame: '60593',
+    frame: 'rounded',
     course,
-    arch: '3659',
+    arch: 'none',
     archCourse: course + 3,
   })),
 );
@@ -353,8 +361,39 @@ const opens = (windows: readonly Window[], x: number, z: number, course: number)
         course < window.archCourse + ARCH_COURSES[window.arch] &&
         windowCells(window, -1, window.width + 2).includes(key(x, z))),
   );
-/** Sets in the frames and arches of `windows` that start in this course. */
-function addWindows(add: ExampleBrickAdder, windows: readonly Window[], course: number, y: number) {
+/**
+ * A 1 x 4 x 3 frame with a two-bar casement at each end, through `open`, which glazes nothing:
+ * each pane goes in whichever half and way up the engine says its pins fit.
+ */
+function addCasements(open: ExampleBrickAdder, x: number, y: number, z: number, rotation: 0 | 90) {
+  const frame = { id: 'frame', partId: '60594', color: JOINERY, x, y, z, rotation };
+  open('60594', JOINERY, x, y, z, rotation);
+  for (const offset of [0, 2])
+    for (const upsideDown of [false, true]) {
+      const pane = {
+        ...frame,
+        id: 'pane',
+        partId: '60608',
+        x: rotation === 90 ? x + offset : x,
+        z: rotation === 90 ? z : z + offset,
+        ...(upsideDown ? { upsideDown: true as const } : {}),
+      };
+      if (isMatchingInsertFrame(pane, frame))
+        open('60608', JOINERY, pane.x, y, pane.z, rotation, undefined, upsideDown);
+    }
+}
+
+/**
+ * Sets in the frames and arches of `windows` that start in this course; `open` adds pieces
+ * without glazing them.
+ */
+function addWindows(
+  add: ExampleBrickAdder,
+  open: ExampleBrickAdder,
+  windows: readonly Window[],
+  course: number,
+  y: number,
+) {
   for (const window of windows) {
     const { x, z, rotation, width } = window;
     if (window.course === course)
@@ -362,16 +401,18 @@ function addWindows(add: ExampleBrickAdder, windows: readonly Window[], course: 
         if (partId === 'transom')
           addRun(add, 'brick', TRIM, rotation === 90 ? 'x' : 'z', x, y + rise, z, width);
         else
-          for (let offset = 0; offset < width; offset += 2)
-            add(
-              partId,
-              WHITE,
-              rotation === 90 ? x + offset : x,
-              y + rise,
-              rotation === 90 ? z : z + offset,
-              rotation,
-            );
-    if (window.archCourse === course)
+          for (
+            let offset = 0;
+            offset < width;
+            offset += partId === 'casements' ? 4 : getPart(partId).depth
+          ) {
+            const [atX, atZ] = rotation === 90 ? [x + offset, z] : [x, z + offset];
+            if (partId === 'casements') addCasements(open, atX, y + rise, atZ, rotation);
+            else add(partId, partId === '3023b' ? TRIM : JOINERY, atX, y + rise, atZ, rotation);
+          }
+    if (window.archCourse === course && window.arch !== 'none') {
+      // A half-round fanlight fills the opening first, then the arch comes down over it.
+      if (window.arch === '15254') open('20309', JOINERY, x, y, z, rotation);
       add(
         window.arch,
         TRIM,
@@ -380,6 +421,7 @@ function addWindows(add: ExampleBrickAdder, windows: readonly Window[], course: 
         window.rotation === 90 ? window.z : window.z - 1,
         window.rotation,
       );
+    }
   }
 }
 
@@ -387,7 +429,9 @@ function addWindows(add: ExampleBrickAdder, windows: readonly Window[], course: 
 const DOOR = [60, 67] as const;
 /** Headlight bricks under each tall window read as basement lights in the plinth. */
 const BASEMENT_CELLS = new Set(
-  MAIN_WINDOWS.filter(({ course }) => course === 3).flatMap((window) => windowCells(window, 0, 4)),
+  MAIN_WINDOWS.filter(({ frame }) => frame === 'tall').flatMap((window) =>
+    windowCells(window, 0, 4),
+  ),
 );
 /** Cells left out of each course: windows, the arches over them, the door and basement lights. */
 const OPEN_CELLS = new Map<number, Set<string>>();
@@ -517,17 +561,17 @@ const GABLE_WINDOWS: readonly Window[] = [
     width: 4,
     frame: 'wide',
     course: 1,
-    arch: '92950',
-    archCourse: 4,
+    arch: '15254',
+    archCourse: 3,
   })),
   {
-    x: 61,
+    x: 62,
     z: PAVILION_FRONT,
     rotation: 90,
-    width: 6,
-    frame: 'grand',
+    width: 4,
+    frame: 'tall',
     course: 3,
-    arch: '3308',
+    arch: '15254',
     archCourse: 9,
   },
 ];
@@ -539,8 +583,8 @@ const RISE_WINDOWS: readonly Window[] = [WEST - 8, EAST + 8].map((x) => ({
   width: 4,
   frame: 'wide',
   course: 1,
-  arch: '92950',
-  archCourse: 4,
+  arch: '15254',
+  archCourse: 3,
 }));
 /** Tower windows: one in each straight face of the octagon. */
 const TOWER_WINDOWS: readonly Window[] = [
@@ -551,8 +595,8 @@ const TOWER_WINDOWS: readonly Window[] = [
   width: 4,
   frame: 'wide',
   course: 1,
-  arch: '92950',
-  archCourse: 4,
+  arch: '15254',
+  archCourse: 3,
 }));
 
 /**
@@ -851,9 +895,8 @@ function addTree(
         Array.from({ length: brick.width * brick.depth }, (_, index) => {
           const u0 = u - (index % brick.width);
           const v0 = v - Math.floor(index / brick.width);
-          const covered = Array.from(
-            { length: brick.width * brick.depth },
-            (_, cell) => key(u0 + (cell % brick.width), v0 + Math.floor(cell / brick.width)),
+          const covered = Array.from({ length: brick.width * brick.depth }, (_, cell) =>
+            key(u0 + (cell % brick.width), v0 + Math.floor(cell / brick.width)),
           );
           return { brick, u0, v0, covered };
         }),
@@ -960,19 +1003,17 @@ export const nordiskaMuseet2: ExampleDefinition = {
     'park',
     'waterfront',
   ],
-  expectedPieceCount: 11091,
+  expectedPieceCount: 11089,
   buildArea: SIZE,
   brickIdPrefix: 'museet2',
   build(drawnAdd) {
     // Pieces are collected and laid a layer at a time, lowest first, so each one's support is
     // in place before it whatever order the sections below come in.
     const pieces: Parameters<ExampleBrickAdder>[] = [];
-    const add = glazeWindows(
-      turnAround((...piece) => {
-        pieces.push(piece);
-      }, SIZE),
-      PANES,
-    );
+    const open = turnAround((...piece) => {
+      pieces.push(piece);
+    }, SIZE);
+    const add = glazeWindows(open, PANES);
     const addWallCourse = (cell: (x: number, z: number) => string, y: number, course: number) =>
       addBondedMap(add, plan(cell), y, WALL_LEGEND, course);
 
@@ -1156,7 +1197,7 @@ export const nordiskaMuseet2: ExampleDefinition = {
             );
         else add('2431', NAVY, BANNER[0], y + 0.5, PAVILION_FRONT + 0.8, 90, '+z');
       }
-      addWindows(add, WINDOWS, course, y);
+      addWindows(add, open, WINDOWS, course, y);
     }
     // Stone portal: round columns either side of the door carry an entablature, its frieze a
     // row of headlight bricks holding the gilded name band, a projecting cornice and a stepped
@@ -1303,7 +1344,7 @@ export const nordiskaMuseet2: ExampleDefinition = {
         const [x, z] = cell.split(':').map(Number);
         if (standing(x, z)) add('3062b', band ? TRIM : SANDSTONE, x, y, z);
       }
-      addWindows(add, RISE_WINDOWS, course, y);
+      addWindows(add, open, RISE_WINDOWS, course, y);
     }
     const apseEaves = ROOF + APSE_RISE * 3;
     for (const apse of END_APSES) addApseCeiling(apse, apseEaves, 0);
@@ -1452,7 +1493,8 @@ export const nordiskaMuseet2: ExampleDefinition = {
           inward > 0 ? back + depth : back - depth - length + 1;
         for (let step = 0; step < DORMER; step++) {
           const y = ROOF + step * 3;
-          addRun(add, 'brick', SANDSTONE, 'x', bay, y, back, 8);
+          // Behind the window and fanlight the dormer stays open to the roof space.
+          for (const x of [bay, bay + 6]) addRun(add, 'brick', SANDSTONE, 'x', x, y, back, 2);
           // The side walls reach a stud further into the roof with every course; a brick two
           // studs long carries the overhang.
           for (const x of [bay, bay + 7]) {
@@ -1460,11 +1502,14 @@ export const nordiskaMuseet2: ExampleDefinition = {
             addRun(add, 'brick', SANDSTONE, 'z', x, y, reach(step + 1, 2), 2);
           }
           if (step === 3) continue;
-          addRun(add, 'brick', step === 1 ? TRIM : SANDSTONE, 'x', bay, y, face, 2);
-          addRun(add, 'brick', step === 1 ? TRIM : SANDSTONE, 'x', bay + 6, y, face, 2);
+          // Piers either side of the window, narrowing to the arch's legs at its springing.
+          const pier = step === 2 ? 1 : 2;
+          addRun(add, 'brick', step === 1 ? TRIM : SANDSTONE, 'x', bay, y, face, pier);
+          addRun(add, 'brick', step === 1 ? TRIM : SANDSTONE, 'x', bay + 8 - pier, y, face, pier);
         }
-        for (const x of [bay + 2, bay + 4]) add('60593', WHITE, x, ROOF, face, 90);
-        add('92950', TRIM, bay + 1, ROOF + 9, face, 90);
+        for (const x of [bay + 2, bay + 4]) add('60592', JOINERY, x, ROOF, face, 90);
+        open('20309', JOINERY, bay + 2, ROOF + 6, face, 90);
+        add('15254', TRIM, bay + 1, ROOF + 6, face, 90);
         for (const x of [bay, bay + 7]) add('3005', TRIM, x, ROOF + 9, face);
         for (let layer = 0; layer < 3; layer++) {
           const y = ROOF + (DORMER + layer) * 3;
@@ -1518,7 +1563,7 @@ export const nordiskaMuseet2: ExampleDefinition = {
         y,
         course,
       );
-      addWindows(add, GABLE_WINDOWS, course, y);
+      addWindows(add, open, GABLE_WINDOWS, course, y);
       // Each new step leaves a shoulder two studs wide either side: a pinnacle on every other
       // one, a tan cap on the rest.
       if (inset > gableStep(course - 1) * 2)
@@ -1564,7 +1609,7 @@ export const nordiskaMuseet2: ExampleDefinition = {
         const [x, z] = cell.split(':').map(Number);
         if (standing(x, z)) add('3062b', WALL_LEGEND[material][1], x, y, z);
       }
-      addWindows(add, TOWER_WINDOWS, course, y);
+      addWindows(add, open, TOWER_WINDOWS, course, y);
     }
     const balcony = CAP + 18;
     addAreaMap(
@@ -1599,22 +1644,28 @@ export const nordiskaMuseet2: ExampleDefinition = {
       [60, 50],
       [66, 50],
     ])
-      for (const y of [0, 3, 6]) add('3941', COPPER, x, lantern + y, z);
+      for (const y of [0, 3]) add('3941', COPPER, x, lantern + y, z);
+    // Each face: two lights under an arch whose opening a half-round fanlight fills, the arch's
+    // legs on the corner piers.
     for (const z of [44, 51]) {
-      add('60594', WHITE, 62, lantern, z, 90);
-      add('92950', COPPER, 61, lantern + 9, z, 90);
+      for (const x of [62, 64]) add('60592', JOINERY, x, lantern, z, 90);
+      add('20309', JOINERY, 62, lantern + 6, z, 90);
+      add('15254', COPPER, 61, lantern + 6, z, 90);
     }
     for (const x of [60, 67]) {
-      add('60594', WHITE, x, lantern, 46, 0);
-      add('92950', COPPER, x, lantern + 9, 45, 0);
+      for (const z of [46, 48]) add('60592', JOINERY, x, lantern, z, 0);
+      add('20309', JOINERY, x, lantern + 6, 46, 0);
+      add('15254', COPPER, x, lantern + 6, 45, 0);
     }
     for (const [x, z] of [
       [60, 44],
       [67, 44],
       [60, 51],
       [67, 51],
-    ])
+    ]) {
+      add('3005', COPPER, x, lantern + 6, z);
       add('3062b', COPPER, x, lantern + 9, z);
+    }
     const dome = lantern + 12;
     add('41539', ROOFING, 60, dome, 44);
     for (const [x, z] of [

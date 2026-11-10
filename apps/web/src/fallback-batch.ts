@@ -27,7 +27,16 @@ function finishKey(color: LDrawColor) {
   return `${roughness}:${metalness}:${opacity}${emissiveIntensity > 0 ? `:${emissive}:${emissiveIntensity}` : ''}`;
 }
 
-const PLACEMENT_KEYS = ['partId', 'color', 'x', 'y', 'z', 'rotation', 'facing'] as const;
+const PLACEMENT_KEYS = [
+  'partId',
+  'color',
+  'x',
+  'y',
+  'z',
+  'rotation',
+  'facing',
+  'upsideDown',
+] as const;
 
 const instanceColor = new Color();
 const instanceMatrix = new Matrix4();

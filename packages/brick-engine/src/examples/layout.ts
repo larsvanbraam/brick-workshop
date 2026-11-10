@@ -154,7 +154,7 @@ const DOORS = new Set(['3193a']);
  * turn and doors stay half a stud in front of them, as the engine's insert rule expects.
  */
 export function turnAround(add: ExampleBrickAdder, buildArea = BUILD_AREA): ExampleBrickAdder {
-  return (partId, color, x, y, z, rotation = 0, facing) => {
+  return (partId, color, x, y, z, rotation = 0, facing, upsideDown) => {
     const { width, depth } = footprint({ id: '', partId, color, x, y, z, rotation, facing });
     if (facing) {
       // Turning the build about the vertical points a mounted piece the other way; its spin
@@ -191,6 +191,8 @@ export function turnAround(add: ExampleBrickAdder, buildArea = BUILD_AREA): Exam
       y,
       buildArea - z - depth,
       ((rotation + 180) % 360) as Rotation,
+      undefined,
+      upsideDown,
     );
   };
 }
@@ -200,14 +202,15 @@ const WINDOW_GLASS: Readonly<Record<string, string>> = {
   '60592': '60601',
   '60593': '60602',
   '60594': '86210',
+  '57894': '57895',
   '2493b': '2494',
 };
 const TRANS_CLEAR = 47;
 
 /** Puts glass, trans-clear unless told otherwise, in every window frame the build adds. */
 export function glazeWindows(add: ExampleBrickAdder, glassColor = TRANS_CLEAR): ExampleBrickAdder {
-  return (partId, color, x, y, z, rotation = 0, facing) => {
-    add(partId, color, x, y, z, rotation, facing);
+  return (partId, color, x, y, z, rotation = 0, facing, upsideDown) => {
+    add(partId, color, x, y, z, rotation, facing, upsideDown);
     const glass = WINDOW_GLASS[partId];
     if (glass) add(glass, glassColor, x, y, z, rotation);
   };

@@ -185,6 +185,38 @@ describe('validating one added piece', () => {
     }
   });
 
+  it('matches full validation for arch infills and upside-down casements', () => {
+    const at = (id: string, partId: string, x: number, y: number, rotation: Rotation = 90) =>
+      ({ id, partId, color: 70, x, y, z: 0, rotation }) as Brick;
+    const window: Assembly = {
+      name: 'Window heads',
+      bricks: [
+        at('jamb-0', '3005', 0, 0),
+        at('jamb-5', '3005', 5, 0),
+        at('frame-1', '60592', 1, 0),
+        at('frame-3', '60592', 3, 0),
+        at('post-0', '3005', 0, 3),
+        at('post-5', '3005', 5, 3),
+        at('fanlight', '20309', 1, 6),
+      ],
+    };
+    for (const arch of [at('arch', '15254', 0, 6), at('arch', '3307', 0, 6)])
+      expect(validateAddition(window, arch)?.issues).toEqual(fullValidation(window, arch));
+    const frame: Assembly = {
+      name: 'Casements',
+      bricks: [
+        at('sill', '3010', 0, 0),
+        at('frame', '60594', 0, 3),
+        at('left', '60608', 2, 3),
+      ],
+    };
+    for (const pane of [
+      { ...at('right', '60608', 0, 3), upsideDown: true as const },
+      at('right', '60608', 0, 3),
+    ])
+      expect(validateAddition(frame, pane)?.issues).toEqual(fullValidation(frame, pane));
+    expect(fullValidation(frame, { ...at('right', '60608', 0, 3), upsideDown: true })).toEqual([]);
+  });
   it('falls back when the assembly is invalid', () => {
     const assembly = createExampleAssembly('courtyard-house');
     const [first] = assembly.bricks;
