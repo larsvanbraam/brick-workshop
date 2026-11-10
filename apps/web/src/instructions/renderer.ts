@@ -39,7 +39,6 @@ import { LDrawBatch, canBatchLDrawModel } from '../ldraw-batches';
 import type { BatchEntry } from '../ldraw-batches';
 import { colorMaterialProperties } from '../ldraw-materials';
 import {
-  DAYLIGHT,
   MOODS,
   createCinematicComposer,
   createCinematicRig,
@@ -650,7 +649,7 @@ export class ManualRenderer {
     this.lights.visible = false;
     scene.add(rig.group);
     scene.environment = environment;
-    scene.environmentIntensity = settings.environment * (outdoor ? DAYLIGHT.environment : 1);
+    scene.environmentIntensity = outdoor ? settings.daylight.environment : settings.environment;
     let sky: CanvasTexture | null = null;
     if (outdoor) {
       // The painted horizon runs just behind the back edge of the model's footprint, so the

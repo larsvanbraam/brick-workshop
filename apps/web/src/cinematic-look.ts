@@ -47,6 +47,11 @@ export interface Mood {
   environment: number;
   bloom: number;
   vignette: number;
+  /**
+   * Outdoor shots light the model like daylight rather than a dark stage, so they set their own
+   * key, fill and reflections instead of scaling the stage's.
+   */
+  daylight: { key: number; fill: [string, string, number]; environment: number };
   /** The painted backdrop of outdoor shots: sky from top to horizon, then water below it. */
   sky: { top: string; middle: string; horizon: string; water: string; clouds: string };
 }
@@ -54,16 +59,17 @@ export interface Mood {
 export const MOODS: Record<CinematicMood, Mood> = {
   studio: {
     label: 'Studio',
-    background: '#15171c',
-    pool: '#4a505c',
+    background: '#1c1f26',
+    pool: '#5c6370',
     key: '#fff3e2',
-    keyIntensity: 2.5,
+    keyIntensity: 3.2,
     rim: '#a8c8ff',
     rimIntensity: 1.6,
-    fill: ['#8d9ab8', '#1b1d22', 0.3],
-    environment: 0.4,
+    fill: ['#c4cde0', '#3a3d45', 1.1],
+    environment: 0.9,
     bloom: 0.25,
-    vignette: 0.55,
+    vignette: 0.4,
+    daylight: { key: 2.75, fill: ['#8d9ab8', '#1b1d22', 1.05], environment: 0.72 },
     sky: {
       top: '#1a3d6b',
       middle: '#4f80b6',
@@ -77,13 +83,14 @@ export const MOODS: Record<CinematicMood, Mood> = {
     background: '#1a120d',
     pool: '#5a4232',
     key: '#ffc48a',
-    keyIntensity: 2.7,
+    keyIntensity: 3.1,
     rim: '#7f95ff',
     rimIntensity: 1.5,
-    fill: ['#ffae7a', '#20140e', 0.3],
-    environment: 0.3,
+    fill: ['#ffc39a', '#3a2a20', 0.75],
+    environment: 0.6,
     bloom: 0.3,
-    vignette: 0.65,
+    vignette: 0.55,
+    daylight: { key: 2.97, fill: ['#ffae7a', '#20140e', 1.05], environment: 0.54 },
     sky: {
       top: '#131a38',
       middle: '#6a4466',
@@ -97,13 +104,14 @@ export const MOODS: Record<CinematicMood, Mood> = {
     background: '#060910',
     pool: '#1f2c44',
     key: '#c9dcff',
-    keyIntensity: 2.1,
+    keyIntensity: 2.4,
     rim: '#45d0ff',
     rimIntensity: 2.3,
-    fill: ['#3b4f86', '#05070c', 0.22],
-    environment: 0.28,
+    fill: ['#5a6fa8', '#0c111c', 0.45],
+    environment: 0.4,
     bloom: 0.55,
     vignette: 0.75,
+    daylight: { key: 2.31, fill: ['#3b4f86', '#05070c', 0.77], environment: 0.5 },
     sky: {
       top: '#02040a',
       middle: '#0a1630',
@@ -115,7 +123,7 @@ export const MOODS: Record<CinematicMood, Mood> = {
 };
 
 /** Ambient occlusion settings, in studs: enough to darken the gaps between studs and bricks. */
-export const AMBIENT_OCCLUSION = { aoRadius: 1.4, distanceFalloff: 1, intensity: 2.4 };
+export const AMBIENT_OCCLUSION = { aoRadius: 1.4, distanceFalloff: 1, intensity: 1.6 };
 export const BLOOM = { luminanceThreshold: 1, luminanceSmoothing: 0.15 };
 export const VIGNETTE_OFFSET = 0.25;
 
@@ -150,11 +158,8 @@ const KEY_DIRECTION = new Vector3(1.1, 1.5, -0.35);
 /** Outdoors the sun stands high over the camera's left shoulder, so the side in view is lit. */
 const SUN_DIRECTION = new Vector3(0.1, 1.3, -1);
 
-/**
- * Outdoor shots are daylight rather than a dark stage: the same mood colours, but a much brighter
- * sky fill and reflections, a softer rim and only a hint of vignette.
- */
-export const DAYLIGHT = { key: 1.1, rim: 0.4, fill: 3.5, environment: 1.8, vignette: 0.35 };
+/** Outdoors the rim softens and the vignette fades to a hint; see `Mood.daylight` for the rest. */
+export const DAYLIGHT = { rim: 0.4, vignette: 0.35 };
 const RIM_DIRECTION = new Vector3(-0.8, 2.2, 0.65);
 
 export function stageSphere(bounds: Box3 | null) {
@@ -204,7 +209,7 @@ export function createCinematicRig(
   target.position.copy(center);
   const distance = radius * 4;
 
-  const key = new SpotLight(settings.key, settings.keyIntensity * (outdoor ? DAYLIGHT.key : 1));
+  const key = new SpotLight(settings.key, outdoor ? settings.daylight.key : settings.keyIntensity);
   key.position.copy(
     lightDirection(outdoor ? SUN_DIRECTION : KEY_DIRECTION, view)
       .multiplyScalar(distance)
@@ -228,8 +233,7 @@ export function createCinematicRig(
   rim.position.copy(lightDirection(RIM_DIRECTION, view).multiplyScalar(distance).add(center));
   rim.target = target;
 
-  const [sky, ground, intensity] = settings.fill;
-  const fill = new HemisphereLight(sky, ground, intensity * (outdoor ? DAYLIGHT.fill : 1));
+  const fill = new HemisphereLight(...(outdoor ? settings.daylight.fill : settings.fill));
 
   const texture = poolTexture(settings);
   const plane = new PlaneGeometry(radius * 8, radius * 8);
