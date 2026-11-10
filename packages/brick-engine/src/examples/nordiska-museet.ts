@@ -1196,8 +1196,10 @@ export const nordiskaMuseet: ExampleDefinition = {
           add('3005', SANDSTONE, x, y, PAVILION_FRONT - 1);
       if (course === 0)
         for (const x of [DOOR[0], DOOR[0] + 4]) {
-          add('60596', TRIM, x, y, PAVILION_FRONT, 90);
-          add('60623', BARK, x, y, PAVILION_FRONT - 0.5, 90);
+          // Hung half a turn round, so the leaf's extra half stud stands inside the hall
+          // rather than out on the landing tile.
+          add('60596', TRIM, x, y, PAVILION_FRONT, 270);
+          add('60623', BARK, x, y, PAVILION_FRONT - 1, 270);
         }
       if (course === 6) {
         add('3460', TRIM, DOOR[0], y, PAVILION_FRONT, 90);
