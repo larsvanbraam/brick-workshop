@@ -47,8 +47,17 @@ type Surface = {
 /** Opaque and see-through edges are drawn apart, and conditional edges need their own shader. */
 const LINE_KINDS = ['edge', 'conditional', 'glassEdge', 'glassConditional'] as const;
 type LineKind = (typeof LINE_KINDS)[number];
-/** A part in one color, ready to place: faces per finish, and each kind of edge it has. */
-type Look = { key: string; surfaces: Surface[]; lines: Record<LineKind, BufferGeometry | null> };
+/**
+ * A part in one color with some regions left out, ready to place: faces per finish, and each
+ * kind of edge it has. `users` counts the placements drawing it, so it can go once none do.
+ */
+type Look = {
+  key: string;
+  baked: Baked;
+  surfaces: Surface[];
+  lines: Record<LineKind, BufferGeometry | null>;
+  users: number;
+};
 /** Faces that share a finish share one batched mesh, and so one draw call. */
 type Layer = {
   mesh: BatchedMesh;
@@ -57,9 +66,12 @@ type Layer = {
   sources: BufferGeometry[];
   free: number[];
   brickIds: (string | undefined)[];
+  /** One past the highest instance id handed out. */
   size: number;
+  /** Vertices of deleted geometries still taking up buffer space, until `optimize` packs it. */
+  dead: number;
 };
-type Placement = { key: string; slots: { layer: Layer; id: number }[] };
+type Placement = { key: string; look: Look; slots: { layer: Layer; id: number }[] };
 
 export type BatchEntry = { brick: Brick; model: Group };
 export type BatchLayerStats = {
@@ -156,9 +168,6 @@ const emptySplit = (): Split => ({ body: new Map(), studs: new Map() });
  * be seen anyway.
  */
 const STUD = { top: -5, base: 0.01, radius: 6.5, grid: 10 } as const;
-/** Parts with more studs keep all of them: each coverage pattern bakes its own copy. */
-const MAX_COVERABLE_STUDS = 32;
-
 /**
  * The grid points a triangle or segment of `count` vertices from `first` could be a stud
  * around: it sits in the stud's height band and within its radius of the point.
@@ -273,6 +282,8 @@ type Baked = {
   key: string;
   faces: { finish: string; material: MeshStandardMaterial; split: Split }[];
   lines: Record<LineKind, Split>;
+  /** How many looks are cut from it; it is dropped with the last one. */
+  looks: number;
 };
 
 function bakePart(
@@ -372,6 +383,7 @@ function bakePart(
     key,
     faces: [...faces.entries()].map(([finish, face]) => ({ finish, ...face })),
     lines,
+    looks: 0,
   };
 }
 
@@ -409,17 +421,19 @@ function bakeLook(baked: Baked, covered: ReadonlySet<string>, key: string): Look
   };
   return {
     key,
+    baked,
     surfaces,
     lines: Object.fromEntries(LINE_KINDS.map((kind) => [kind, lineGeometry(kind)])) as Record<
       LineKind,
       BufferGeometry | null
     >,
+    users: 0,
   };
 }
 
 /**
- * The studs a part model has, as `x:z` in part space (none if it has too many to track), and
- * its footprint. The side of a stud is also within reach of the next grid point over, so a
+ * The studs a part model has, as `x:z` in part space, and its footprint. Big plates get a look
+ * per coverage pattern, which is still far less than drawing every covered stud. The side of a stud is also within reach of the next grid point over, so a
  * point only counts as a stud when its faces wrap all the way around it.
  */
 function readShape(model: Group): PartShape {
@@ -476,8 +490,8 @@ function readShape(model: Group): PartShape {
         extent.maxZ >= around,
     )
     .map(([stud]) => stud);
-  const kept = studs.length <= MAX_COVERABLE_STUDS ? studs.sort() : [];
-  const shape: PartShape = { studs: kept, studSet: new Set(kept), box, underside: false };
+  studs.sort();
+  const shape: PartShape = { studs, studSet: new Set(studs), box, underside: false };
   // The footprint is only known once every face is read, so the underside takes a second look.
   const all = new Float32Array(corners);
   for (let triangle = 0; !shape.underside && triangle < all.length / 9; triangle++)
@@ -632,6 +646,8 @@ export class LDrawBatch {
   private readonly layers = new Map<string, Layer>();
   private readonly baked = new Map<string, Baked>();
   private readonly looks = new Map<string, Look>();
+  /** Looks no placement uses since the last update, freed when it finishes. */
+  private readonly idle = new Set<Look>();
   private readonly shapes = new WeakMap<Group, PartShape>();
   private coverageCache?: {
     entries: readonly BatchEntry[];
@@ -702,7 +718,7 @@ export class LDrawBatch {
         this.object.add(mesh);
         return [
           kind,
-          { mesh, geometries: new Map(), sources: [], free: [], brickIds: [], size: 0 },
+          { mesh, geometries: new Map(), sources: [], free: [], brickIds: [], size: 0, dead: 0 },
         ];
       }),
     ) as Record<LineKind, Layer>;
@@ -859,7 +875,8 @@ export class LDrawBatch {
         this.placements.delete(id);
         removed = true;
       }
-    if (!changed.length && !removed) return;
+    // A cancelled run may have left looks to free.
+    if (!changed.length && !removed) return this.collect();
     progress.total = changed.length;
     for (const [index, { brick, model }] of changed.entries()) {
       const hidden = covered.get(brick.id);
@@ -875,7 +892,49 @@ export class LDrawBatch {
       progress.done = index + 1;
       yield;
     }
+    this.collect();
     this.refreshBounds();
+  }
+
+  /**
+   * Frees the looks no placement uses any more, with their geometries in the batch, and parts
+   * no look is cut from. Waiting for the end of an update keeps a look that one brick lets go
+   * of and another picks up, as when a brick moves without changing what covers it.
+   */
+  private collect() {
+    if (!this.idle.size) return;
+    const gone = new Map<Layer, Set<number>>();
+    const drop = (layer: Layer, key: string) => {
+      const id = layer.geometries.get(key);
+      if (id === undefined) return;
+      layer.geometries.delete(key);
+      layer.dead += layer.sources[id].getAttribute('position').count;
+      delete layer.sources[id];
+      const ids = gone.get(layer) ?? new Set();
+      gone.set(layer, ids.add(id));
+    };
+    for (const look of this.idle) {
+      for (const surface of look.surfaces) {
+        const layer = this.layers.get(surface.finish);
+        if (layer) drop(layer, surface.key);
+        surface.geometry.dispose();
+      }
+      for (const kind of LINE_KINDS) {
+        const geometry = look.lines[kind];
+        if (!geometry) continue;
+        drop(this.lineLayers[kind], look.key);
+        geometry.dispose();
+      }
+      this.looks.delete(look.key);
+      if (--look.baked.looks === 0) this.baked.delete(look.baked.key);
+    }
+    this.idle.clear();
+    for (const [layer, ids] of gone) {
+      // Deleting a geometry deletes the hidden slots still pointing at it, so they leave the
+      // free list; three hands their ids out again first.
+      layer.free = layer.free.filter((slot) => !ids.has(layer.mesh.getGeometryIdAt(slot)));
+      for (const id of ids) layer.mesh.deleteGeometry(id);
+    }
   }
 
   private refreshBounds() {
@@ -885,7 +944,7 @@ export class LDrawBatch {
     }
     for (const layer of Object.values(this.lineLayers)) {
       // An empty batch still costs a draw call; a hidden one doesn't.
-      layer.mesh.visible = layer.size > layer.free.length;
+      layer.mesh.visible = layer.mesh.instanceCount > layer.free.length;
       if (!layer.mesh.visible) continue;
       layer.mesh.computeBoundingBox();
       layer.mesh.computeBoundingSphere();
@@ -916,8 +975,8 @@ export class LDrawBatch {
       conditionalSegments: segments('conditional') + segments('glassConditional'),
       layers: [...this.layers.entries()].map(([finish, layer]) => ({
         finish,
-        instances: layer.size - layer.free.length,
-        free: layer.free.length,
+        instances: layer.mesh.instanceCount - layer.free.length,
+        free: layer.size - layer.mesh.instanceCount + layer.free.length,
         maxInstances: layer.mesh.maxInstanceCount,
         geometries: layer.geometries.size,
         vertices: next(layer.mesh)._nextVertexStart,
@@ -956,6 +1015,7 @@ export class LDrawBatch {
         free: [],
         brickIds: [],
         size: 0,
+        dead: 0,
       });
     }
     for (const look of this.looks.values()) {
@@ -965,6 +1025,7 @@ export class LDrawBatch {
     this.layers.clear();
     this.baked.clear();
     this.looks.clear();
+    this.idle.clear();
     this.placements.clear();
     this.coverageCache = undefined;
   }
@@ -980,6 +1041,7 @@ export class LDrawBatch {
         this.baked.set(partKey, baked);
       }
       look = bakeLook(baked, new Set(hidden ? hidden.split(',') : []), key);
+      baked.looks++;
       this.looks.set(key, look);
     }
     return look;
@@ -1002,7 +1064,15 @@ export class LDrawBatch {
     const mesh = new BatchedMesh(64, 8192, 8192, material);
     mesh.castShadow = true;
     mesh.receiveShadow = true;
-    layer = { mesh, geometries: new Map(), sources: [], free: [], brickIds: [], size: 0 };
+    layer = {
+      mesh,
+      geometries: new Map(),
+      sources: [],
+      free: [],
+      brickIds: [],
+      size: 0,
+      dead: 0,
+    };
     mesh.userData.brickIds = layer.brickIds;
     const owner = layer;
     mesh.raycast = (raycaster, intersects) => raycastLayer(owner, raycaster, intersects);
@@ -1017,7 +1087,15 @@ export class LDrawBatch {
     const mesh = layer.mesh;
     const vertices = geometry.getAttribute('position').count;
     const indices = geometry.index?.count ?? 0;
-    if (mesh.unusedVertexCount < vertices || mesh.unusedIndexCount < indices) {
+    const short = () => mesh.unusedVertexCount < vertices || mesh.unusedIndexCount < indices;
+    // Before growing, free what this update already let go of (an update that moves many
+    // bricks would otherwise hold the old looks and the new at once), then pack the holes.
+    if (short()) this.collect();
+    if (short() && layer.dead) {
+      mesh.optimize();
+      layer.dead = 0;
+    }
+    if (short()) {
       const next = mesh as unknown as { _nextVertexStart: number; _nextIndexStart: number };
       mesh.setGeometrySize(
         Math.max(
@@ -1040,10 +1118,10 @@ export class LDrawBatch {
   private slot(layer: Layer, geometryId: number, matrix: Matrix4, brickId: string) {
     let id = layer.free.pop();
     if (id === undefined) {
-      if (layer.size >= layer.mesh.maxInstanceCount)
+      if (layer.mesh.instanceCount >= layer.mesh.maxInstanceCount)
         layer.mesh.setInstanceCount(layer.mesh.maxInstanceCount * 2);
       id = layer.mesh.addInstance(geometryId);
-      layer.size++;
+      layer.size = Math.max(layer.size, id + 1);
     } else {
       layer.mesh.setGeometryIdAt(id, geometryId);
       layer.mesh.setVisibleAt(id, true);
@@ -1062,6 +1140,8 @@ export class LDrawBatch {
     hidden: string,
   ): Placement {
     const look = this.look(brick, model, hidden);
+    look.users++;
+    this.idle.delete(look);
     const matrix = brickMatrix(brick, buildArea, explode);
     const slots: Placement['slots'] = [];
     for (const surface of look.surfaces) {
@@ -1076,10 +1156,11 @@ export class LDrawBatch {
       const layer = this.lineLayers[kind];
       slots.push(this.slot(layer, this.geometryId(layer, look.key, geometry), matrix, brick.id));
     }
-    return { key, slots };
+    return { key, look, slots };
   }
 
   private release(placement: Placement) {
+    if (--placement.look.users === 0) this.idle.add(placement.look);
     // Slots are hidden and reused rather than deleted, so ids stay dense and stable.
     for (const { layer, id } of placement.slots) {
       layer.mesh.setVisibleAt(id, false);
