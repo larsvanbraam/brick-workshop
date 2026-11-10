@@ -7,40 +7,47 @@ import { layPlateFloor } from '../board.ts';
 // The museum again at twice the scale, 0.75 studs to the metre, on the 128-stud board. Plans
 // are drawn top-down with the front at high z; the building is symmetric about x = 64. Walls
 // are sixteen courses: a rusticated granite plinth, tall round-headed ground-floor windows,
-// a string course, upper windows under segmental arches and a dentilled cornice.
+// a string course, upper windows under segmental arches and a dentilled cornice. It stands on
+// a granite terrace on an island quay, with water round it, as on the box of the smaller one.
 const SIZE = 128;
 
 const SANDSTONE = 28;
 const TRIM = 19;
 const GRANITE = 71;
 const SLATE = 72;
+/** The steep roofs, spires and dome read as dark slate, as on the real museum. */
+const ROOFING = 0;
 const COPPER = 378;
 const LAWN = 2;
-const LEAVES = 10;
-const BLOSSOM = 14;
+const FOREST = 288;
 const BARK = 70;
+const WATER = 1;
+const NAVY = 272;
 const WHITE = 15;
-const GLASS = 47;
-const LAMP = 46;
+/** Trans-black glass, so the white window frames stand out against dark panes. */
+const PANES = 40;
 const BLACK = 0;
-const SAND_RED = 335;
 const GOLD = 297;
-const RED = 4;
-const PINK = 13;
-const BROWN = 6;
 
-/** Heights: floor top, terrace top, the ceiling at the eaves, the roof base, ridge and tiles. */
+/**
+ * Heights: water level, the quay top, the lawn on it, the terrace top (building base), the
+ * ceiling at the eaves, the roof base, the ridge and the top of the tiles on it. The roof rises
+ * thirteen slope courses to the ridge.
+ */
 const GROUND = 2;
-const BASE = GROUND + 7;
+const QUAY = GROUND + 7;
+const LAWN_TOP = QUAY + 1;
+const BASE = QUAY + 7;
 const COURSES = 16;
 const CEILING = BASE + COURSES * 3;
 const ROOF = CEILING + 1;
-const ROOF_STEPS = 8;
+const ROOF_STEPS = 13;
 const FLAT = ROOF + ROOF_STEPS * 3;
 const CAP = FLAT + 1;
-/** Courses that are tan bands: the sill course, the string course, the cornice and turret top. */
-const BANDS = new Set([2, 10, 15, 23]);
-const TURRET_COURSES = 24;
+/** The turrets stand clear of the roof, as high as its ridge. */
+const TURRET_COURSES = COURSES + ROOF_STEPS;
+/** Courses that are tan bands: the sill course, the string course, the cornice and the turrets'. */
+const BANDS = new Set([2, 10, 15, 22, TURRET_COURSES - 1]);
 
 /** Main block outline, the entrance pavilion and its front wall. */
 const [WEST, EAST, BACK, FRONT] = [16, 111, 34, 61];
@@ -83,19 +90,22 @@ const bayWall = (x: number, z: number) =>
 const insideBay = (x: number, z: number) =>
   (z === FRONT || z === BACK) && BAYS.some((bay) => x > bay && x < bay + 7);
 
-/** Octagonal corner turrets: 6 x 6 with the corners cut, overlapping the main block's corners. */
+/**
+ * Octagonal corner towers: 8 x 8 with three studs cut from each corner, standing four studs
+ * proud of the main block's corners. Round bricks along the cut corners soften their outline.
+ */
+const TURRET = 8;
 const TURRETS = [
-  [WEST - 2, FRONT - 3],
+  [WEST - 4, FRONT - 3],
   [EAST - 3, FRONT - 3],
-  [WEST - 2, BACK - 2],
-  [EAST - 3, BACK - 2],
+  [WEST - 4, BACK - 4],
+  [EAST - 3, BACK - 4],
 ] as const;
 const isTurret = (x: number, z: number) =>
-  TURRETS.some(
-    ([tx, tz]) =>
-      within(x, z, tx, tz, tx + 5, tz + 5) &&
-      !((x === tx || x === tx + 5) && (z === tz || z === tz + 5)),
-  );
+  TURRETS.some(([tx, tz]) => {
+    const [dx, dz] = [x - tx, z - tz].map((at) => Math.min(at, TURRET - 1 - at));
+    return dx >= 0 && dz >= 0 && dx + dz >= 2;
+  });
 const TURRET_WALLS = cellSet(
   (x, z) => isTurret(x, z) && NEIGHBOURS.some(([dx, dz]) => !isTurret(x + dx, z + dz)),
 );
@@ -151,6 +161,12 @@ const APSE_CELLS = new Set(
   ),
 );
 const isApse = (x: number, z: number) => APSE_CELLS.has(key(x, z));
+/**
+ * The end apses rise this many courses past the eaves, so their roofs climb to the ridge and
+ * close the ends of the main roof instead of stopping halfway up its gables.
+ */
+const APSE_RISE = 5;
+const END_APSES = APSES.slice(1);
 
 const isPavilion = (x: number, z: number) =>
   within(x, z, PAVILION_WEST, FRONT, PAVILION_EAST, PAVILION_FRONT);
@@ -222,26 +238,50 @@ const ROUND_CELLS = cellSet(
 );
 
 /**
- * Windows: a frame of `width` studs from [x, z] along x (rotation 90) or z (rotation 0), set in
- * at `course`, with an arch over it at `archCourse` whose legs stand on the jambs.
+ * Windows: `width` studs from [x, z] along x (rotation 90) or z (rotation 0), set in at `course`,
+ * with an arch over them at `archCourse` whose legs stand on the jambs. `frame` is a frame part
+ * or one of the styles in LIGHTS, which divide the opening into small lights two studs wide.
  */
 interface Window {
   x: number;
   z: number;
   rotation: 0 | 90;
-  width: 2 | 4;
+  width: 2 | 4 | 6;
   frame: string;
   course: number;
   arch: string;
   archCourse: number;
 }
 const FRAME_COURSES: Readonly<Record<string, number>> = {
-  '2493b': 5,
-  '60594': 3,
+  tall: 5,
+  wide: 3,
+  grand: 6,
   '60593': 3,
   '60592': 2,
 };
-const ARCH_COURSES: Readonly<Record<string, number>> = { '3307': 2, '92950': 1, '3659': 1 };
+/**
+ * Window styles as rows of [frame part or 'transom', plates above the sill]: a transom is a tan
+ * brick across the opening, between the lights below and above it.
+ */
+const LIGHTS: Readonly<Record<string, readonly (readonly [string, number])[]>> = {
+  tall: [
+    ['60592', 0],
+    ['transom', 6],
+    ['60592', 9],
+  ],
+  wide: [['60593', 0]],
+  grand: [
+    ['60593', 0],
+    ['transom', 9],
+    ['60592', 12],
+  ],
+};
+const ARCH_COURSES: Readonly<Record<string, number>> = {
+  '3308': 2,
+  '3307': 2,
+  '92950': 1,
+  '3659': 1,
+};
 
 /** Window openings in the walls, as [x, z, rotation]: each a tall window and one above it. */
 const OPENINGS: readonly (readonly [number, number, 0 | 90])[] = [
@@ -253,22 +293,22 @@ const OPENINGS: readonly (readonly [number, number, 0 | 90])[] = [
   [EAST + 8, 46, 0],
 ];
 const MAIN_WINDOWS: readonly Window[] = OPENINGS.flatMap(([x, z, rotation]) => [
-  { x, z, rotation, width: 4, frame: '2493b', course: 3, arch: '3307', archCourse: 8 },
-  { x, z, rotation, width: 4, frame: '60594', course: 11, arch: '92950', archCourse: 14 },
+  { x, z, rotation, width: 4, frame: 'tall', course: 3, arch: '3307', archCourse: 8 },
+  { x, z, rotation, width: 4, frame: 'wide', course: 11, arch: '92950', archCourse: 14 },
 ]);
-/** Each turret has a window on each outside face at three levels. */
+/** Each turret has a window on each outside face at four levels, two of them above the eaves. */
 const TURRET_WINDOWS: readonly Window[] = TURRETS.flatMap(([tx, tz]) =>
   (
     [
-      [tx, tz + 2, 0, tx - 1, tz + 2],
-      [tx + 5, tz + 2, 0, tx + 6, tz + 2],
-      [tx + 2, tz, 90, tx + 2, tz - 1],
-      [tx + 2, tz + 5, 90, tx + 2, tz + 6],
+      [tx, tz + 3, 0, tx - 1, tz + 3],
+      [tx + 7, tz + 3, 0, tx + 8, tz + 3],
+      [tx + 3, tz, 90, tx + 3, tz - 1],
+      [tx + 3, tz + 7, 90, tx + 3, tz + 8],
     ] as const
   )
     .filter(([, , , outsideX, outsideZ]) => !enclosed(outsideX, outsideZ))
     .flatMap(([x, z, rotation]) =>
-      [4, 11, 19].map((course): Window => ({
+      [4, 11, 18, 24].map((course): Window => ({
         x,
         z,
         rotation,
@@ -299,6 +339,47 @@ const windowCells = (window: Window, from: number, length: number) =>
     window.rotation === 90 ? key(window.x + offset, window.z) : key(window.x, window.z + offset),
   );
 
+/** Whether one of `windows`, or the arch over it, opens the cell in this course. */
+const opens = (windows: readonly Window[], x: number, z: number, course: number) =>
+  windows.some(
+    (window) =>
+      (course >= window.course &&
+        course < window.course + FRAME_COURSES[window.frame] &&
+        windowCells(window, 0, window.width).includes(key(x, z))) ||
+      (course >= window.archCourse &&
+        course < window.archCourse + ARCH_COURSES[window.arch] &&
+        windowCells(window, -1, window.width + 2).includes(key(x, z))),
+  );
+/** Sets in the frames and arches of `windows` that start in this course. */
+function addWindows(add: ExampleBrickAdder, windows: readonly Window[], course: number, y: number) {
+  for (const window of windows) {
+    const { x, z, rotation, width } = window;
+    if (window.course === course)
+      for (const [partId, rise] of LIGHTS[window.frame] ?? [[window.frame, 0]])
+        if (partId === 'transom')
+          addRun(add, 'brick', TRIM, rotation === 90 ? 'x' : 'z', x, y + rise, z, width);
+        else
+          for (let offset = 0; offset < width; offset += 2)
+            add(
+              partId,
+              WHITE,
+              rotation === 90 ? x + offset : x,
+              y + rise,
+              rotation === 90 ? z : z + offset,
+              rotation,
+            );
+    if (window.archCourse === course)
+      add(
+        window.arch,
+        TRIM,
+        window.rotation === 90 ? window.x - 1 : window.x,
+        y,
+        window.rotation === 90 ? window.z : window.z - 1,
+        window.rotation,
+      );
+  }
+}
+
 /** The main door: two leaves under an arch, in the pavilion front. */
 const DOOR = [60, 67] as const;
 /** Headlight bricks under each tall window read as basement lights in the plinth. */
@@ -328,6 +409,14 @@ for (let course = 0; course < 9; course++)
     range(DOOR[0], DOOR[1]).map((x) => key(x, PAVILION_FRONT)),
   );
 openCells(1, [...BASEMENT_CELLS]);
+/** The banner hung over the door: these courses of the pavilion front, between the jambs. */
+const BANNER = [62, 65] as const;
+const BANNER_COURSES = [9, 13] as const;
+for (let course = BANNER_COURSES[0]; course <= BANNER_COURSES[1]; course++)
+  openCells(
+    course,
+    range(BANNER[0], BANNER[1]).map((x) => key(x, PAVILION_FRONT)),
+  );
 const isOpen = (x: number, z: number, course: number) =>
   OPEN_CELLS.get(course)?.has(key(x, z)) ?? false;
 const JAMBS = new Set(
@@ -352,11 +441,10 @@ const dentil = (x: number, z: number, course: number) =>
 
 /**
  * Sandstone walls mix plain bricks with patches of masonry profile bricks, rusticated low down
- * and only here and there above, with scattered sand red bricks for the mottled stonework.
+ * and only here and there above.
  */
 const stone = (x: number, z: number, course: number, density: number) => {
   const patch = Math.floor((x + z + (course % 2) * 2) / 4);
-  if ((patch * 5 + course * 7 + x * 3 + z) % 11 === 0) return 'r';
   return (patch * 7 + course * 3) % 10 < density ? 'm' : 'w';
 };
 /**
@@ -373,9 +461,11 @@ const material = (x: number, z: number, course: number) => {
 
 const WALL_LEGEND: Readonly<Record<string, readonly [RunKind, number]>> = {
   p: ['masonry', GRANITE],
+  q: ['masonry', SLATE],
   w: ['brick', SANDSTONE],
   m: ['masonry', SANDSTONE],
-  r: ['brick', SAND_RED],
+  d: ['brick', SLATE],
+  c: ['brick', COPPER],
   b: ['brick', TRIM],
 };
 
@@ -389,84 +479,114 @@ const PAVILION_CEILING = [PAVILION_WEST - 2, FRONT + 3, PAVILION_EAST + 2, PAVIL
 const CEILINGS = [MAIN_CEILING, ...END_CEILINGS, PAVILION_CEILING];
 const inCeiling = (x: number, z: number) => CEILINGS.some((area) => within(x, z, ...area));
 
-/** The central block rising through the roof over the crossing, and the tower on it. */
-const CENTRAL = [PAVILION_WEST, 44, PAVILION_EAST, PAVILION_FRONT] as const;
-/** The central block's walls, with a hidden cross inside so the flat roof has walls to rest on. */
-const centralWall = (x: number, z: number) =>
-  rim(x, z, ...CENTRAL) || (within(x, z, ...CENTRAL) && (x === 63 || z === 55));
+/**
+ * The tower rises through the roof at the crossing, centred on the ridge: a square shaft hidden
+ * under the slopes, and above the ridge a slate octagon with three studs cut from each corner.
+ */
 const TOWER = [58, 42, 69, 53] as const;
-const CHIMNEYS = [
-  [54, 46],
-  [72, 46],
-] as const;
-const CENTRAL_WINDOWS: readonly Window[] = [
-  {
-    x: 54,
+const inTower = (x: number, z: number) =>
+  within(x, z, ...TOWER) &&
+  Math.min(x - TOWER[0], TOWER[2] - x) + Math.min(z - TOWER[1], TOWER[3] - z) >= 3;
+const TOWER_RIM = cellSet(
+  (x, z) => inTower(x, z) && NEIGHBOURS.some(([dx, dz]) => !inTower(x + dx, z + dz)),
+);
+const TOWER_ROUND = cellSet(
+  (x, z) =>
+    TOWER_RIM.has(key(x, z)) && OUTWARD.filter(([dx, dz]) => !inTower(x + dx, z + dz)).length >= 2,
+);
+/** The first course of roof slopes that reaches the tower, front and back alike. */
+const CROSSING = TOWER[1] - BACK - 1;
+/** The pavilion's walls rise this many courses past the eaves before its own roof starts. */
+const ATTIC = 2;
+/** Each bay's dormer has walls this many courses high under its own little roof. */
+const DORMER = 4;
+/** Chimneys astride the ridge either side of the tower, by their western stud. */
+const CHIMNEYS = [53, 73];
+/**
+ * Windows in the pavilion's gable, by course above the eaves: the great arched window over
+ * the portal and a smaller one either side of it.
+ */
+const GABLE_WINDOWS: readonly Window[] = [
+  ...[55, 69].map((x): Window => ({
+    x,
     z: PAVILION_FRONT,
     rotation: 90,
     width: 4,
-    frame: '60594',
+    frame: 'wide',
     course: 1,
     arch: '92950',
     archCourse: 4,
-  },
+  })),
   {
-    x: 70,
+    x: 61,
     z: PAVILION_FRONT,
     rotation: 90,
-    width: 4,
-    frame: '60594',
-    course: 1,
-    arch: '92950',
-    archCourse: 4,
-  },
-  {
-    x: 62,
-    z: PAVILION_FRONT,
-    rotation: 90,
-    width: 4,
-    frame: '60594',
+    width: 6,
+    frame: 'grand',
     course: 3,
-    arch: '92950',
-    archCourse: 6,
-  },
-  {
-    x: PAVILION_WEST,
-    z: FRONT + 3,
-    rotation: 0,
-    width: 2,
-    frame: '60593',
-    course: 1,
-    arch: '3659',
-    archCourse: 4,
-  },
-  {
-    x: PAVILION_EAST,
-    z: FRONT + 3,
-    rotation: 0,
-    width: 2,
-    frame: '60593',
-    course: 1,
-    arch: '3659',
-    archCourse: 4,
+    arch: '3308',
+    archCourse: 9,
   },
 ];
-/** Tower windows: two on each face, between the corners and a central pier. */
+/** The end apses' windows above the eaves, in their outer faces. */
+const RISE_WINDOWS: readonly Window[] = [WEST - 8, EAST + 8].map((x) => ({
+  x,
+  z: 46,
+  rotation: 0,
+  width: 4,
+  frame: 'wide',
+  course: 1,
+  arch: '92950',
+  archCourse: 4,
+}));
+/** Tower windows: one in each straight face of the octagon. */
 const TOWER_WINDOWS: readonly Window[] = [
-  ...[60, 66].flatMap((x) => [TOWER[1], TOWER[3]].map((z) => ({ x, z, rotation: 90 as const }))),
-  ...[44, 50].flatMap((z) => [TOWER[0], TOWER[2]].map((x) => ({ x, z, rotation: 0 as const }))),
+  ...[TOWER[1], TOWER[3]].map((z) => ({ x: 62, z, rotation: 90 as const })),
+  ...[TOWER[0], TOWER[2]].map((x) => ({ x, z: 46, rotation: 0 as const })),
 ].map((opening) => ({
   ...opening,
-  width: 2,
-  frame: '60593',
+  width: 4,
+  frame: 'wide',
   course: 1,
-  arch: '3659',
+  arch: '92950',
   archCourse: 4,
 }));
 
-/** The terrace the museum stands on, and its front steps. */
-const TERRACE = [8, 24, 119, 83] as const;
+/**
+ * The island quay rising from the water, with a promenade along its front edge and the name
+ * plaque set in the middle of the front wall. On it a granite terrace raises the museum, with
+ * broad steps between cheek walls up to the entrance and a tan path on to the promenade.
+ */
+const ISLAND = [4, 12, 123, 100] as const;
+const PROMENADE = 92;
+const TERRACE = [5, 24, 122, 73] as const;
 const STEPS = [54, 73] as const;
+const STEP_ROWS = 7;
+/** Cheek walls two studs wide either side of the steps, by their western stud. */
+const CHEEKS = [STEPS[0] - 2, STEPS[1] + 1];
+const PATH = [58, 69] as const;
+const PLAQUE = [56, 71] as const;
+/** Lamps along the quay's front edge, with railing between them and down both sides. */
+const QUAY_LAMPS = [5, 30, 55, 72, 97, 122];
+const RAILINGS = [
+  ...QUAY_LAMPS.slice(1).flatMap((lamp, index) =>
+    range(QUAY_LAMPS[index] + 1, lamp - 1)
+      .filter((x) => (x - QUAY_LAMPS[index]) % 4 === 1)
+      .map((x) => [x, ISLAND[3], 90] as const),
+  ),
+  ...range(0, 20).flatMap((index) =>
+    [ISLAND[0], ISLAND[2]].map((x) => [x, 16 + index * 4, 0] as const),
+  ),
+];
+/** Round trees as [x, z, colour, trunk courses]: two rows on the front lawn and one behind. */
+const TREES = [
+  ...[8, 20, 32, 44].map((x, index) => [x, 76, index % 2 ? FOREST : LAWN, 3 - (index % 2)]),
+  ...[14, 26, 38].map((x, index) => [x, 85, index % 2 ? LAWN : FOREST, 2 + (index % 2)]),
+  ...[8, 22, 36, 50].map((x, index) => [x, 15, index % 2 ? LAWN : FOREST, 2]),
+].flatMap(([x, z, color, trunk]) => [
+  [x, z, color, trunk] as const,
+  [SIZE - 5 - x, z, color, trunk] as const,
+]);
 /** The portal in front of the door: columns either side and a pier beyond each. */
 const COLUMNS = [57, 69];
 const PIERS = [52, 72];
@@ -476,29 +596,10 @@ const isPortal = (x: number, z: number) =>
   [...COLUMNS.map((x0) => [x0, x0 + 1]), ...PIERS.map((x0) => [x0, x0 + 3])].some(
     ([x0, x1]) => x >= x0 && x <= x1,
   );
-/** Balustrade lines along the terrace edge, each a post then four-stud spans, posts at both ends. */
-const BALUSTRADE_LINES: readonly (readonly ['x' | 'z', number, number, number])[] = [
-  ['x', TERRACE[3], 8, 48],
-  ['x', TERRACE[3], 79, 119],
-  ['x', TERRACE[1], 8, 63],
-  ['x', TERRACE[1], 64, 119],
-  ...[TERRACE[0], TERRACE[2]].flatMap((x) => [
-    ['z', x, 25, 40] as const,
-    ['z', x, 57, 82] as const,
-  ]),
-];
-const BALUSTRADE_CELLS = new Set(
-  BALUSTRADE_LINES.flatMap(([axis, line, from, to]) =>
-    range(from, to).map((at) => (axis === 'x' ? key(at, line) : key(line, at))),
-  ),
-);
-/** Lamps on the terrace either side of the portal. */
-const TERRACE_LAMPS = [
-  [44, 76],
-  [83, 76],
-] as const;
-
-/** A row of 45 degree roof slopes, split into the widest pieces that fit. */
+/**
+ * A row of 45 degree roof slopes, split into the widest pieces that fit. No piece but a lone
+ * one is a single stud wide, so a row may overhang the course below by a stud at either end.
+ */
 function addSlopeRun(
   add: ExampleBrickAdder,
   from: number,
@@ -506,24 +607,28 @@ function addSlopeRun(
   y: number,
   line: number,
   rotation: Rotation,
-  color = SLATE,
 ) {
   // Rotations 0 and 180 run along x at z = line; 90 and 270 run along z at x = line.
   for (let at = from; at <= to;) {
-    const width = Math.min(4, to - at + 1);
+    const left = to - at + 1;
+    const width = left === 5 ? 3 : Math.min(4, left);
     const partId = { 4: '3037', 3: '3038', 2: '3039', 1: '3040b' }[width]!;
-    if (rotation % 180) add(partId, color, line, y, at, rotation);
-    else add(partId, color, at, y, line, rotation);
+    if (rotation % 180) add(partId, ROOFING, line, y, at, rotation);
+    else add(partId, ROOFING, at, y, line, rotation);
     at += width;
   }
 }
 
 /**
- * A faceted slate roof over an apse, a layer a brick high at a time. Each layer steps a stud in
- * from every outside face: straight faces get two-deep slopes whose back row carries the next
+ * A faceted slate roof over an apse from `base` up, a layer a brick high at a time. Each layer
+ * steps a stud in from every outside face: straight faces get two-deep slopes whose back row carries the next
  * layer, the angled faces cheese slopes, and the rest of the layer is solid brick underneath.
  */
-function addApseRoof(add: ExampleBrickAdder, { width, cell, out, minus, plus }: Apse) {
+function addApseRoof(
+  add: ExampleBrickAdder,
+  { width, cell, out, minus, plus }: Apse,
+  base: number,
+) {
   const slope = (u0: number, u1: number, d0: number, d1: number, rotation: Rotation, y: number) => {
     // Rotations 90 and 270 run along z, 0 and 180 along x; the line is the other axis.
     const [[x0, z0], [x1, z1]] = [cell(u0, d0), cell(u1, d1)];
@@ -535,7 +640,7 @@ function addApseRoof(add: ExampleBrickAdder, { width, cell, out, minus, plus }: 
     apseRows(width).flatMap(([from, to], d) => range(from, to).map((u) => key(u, d))),
   );
   for (let layer = 0; region.size; layer++) {
-    const y = ROOF + layer * 3;
+    const y = base + layer * 3;
     const has = (u: number, d: number) => region.has(key(u, d));
     const cells = [...region].map((cell) => cell.split(':').map(Number) as [number, number]);
     const next = new Set(
@@ -580,7 +685,7 @@ function addApseRoof(add: ExampleBrickAdder, { width, cell, out, minus, plus }: 
     for (const [d0, d1, u] of runs(faces.plus, 1)) slope(u - 1, u, d0, d1, plus, y);
     for (const [u, d, rotation] of cheeses) {
       const [x, z] = cell(u, d);
-      add('54200', SLATE, x, y, z, rotation);
+      add('54200', ROOFING, x, y, z, rotation);
     }
     const fill = new Set(
       [...next]
@@ -595,7 +700,7 @@ function addApseRoof(add: ExampleBrickAdder, { width, cell, out, minus, plus }: 
         add,
         plan((x, z) => (fill.has(key(x, z)) ? 'b' : ' ')),
         y,
-        { b: ['brick', SLATE] },
+        { b: ['brick', ROOFING] },
       );
     region = next;
   }
@@ -609,100 +714,172 @@ function addFinial(add: ExampleBrickAdder, x: number, y: number, z: number, tip 
 }
 
 /**
- * A steeple on a 6 x 6 plate: a slate cone, a copper drum and cone, and a gilded point, with
- * small gilded pinnacles at the plate's corners.
+ * A skirt of roof slopes a brick high on a 6 x 6 base, leaving a 4 x 4 field of studs on top:
+ * rows of slopes front and back, a pair at each side, and a brick in the middle.
+ */
+function addSkirtRoof(add: ExampleBrickAdder, x: number, y: number, z: number) {
+  addSlopeRun(add, x, x + 5, y, z, 0);
+  addSlopeRun(add, x, x + 5, y, z + 4, 180);
+  add('3039', ROOFING, x, y, z + 2, 90);
+  add('3039', ROOFING, x + 4, y, z + 2, 270);
+  add('3003', ROOFING, x + 2, y, z + 2);
+}
+
+/**
+ * A steeple on a 6 x 6 base: a copper band, a dark skirt and cone, a copper lantern under a
+ * gold ring, a dark spire and a gilded point.
  */
 function addSteeple(add: ExampleBrickAdder, x: number, y: number, z: number) {
-  add('3958', TRIM, x, y, z);
-  add('3943b', SLATE, x + 1, y + 1, z + 1);
-  add('3941', COPPER, x + 2, y + 7, z + 2);
-  add('3942c', COPPER, x + 2, y + 10, z + 2);
-  add('3062b', GOLD, x + 2.5, y + 16, z + 2.5);
-  add('4589', GOLD, x + 2.5, y + 19, z + 2.5);
-  for (const [dx, dz] of [
-    [0, 0],
-    [5, 0],
-    [0, 5],
-    [5, 5],
+  add('3958', COPPER, x, y, z);
+  addSkirtRoof(add, x, y + 1, z);
+  add('3943b', ROOFING, x + 1, y + 4, z + 1);
+  add('3941', COPPER, x + 2, y + 10, z + 2);
+  add('4032a', GOLD, x + 2, y + 13, z + 2);
+  add('3942c', ROOFING, x + 2, y + 14, z + 2);
+  add('3062b', COPPER, x + 2.5, y + 20, z + 2.5);
+  add('4589', GOLD, x + 2.5, y + 23, z + 2.5);
+}
+
+/** A round tree: a brown trunk of round bricks under an oval crown. */
+function addTree(add: ExampleBrickAdder, x: number, z: number, color: number, trunk: number) {
+  for (let course = 0; course < trunk; course++)
+    add('3062b', BARK, x + 2, LAWN_TOP + course * 3, z + 2);
+  add('3470', color, x, LAWN_TOP + trunk * 3, z);
+}
+
+/**
+ * A candelabra lamp: a tall black post with a crossbar carrying three white globes, each under
+ * a black cap, the middle one raised on a short stem.
+ */
+function addLampPost(add: ExampleBrickAdder, x: number, z: number, y = LAWN_TOP) {
+  for (const post of [0, 15]) add('2453b', BLACK, x, y + post, z);
+  add('3623', BLACK, x - 1, y + 30, z, 90);
+  for (const [dx, stem] of [
+    [-1, 0],
+    [0, 3],
+    [1, 0],
   ]) {
-    add('3062b', TRIM, x + dx, y + 1, z + dz);
-    add('4589', GOLD, x + dx, y + 4, z + dz);
+    if (stem) add('3062b', BLACK, x + dx, y + 31, z);
+    add('3062b', WHITE, x + dx, y + 31 + stem, z);
+    add('98138', BLACK, x + dx, y + 34 + stem, z);
   }
 }
 
 /**
- * A big tree: a round trunk carrying two layers of four leaf canopies, each canopy hooked on one
- * of the trunk's studs, and a single canopy on top. `crowns` colours the layers bottom up.
+ * A sailing boat moored off the quay, its bow towards +x: a white hull with a pointed bow under
+ * a wooden deck, a cabin aft, and a stepped mainsail and jib either side of the mast.
  */
-function addBigTree(
-  add: ExampleBrickAdder,
-  x: number,
-  z: number,
-  trunk: number,
-  crowns: readonly [number, number, number],
-) {
-  for (const y of [0, 3, 6, 9]) add('3941', BARK, x, GROUND + y, z);
-  let y = GROUND + trunk;
-  for (let course = 12; course < trunk; course += 3) add('3941', BARK, x, GROUND + course, z);
-  for (const color of crowns.slice(0, 2)) {
-    add('2417', color, x - 4, y, z - 5);
-    add('2417', color, x + 1, y, z - 5);
-    add('2417', color, x + 1, y, z + 1, 180);
-    add('2417', color, x - 4, y, z + 1, 180);
-    add('3941', BARK, x, y + 1, z);
-    y += 4;
+function addSailboat(add: ExampleBrickAdder, x: number, z: number) {
+  add('3029', WHITE, x, GROUND, z, 90);
+  for (const row of [z, z + 2]) {
+    add('3006', WHITE, x, GROUND + 1, row, 90);
+    add('3039', WHITE, x + 10, GROUND + 1, row, 270);
   }
-  add('2417', crowns[2], x - 2, y, z - 3);
-  for (const [dx, dz] of [
-    [-1, -2],
-    [1, -2],
-    [-2, 0],
-    [2, 0],
-  ])
-    add('98138', crowns[2], x + dx, y + 1, z + dz);
-}
-
-/** A bush on a jumper, so its centre peg finds a stud on the floor. */
-function addBush(add: ExampleBrickAdder, x: number, z: number, y = GROUND) {
-  add('87580', LAWN, x + 1, y, z + 1);
-  add('6064', LEAVES, x, y + 1, z);
-}
-
-/** A cast-iron lamp post with a lantern. */
-function addLampPost(add: ExampleBrickAdder, x: number, z: number, y = GROUND) {
-  add('2453b', BLACK, x, y, z);
-  add('6141', BLACK, x, y + 15, z);
-  add('3062b', LAMP, x, y + 16, z);
-  add('98138', BLACK, x, y + 19, z);
+  add('3030', BARK, x, GROUND + 4, z, 90);
+  const deck = GROUND + 5;
+  add('3001', WHITE, x + 1, deck, z + 1, 90);
+  add('87079', WHITE, x + 1, deck + 3, z + 1, 90);
+  const mast = x + 6;
+  for (const post of [0, 15, 30]) add('2453b', WHITE, mast, deck + post, z + 1);
+  add('4589', GOLD, mast, deck + 45, z + 1);
+  // The mainsail clears the cabin on two short rows by the mast; no row is longer than a brick.
+  for (const [row, length] of [1, 1, 4, 4, 4, 4, 3, 3, 3, 2, 2, 2, 1, 1].entries())
+    addRun(add, 'brick', WHITE, 'x', mast - length, deck + row * 3, z + 1, length);
+  for (const [row, length] of [3, 3, 2, 2, 2, 1, 1, 1].entries())
+    addRun(add, 'brick', WHITE, 'x', mast + 1, deck + row * 3, z + 1, length);
 }
 
 export const nordiskaMuseet2: ExampleDefinition = {
   id: 'nordiska-museet-2',
   name: 'Nordiska Museet 2',
-  tags: ['museum', 'landmark', 'stockholm', 'tower', 'stepped-gables', 'copper-roofs', 'park'],
-  expectedPieceCount: 8464,
+  tags: [
+    'museum',
+    'landmark',
+    'stockholm',
+    'tower',
+    'stepped-gables',
+    'copper-roofs',
+    'park',
+    'waterfront',
+  ],
+  expectedPieceCount: 10208,
   buildArea: SIZE,
   brickIdPrefix: 'museet2',
   build(drawnAdd) {
-    const add = glazeWindows(turnAround(drawnAdd, SIZE));
+    // Pieces are collected and laid a layer at a time, lowest first, so each one's support is
+    // in place before it whatever order the sections below come in.
+    const pieces: Parameters<ExampleBrickAdder>[] = [];
+    const add = glazeWindows(
+      turnAround((...piece) => {
+        pieces.push(piece);
+      }, SIZE),
+      PANES,
+    );
     const addWallCourse = (cell: (x: number, z: number) => string, y: number, course: number) =>
       addBondedMap(add, plan(cell), y, WALL_LEGEND, course);
 
-    // The 128 x 128 lawn is a two-layer plate floor, so the whole board lifts as one.
-    for (const plate of layPlateFloor({ x: 0, z: 0, width: SIZE, depth: SIZE }, LAWN)!.bricks)
+    // The 128 x 128 board is the water round the island, a two-layer plate floor, so the whole
+    // board lifts as one.
+    for (const plate of layPlateFloor({ x: 0, z: 0, width: SIZE, depth: SIZE }, WATER)!.bricks)
       add(plate.partId, plate.color, plate.x, plate.y, plate.z, plate.rotation);
 
-    // Raised terrace: a slate footing, two courses of granite masonry round a brick core, and
-    // paving with a tan carpet from the door to the steps.
-    const terrace = (x: number, z: number) => within(x, z, ...TERRACE);
+    // Island quay: a slate plate footing, two courses of dark masonry quay wall round a brick
+    // core, and the name plaque in the front wall, black tiles on a row of headlight bricks.
+    const island = (x: number, z: number) => within(x, z, ...ISLAND);
+    const quay = (x: number, z: number) => rim(x, z, ...ISLAND);
+    const isPlaque = (x: number, z: number) => z === ISLAND[3] && x >= PLAQUE[0] && x <= PLAQUE[1];
     addAreaMap(
       add,
-      plan((x, z) => (terrace(x, z) ? 's' : ' ')),
+      plan((x, z) => (island(x, z) ? 's' : ' ')),
       GROUND,
       { s: ['plate', SLATE] },
     );
     for (const course of [0, 1]) {
       const y = GROUND + 1 + course * 3;
+      addBondedMap(
+        add,
+        plan((x, z) => (quay(x, z) && !(course === 1 && isPlaque(x, z)) ? 'q' : ' ')),
+        y,
+        WALL_LEGEND,
+        course,
+      );
+      addAreaMap(
+        add,
+        plan((x, z) => (island(x, z) && !quay(x, z) ? 'c' : ' ')),
+        y,
+        { c: ['brick', SLATE] },
+      );
+    }
+    for (let x = PLAQUE[0]; x <= PLAQUE[1]; x++) add('4070', SLATE, x, GROUND + 4, ISLAND[3], 180);
+    for (const x of [PLAQUE[0], PLAQUE[0] + 8])
+      add('4162', BLACK, x, GROUND + 4.5, ISLAND[3] + 0.8, 90, '+z');
+
+    // On the quay: granite coping round the edge, the paved promenade along the front, a tan
+    // path from the steps to it, and lawn everywhere else.
+    const terrace = (x: number, z: number) => within(x, z, ...TERRACE);
+    const stairs = (x: number, z: number) =>
+      within(x, z, CHEEKS[0], TERRACE[3] + 1, CHEEKS[1] + 1, TERRACE[3] + STEP_ROWS);
+    addAreaMap(
+      add,
+      plan((x, z) => {
+        if (!island(x, z) || terrace(x, z) || stairs(x, z)) return ' ';
+        if (quay(x, z)) return 'k';
+        if (z >= PROMENADE) return 'p';
+        return x >= PATH[0] && x <= PATH[1] && z > TERRACE[3] ? 't' : 'g';
+      }),
+      QUAY,
+      {
+        k: ['plate', GRANITE],
+        t: ['tile', TRIM],
+        p: ['tile', GRANITE],
+        g: ['plate', LAWN],
+      },
+    );
+
+    // Granite terrace under the museum: two courses of masonry round a brick core, a plate
+    // course over both, and paving round the walls with a tan carpet from the door to the steps.
+    for (const course of [0, 1]) {
+      const y = QUAY + course * 3;
       addBondedMap(
         add,
         plan((x, z) => (rim(x, z, ...TERRACE) ? 'p' : ' ')),
@@ -717,15 +894,16 @@ export const nordiskaMuseet2: ExampleDefinition = {
         { c: ['brick', SLATE] },
       );
     }
-    const lampCells = new Set(TERRACE_LAMPS.map(([x, z]) => key(x, z)));
+    addAreaMap(
+      add,
+      plan((x, z) => (terrace(x, z) ? 's' : ' ')),
+      QUAY + 6,
+      { s: ['plate', GRANITE] },
+    );
     addAreaMap(
       add,
       plan((x, z) =>
-        !terrace(x, z) ||
-        enclosed(x, z) ||
-        BALUSTRADE_CELLS.has(key(x, z)) ||
-        isPortal(x, z) ||
-        lampCells.has(key(x, z))
+        !terrace(x, z) || enclosed(x, z) || isPortal(x, z)
           ? ' '
           : x >= DOOR[0] && x <= DOOR[1] && z > PAVILION_FRONT
             ? 't'
@@ -734,15 +912,24 @@ export const nordiskaMuseet2: ExampleDefinition = {
       BASE,
       { t: ['tile', TRIM], g: ['tile', GRANITE] },
     );
-    for (const [x, z] of TERRACE_LAMPS) addLampPost(add, x, z, BASE);
 
-    // Front steps down from the terrace, a plate each.
+    // Broad front steps, a plate each, between stepped cheek walls that carry a lamp apiece.
     const stepWidth = STEPS[1] - STEPS[0] + 1;
-    for (let row = 0; row < 7; row++) {
+    for (let row = 0; row < STEP_ROWS; row++) {
       const z = TERRACE[3] + 1 + row;
-      for (let layer = 0; layer < 6 - row; layer++)
-        addRun(add, 'plate', GRANITE, 'x', STEPS[0], GROUND + layer, z, stepWidth);
-      addRun(add, 'tile', GRANITE, 'x', STEPS[0], GROUND + 6 - row, z, stepWidth);
+      const plates = STEP_ROWS - 1 - row;
+      for (let layer = 0; layer < plates; layer++)
+        addRun(add, 'plate', GRANITE, 'x', STEPS[0], QUAY + layer, z, stepWidth);
+      addRun(add, 'tile', GRANITE, 'x', STEPS[0], QUAY + plates, z, stepWidth);
+    }
+    for (const x of CHEEKS) {
+      const z = TERRACE[3] + 1;
+      add('3001', GRANITE, x, QUAY, z);
+      add('3002', GRANITE, x, QUAY, z + 4);
+      add('3021', TRIM, x, QUAY + 3, z + 4);
+      add('3001', GRANITE, x, QUAY + 3, z);
+      add('3020', TRIM, x, QUAY + 6, z);
+      addLampPost(add, x < SIZE / 2 ? x + 1 : x, z + 1, BASE);
     }
 
     // Walls and turrets, a course at a time: the main walls stop at the cornice, the turrets
@@ -777,8 +964,8 @@ export const nordiskaMuseet2: ExampleDefinition = {
           add('4070', SLATE, x, y, z, outward(x, z)![2]);
         }
       // The main door: two four-pane leaves in frames, then a plate across them, an arch and
-      // two plates up to the next course, before anything rests on them. Behind, a dark panel
-      // on two piers fills the half-moon.
+      // two plates up to the next course, before anything rests on them. Behind, a navy panel
+      // on two piers fills the half-moon, like the banner hung over the real entrance.
       if (course < 6)
         for (const x of [DOOR[0] - 1, DOOR[1] + 1])
           add('3005', SANDSTONE, x, y, PAVILION_FRONT - 1);
@@ -792,22 +979,27 @@ export const nordiskaMuseet2: ExampleDefinition = {
         add('3308', TRIM, DOOR[0], y + 1, PAVILION_FRONT, 90);
         for (const plate of [7, 8]) add('3460', TRIM, DOOR[0], y + plate, PAVILION_FRONT, 90);
       }
-      if (course >= 6 && course < 9) add('6111', BARK, DOOR[0] - 1, y, PAVILION_FRONT - 1, 90);
-      for (const window of WINDOWS) {
-        if (window.course === course)
-          add(window.frame, WHITE, window.x, y, window.z, window.rotation);
-        if (window.archCourse === course)
-          add(
-            window.arch,
-            TRIM,
-            window.rotation === 90 ? window.x - 1 : window.x,
-            y,
-            window.rotation === 90 ? window.z : window.z - 1,
-            window.rotation,
-          );
+      if (course >= 6 && course < 9) add('6111', NAVY, DOOR[0] - 1, y, PAVILION_FRONT - 1, 90);
+      // The banner: navy tiles on headlight bricks in the wall, with a gilded emblem.
+      if (course >= BANNER_COURSES[0] && course <= BANNER_COURSES[1]) {
+        for (let x = BANNER[0]; x <= BANNER[1]; x++)
+          add('4070', SANDSTONE, x, y, PAVILION_FRONT, 180);
+        const emblem = course === (BANNER_COURSES[0] + BANNER_COURSES[1]) / 2;
+        if (emblem)
+          for (let x = BANNER[0]; x <= BANNER[1]; x++)
+            add(
+              '3070b',
+              x === BANNER[0] || x === BANNER[1] ? NAVY : GOLD,
+              x,
+              y + 0.5,
+              PAVILION_FRONT + 0.8,
+              0,
+              '+z',
+            );
+        else add('2431', NAVY, BANNER[0], y + 0.5, PAVILION_FRONT + 0.8, 90, '+z');
       }
+      addWindows(add, WINDOWS, course, y);
     }
-
     // Stone portal: round columns either side of the door carry an entablature, its frieze a
     // row of headlight bricks holding the gilded name band, a projecting cornice and a stepped
     // pediment with white raking edges and a seated figure on the apex.
@@ -911,27 +1103,19 @@ export const nordiskaMuseet2: ExampleDefinition = {
       { c: ['plate', TRIM] },
       (x, z) => wall(x, z) || TURRET_WALLS.has(key(x, z)),
     );
-    for (const { width, cell, partitions } of APSES) {
+    const addApseCeiling = ({ width, cell, partitions }: Apse, y: number, firstRow: number) => {
       const axis = cell(1, 0)[0] === cell(0, 0)[0] ? 'z' : 'x';
       for (const [d, [from, to]] of apseRows(width).entries()) {
-        if (d < 2) continue;
+        if (d < firstRow) continue;
         const cuts = [from - 1, ...partitions.filter((u) => u >= from && u < to), to];
         for (const [index, end] of cuts.slice(1).entries()) {
           const start = cuts[index] + 1;
           const [[x0, z0], [x1, z1]] = [cell(start, d), cell(end, d)];
-          addRun(
-            add,
-            'plate',
-            TRIM,
-            axis,
-            Math.min(x0, x1),
-            CEILING,
-            Math.min(z0, z1),
-            end - start + 1,
-          );
+          addRun(add, 'plate', TRIM, axis, Math.min(x0, x1), y, Math.min(z0, z1), end - start + 1);
         }
       }
-    }
+    };
+    for (const apse of APSES) addApseCeiling(apse, CEILING, 2);
     addAreaMap(
       add,
       plan((x, z) => (inCeiling(x, z) && !enclosed(x, z) ? 't' : ' ')),
@@ -939,38 +1123,199 @@ export const nordiskaMuseet2: ExampleDefinition = {
       { t: ['tile', TRIM] },
     );
 
-    // Slate roof: eight slope courses front and back, sandstone gable ends, the front slopes
-    // stopping either side of the central block and the lowest four clear of the turrets.
+    // The end apses carry on above the eaves, with a window in the outer face under an arch in
+    // the tan band on top, so their roofs start high enough to meet the main roof's slopes and
+    // ridge. The hidden partitions rise with them and carry a plate ceiling under the roof.
+    const inEndApse = (x: number, z: number) => isApse(x, z) && (x < WEST || x > EAST);
+    for (let course = 0; course < APSE_RISE; course++) {
+      const y = ROOF + course * 3;
+      const band = course === APSE_RISE - 1;
+      const standing = (x: number, z: number) =>
+        inEndApse(x, z) && wall(x, z) && !opens(RISE_WINDOWS, x, z, course);
+      addWallCourse(
+        (x, z) => {
+          if (!standing(x, z) || ROUND_CELLS.has(key(x, z))) return ' ';
+          if (PARTITIONS.has(key(x, z))) return 'w';
+          return band ? 'b' : stone(x, z, course, 3);
+        },
+        y,
+        course,
+      );
+      for (const cell of ROUND_CELLS) {
+        const [x, z] = cell.split(':').map(Number);
+        if (standing(x, z)) add('3062b', band ? TRIM : SANDSTONE, x, y, z);
+      }
+      addWindows(add, RISE_WINDOWS, course, y);
+    }
+    const apseEaves = ROOF + APSE_RISE * 3;
+    for (const apse of END_APSES) addApseCeiling(apse, apseEaves, 0);
+
+    // Steep slate roof: thirteen slope courses front and back up to a light granite ridge, with
+    // sandstone gable ends, the lowest four clear of the corner towers. The slopes part round
+    // the cross roofs over the back apse and the pavilion, a stud further in with every course
+    // as the valleys climb, and from the crossing up they stop against the tower. They part
+    // round the bays' dormers the same way.
+    const [gableWest, gableEast] = [
+      APSES[0].cell(0, 0)[0],
+      APSES[0].cell(APSES[0].width - 1, 0)[0],
+    ];
+    const mirrored = (x: number) => SIZE - 1 - x;
+    /**
+     * Whether a bay's dormer takes the place of the main slopes at x in this course. The main
+     * slopes run on unbroken from the course level with the dormers' ridges, which end against
+     * them.
+     */
+    const inDormer = (x: number, step: number) => {
+      const inset = Math.max(0, step - DORMER);
+      return inset < 3 && BAYS.some((bay) => x >= bay + inset && x <= bay + 7 - inset);
+    };
     for (let step = 0; step < ROOF_STEPS; step++) {
       const y = ROOF + step * 3;
       const [from, to] = step < 4 ? [WEST + 4, EAST - 4] : [WEST, EAST];
-      addSlopeRun(add, from, to, y, BACK + step, 0);
-      addSlopeRun(add, from, PAVILION_WEST - 1, y, FRONT - 1 - step, 180);
-      addSlopeRun(add, PAVILION_EAST + 1, to, y, FRONT - 1 - step, 180);
+      const behind = step < CROSSING ? gableWest + step - 1 : TOWER[0] - 1;
+      const before = step < CROSSING ? PAVILION_WEST - 1 + Math.max(0, step - ATTIC) : TOWER[0] - 1;
+      for (const [edge, line, rotation] of [
+        [behind, BACK + step, 0],
+        [before, FRONT - 1 - step, 180],
+      ] as const) {
+        const sloped = (x: number) =>
+          x >= from && x <= to && (x <= edge || x >= mirrored(edge)) && !inDormer(x, step);
+        for (let x = from; x <= to; x++) {
+          if (!sloped(x)) continue;
+          let end = x;
+          while (sloped(end + 1)) end++;
+          addSlopeRun(add, x, end, y, line, rotation);
+          x = end;
+        }
+      }
       const [z0, z1] = [Math.max(BACK + 2 + step, BACK + 4), Math.min(FRONT - 2 - step, FRONT - 4)];
-      for (const x of [WEST, EAST]) addRun(add, 'brick', SANDSTONE, 'z', x, y, z0, z1 - z0 + 1);
+      if (z1 >= z0)
+        for (const x of [WEST, EAST]) addRun(add, 'brick', SANDSTONE, 'z', x, y, z0, z1 - z0 + 1);
     }
-    for (const apse of APSES) addApseRoof(add, apse);
-
-    // Crow-stepped gables over the bays: a window between piers under an arch, then four steps
-    // with copper points on their shoulders and a finial on top. A backing wall closes the gap
-    // to the roof behind.
-    for (const bay of BAYS)
-      for (const [face, back] of [
-        [FRONT + 2, FRONT + 1],
-        [BACK - 2, BACK - 1],
+    // Between the innermost front dormers and the pavilion the slopes start three courses above
+    // the eaves, on a hidden post.
+    for (const x of [PAVILION_WEST, PAVILION_EAST])
+      for (let course = 0; course < DORMER - 1; course++)
+        add('3005', ROOFING, x, ROOF + course * 3, FRONT - DORMER);
+    const ridge = BACK + ROOF_STEPS;
+    const onChimney = (x: number) => CHIMNEYS.some((chimney) => x === chimney || x === chimney + 1);
+    addAreaMap(
+      add,
+      plan((x, z) =>
+        (z === ridge || z === ridge + 1) &&
+        x >= WEST &&
+        x <= EAST &&
+        (x < TOWER[0] || x > TOWER[2]) &&
+        !onChimney(x)
+          ? 'r'
+          : ' ',
+      ),
+      FLAT,
+      { r: ['tile', GRANITE] },
+    );
+    // Sandstone chimneys with tan bands and copper pots stand astride the ridge.
+    for (const x of CHIMNEYS) {
+      for (let course = 0; course < 4; course++)
+        add('3003', course === 2 ? TRIM : SANDSTONE, x, FLAT + course * 3, ridge);
+      add('3022', ROOFING, x, FLAT + 12, ridge);
+      for (const [dx, dz] of [
+        [0, 0],
+        [1, 1],
       ]) {
-        for (let step = 0; step < 4; step++) {
+        add('3062b', COPPER, x + dx, FLAT + 13, ridge + dz);
+        add('4589', GOLD, x + dx, FLAT + 16, ridge + dz);
+      }
+    }
+
+    // The apses get faceted slate roofs; the end ones start above their upper windows and meet
+    // the ridge.
+    for (const [index, apse] of APSES.entries())
+      addApseRoof(add, apse, index ? apseEaves + 1 : ROOF);
+    // The back apse's roof carries on over the back slopes as a cross gable up to the tower,
+    // its side slopes continuing the apse's under a granite ridge. Each course reaches a stud
+    // further back than the one below, to where the main roof's slopes take over, and a row of
+    // bricks closes its face above the apse roof.
+    const gableBack = TOWER[1] - 1;
+    for (let layer = 0; gableWest + layer + 1 < gableEast - layer - 1; layer++) {
+      const y = ROOF + layer * 3;
+      const [west, east] = [gableWest + layer, gableEast - layer - 1];
+      const end = Math.min(BACK + layer + 1, gableBack);
+      addSlopeRun(add, BACK, end, y, west, 90);
+      addSlopeRun(add, BACK, end, y, east, 270);
+      if (east > west + 2) addRun(add, 'brick', ROOFING, 'x', west + 2, y, BACK, east - west - 2);
+      if (east === west + 2)
+        addAreaMap(
+          add,
+          plan((x, z) => ((x === west + 1 || x === east) && z >= BACK && z <= end ? 'r' : ' ')),
+          y + 3,
+          { r: ['tile', GRANITE] },
+        );
+    }
+    // Where the back slopes below the crossing end at the tower, cheese slopes finish the row
+    // against its wall, either side of the cross gable.
+    for (const x of range(TOWER[0], gableWest + CROSSING - 2))
+      for (const at of [x, mirrored(x)])
+        add('54200', ROOFING, at, ROOF + CROSSING * 3, gableBack, 0);
+
+    // The pavilion's own roof runs from its gable back to the tower, as high as the main ridge:
+    // slopes either side meeting under a granite ridge, each course starting where the main
+    // roof's front slopes leave off.
+    for (let layer = 0; PAVILION_WEST + layer + 1 < PAVILION_EAST - layer - 1; layer++) {
+      const course = layer + ATTIC;
+      const y = ROOF + course * 3;
+      const [west, east] = [PAVILION_WEST + layer, PAVILION_EAST - layer - 1];
+      const start =
+        course < CROSSING ? FRONT - 1 - course : TOWER[3] + (course === CROSSING ? 2 : 1);
+      addSlopeRun(add, start, PAVILION_FRONT - 1, y, west, 90);
+      addSlopeRun(add, start, PAVILION_FRONT - 1, y, east, 270);
+      if (east === west + 2)
+        addAreaMap(
+          add,
+          plan((x, z) =>
+            (x === west + 1 || x === east) && z >= start && z < PAVILION_FRONT ? 'r' : ' ',
+          ),
+          y + 3,
+          { r: ['tile', GRANITE] },
+        );
+    }
+
+    // Each bay ends in a dormer: a crow-stepped gable with a window between piers under an
+    // arch, four steps with tan caps on their shoulders and a dark finial, in front of side
+    // walls and a little roof of its own that runs back into the main roof under a granite
+    // ridge. `inward` is the way from the gable into the roof.
+    for (const bay of BAYS)
+      for (const [face, inward] of [
+        [FRONT + 2, -1],
+        [BACK - 2, 1],
+      ]) {
+        const back = face + inward;
+        /** A stretch of `length` studs along z from `depth` studs behind the backing wall. */
+        const reach = (depth: number, length: number) =>
+          inward > 0 ? back + depth : back - depth - length + 1;
+        for (let step = 0; step < DORMER; step++) {
           const y = ROOF + step * 3;
           addRun(add, 'brick', SANDSTONE, 'x', bay, y, back, 8);
+          // The side walls reach a stud further into the roof with every course; a brick two
+          // studs long carries the overhang.
+          for (const x of [bay, bay + 7]) {
+            if (step) addRun(add, 'brick', SANDSTONE, 'z', x, y, reach(1, step), step);
+            addRun(add, 'brick', SANDSTONE, 'z', x, y, reach(step + 1, 2), 2);
+          }
           if (step === 3) continue;
           addRun(add, 'brick', step === 1 ? TRIM : SANDSTONE, 'x', bay, y, face, 2);
           addRun(add, 'brick', step === 1 ? TRIM : SANDSTONE, 'x', bay + 6, y, face, 2);
         }
-        add('60594', WHITE, bay + 2, ROOF, face, 90);
+        for (const x of [bay + 2, bay + 4]) add('60593', WHITE, x, ROOF, face, 90);
         add('92950', TRIM, bay + 1, ROOF + 9, face, 90);
         for (const x of [bay, bay + 7]) add('3005', TRIM, x, ROOF + 9, face);
-        add('4162', TRIM, bay, ROOF + 12, back, 90);
+        for (let layer = 0; layer < 3; layer++) {
+          const y = ROOF + (DORMER + layer) * 3;
+          const z = reach(0, DORMER + layer + 3);
+          addSlopeRun(add, z, z + DORMER + layer + 2, y, bay + layer, 90);
+          addSlopeRun(add, z, z + DORMER + layer + 2, y, bay + 6 - layer, 270);
+        }
+        for (const x of [bay + 3, bay + 4])
+          addRun(add, 'tile', GRANITE, 'z', x, ROOF + (DORMER + 3) * 3, reach(0, 8), 8);
         for (const [step, from, length] of [
           [0, bay, 8],
           [1, bay + 1, 6],
@@ -979,219 +1324,115 @@ export const nordiskaMuseet2: ExampleDefinition = {
         ] as const) {
           const y = ROOF + 12 + step * 3;
           addRun(add, 'brick', step === 3 ? TRIM : SANDSTONE, 'x', from, y, face, length);
-          if (step === 1) for (const x of [bay, bay + 7]) add('3070b', TRIM, x, y, face);
-          if (step >= 2) for (const x of [from - 1, from + length]) add('4589', COPPER, x, y, face);
+          if (step >= 1) for (const x of [from - 1, from + length]) add('3070b', TRIM, x, y, face);
         }
-        addFinial(add, bay + 3, ROOF + 24, face);
+        addFinial(add, bay + 3, ROOF + 24, face, ROOFING);
       }
 
-    // Central block over the crossing, rising through the roof from the pavilion front to the
-    // tower, with windows above the pediment and into the pavilion's sides.
-    const centralJambs = new Set(
-      CENTRAL_WINDOWS.flatMap((window) => [
+    // The pavilion's front rises past the eaves into a crow-stepped gable in front of its roof:
+    // the great arched window over the portal between two smaller ones, tan caps and dark
+    // pinnacles on the steps, and a gilded finial. Short side walls close the attic below the
+    // roof, back to the main roof's slopes.
+    const gableJambs = new Set(
+      GABLE_WINDOWS.flatMap((window) => [
         ...windowCells(window, -1, 1),
         ...windowCells(window, window.width, 1),
       ]),
     );
-    for (let step = 0; step < ROOF_STEPS; step++) {
-      const y = ROOF + step * 3;
-      const open = (x: number, z: number) =>
-        CENTRAL_WINDOWS.some(
-          (window) =>
-            (step >= window.course &&
-              step < window.course + 3 &&
-              windowCells(window, 0, window.width).includes(key(x, z))) ||
-            (step === window.archCourse &&
-              windowCells(window, -1, window.width + 2).includes(key(x, z))),
-        );
-      const corner = (x: number, z: number) =>
-        (x === CENTRAL[0] || x === CENTRAL[2]) && (z === CENTRAL[1] || z === CENTRAL[3]);
-      addBondedMap(
-        add,
-        plan((x, z) => {
-          if (!centralWall(x, z) || open(x, z)) return ' ';
-          if (!rim(x, z, ...CENTRAL)) return 'w';
-          if (step === ROOF_STEPS - 1) return 'b';
-          if (step % 2 === 1 && (corner(x, z) || centralJambs.has(key(x, z)))) return 'b';
-          return stone(x, z, step, 3);
-        }),
+    const gableStep = (course: number) => Math.max(0, Math.floor((course - ATTIC) / 2));
+    for (let course = 0; course < ROOF_STEPS; course++) {
+      const y = ROOF + course * 3;
+      const inset = gableStep(course) * 2;
+      const [west, east] = [PAVILION_WEST + inset, PAVILION_EAST - inset];
+      const standing = (x: number, z: number) =>
+        (z === PAVILION_FRONT && x >= west && x <= east) ||
+        (course < ATTIC &&
+          (x === PAVILION_WEST || x === PAVILION_EAST) &&
+          z >= FRONT - 1 - course &&
+          z < PAVILION_FRONT);
+      addWallCourse(
+        (x, z) => {
+          if (!standing(x, z) || opens(GABLE_WINDOWS, x, z, course)) return ' ';
+          if (course % 2 === 1 && (x === west || x === east || gableJambs.has(key(x, z))))
+            return 'b';
+          return stone(x, z, course, 3);
+        },
         y,
-        WALL_LEGEND,
-        step,
+        course,
       );
-      for (const window of CENTRAL_WINDOWS) {
-        if (window.course === step)
-          add(window.frame, WHITE, window.x, y, window.z, window.rotation);
-        if (window.archCourse === step)
-          add(
-            window.arch,
-            TRIM,
-            window.rotation === 90 ? window.x - 1 : window.x,
-            y,
-            window.rotation === 90 ? window.z : window.z - 1,
-            window.rotation,
-          );
-      }
+      addWindows(add, GABLE_WINDOWS, course, y);
+      // Each new step leaves a shoulder two studs wide either side: a pinnacle on every other
+      // one, a tan cap on the rest.
+      if (inset > gableStep(course - 1) * 2)
+        for (const [outer, inner] of [
+          [west - 2, west - 1],
+          [east + 2, east + 1],
+        ])
+          if (gableStep(course) % 2) {
+            add('3062b', TRIM, outer, y, PAVILION_FRONT);
+            add('4589', ROOFING, outer, y + 3, PAVILION_FRONT);
+            add('3070b', TRIM, inner, y, PAVILION_FRONT);
+          } else add('3069b', TRIM, Math.min(outer, inner), y, PAVILION_FRONT, 90);
     }
+    const gableTop = ROOF + ROOF_STEPS * 3;
+    addRun(add, 'brick', TRIM, 'x', 62, gableTop, PAVILION_FRONT, 4);
+    for (const x of [62, 65]) add('3070b', TRIM, x, gableTop + 3, PAVILION_FRONT);
+    addFinial(add, 63, gableTop + 3, PAVILION_FRONT, GOLD);
 
-    // Flat roof: a slate slab over the ridge and the central block, glass skylights either
-    // side under black cresting, the crown, chimneys and tower standing on it.
-    const ridge = (x: number, z: number) =>
-      within(x, z, WEST, BACK + ROOF_STEPS, EAST, FRONT - ROOF_STEPS);
-    const central = (x: number, z: number) =>
-      within(x, z, CENTRAL[0], BACK + ROOF_STEPS, CENTRAL[2], CENTRAL[3]);
+    // The tower: a plain shaft up through the roof to a slab at the ridge, then the slate
+    // octagon with an arched window in each face under a copper cornice, a copper gallery with
+    // railings, an arcaded copper lantern, a dark mansard, and a copper spire in tiers between
+    // gold rings up to a gilded point.
+    for (let course = 0; course < ROOF_STEPS; course++)
+      addWallCourse((x, z) => (rim(x, z, ...TOWER) ? 'd' : ' '), ROOF + course * 3, course);
     addAreaMap(
       add,
-      plan((x, z) => (ridge(x, z) || central(x, z) ? 's' : ' ')),
+      plan((x, z) => (within(x, z, ...TOWER) ? 's' : ' ')),
       FLAT,
       { s: ['plate', SLATE] },
-      (x, z) =>
-        z === BACK + ROOF_STEPS ||
-        (z === FRONT - ROOF_STEPS && !central(x, z)) ||
-        centralWall(x, z) ||
-        x === WEST ||
-        x === EAST,
+      (x, z) => rim(x, z, ...TOWER),
     );
-    const skylight = (x: number) => (x >= 18 && x <= 49) || (x >= 78 && x <= 109);
-    const crown = (x: number, z: number) =>
-      (z === PAVILION_FRONT && x >= 56 && x <= 71) ||
-      within(x, z, PAVILION_WEST, PAVILION_FRONT - 1, PAVILION_WEST + 1, PAVILION_FRONT) ||
-      within(x, z, PAVILION_EAST - 1, PAVILION_FRONT - 1, PAVILION_EAST, PAVILION_FRONT);
-    const chimney = (x: number, z: number) =>
-      CHIMNEYS.some(([cx, cz]) => within(x, z, cx, cz, cx + 1, cz + 3));
-    addAreaMap(
-      add,
-      plan((x, z) => {
-        if (central(x, z))
-          return within(x, z, ...TOWER) || chimney(x, z) || crown(x, z) ? ' ' : 's';
-        if (!ridge(x, z)) return ' ';
-        if (!skylight(x)) return 's';
-        if (z === BACK + ROOF_STEPS + 1 || z === FRONT - ROOF_STEPS - 1) return ' ';
-        return z === BACK + ROOF_STEPS || z === FRONT - ROOF_STEPS ? 's' : 'g';
-      }),
-      CAP,
-      { s: ['tile', SLATE], g: ['tile', GLASS] },
-    );
-    for (const x of [
-      ...range(0, 7).map((index) => 18 + index * 4),
-      ...range(0, 7).map((index) => 78 + index * 4),
-    ])
-      for (const z of [BACK + ROOF_STEPS + 1, FRONT - ROOF_STEPS - 1])
-        add('3633', BLACK, x, CAP, z, 90);
-
-    // Pavilion crown: a crow-stepped gable with a pair of windows, between two round turrets
-    // with copper caps.
-    for (let course = 0; course < 8; course++) {
-      const step = Math.floor(course / 2);
-      const [from, to] = [56 + step * 2, 71 - step * 2];
-      const y = CAP + course * 3;
-      const open = (x: number) => course < 2 && x >= 62 && x <= 65;
-      addBondedMap(
-        add,
-        plan((x, z) =>
-          z === PAVILION_FRONT && x >= from && x <= to && !open(x)
-            ? step === 3 || (course === 2 && (x === from || x === to))
-              ? 'b'
-              : stone(x, z, course, 3)
-            : ' ',
-        ),
-        y,
-        WALL_LEGEND,
-        course,
-      );
-      if (course % 2 === 1 && step < 3)
-        for (const x of [from, to - 1]) add('3069b', TRIM, x, y + 3, PAVILION_FRONT, 90);
-    }
-    for (const x of [62, 64]) add('60592', WHITE, x, CAP, PAVILION_FRONT, 90);
-    for (const x of [62, 65]) add('3070b', TRIM, x, CAP + 24, PAVILION_FRONT);
-    addFinial(add, 63, CAP + 24, PAVILION_FRONT, GOLD);
-    for (const x of [PAVILION_WEST, PAVILION_EAST - 1]) {
-      for (let course = 0; course < 5; course++)
-        add('3941', course % 2 ? TRIM : SANDSTONE, x, CAP + course * 3, PAVILION_FRONT - 1);
-      add('4032a', TRIM, x, CAP + 15, PAVILION_FRONT - 1);
-      add('3942c', COPPER, x, CAP + 16, PAVILION_FRONT - 1);
-      add('4589', GOLD, x + 0.5, CAP + 22, PAVILION_FRONT - 0.5);
-    }
-
-    // Tall chimneys flank the tower, with copper pots.
-    for (const [x, z] of CHIMNEYS) {
-      for (let course = 0; course < 5; course++)
-        add('3001', course === 3 ? TRIM : SANDSTONE, x, CAP + course * 3, z);
-      add('3020', SLATE, x, CAP + 15, z);
-      for (const [dx, dz] of [
-        [0, 1],
-        [1, 2],
-      ]) {
-        add('3062b', COPPER, x + dx, CAP + 16, z + dz);
-        add('4589', GOLD, x + dx, CAP + 19, z + dz);
-      }
-    }
-
-    // Central tower: a stone base with arched windows, a balcony with copper railings and
-    // gilded posts, an arcaded lantern, a slate dome and a copper spire with a gilded point.
-    const towerJambs = new Set(
-      TOWER_WINDOWS.flatMap((window) => [
-        ...windowCells(window, -1, 1),
-        ...windowCells(window, window.width, 1),
-      ]),
-    );
-    const towerCorner = (x: number, z: number) =>
-      (x === TOWER[0] || x === TOWER[2]) && (z === TOWER[1] || z === TOWER[3]);
     for (let course = 0; course < 6; course++) {
       const y = CAP + course * 3;
-      const open = (x: number, z: number) =>
-        TOWER_WINDOWS.some(
-          (window) =>
-            (course >= window.course &&
-              course < window.course + 3 &&
-              windowCells(window, 0, 2).includes(key(x, z))) ||
-            (course === window.archCourse && windowCells(window, -1, 4).includes(key(x, z))),
-        );
-      addBondedMap(
-        add,
-        plan((x, z) => {
-          if (!rim(x, z, ...TOWER) || open(x, z)) return ' ';
-          if (course === 5) return 'b';
-          if (course % 2 === 1 && (towerCorner(x, z) || towerJambs.has(key(x, z)))) return 'b';
-          return stone(x, z, course, 3);
-        }),
+      const material = course === 5 ? 'c' : 'd';
+      const standing = (x: number, z: number) =>
+        TOWER_RIM.has(key(x, z)) && !opens(TOWER_WINDOWS, x, z, course);
+      addWallCourse(
+        (x, z) => (standing(x, z) && !TOWER_ROUND.has(key(x, z)) ? material : ' '),
         y,
-        WALL_LEGEND,
         course,
       );
-      for (const window of TOWER_WINDOWS) {
-        if (window.course === course)
-          add(window.frame, WHITE, window.x, y, window.z, window.rotation);
-        if (window.archCourse === course)
-          add(
-            window.arch,
-            TRIM,
-            window.rotation === 90 ? window.x - 1 : window.x,
-            y,
-            window.rotation === 90 ? window.z : window.z - 1,
-            window.rotation,
-          );
+      for (const cell of TOWER_ROUND) {
+        const [x, z] = cell.split(':').map(Number);
+        if (standing(x, z)) add('3062b', WALL_LEGEND[material][1], x, y, z);
       }
+      addWindows(add, TOWER_WINDOWS, course, y);
     }
     const balcony = CAP + 18;
-    add('91405', SLATE, 56, balcony, 40);
+    addAreaMap(
+      add,
+      plan((x, z) => (within(x, z, ...TOWER) ? 'g' : ' ')),
+      balcony,
+      { g: ['plate', COPPER] },
+      (x, z) => TOWER_RIM.has(key(x, z)),
+    );
     const posts = new Set(
-      [0, 5, 10, 15].flatMap((at) => [
-        key(56 + at, 40),
-        key(56 + at, 55),
-        key(56, 40 + at),
-        key(71, 40 + at),
+      [0, 5, 6, 11].flatMap((at) => [
+        key(TOWER[0] + at, TOWER[1]),
+        key(TOWER[0] + at, TOWER[3]),
+        key(TOWER[0], TOWER[1] + at),
+        key(TOWER[2], TOWER[1] + at),
       ]),
     );
     for (const post of posts) {
       const [x, z] = post.split(':').map(Number);
-      add('3062b', SLATE, x, balcony + 1, z);
-      const corner = (x === 56 || x === 71) && (z === 40 || z === 55);
-      add(corner ? '4589' : '98138', GOLD, x, balcony + 4, z);
+      add('3062b', COPPER, x, balcony + 1, z);
+      const corner = (x === TOWER[0] || x === TOWER[2]) && (z === TOWER[1] || z === TOWER[3]);
+      add(corner ? '4589' : '98138', corner ? ROOFING : GOLD, x, balcony + 4, z);
     }
-    for (const at of [1, 6, 11]) {
-      for (const z of [40, 55]) add('3633', COPPER, 56 + at, balcony + 1, z, 90);
-      for (const x of [56, 71]) add('3633', COPPER, x, balcony + 1, 40 + at);
+    for (const at of [1, 7]) {
+      for (const z of [TOWER[1], TOWER[3]]) add('3633', COPPER, TOWER[0] + at, balcony + 1, z, 90);
+      for (const x of [TOWER[0], TOWER[2]]) add('3633', COPPER, x, balcony + 1, TOWER[1] + at);
     }
     const lantern = balcony + 1;
     for (const [x, z] of [
@@ -1200,14 +1441,14 @@ export const nordiskaMuseet2: ExampleDefinition = {
       [60, 50],
       [66, 50],
     ])
-      for (const y of [0, 3, 6]) add('3941', SLATE, x, lantern + y, z);
+      for (const y of [0, 3, 6]) add('3941', COPPER, x, lantern + y, z);
     for (const z of [44, 51]) {
       add('60594', WHITE, 62, lantern, z, 90);
-      add('92950', TRIM, 61, lantern + 9, z, 90);
+      add('92950', COPPER, 61, lantern + 9, z, 90);
     }
     for (const x of [60, 67]) {
       add('60594', WHITE, x, lantern, 46, 0);
-      add('92950', TRIM, x, lantern + 9, 45, 0);
+      add('92950', COPPER, x, lantern + 9, 45, 0);
     }
     for (const [x, z] of [
       [60, 44],
@@ -1215,9 +1456,9 @@ export const nordiskaMuseet2: ExampleDefinition = {
       [60, 51],
       [67, 51],
     ])
-      add('3062b', TRIM, x, lantern + 9, z);
+      add('3062b', COPPER, x, lantern + 9, z);
     const dome = lantern + 12;
-    add('41539', SLATE, 60, dome, 44);
+    add('41539', ROOFING, 60, dome, 44);
     for (const [x, z] of [
       [60, 44],
       [67, 44],
@@ -1227,114 +1468,36 @@ export const nordiskaMuseet2: ExampleDefinition = {
       add('3062b', TRIM, x, dome + 1, z);
       add('4589', GOLD, x, dome + 4, z);
     }
-    add('3958', SLATE, 61, dome + 1, 45);
-    add('3943b', SLATE, 62, dome + 2, 46);
-    add('3941', COPPER, 63, dome + 8, 47);
-    add('3942c', COPPER, 63, dome + 11, 47);
-    add('3062b', GOLD, 63.5, dome + 17, 47.5);
-    add('3062b', COPPER, 63.5, dome + 20, 47.5);
-    add('4589', GOLD, 63.5, dome + 23, 47.5);
+    addSkirtRoof(add, 61, dome + 1, 45);
+    add('60474', COPPER, 62, dome + 4, 46);
+    add('3943b', COPPER, 62, dome + 5, 46);
+    for (const [index, y] of [11, 15, 19].entries()) {
+      add('3941', COPPER, 63, dome + y, 47);
+      if (index < 2) add('4032a', GOLD, 63, dome + y + 3, 47);
+    }
+    add('3942c', COPPER, 63, dome + 22, 47);
+    add('3062b', GOLD, 63.5, dome + 28, 47.5);
+    add('3062b', COPPER, 63.5, dome + 31, 47.5);
+    add('4589', GOLD, 63.5, dome + 34, 47.5);
 
-    // Turret steeples.
-    for (const [x, z] of TURRETS) addSteeple(add, x, BASE + TURRET_COURSES * 3, z);
-
-    // Terrace balustrade: white spindled spans with tan coping between granite posts.
-    for (const [axis, line, from, to] of BALUSTRADE_LINES)
-      for (let at = from; at <= to; at++) {
-        const [x, z] = axis === 'x' ? [at, line] : [line, at];
-        if ((at - from) % 5 === 0) {
-          add('3005', GRANITE, x, BASE, z);
-          add('3005', GRANITE, x, BASE + 3, z);
-          add('3024', TRIM, x, BASE + 6, z);
-          add('6141', WHITE, x, BASE + 7, z);
-        } else if ((at - from) % 5 === 1) {
-          add('30055', WHITE, x, BASE, z, axis === 'x' ? 90 : 0);
-          add('2431', TRIM, x, BASE + 6, z, axis === 'x' ? 90 : 0);
-        }
-      }
-
-    // Grounds: a garden path behind, a path from the steps to the drive across the front, and
-    // a round plaza with the equestrian statue.
-    const plaza = (x: number, z: number) =>
-      z >= 104 && Math.hypot(x + 0.5 - 64, z + 0.5 - 112) <= 9.6;
-    const pedestal = (x: number, z: number) => within(x, z, 60, 108, 67, 115);
+    // The towers end in an octagonal tan slab under their steeples.
+    const towerTop = BASE + TURRET_COURSES * 3;
     addAreaMap(
       add,
-      plan((x, z) => {
-        if (z >= 98 && z <= 103) return 'd';
-        if (
-          within(x, z, 58, 91, 69, 97) ||
-          (plaza(x, z) && !pedestal(x, z)) ||
-          (z >= 18 && z <= 21)
-        )
-          return 'g';
-        return ' ';
-      }),
-      GROUND,
-      { d: ['tile', SLATE], g: ['tile', GRANITE] },
+      plan((x, z) => (isTurret(x, z) ? 'c' : ' ')),
+      towerTop,
+      { c: ['plate', TRIM] },
+      (x, z) => TURRET_WALLS.has(key(x, z)),
     );
-    // Equestrian statue: a granite pedestal under a tan cornice, and a bronze rider on a horse
-    // facing away from the museum, towards the street.
-    for (const [y, color] of [
-      [GROUND, GRANITE],
-      [GROUND + 3, GRANITE],
-      [GROUND + 6, GRANITE],
-    ] as const)
-      add('4201', color, 60, y, 108);
-    add('41539', TRIM, 60, GROUND + 9, 108);
-    const hooves = GROUND + 10;
-    for (const x of [62, 65])
-      for (const z of [109, 114]) for (const y of [0, 3]) add('3062b', COPPER, x, hooves + y, z);
-    add('3035', COPPER, 62, hooves + 6, 108);
-    for (const y of [7, 10]) add('3007', COPPER, 63, hooves + y, 108);
-    for (const y of [13, 16]) add('3003', COPPER, 63, hooves + y, 114);
-    add('3039', COPPER, 63, hooves + 19, 114, 180);
-    add('85984', COPPER, 63, hooves + 13, 108);
-    add('3022', COPPER, 63, hooves + 13, 110);
-    add('3941', COPPER, 63, hooves + 14, 110);
-    add('87580', COPPER, 63, hooves + 17, 110);
-    add('3062b', COPPER, 63.5, hooves + 18, 110.5);
-    add('6141', COPPER, 63.5, hooves + 21, 110.5);
-    add('4589', COPPER, 63.5, hooves + 22, 110.5);
+    for (const [x, z] of TURRETS) addSteeple(add, x + 1, towerTop + 1, z + 1);
 
-    // Benches either side of the plaza, and a ring of flowers round its edge.
-    for (const x of [50, 77]) {
-      for (const z of [109, 114]) add('3005', BARK, x, GROUND, z);
-      add('3666', BARK, x, GROUND + 3, 109);
-      add('6636', BROWN, x, GROUND + 4, 109);
-    }
-    for (let z = 104; z < SIZE; z++)
-      for (let x = 48; x < 80; x++) {
-        const distance = Math.hypot(x + 0.5 - 64, z + 0.5 - 112);
-        if (distance <= 9.6 || distance > 11.6) continue;
-        add('98138', [RED, WHITE, BLOSSOM, PINK][(x + z) % 4], x, GROUND, z);
-      }
-
-    // Trees all round: oaks and firs behind, laburnums in bloom out front, and smaller trees
-    // at the front corners, mirrored about the middle.
-    const mirror = (x: number, width: number) => [x, SIZE - x - width];
-    for (const x of [5, 28, 46])
-      for (const at of mirror(x, 2)) addBigTree(add, at, 9, 12, [LAWN, LEAVES, LEAVES]);
-    addBigTree(add, 63, 9, 15, [LAWN, LEAVES, LEAVES]);
-    for (const x of [12, 18, 35, 53])
-      for (const at of mirror(x, 5)) add('3471', LAWN, at, GROUND, 4);
-    for (const at of mirror(34, 2)) addBigTree(add, at, 110, 12, [LEAVES, BLOSSOM, BLOSSOM]);
-    for (const [x, z, partId] of [
-      [2, 106, '3470'],
-      [14, 118, '3470'],
-      [2, 118, '3471'],
-    ] as const)
-      for (const at of mirror(x, 5)) add(partId, LEAVES, at, GROUND, z);
-
-    // Bushes along the sides, and flower beds with bushes at the foot of the terrace.
-    for (const z of [26, 34, 42, 50, 58, 66, 74]) for (const x of mirror(0, 4)) addBush(add, x, z);
-    const bedBushes = [10, 22, 34, 46].flatMap((x) => mirror(x, 4));
-    for (const x of bedBushes) addBush(add, x, 85);
-    for (let z = 85; z <= 88; z++)
-      for (const x of [...range(10, 49), ...range(78, 117)])
-        if (!bedBushes.some((bush) => x >= bush && x < bush + 4))
-          add('98138', [RED, WHITE, BLOSSOM, PINK][(x + z * 3) % 4], x, GROUND, z);
-    for (const x of [10, 30, 97, 117]) addLampPost(add, x, 95);
-    for (const x of [STEPS[0] - 2, STEPS[1] + 2]) addLampPost(add, x, 88);
+    // Grounds: a black railing round the quay with lamps between its runs, round trees on the
+    // front lawn and behind the museum, and a sailing boat moored off the front.
+    for (const [x, z, rotation] of RAILINGS) add('3633', BLACK, x, LAWN_TOP, z, rotation);
+    for (const x of QUAY_LAMPS) addLampPost(add, x, ISLAND[3]);
+    for (const [x, z, color, trunk] of TREES) addTree(add, x, z, color, trunk);
+    addSailboat(add, 86, 110);
+    for (const piece of pieces.toSorted((first, second) => first[3] - second[3]))
+      drawnAdd(...piece);
   },
 };
