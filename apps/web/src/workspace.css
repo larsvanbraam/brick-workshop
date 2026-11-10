@@ -395,6 +395,13 @@ kbd {
   background: linear-gradient(145deg, #2a9a67, var(--green));
   border-radius: 8px;
 }
+.brand-logo {
+  display: block;
+  width: 30px;
+  height: 30px;
+  margin-right: 4px;
+  flex-shrink: 0;
+}
 .build-name {
   width: clamp(120px, 22vw, 280px);
   height: 32px;
@@ -1333,6 +1340,7 @@ kbd {
     padding: 0 8px;
   }
   .brand-mark,
+  .brand-logo,
   .button-group {
     display: none;
   }

@@ -92,6 +92,7 @@ import {
   writeAutosave,
 } from './saved-builds';
 import type { SavedBuildSummary } from './saved-builds';
+import brickLogo from './assets/brick-logo.svg';
 
 type History = { past: Assembly[]; present: Assembly; future: Assembly[] };
 
@@ -987,9 +988,7 @@ export default function App() {
     <div className="app-shell" inert={loading} aria-busy={loading}>
       <header className="app-header">
         <div className="brand">
-          <span className="brand-mark" aria-hidden="true">
-            <Boxes size={18} />
-          </span>
+          <img className="brand-logo" src={brickLogo} alt="" width={30} height={30} />
           <h1 className="visually-hidden">Brick Workshop</h1>
           <input
             key={assembly.name}
