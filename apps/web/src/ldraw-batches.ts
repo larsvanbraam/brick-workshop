@@ -16,7 +16,7 @@ import {
 import type { Color, Intersection, Material, Raycaster } from 'three';
 import { MeshBVH, acceleratedRaycast } from 'three-mesh-bvh';
 import { LDrawConditionalLineMaterial } from 'three/addons/materials/LDrawConditionalLineMaterial.js';
-import { getLDrawTransform } from '@lego-builder/brick-engine';
+import { COLORS, getConnectionSites, getLDrawTransform, getPart } from '@lego-builder/brick-engine';
 import type { Brick } from '@lego-builder/brick-engine';
 import { coloredLDrawModel } from './ldraw';
 
@@ -76,8 +76,12 @@ export type BatchLayerStats = {
 };
 export type BatchStats = {
   bricks: number;
-  /** Baked part-and-color combinations. */
+  /** Baked part, color and covered-stud combinations. */
   looks: number;
+  /** Studs left out because a brick sits on them. */
+  coveredStuds: number;
+  /** Bricks drawn without their hollow underside, as nothing can see into it. */
+  closedUndersides: number;
   edgeSegments: number;
   conditionalSegments: number;
   layers: BatchLayerStats[];
@@ -124,23 +128,167 @@ function drawGroups(object: Mesh | LineSegments, count: number) {
   }));
 }
 
-function bakeLook(model: Group, color: number, colorize: Colorize, key: string): Look {
+/** Attribute name to the chunks that make it up. */
+type Chunks = Map<string, Float32Array[]>;
+/**
+ * A part's primitives sorted into its body and the regions that can be left out: each stud,
+ * keyed `x:z` in part space, and the hollow underside, keyed `UNDERSIDE`.
+ */
+type Split = { body: Chunks; studs: Map<string, Chunks> };
+/** The region key of a part's hollow underside: its inner walls, ceiling and tubes. */
+const UNDERSIDE = 'under';
+/** How thick a part's top and walls are, in LDU, with a little slack. */
+const SHELL = 3.9;
+/** What a part model looks like where it matters for hiding: its studs and its footprint. */
+type PartShape = {
+  studs: readonly string[];
+  studSet: ReadonlySet<string>;
+  box: { minX: number; maxX: number; minZ: number; maxZ: number };
+  /** Whether any faces sit inside the shell, so leaving the underside out saves something. */
+  underside: boolean;
+};
+const emptySplit = (): Split => ({ body: new Map(), studs: new Map() });
+
+/**
+ * A stud stands on the part's top (LDraw y = 0, up is -y), 4 LDU tall (a logo adds a little)
+ * and 6 LDU in radius, centred on the 10 LDU grid. Anything in that space is also inside a
+ * brick pressed onto the stud, so a primitive misread as stud is hidden only where it can't
+ * be seen anyway.
+ */
+const STUD = { top: -5, base: 0.01, radius: 6.5, grid: 10 } as const;
+/** Parts with more studs keep all of them: each coverage pattern bakes its own copy. */
+const MAX_COVERABLE_STUDS = 32;
+
+/**
+ * The grid points a triangle or segment of `count` vertices from `first` could be a stud
+ * around: it sits in the stud's height band and within its radius of the point.
+ */
+function studCandidates(points: Float32Array, first: number, count: number): string[] {
+  let x = 0;
+  let z = 0;
+  for (let vertex = first; vertex < first + count; vertex++) {
+    const y = points[vertex * 3 + 1];
+    if (y < STUD.top || y > STUD.base) return [];
+    x += points[vertex * 3];
+    z += points[vertex * 3 + 2];
+  }
+  x /= count;
+  z /= count;
+  const candidates: string[] = [];
+  for (const gridX of new Set([Math.floor(x / STUD.grid), Math.ceil(x / STUD.grid)]))
+    for (const gridZ of new Set([Math.floor(z / STUD.grid), Math.ceil(z / STUD.grid)])) {
+      const centerX = gridX * STUD.grid;
+      const centerZ = gridZ * STUD.grid;
+      let inside = true;
+      for (let vertex = first; inside && vertex < first + count; vertex++)
+        inside =
+          (points[vertex * 3] - centerX) ** 2 + (points[vertex * 3 + 2] - centerZ) ** 2 <=
+          STUD.radius ** 2;
+      if (inside) candidates.push(`${centerX + 0}:${centerZ + 0}`);
+    }
+  return candidates;
+}
+
+/**
+ * The region a primitive belongs to, if any: its stud (real studs are 20 LDU apart, so one),
+ * or the underside when it sits wholly inside the shell, below the top and within the walls.
+ */
+function regionOf(shape: PartShape, points: Float32Array, first: number, count: number) {
+  if (shape.studSet.size) {
+    const stud = studCandidates(points, first, count).find((candidate) =>
+      shape.studSet.has(candidate),
+    );
+    if (stud !== undefined) return stud;
+  }
+  const { box } = shape;
+  for (let vertex = first; vertex < first + count; vertex++) {
+    const x = points[vertex * 3];
+    const z = points[vertex * 3 + 2];
+    if (
+      points[vertex * 3 + 1] < SHELL ||
+      x < box.minX + SHELL ||
+      x > box.maxX - SHELL ||
+      z < box.minZ + SHELL ||
+      z > box.maxZ - SHELL
+    )
+      return undefined;
+  }
+  return UNDERSIDE;
+}
+
+/**
+ * Sorts primitives of `size` vertices into the body or their stud, keeping runs together:
+ * a stud's primitives come from one sub-file, so they arrive in a row.
+ */
+function splitPrimitives(
+  split: Split,
+  shape: PartShape,
+  attributes: Record<string, Float32Array>,
+  size: number,
+) {
+  const points = attributes.position;
+  const primitives = points.length / 3 / size;
+  const push = (stud: string | undefined, from: number, to: number) => {
+    if (to <= from) return;
+    let target = split.body;
+    if (stud !== undefined) {
+      target = split.studs.get(stud) ?? new Map();
+      split.studs.set(stud, target);
+    }
+    const vertices = points.length / 3;
+    for (const [name, data] of Object.entries(attributes)) {
+      const width = data.length / vertices;
+      const chunks = target.get(name) ?? [];
+      chunks.push(data.subarray(from * size * width, to * size * width));
+      target.set(name, chunks);
+    }
+  };
+  let runStart = 0;
+  let runStud: string | undefined;
+  for (let primitive = 0; primitive < primitives; primitive++) {
+    const stud = regionOf(shape, points, primitive * size, size);
+    if (stud === runStud) continue;
+    push(runStud, runStart, primitive);
+    runStart = primitive;
+    runStud = stud;
+  }
+  push(runStud, runStart, primitives);
+}
+
+/** The body plus every stud not in `covered`, attribute by attribute. */
+function gather(split: Split, covered: ReadonlySet<string>) {
+  const parts = [split.body];
+  for (const [stud, chunks] of split.studs) if (!covered.has(stud)) parts.push(chunks);
+  const out = new Map<string, Float32Array>();
+  for (const name of new Set(parts.flatMap((chunks) => [...chunks.keys()])))
+    out.set(name, concat(parts.flatMap((chunks) => chunks.get(name) ?? [])));
+  return out;
+}
+
+/**
+ * A part in one color, read once: faces per finish and each kind of edge, split into body
+ * and studs so any set of covered studs can be left out cheaply.
+ */
+type Baked = {
+  key: string;
+  faces: { finish: string; material: MeshStandardMaterial; split: Split }[];
+  lines: Record<LineKind, Split>;
+};
+
+function bakePart(
+  model: Group,
+  color: number,
+  colorize: Colorize,
+  key: string,
+  shape: PartShape,
+): Baked {
   const colored = colorize(model, color);
   colored.updateMatrixWorld(true);
-  const faces = new Map<
-    string,
-    {
-      material: MeshStandardMaterial;
-      position: Float32Array[];
-      normal: Float32Array[];
-      color: Float32Array[];
-    }
-  >();
-  const lines = Object.fromEntries(
-    LINE_KINDS.map((kind) => [kind, {} as Record<string, Float32Array[]>]),
-  ) as Record<LineKind, Record<string, Float32Array[]>>;
-  const push = (kind: LineKind, name: string, data: Float32Array) =>
-    (lines[kind][name] ??= []).push(data);
+  const faces = new Map<string, { material: MeshStandardMaterial; split: Split }>();
+  const lines = Object.fromEntries(LINE_KINDS.map((kind) => [kind, emptySplit()])) as Record<
+    LineKind,
+    Split
+  >;
   const used = new Set<Material>();
   colored.traverse((object) => {
     if (!(object instanceof Mesh || object instanceof LineSegments)) return;
@@ -182,12 +330,19 @@ function bakeLook(model: Group, color: number, colorize: Colorize, key: string):
         const finish = `${material.roughness}:${material.metalness}:${material.emissive.getHexString()}${glass ? ':glass' : ''}`;
         let face = faces.get(finish);
         if (!face) {
-          face = { material, position: [], normal: [], color: [] };
+          face = { material, split: emptySplit() };
           faces.set(finish, face);
         }
-        face.position.push(slice('position', group.start, group.count, 'point'));
-        face.normal.push(slice('normal', group.start, group.count, 'normal'));
-        face.color.push(fill(tint, group.count, glass ? material.opacity : undefined));
+        splitPrimitives(
+          face.split,
+          shape,
+          {
+            position: slice('position', group.start, group.count, 'point'),
+            normal: slice('normal', group.start, group.count, 'normal'),
+            color: fill(tint, group.count, glass ? material.opacity : undefined),
+          },
+          3,
+        );
       } else {
         const conditional = Boolean((object as { isConditionalLine?: boolean }).isConditionalLine);
         const kind: LineKind = glass
@@ -197,25 +352,42 @@ function bakeLook(model: Group, color: number, colorize: Colorize, key: string):
           : conditional
             ? 'conditional'
             : 'edge';
-        push(kind, 'position', slice('position', group.start, group.count, 'point'));
-        push(kind, 'color', fill(tint, group.count, group.material.opacity));
+        const attributes: Record<string, Float32Array> = {
+          position: slice('position', group.start, group.count, 'point'),
+          color: fill(tint, group.count, group.material.opacity),
+        };
         if (conditional) {
-          push(kind, 'control0', slice('control0', group.start, group.count, 'point'));
-          push(kind, 'control1', slice('control1', group.start, group.count, 'point'));
-          push(kind, 'direction', slice('direction', group.start, group.count, 'vector'));
+          attributes.control0 = slice('control0', group.start, group.count, 'point');
+          attributes.control1 = slice('control1', group.start, group.count, 'point');
+          attributes.direction = slice('direction', group.start, group.count, 'vector');
         }
+        splitPrimitives(lines[kind], shape, attributes, 2);
       }
     }
     if (source !== object.geometry) source.dispose();
   });
-  const surfaces = [...faces.entries()].map(([finish, face]): Surface => {
+  // The colored copy was only read, never drawn; its materials can go.
+  if (colored !== model) for (const material of used) material.dispose();
+  return {
+    key,
+    faces: [...faces.entries()].map(([finish, face]) => ({ finish, ...face })),
+    lines,
+  };
+}
+
+/** The part with the `covered` studs left out, ready to place. */
+function bakeLook(baked: Baked, covered: ReadonlySet<string>, key: string): Look {
+  const surfaces: Surface[] = [];
+  for (const { finish, material, split } of baked.faces) {
+    const attributes = gather(split, covered);
+    const position = attributes.get('position');
+    if (!position?.length) continue;
     const geometry = new BufferGeometry();
-    const position = concat(face.position);
     geometry.setAttribute('position', new BufferAttribute(position, 3));
-    geometry.setAttribute('normal', new BufferAttribute(concat(face.normal), 3));
+    geometry.setAttribute('normal', new BufferAttribute(attributes.get('normal')!, 3));
     geometry.setAttribute(
       'color',
-      new BufferAttribute(concat(face.color), finish.endsWith(':glass') ? 4 : 3),
+      new BufferAttribute(attributes.get('color')!, finish.endsWith(':glass') ? 4 : 3),
     );
     const count = position.length / 3;
     const index = new Uint32Array(count);
@@ -224,16 +396,14 @@ function bakeLook(model: Group, color: number, colorize: Colorize, key: string):
     geometry.computeBoundingBox();
     geometry.computeBoundingSphere();
     geometry.boundsTree = new MeshBVH(geometry, BVH_OPTIONS);
-    return { key: `${key}:${finish}`, finish, material: face.material, geometry };
-  });
-  // The colored copy was only read, never drawn; its materials can go.
-  if (colored !== model) for (const material of used) material.dispose();
+    surfaces.push({ key: `${key}:${finish}`, finish, material, geometry });
+  }
   const lineGeometry = (kind: LineKind) => {
-    const attributes = Object.entries(lines[kind]);
-    if (!attributes.length) return null;
+    const attributes = gather(baked.lines[kind], covered);
+    if (!attributes.get('position')?.length) return null;
     const geometry = new BufferGeometry();
-    for (const [name, parts] of attributes)
-      geometry.setAttribute(name, new BufferAttribute(concat(parts), itemSize(name)));
+    for (const [name, data] of attributes)
+      geometry.setAttribute(name, new BufferAttribute(data, itemSize(name)));
     geometry.computeBoundingSphere();
     return geometry;
   };
@@ -246,6 +416,86 @@ function bakeLook(model: Group, color: number, colorize: Colorize, key: string):
     >,
   };
 }
+
+/**
+ * The studs a part model has, as `x:z` in part space (none if it has too many to track), and
+ * its footprint. The side of a stud is also within reach of the next grid point over, so a
+ * point only counts as a stud when its faces wrap all the way around it.
+ */
+function readShape(model: Group): PartShape {
+  model.updateMatrixWorld(true);
+  const box = { minX: Infinity, maxX: -Infinity, minZ: Infinity, maxZ: -Infinity };
+  const corners: number[] = [];
+  const reach = new Map<string, { minX: number; maxX: number; minZ: number; maxZ: number }>();
+  const point = new Vector3();
+  const points = new Float32Array(9);
+  model.traverse((object) => {
+    if (!(object instanceof Mesh)) return;
+    const geometry = object.geometry as BufferGeometry;
+    const position = geometry.getAttribute('position');
+    const index = geometry.index;
+    const triangles = (index ? index.count : position.count) / 3;
+    for (let triangle = 0; triangle < triangles; triangle++) {
+      for (let corner = 0; corner < 3; corner++) {
+        const vertex = triangle * 3 + corner;
+        point
+          .fromBufferAttribute(position, index ? index.getX(vertex) : vertex)
+          .applyMatrix4(object.matrixWorld)
+          .toArray(points, corner * 3);
+        box.minX = Math.min(box.minX, point.x);
+        box.maxX = Math.max(box.maxX, point.x);
+        box.minZ = Math.min(box.minZ, point.z);
+        box.maxZ = Math.max(box.maxZ, point.z);
+      }
+      corners.push(...points);
+      for (const candidate of studCandidates(points, 0, 3)) {
+        const [centerX, centerZ] = candidate.split(':').map(Number);
+        const extent = reach.get(candidate) ?? {
+          minX: Infinity,
+          maxX: -Infinity,
+          minZ: Infinity,
+          maxZ: -Infinity,
+        };
+        for (let corner = 0; corner < 3; corner++) {
+          extent.minX = Math.min(extent.minX, points[corner * 3] - centerX);
+          extent.maxX = Math.max(extent.maxX, points[corner * 3] - centerX);
+          extent.minZ = Math.min(extent.minZ, points[corner * 3 + 2] - centerZ);
+          extent.maxZ = Math.max(extent.maxZ, points[corner * 3 + 2] - centerZ);
+        }
+        reach.set(candidate, extent);
+      }
+    }
+  });
+  const around = 4;
+  const studs = [...reach]
+    .filter(
+      ([, extent]) =>
+        extent.minX <= -around &&
+        extent.maxX >= around &&
+        extent.minZ <= -around &&
+        extent.maxZ >= around,
+    )
+    .map(([stud]) => stud);
+  const kept = studs.length <= MAX_COVERABLE_STUDS ? studs.sort() : [];
+  const shape: PartShape = { studs: kept, studSet: new Set(kept), box, underside: false };
+  // The footprint is only known once every face is read, so the underside takes a second look.
+  const all = new Float32Array(corners);
+  for (let triangle = 0; !shape.underside && triangle < all.length / 9; triangle++)
+    shape.underside = regionOf(shape, all, triangle * 3, 3) === UNDERSIDE;
+  return shape;
+}
+
+/**
+ * Parts whose underside is only open at the bottom: plain bricks, plates and tiles. Arches,
+ * windows and doors open to the side, and the faces of slopes and round parts can reach inside
+ * the shell, so those keep their undersides.
+ */
+const closedSides = (partId: string) => getPart(partId).shape === undefined;
+
+/** Opaque colors hide what they cover; studs under see-through bricks stay. */
+const OPAQUE_COLORS = new Set(COLORS.filter((color) => color.alpha >= 255).map(({ id }) => id));
+const half = (value: number) => Math.round(value * 2) / 2 + 0;
+const siteKey = (x: number, y: number, z: number) => `${half(x)}:${half(y)}:${half(z)}`;
 
 function brickMatrix(brick: Brick, buildArea: number, explode: boolean) {
   const transform = getLDrawTransform(brick);
@@ -262,8 +512,14 @@ function brickMatrix(brick: Brick, buildArea: number, explode: boolean) {
 const PLACEMENT_KEYS = ['partId', 'color', 'x', 'y', 'z', 'rotation', 'facing'] as const;
 
 /** Everything a brick's placement depends on; the same key means nothing to redo. */
-function placementKey(brick: Brick, model: Group, buildArea: number, explode: boolean) {
-  return `${PLACEMENT_KEYS.map((name) => String(brick[name] ?? '')).join(':')}:${model.uuid}:${buildArea}:${explode}`;
+function placementKey(
+  brick: Brick,
+  model: Group,
+  buildArea: number,
+  explode: boolean,
+  covered = '',
+) {
+  return `${PLACEMENT_KEYS.map((name) => String(brick[name] ?? '')).join(':')}:${model.uuid}:${buildArea}:${explode}|${covered}`;
 }
 const probe = new Mesh();
 const probeSphere = new Sphere();
@@ -374,21 +630,39 @@ const drawingBuffer = new Vector2();
 export class LDrawBatch {
   readonly object = new Group();
   private readonly layers = new Map<string, Layer>();
+  private readonly baked = new Map<string, Baked>();
   private readonly looks = new Map<string, Look>();
+  private readonly shapes = new WeakMap<Group, PartShape>();
+  private coverageCache?: {
+    entries: readonly BatchEntry[];
+    explode: boolean;
+    covered: Map<string, string>;
+  };
   private readonly placements = new Map<string, Placement>();
   private readonly lineLayers: Record<LineKind, Layer>;
 
   private readonly colorize: Colorize;
+  private readonly hideCovered: boolean;
+  private readonly solidGround: boolean;
 
   /**
    * `fadeEdges` fades edges out as the camera pulls back, for the interactive view; renders at
-   * a fixed scale, like the instructions, keep them as they are.
+   * a fixed scale, like the instructions, keep them as they are. `hideCovered` leaves out what
+   * no camera can see: studs an opaque brick sits on, and the hollow undersides of opaque bricks
+   * whose bottom is closed off. `solidGround` says the build stands on something opaque, so the
+   * undersides of bricks on the ground are closed off too.
    */
   constructor(
     colorize: Colorize = coloredLDrawModel,
-    { fadeEdges = false }: { fadeEdges?: boolean } = {},
+    {
+      fadeEdges = false,
+      hideCovered = true,
+      solidGround = false,
+    }: { fadeEdges?: boolean; hideCovered?: boolean; solidGround?: boolean } = {},
   ) {
     this.colorize = colorize;
+    this.hideCovered = hideCovered;
+    this.solidGround = solidGround;
     const viewport = { value: 1 };
     this.object.name = 'Native brick batch';
     this.object.scale.set(0.05, -0.05, 0.05);
@@ -487,11 +761,75 @@ export class LDrawBatch {
 
   /** How many changed bricks `entries` would place, to decide between the two ways to update. */
   changes(entries: readonly BatchEntry[], buildArea: number, explode = false) {
+    const covered = this.coverage(entries, explode);
     let count = 0;
     for (const { brick, model } of entries)
-      if (this.placements.get(brick.id)?.key !== placementKey(brick, model, buildArea, explode))
+      if (
+        this.placements.get(brick.id)?.key !==
+        placementKey(brick, model, buildArea, explode, covered.get(brick.id))
+      )
         count++;
     return count;
+  }
+
+  /** A part model's studs and footprint, read once per model. */
+  private shapeOf(model: Group) {
+    let shape = this.shapes.get(model);
+    if (!shape) {
+      shape = readShape(model);
+      this.shapes.set(model, shape);
+    }
+    return shape;
+  }
+
+  /**
+   * What of each brick no camera can see, as a sorted list of region keys per brick id: the
+   * studs an opaque brick is pressed onto, and the underside when the brick is opaque and its
+   * bottom is closed off, by the ground or by opaque studs under every one of its receivers.
+   * Exploded bricks float apart, so nothing is covered then.
+   */
+  private coverage(entries: readonly BatchEntry[], explode: boolean) {
+    const cached = this.coverageCache;
+    if (cached?.entries === entries && cached.explode === explode) return cached.covered;
+    const covered = new Map<string, string>();
+    this.coverageCache = { entries, explode, covered };
+    if (!this.hideCovered || explode) return covered;
+    const receivers = new Set<string>();
+    const studs = new Set<string>();
+    for (const { brick } of entries) {
+      if (!OPAQUE_COLORS.has(brick.color)) continue;
+      for (const site of getConnectionSites(brick, 'bottom'))
+        receivers.add(siteKey(site.x, site.y, site.z));
+      for (const site of getConnectionSites(brick, 'top'))
+        studs.add(siteKey(site.x, site.y, site.z));
+    }
+    for (const { brick, model } of entries) {
+      // Side-mounted parts point their studs and underside sideways, and see-through ones show
+      // what is inside them.
+      if (brick.facing || !OPAQUE_COLORS.has(brick.color)) continue;
+      const shape = this.shapeOf(model);
+      const { x, y, z, matrix } = getLDrawTransform(brick);
+      const hidden = shape.studs.filter((stud) => {
+        const [studX, studZ] = stud.split(':').map(Number);
+        return receivers.has(
+          siteKey(
+            (matrix[0] * studX + matrix[2] * studZ + x) / 20,
+            -(matrix[3] * studX + matrix[5] * studZ + y) / 8,
+            (matrix[6] * studX + matrix[8] * studZ + z) / 20,
+          ),
+        );
+      });
+      if (shape.underside && closedSides(brick.partId)) {
+        const bottom = getConnectionSites(brick, 'bottom');
+        if (
+          (this.solidGround && brick.y === 0) ||
+          (bottom.length > 0 && bottom.every((site) => studs.has(siteKey(site.x, site.y, site.z))))
+        )
+          hidden.push(UNDERSIDE);
+      }
+      if (hidden.length) covered.set(brick.id, hidden.join(','));
+    }
+    return covered;
   }
 
   private run = 0;
@@ -503,13 +841,14 @@ export class LDrawBatch {
     explode: boolean,
     progress = { done: 0, total: 0 },
   ): Generator<void, void> {
+    const covered = this.coverage(entries, explode);
     const seen = new Set<string>();
     const changed: BatchEntry[] = [];
     for (const entry of entries) {
       seen.add(entry.brick.id);
       if (
         this.placements.get(entry.brick.id)?.key !==
-        placementKey(entry.brick, entry.model, buildArea, explode)
+        placementKey(entry.brick, entry.model, buildArea, explode, covered.get(entry.brick.id))
       )
         changed.push(entry);
     }
@@ -523,12 +862,16 @@ export class LDrawBatch {
     if (!changed.length && !removed) return;
     progress.total = changed.length;
     for (const [index, { brick, model }] of changed.entries()) {
-      const key = placementKey(brick, model, buildArea, explode);
+      const hidden = covered.get(brick.id);
+      const key = placementKey(brick, model, buildArea, explode, hidden);
       const current = this.placements.get(brick.id);
       // A cancelled run may have placed this brick already.
       if (current?.key === key) continue;
       if (current) this.release(current);
-      this.placements.set(brick.id, this.place(brick, model, key, buildArea, explode));
+      this.placements.set(
+        brick.id,
+        this.place(brick, model, key, buildArea, explode, hidden ?? ''),
+      );
       progress.done = index + 1;
       yield;
     }
@@ -561,9 +904,14 @@ export class LDrawBatch {
           vertices += sources[mesh.getGeometryIdAt(id)].getAttribute('position').count;
       return vertices / 2;
     };
+    const hidden = [...this.placements.values()].flatMap(({ key }) =>
+      key.split('|')[1].split(',').filter(Boolean),
+    );
     return {
       bricks: this.placements.size,
       looks: this.looks.size,
+      coveredStuds: hidden.filter((region) => region !== UNDERSIDE).length,
+      closedUndersides: hidden.filter((region) => region === UNDERSIDE).length,
       edgeSegments: segments('edge') + segments('glassEdge'),
       conditionalSegments: segments('conditional') + segments('glassConditional'),
       layers: [...this.layers.entries()].map(([finish, layer]) => ({
@@ -615,15 +963,23 @@ export class LDrawBatch {
       for (const geometry of Object.values(look.lines)) geometry?.dispose();
     }
     this.layers.clear();
+    this.baked.clear();
     this.looks.clear();
     this.placements.clear();
+    this.coverageCache = undefined;
   }
 
-  private look(brick: Brick, model: Group) {
-    const key = `${model.uuid}:${brick.color}`;
+  private look(brick: Brick, model: Group, hidden: string) {
+    const partKey = `${model.uuid}:${brick.color}`;
+    const key = `${partKey}|${hidden}`;
     let look = this.looks.get(key);
     if (!look) {
-      look = bakeLook(model, brick.color, this.colorize, key);
+      let baked = this.baked.get(partKey);
+      if (!baked) {
+        baked = bakePart(model, brick.color, this.colorize, partKey, this.shapeOf(model));
+        this.baked.set(partKey, baked);
+      }
+      look = bakeLook(baked, new Set(hidden ? hidden.split(',') : []), key);
       this.looks.set(key, look);
     }
     return look;
@@ -703,8 +1059,9 @@ export class LDrawBatch {
     key: string,
     buildArea: number,
     explode: boolean,
+    hidden: string,
   ): Placement {
-    const look = this.look(brick, model);
+    const look = this.look(brick, model, hidden);
     const matrix = brickMatrix(brick, buildArea, explode);
     const slots: Placement['slots'] = [];
     for (const surface of look.surfaces) {

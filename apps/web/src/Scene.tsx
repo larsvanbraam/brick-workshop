@@ -452,6 +452,7 @@ const BrickMesh = memo(function BrickMesh({
   overrideColor,
   explode = false,
   model,
+  castShadow = true,
 }: {
   brick: Brick;
   buildArea?: number;
@@ -459,6 +460,7 @@ const BrickMesh = memo(function BrickMesh({
   overrideColor?: string;
   explode?: boolean;
   model?: Group;
+  castShadow?: boolean;
 }) {
   const size = footprint(brick);
   const definition = COLORS.find((entry) => entry.id === brick.color)!;
@@ -488,7 +490,7 @@ const BrickMesh = memo(function BrickMesh({
         </group>
       ) : (
         <>
-          <mesh position={[0, bodyHeight / 2, 0]} castShadow receiveShadow>
+          <mesh position={[0, bodyHeight / 2, 0]} castShadow={castShadow} receiveShadow>
             <FallbackGeometry key={`${brick.partId}:${brick.rotation}`} brick={brick} />
             <meshStandardMaterial
               {...material}
@@ -506,7 +508,7 @@ const BrickMesh = memo(function BrickMesh({
                 bodyHeight + 0.07,
                 site.z - brick.z - size.depth / 2,
               ]}
-              castShadow
+              castShadow={castShadow}
               receiveShadow
             >
               <cylinderGeometry args={[0.3, 0.3, 0.17, 24]} />
@@ -542,7 +544,8 @@ function NativeBatch({
   /** Exposes the batch to the debug overlay. */
   batchRef?: RefObject<LDrawBatch | null>;
 }) {
-  const [batch] = useState(() => new LDrawBatch(undefined, { fadeEdges: true }));
+  // The camera stays above the board, and the cinematic stage has a floor of its own.
+  const [batch] = useState(() => new LDrawBatch(undefined, { fadeEdges: true, solidGround: true }));
   useEffect(() => {
     if (!batchRef) return;
     batchRef.current = batch;
@@ -665,7 +668,22 @@ function targetKey(target: PointerTarget | null) {
 }
 
 /** The everyday light board: bright, even lighting over the baseplate and its stud grid. */
-function WorkshopStage({ buildArea }: { buildArea: number }) {
+function WorkshopStage({ buildArea, scenery }: { buildArea: number; scenery: object }) {
+  const shadows = useThree((state) => state.gl.shadowMap);
+  const invalidate = useThree((state) => state.invalidate);
+  useEffect(() => {
+    // The key light stands still, so its shadow map doesn't change as the camera moves: it is
+    // redrawn when what casts shadows changes, rather than drawing the whole build again on
+    // every frame of an orbit.
+    shadows.autoUpdate = false;
+    return () => {
+      shadows.autoUpdate = true;
+    };
+  }, [shadows]);
+  useEffect(() => {
+    shadows.needsUpdate = true;
+    invalidate();
+  }, [shadows, invalidate, scenery, buildArea]);
   return (
     <>
       <color attach="background" args={['#eef0ee']} />
@@ -735,6 +753,13 @@ export const Scene = memo(function Scene(props: SceneProps) {
     }
     return { batched, separate };
   }, [props.assembly, props.layer, eligible, pending]);
+  // A new object whenever anything that casts a shadow changes: the pieces shown, or parts
+  // that finished loading. The piece being placed casts none.
+  const scenery = useMemo(
+    () => ({}),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [displays, props.models, props.explode],
+  );
   const visible = useMemo(
     () =>
       new Map(
@@ -829,7 +854,7 @@ export const Scene = memo(function Scene(props: SceneProps) {
         {cinematic ? (
           <CinematicStage mood={cinematic.mood} bounds={bounds} full={fullStill} />
         ) : (
-          <WorkshopStage buildArea={buildArea} />
+          <WorkshopStage buildArea={buildArea} scenery={scenery} />
         )}
         <group
           onPointerMove={(event) => {
@@ -896,6 +921,8 @@ export const Scene = memo(function Scene(props: SceneProps) {
               buildArea={buildArea}
               opacity={props.ghostValid ? 0.6 : 0.45}
               overrideColor={props.ghostValid ? undefined : '#ff453a'}
+              // Its shadow would redraw the whole build's shadow map on every pointer move.
+              castShadow={false}
             />
             <Outline
               brick={props.ghost}

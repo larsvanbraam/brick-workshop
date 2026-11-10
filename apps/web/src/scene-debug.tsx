@@ -395,6 +395,11 @@ export function DebugOverlay({
             <dd>
               {stats.batch.layers.length} finishes · {number(stats.batch.looks)} looks
             </dd>
+            <dt>Hidden</dt>
+            <dd>
+              {number(stats.batch.coveredStuds)} studs · {number(stats.batch.closedUndersides)}{' '}
+              undersides
+            </dd>
             <dt>Batch edges</dt>
             <dd>
               {number(stats.batch.edgeSegments)} + {number(stats.batch.conditionalSegments)} cond.

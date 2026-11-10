@@ -8,6 +8,7 @@ import {
   Box3,
   BoxGeometry,
   BufferGeometry,
+  CylinderGeometry,
   Float32BufferAttribute,
   Group,
   LineBasicMaterial,
@@ -145,6 +146,95 @@ describe('local LDraw assets', () => {
     expect(dispose).not.toHaveBeenCalled();
     geometry.dispose();
   });
+  it('leaves out studs that an opaque brick sits on', () => {
+    // A 1 x 1 brick: a 24 LDU body below the top (LDraw y = 0) and a stud standing on it.
+    const body = new BoxGeometry(20, 24, 20).translate(0, 12, 0);
+    const stud = new CylinderGeometry(6, 6, 4, 16).translate(0, -2, 0);
+    const model = new Group().add(
+      new Mesh(body, new MeshStandardMaterial()),
+      new Mesh(stud, new MeshStandardMaterial()),
+    );
+    const brick = (id: string, y: number, color = 4) => ({
+      id,
+      partId: '3005',
+      color,
+      x: 2,
+      y,
+      z: 2,
+      rotation: 0 as const,
+    });
+    const lower = brick('lower', 0);
+    const batch = new LDrawBatch((part) => part);
+    const vertices = () => batch.stats().layers[0].vertices;
+    batch.update([{ brick: lower, model }], 16);
+    const single = vertices();
+    const studVertices = stud.toNonIndexed().getAttribute('position').count;
+    expect(batch.stats().coveredStuds).toBe(0);
+
+    // Stacked: the lower brick is re-baked without its stud; the top one keeps its own.
+    const stacked = [lower, brick('upper', 3)].map((brick) => ({ brick, model }));
+    expect(batch.changes(stacked, 16)).toBe(2);
+    batch.update(stacked, 16);
+    expect(batch.stats().coveredStuds).toBe(1);
+    expect(batch.stats().looks).toBe(2);
+    expect(vertices()).toBe(single + single - studVertices);
+
+    // A see-through brick shows the stud under it, and so does an exploded view.
+    const glass = [lower, brick('upper', 3, 47)].map((brick) => ({ brick, model }));
+    batch.update(glass, 16);
+    expect(batch.stats().coveredStuds).toBe(0);
+    batch.update(stacked, 16, true);
+    expect(batch.stats().coveredStuds).toBe(0);
+
+    // Taking the top brick away brings the stud back.
+    batch.update(stacked, 16);
+    batch.update([{ brick: lower, model }], 16);
+    expect(batch.stats().coveredStuds).toBe(0);
+    batch.dispose();
+  });
+
+  it('leaves out undersides that are closed off below', () => {
+    // A 1 x 1 brick with a tube inside its hollow underside, within the 4 LDU walls.
+    const body = new BoxGeometry(20, 24, 20).translate(0, 12, 0);
+    const tube = new BoxGeometry(8, 16, 8).translate(0, 14, 0);
+    const model = new Group().add(
+      new Mesh(body, new MeshStandardMaterial()),
+      new Mesh(tube, new MeshStandardMaterial()),
+    );
+    const brick = (id: string, y: number, color = 4, x = 2) => ({
+      id,
+      partId: '3005',
+      color,
+      x,
+      y,
+      z: 2,
+      rotation: 0 as const,
+    });
+    const entries = (...bricks: ReturnType<typeof brick>[]) =>
+      bricks.map((brick) => ({ brick, model }));
+    const tubeVertices = tube.toNonIndexed().getAttribute('position').count;
+
+    // On a solid ground, the bottom brick is closed off by it; the top one by the studs below.
+    const grounded = new LDrawBatch((part) => part, { solidGround: true });
+    grounded.update(entries(brick('lower', 0), brick('upper', 3)), 16);
+    expect(grounded.stats().closedUndersides).toBe(2);
+    const bodyVertices = body.toNonIndexed().getAttribute('position').count;
+    expect(grounded.stats().layers[0].vertices).toBe(bodyVertices);
+    expect(tubeVertices).toBeGreaterThan(0);
+    grounded.dispose();
+
+    // Floating over nothing, or seen through, the underside stays.
+    const batch = new LDrawBatch((part) => part);
+    batch.update(entries(brick('lower', 0), brick('upper', 3)), 16);
+    expect(batch.stats().closedUndersides).toBe(1);
+    batch.update(entries(brick('lower', 0), brick('upper', 3, 47)), 16);
+    expect(batch.stats().closedUndersides).toBe(0);
+    // Half on a brick, half over air: still open.
+    batch.update(entries(brick('lower', 0), brick('upper', 3, 4, 2.5)), 16);
+    expect(batch.stats().closedUndersides).toBe(0);
+    batch.dispose();
+  });
+
   it('places big rebuilds in slices, and a newer update cancels a running one', async () => {
     const geometry = new BoxGeometry(20, 24, 20).translate(0, 12, 0);
     const model = new Group().add(new Mesh(geometry, new MeshStandardMaterial()));
