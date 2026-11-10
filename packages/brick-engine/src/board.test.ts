@@ -66,14 +66,8 @@ describe('plate floors', () => {
     ).toBeNull();
   });
 
-  it('builds the museum on a floor that lifts as one piece', () => {
+  it('builds the museum on a full 128-stud floor that lifts as one piece', () => {
     const floor = createExampleAssembly('nordiska-museet').bricks.filter(isFloorPlate);
-    expect(floor).toHaveLength(16 + 25);
-    expect(connectedGroups(floor)).toBe(1);
-  });
-
-  it('builds the larger museum on a full 128-stud floor that lifts as one piece', () => {
-    const floor = createExampleAssembly('nordiska-museet-2').bricks.filter(isFloorPlate);
     expect(floor).toHaveLength(64 + 81);
     expect(connectedGroups(floor)).toBe(1);
   });
