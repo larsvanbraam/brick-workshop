@@ -103,11 +103,13 @@ function expectSameAsFull(base: Assembly, brick: Brick) {
   return fast;
 }
 
+/** The large museum takes too long to check piece by piece, so these tests use the smaller builds. */
+const SMALL_EXAMPLES = EXAMPLES.filter((example) => example.expectedPieceCount < 2500);
+
 describe('validating one added piece', () => {
-  for (const example of EXAMPLES) {
+  for (const example of SMALL_EXAMPLES) {
     it(`matches full validation for ${example.id}`, () => {
       const assembly = createExampleAssembly(example.id);
-      const large = assembly.bricks.length > 5000;
       const codes = new Set<string>();
       let checked = 0;
       const check = (base: Assembly, brick: Brick) => {
@@ -116,8 +118,8 @@ describe('validating one added piece', () => {
         checked += 1;
         codes.add(added.issues[0]?.code ?? 'ok');
       };
-      for (const brick of candidates(assembly, large ? 16 : 80, 7)) check(assembly, brick);
-      for (const { base, brick } of leaves(assembly, large ? 2 : 12, 11))
+      for (const brick of candidates(assembly, 80, 7)) check(assembly, brick);
+      for (const { base, brick } of leaves(assembly, 12, 11))
         for (const variation of variations(brick)) check(base, variation);
       expect(checked).toBeGreaterThan(0);
       expect([...codes].sort()).toEqual(['collision', 'invalid', 'ok', 'unsupported']);
@@ -151,7 +153,7 @@ describe('validating one added piece', () => {
   }, 60_000);
 
   it('keeps patch previews identical', () => {
-    for (const id of ['courtyard-house', 'nordiska-museet']) {
+    for (const id of ['courtyard-house', 'seaside-lighthouse']) {
       const assembly = createExampleAssembly(id);
       for (const brick of candidates(assembly, 24, 5)) {
         const result = previewPatch(

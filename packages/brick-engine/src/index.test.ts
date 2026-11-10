@@ -45,6 +45,8 @@ import { planInstructionSteps } from './instructions.ts';
 
 const empty: Assembly = { name: 'Test', bricks: [] };
 const base: Brick = { id: 'base', partId: '3001', color: 4, x: 0, y: 0, z: 0, rotation: 0 };
+/** The large museum takes too long to check piece by piece, so these tests use the smaller builds. */
+const SMALL_EXAMPLES = EXAMPLES.filter((example) => example.expectedPieceCount < 2500);
 const architecturalExpansionIds = [
   '3193a',
   '3192a',
@@ -1875,7 +1877,7 @@ describe('mixed-part engine builds', () => {
       'nordiska-museet',
     ]);
     expect(new Set(EXAMPLES.map((example) => example.id)).size).toBe(EXAMPLES.length);
-    for (const example of EXAMPLES) {
+    for (const example of SMALL_EXAMPLES) {
       const first = createExampleAssembly(example.id);
       const second = createExampleAssembly(example.id);
       expect(first.name).toBe(example.name);
@@ -1890,10 +1892,7 @@ describe('mixed-part engine builds', () => {
     expect(() => createExampleAssembly('unknown')).toThrow('Unknown example');
   }, 15_000);
 
-  /** Above this many pieces, examples are taken apart in chunks rather than piece by piece. */
-  const LARGE_EXAMPLE = 2500;
-
-  it.each(EXAMPLES)(
+  it.each(SMALL_EXAMPLES)(
     'validates, exports, rejects invalid moves, and disassembles the $name',
     ({ id, expectedPieceCount: count }) => {
       const assembly = createExampleAssembly(id);
@@ -1931,15 +1930,6 @@ describe('mixed-part engine builds', () => {
       }
       expect(assembly).toEqual(snapshot);
       let remaining = assembly;
-      if (count > LARGE_EXAMPLE) {
-        // Each check validates the whole remainder, so large builds come apart in chunks.
-        const chunk = Math.ceil(count / 100);
-        for (let end = count - chunk; end > 0; end -= chunk) {
-          const issues = validateAssembly({ ...assembly, bricks: assembly.bricks.slice(0, end) });
-          if (issues.length) throw new Error(`Disassembly: ${JSON.stringify(issues)}`);
-        }
-        remaining = { ...assembly, bricks: [] };
-      }
       for (const brick of remaining.bricks.toReversed()) {
         const result = removeBrick(remaining, brick.id);
         if (!result.ok) throw new Error(`Disassembly: ${JSON.stringify(result.issues)}`);

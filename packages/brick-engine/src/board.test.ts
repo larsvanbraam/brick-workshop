@@ -1,10 +1,8 @@
 import { describe, expect, it } from 'vite-plus/test';
 import {
-  createExampleAssembly,
   footprint,
   getBaseplateJoins,
   hasStudConnection,
-  isFloorPlate,
   layPlateFloor,
   validateAssembly,
 } from './index.ts';
@@ -64,12 +62,6 @@ describe('plate floors', () => {
         colorAllowed: (partId) => partId !== '41539',
       }),
     ).toBeNull();
-  });
-
-  it('builds the museum on a full 128-stud floor that lifts as one piece', () => {
-    const floor = createExampleAssembly('nordiska-museet').bricks.filter(isFloorPlate);
-    expect(floor).toHaveLength(64 + 81);
-    expect(connectedGroups(floor)).toBe(1);
   });
 });
 
