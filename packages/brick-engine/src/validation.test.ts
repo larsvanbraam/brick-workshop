@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vite-plus/test';
 import {
   DEFAULT_PART_COLOR_EVIDENCE,
+  assessPhysicalFeasibility,
   EXAMPLES,
   FACINGS,
   INSERT_FRAME_PARTS,
@@ -189,5 +190,30 @@ describe('validating one added piece', () => {
     const [first] = assembly.bricks;
     const invalid = { ...assembly, bricks: [...assembly.bricks, { ...first, id: 'clash' }] };
     expect(validateAddition(invalid, { ...first, id: 'other', y: 300 })).toBeNull();
+  });
+});
+
+describe('physical assessment cache', () => {
+  it('hands out copies that match a fresh assessment', () => {
+    const assembly = createExampleAssembly('courtyard-house');
+    const options = { data: { version: 1 as const, parts: {} }, estimateMissingMasses: true };
+    const first = assessPhysicalFeasibility(assembly, options);
+    first.reasons.push('changed by the caller');
+    const second = assessPhysicalFeasibility(assembly, options);
+    expect(second).not.toBe(first);
+    expect(second).toEqual(
+      assessPhysicalFeasibility({ ...assembly, bricks: [...assembly.bricks] }, options),
+    );
+    expect(
+      assessPhysicalFeasibility(assembly, { ...options, estimateMissingMasses: false }),
+    ).toEqual(
+      assessPhysicalFeasibility(
+        { ...assembly, bricks: [...assembly.bricks] },
+        {
+          ...options,
+          estimateMissingMasses: false,
+        },
+      ),
+    );
   });
 });

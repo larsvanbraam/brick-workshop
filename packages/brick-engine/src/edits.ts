@@ -13,7 +13,7 @@ import {
 import type { Assembly, Brick } from './core.ts';
 import { getPartColorStatus, importPartColorEvidence } from './part-colors.ts';
 import type { PartColorEvidence } from './part-colors.ts';
-import { assessPhysicalFeasibility, getBuildabilityReport, importPhysicalData } from './physics.ts';
+import { getBuildabilityReport, importPhysicalData, sharedPhysicalAssessment } from './physics.ts';
 import type { PhysicalAssessment, PhysicalOptions } from './physics.ts';
 
 export const MAX_PATCH_OPERATIONS = 100;
@@ -169,11 +169,9 @@ export function evaluateAssemblyPolicy(assembly: Assembly, policy: EditPolicy = 
     for (const name of ['useCatalogMasses', 'estimateMissingMasses'] as const)
       if (policy.physical?.[name] !== undefined && typeof policy.physical[name] !== 'boolean')
         throw new Error('Invalid physical option');
-    const physicalOptions = {
-      ...policy.physical,
-      data: importPhysicalData(policy.physical?.data ?? { version: 1, parts: {} }),
-    };
-    if (!geometry.length) physical = assessPhysicalFeasibility(assembly, physicalOptions);
+    importPhysicalData(policy.physical?.data ?? { version: 1, parts: {} });
+    // The assessment imports the data itself; passing the caller's object lets it be cached.
+    if (!geometry.length) physical = sharedPhysicalAssessment(assembly, { ...policy.physical });
   } catch {
     issues.push({ code: 'invalid_policy', message: 'Invalid physical data or options.' });
   }
