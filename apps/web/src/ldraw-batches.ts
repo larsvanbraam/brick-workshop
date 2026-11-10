@@ -814,7 +814,12 @@ export class LDrawBatch {
         if (fadeEdges) {
           // Faded edges blend, so they join the transparent queue: ahead of glass, which draws
           // over them, as the opaque edges they are.
-          if ((mesh.material as Material).depthWrite) mesh.renderOrder = -1;
+          if ((mesh.material as Material).depthWrite) {
+            mesh.renderOrder = -1;
+            // Ambient occlusion (N8AO) redraws transparent objects in two passes of their own
+            // every frame; these write depth like opaque ones, so they can skip that.
+            mesh.userData.treatAsOpaque = true;
+          }
           // `this`, not a bound mesh: dispose() hands this hook on to the meshes it recreates.
           mesh.onBeforeRender = function (this: BatchedMesh, renderer, ...rest) {
             viewport.value =
@@ -1117,6 +1122,7 @@ export class LDrawBatch {
       Object.assign(mesh, {
         renderOrder: layer.mesh.renderOrder,
         onBeforeRender: layer.mesh.onBeforeRender,
+        userData: { ...layer.mesh.userData },
       });
       mesh.layers.mask = layer.mesh.layers.mask;
       mesh.visible = false;
