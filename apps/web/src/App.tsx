@@ -67,10 +67,11 @@ import type {
   Rotation,
   EditPolicy,
 } from '@lego-builder/brick-engine';
-import { Scene } from './Scene';
+import { Scene, captureScene } from './Scene';
 import { MOODS } from './cinematic';
 import type { CinematicMood } from './cinematic';
-import type { PointerDevice, PointerTarget, SceneMode } from './Scene';
+import type { BuildProgress, PointerDevice, PointerTarget, SceneMode } from './Scene';
+import { ViewportLoader } from './ViewportLoader';
 import { useLDrawLibrary } from './ldraw';
 import { displayHex } from './ldraw-materials';
 import { PartBrowser } from './PartBrowser';
@@ -356,6 +357,8 @@ export default function App() {
   const [view, setView] = useState<'perspective' | 'top' | 'front'>('perspective');
   const [cameraRevision, setCameraRevision] = useState(0);
   const [cinematic, setCinematic] = useState(false);
+  const [preparing, setPreparing] = useState(false);
+  const [buildProgress, setBuildProgress] = useState<BuildProgress | null>(null);
   const [mood, setMood] = useState<CinematicMood>('studio');
   const [turntable, setTurntable] = useState(false);
   const cinematicStage = useMemo(
@@ -664,18 +667,25 @@ export default function App() {
     resetView();
   }
   function captureScreenshot() {
-    // The canvas keeps its drawing buffer, so it holds the last rendered frame.
     const canvas = document.querySelector<HTMLCanvasElement>('.viewport canvas');
     const filename = assembly.name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
-    canvas?.toBlob((blob) => {
+    if (!canvas) return;
+    void captureScene(canvas).then((blob) => {
       if (blob) download(blob, `${filename}.png`, 'image/png');
-    }, 'image/png');
+    });
   }
   function loadExample(id: string) {
-    resetAssembly(createExampleAssembly(id));
-    setSavedId(null);
-    setTool('select');
-    resetView();
+    // Building and checking a big example takes a moment; the loader paints first.
+    setPreparing(true);
+    requestAnimationFrame(() =>
+      setTimeout(() => {
+        resetAssembly(createExampleAssembly(id));
+        setSavedId(null);
+        setTool('select');
+        resetView();
+        setPreparing(false);
+      }, 0),
+    );
   }
   function resizeBoard(size: number) {
     if (size === buildArea) return;
@@ -1141,8 +1151,22 @@ export default function App() {
               models={library.models}
               onReady={onSceneReady}
               cinematic={cinematicStage}
+              pendingParts={library.pending}
+              onBuildProgress={setBuildProgress}
             />
           )}
+          <ViewportLoader
+            stage={
+              preparing
+                ? 'preparing'
+                : library.pending.length
+                  ? 'parts'
+                  : buildProgress
+                    ? 'placing'
+                    : null
+            }
+            progress={buildProgress}
+          />
 
           {cinematic && (
             <div className="cinematic-bar" role="toolbar" aria-label="Cinematic view">

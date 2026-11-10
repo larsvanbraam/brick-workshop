@@ -13,6 +13,7 @@ import { colorMaterialProperties, displayHex } from './ldraw-materials';
 import {
   getCinematicFrame,
   getLDrawModelOffset,
+  getMaxZoomDistance,
   getSceneFrame,
   getSceneHeight,
 } from './scene-frame';
@@ -60,6 +61,60 @@ interface SceneProps {
   onReady: () => void;
   /** Swaps the workshop for a dark, dramatically lit stage meant for screenshots. */
   cinematic?: { mood: CinematicMood; turntable: boolean } | null;
+  /** Parts still loading: their bricks wait for them instead of showing fallback shapes. */
+  pendingParts?: readonly string[];
+  /** Hears how far a big rebuild has come, and `null` once the model is complete. */
+  onBuildProgress?: (progress: BuildProgress | null) => void;
+}
+
+export type BuildProgress = { done: number; total: number };
+
+/** Rebuilds that place at least this many bricks run in slices between frames. */
+const SLICED_REBUILD = 400;
+
+type CaptureRequest = { resolve: (blob: Blob | null) => void; handled: boolean };
+const CAPTURE_EVENT = 'scene-capture';
+
+/**
+ * A PNG of the scene on `canvas`. The cinematic stage trims its resolution while it is being
+ * looked at, so the scene renders a few frames at full quality for the still, then trims again.
+ */
+export function captureScene(canvas: HTMLCanvasElement): Promise<Blob | null> {
+  return new Promise((resolve) => {
+    const request: CaptureRequest = { resolve, handled: false };
+    canvas.dispatchEvent(new CustomEvent(CAPTURE_EVENT, { detail: request }));
+    // The canvas keeps its drawing buffer, so without a scene it holds the last rendered frame.
+    if (!request.handled) canvas.toBlob(resolve, 'image/png');
+  });
+}
+
+function StillCapture({ onFull }: { onFull: (full: boolean) => void }) {
+  const { gl, invalidate } = useThree();
+  useEffect(() => {
+    const element = gl.domElement;
+    const capture = (event: Event) => {
+      const request = (event as CustomEvent<CaptureRequest>).detail;
+      request.handled = true;
+      onFull(true);
+      // A few frames: the resize, the effect passes catching up, and one clean frame to read.
+      let left = 4;
+      const step = () => {
+        invalidate();
+        if (--left > 0) requestAnimationFrame(step);
+        else
+          requestAnimationFrame(() =>
+            element.toBlob((blob) => {
+              onFull(false);
+              request.resolve(blob);
+            }, 'image/png'),
+          );
+      };
+      requestAnimationFrame(step);
+    };
+    element.addEventListener(CAPTURE_EVENT, capture);
+    return () => element.removeEventListener(CAPTURE_EVENT, capture);
+  }, [gl, invalidate, onFull]);
+  return null;
 }
 
 function SceneReady({ onReady }: { onReady: () => void }) {
@@ -189,6 +244,17 @@ function CameraRig({
     void controls.current?.rotate(delta * 0.15, 0, false);
     invalidate();
   });
+  const maxDistance = useMemo(() => {
+    if (!(camera instanceof PerspectiveCamera)) return buildArea * 6;
+    return getMaxZoomDistance(buildArea, height, size.width / size.height, camera.fov);
+  }, [buildArea, height, size.width, size.height, camera]);
+  useEffect(() => {
+    // The far plane has to clear the farthest the camera may go, or the build is clipped away.
+    if (!(camera instanceof PerspectiveCamera)) return;
+    camera.far = Math.max(500, maxDistance + buildArea * 2 + height);
+    camera.updateProjectionMatrix();
+    invalidate();
+  }, [camera, maxDistance, buildArea, height, invalidate]);
   useEffect(() => {
     // The pivot stays over the board, so the build cannot drift out of reach.
     const margin = buildArea * 0.25;
@@ -303,7 +369,7 @@ function CameraRig({
       ref={controls}
       makeDefault
       minDistance={2}
-      maxDistance={buildArea * 6}
+      maxDistance={maxDistance}
       maxPolarAngle={Math.PI / 2 - 0.03}
       smoothTime={0.18}
       draggingSmoothTime={0.06}
@@ -466,15 +532,17 @@ function NativeBatch({
   buildArea,
   explode,
   batchRef,
+  onProgress,
 }: {
   bricks: readonly Brick[];
   models: Record<string, Group>;
   buildArea: number;
   explode: boolean;
+  onProgress?: (progress: BuildProgress | null) => void;
   /** Exposes the batch to the debug overlay. */
   batchRef?: RefObject<LDrawBatch | null>;
 }) {
-  const [batch] = useState(() => new LDrawBatch());
+  const [batch] = useState(() => new LDrawBatch(undefined, { fadeEdges: true }));
   useEffect(() => {
     if (!batchRef) return;
     batchRef.current = batch;
@@ -483,14 +551,37 @@ function NativeBatch({
     };
   }, [batch, batchRef]);
   const invalidate = useThree((state) => state.invalidate);
+  const shadows = useThree((state) => state.gl.shadowMap);
+  const progress = useRef(onProgress);
+  useEffect(() => {
+    progress.current = onProgress;
+  });
   useLayoutEffect(() => {
-    batch.update(
-      bricks.map((brick) => ({ brick, model: models[brick.partId] })),
-      buildArea,
-      explode,
-    );
-    invalidate();
-  }, [batch, bricks, models, buildArea, explode, invalidate]);
+    const entries = bricks.map((brick) => ({ brick, model: models[brick.partId] }));
+    const finish = () => {
+      // The cinematic stage only redraws shadows on request.
+      shadows.needsUpdate = true;
+      invalidate();
+      progress.current?.(null);
+    };
+    // Edits touch a few bricks and land in the same frame; a whole new build is placed in
+    // slices so the page keeps responding, and shows up as it is placed.
+    if (batch.changes(entries, buildArea, explode) < SLICED_REBUILD) {
+      batch.update(entries, buildArea, explode);
+      finish();
+      return;
+    }
+    void batch
+      .updateInSlices(entries, buildArea, explode, {
+        onProgress: (done, total) => {
+          progress.current?.({ done, total });
+          invalidate();
+        },
+      })
+      .then((complete) => {
+        if (complete) finish();
+      });
+  }, [batch, bricks, models, buildArea, explode, invalidate, shadows]);
   useEffect(() => () => batch.dispose(), [batch]);
   return <primitive object={batch.object} dispose={null} />;
 }
@@ -631,17 +722,19 @@ export const Scene = memo(function Scene(props: SceneProps) {
       ),
     [props.models],
   );
+  const pending = useMemo(() => new Set(props.pendingParts ?? []), [props.pendingParts]);
   const displays = useMemo(() => {
     const batched: Brick[] = [];
     const separate: Brick[] = [];
     for (const brick of props.assembly.bricks) {
       if (brick.y >= props.layer) continue;
+      if (pending.has(brick.partId)) continue;
       // Only bricks without native geometry are drawn one by one, from fallback shapes.
       if (eligible[brick.partId]) batched.push(brick);
       else separate.push(brick);
     }
     return { batched, separate };
-  }, [props.assembly, props.layer, eligible]);
+  }, [props.assembly, props.layer, eligible, pending]);
   const visible = useMemo(
     () =>
       new Map(
@@ -701,6 +794,7 @@ export const Scene = memo(function Scene(props: SceneProps) {
     });
   }, [debug.enabled, debug.unbatched, displays.separate, buildArea, props.explode]);
   const hoverKey = useRef('');
+  const [fullStill, setFullStill] = useState(false);
   const rig = useRef<CameraControls>(null);
   const { onHover } = props;
   function hover(target: PointerTarget | null) {
@@ -733,7 +827,7 @@ export const Scene = memo(function Scene(props: SceneProps) {
         aria-label="Interactive 3D brick model"
       >
         {cinematic ? (
-          <CinematicStage mood={cinematic.mood} bounds={bounds} />
+          <CinematicStage mood={cinematic.mood} bounds={bounds} full={fullStill} />
         ) : (
           <WorkshopStage buildArea={buildArea} />
         )}
@@ -771,6 +865,7 @@ export const Scene = memo(function Scene(props: SceneProps) {
             buildArea={buildArea}
             explode={props.explode}
             batchRef={batchRef}
+            onProgress={props.onBuildProgress}
           />
           {displays.separate.map((brick) => (
             <BrickMesh
@@ -822,6 +917,7 @@ export const Scene = memo(function Scene(props: SceneProps) {
           cinematic={cinematic !== null}
           turntable={cinematic?.turntable ?? false}
         />
+        <StillCapture onFull={setFullStill} />
         <SceneReady onReady={props.onReady} />
         {debug.enabled && (
           <>

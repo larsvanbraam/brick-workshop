@@ -10,6 +10,7 @@ import {
   Mesh,
   MeshStandardMaterial,
   Sphere,
+  Vector2,
   Vector3,
 } from 'three';
 import type { Color, Intersection, Material, Raycaster } from 'three';
@@ -46,10 +47,8 @@ type Surface = {
 /** Opaque and see-through edges are drawn apart, and conditional edges need their own shader. */
 const LINE_KINDS = ['edge', 'conditional', 'glassEdge', 'glassConditional'] as const;
 type LineKind = (typeof LINE_KINDS)[number];
-/** Vertex attributes of one kind of edge: position and RGBA color, plus controls if conditional. */
-type LineArrays = Record<string, Float32Array>;
-/** A part in one color, ready to place: faces per finish and each kind of edge. */
-type Look = { surfaces: Surface[]; lines: Record<LineKind, LineArrays> };
+/** A part in one color, ready to place: faces per finish, and each kind of edge it has. */
+type Look = { key: string; surfaces: Surface[]; lines: Record<LineKind, BufferGeometry | null> };
 /** Faces that share a finish share one batched mesh, and so one draw call. */
 type Layer = {
   mesh: BatchedMesh;
@@ -60,11 +59,7 @@ type Layer = {
   brickIds: (string | undefined)[];
   size: number;
 };
-type Placement = {
-  key: string;
-  slots: { layer: Layer; id: number }[];
-  lines: Record<LineKind, LineArrays>;
-};
+type Placement = { key: string; slots: { layer: Layer; id: number }[] };
 
 export type BatchEntry = { brick: Brick; model: Group };
 export type BatchLayerStats = {
@@ -96,18 +91,6 @@ function concat(parts: readonly Float32Array[]) {
   for (const part of parts) {
     out.set(part, offset);
     offset += part.length;
-  }
-  return out;
-}
-
-function transformed(source: Float32Array, matrix: Matrix4 | Matrix3) {
-  const out = new Float32Array(source.length);
-  const point = new Vector3();
-  for (let offset = 0; offset < source.length; offset += 3) {
-    point.fromArray(source, offset);
-    if (matrix instanceof Matrix4) point.applyMatrix4(matrix);
-    else point.applyMatrix3(matrix);
-    point.toArray(out, offset);
   }
   return out;
 }
@@ -245,27 +228,22 @@ function bakeLook(model: Group, color: number, colorize: Colorize, key: string):
   });
   // The colored copy was only read, never drawn; its materials can go.
   if (colored !== model) for (const material of used) material.dispose();
-  const empty = (kind: LineKind): LineArrays =>
-    Object.fromEntries(
-      [
-        'position',
-        'color',
-        ...(kind.endsWith('onditional') ? ['control0', 'control1', 'direction'] : []),
-      ].map((name) => [name, new Float32Array(0)]),
-    );
+  const lineGeometry = (kind: LineKind) => {
+    const attributes = Object.entries(lines[kind]);
+    if (!attributes.length) return null;
+    const geometry = new BufferGeometry();
+    for (const [name, parts] of attributes)
+      geometry.setAttribute(name, new BufferAttribute(concat(parts), itemSize(name)));
+    geometry.computeBoundingSphere();
+    return geometry;
+  };
   return {
+    key,
     surfaces,
-    lines: Object.fromEntries(
-      LINE_KINDS.map((kind) => [
-        kind,
-        {
-          ...empty(kind),
-          ...Object.fromEntries(
-            Object.entries(lines[kind]).map(([name, parts]) => [name, concat(parts)]),
-          ),
-        },
-      ]),
-    ) as Record<LineKind, LineArrays>,
+    lines: Object.fromEntries(LINE_KINDS.map((kind) => [kind, lineGeometry(kind)])) as Record<
+      LineKind,
+      BufferGeometry | null
+    >,
   };
 }
 
@@ -282,6 +260,11 @@ function brickMatrix(brick: Brick, buildArea: number, explode: boolean) {
 }
 
 const PLACEMENT_KEYS = ['partId', 'color', 'x', 'y', 'z', 'rotation', 'facing'] as const;
+
+/** Everything a brick's placement depends on; the same key means nothing to redo. */
+function placementKey(brick: Brick, model: Group, buildArea: number, explode: boolean) {
+  return `${PLACEMENT_KEYS.map((name) => String(brick[name] ?? '')).join(':')}:${model.uuid}:${buildArea}:${explode}`;
+}
 const probe = new Mesh();
 const probeSphere = new Sphere();
 
@@ -307,10 +290,85 @@ function raycastLayer(layer: Layer, raycaster: Raycaster, intersects: Intersecti
 }
 
 /**
+ * A batched mesh drawn as line segments. three picks the draw mode from these flags and the
+ * multi-draw path from `isBatchedMesh`, so every brick's edges are one draw, each placed by its
+ * own matrix on the GPU: a part's edges are stored once rather than copied for every brick.
+ */
+class BatchedLines extends BatchedMesh {
+  readonly isLine = true;
+  readonly isLineSegments = true;
+
+  constructor(material: Material) {
+    super(64, 8192, 0, material);
+    (this as unknown as { isMesh: boolean }).isMesh = false;
+    this.castShadow = false;
+    this.receiveShadow = false;
+    // Opaque edges need no order, and see-through ones are too thin to show one.
+    this.sortObjects = false;
+    this.raycast = () => {};
+  }
+}
+
+/**
+ * Teaches LDraw's conditional line shader the batched matrices: its line ends, control points
+ * and direction all move with the brick. (The basic line shader knows them already.)
+ */
+function batchConditionalLines(shader: { vertexShader: string }) {
+  shader.vertexShader = shader.vertexShader
+    .replace('#include <common>', '#include <common>\n#include <batching_pars_vertex>')
+    .replace('#include <color_vertex>', '#include <color_vertex>\n#include <batching_vertex>')
+    .replaceAll('modelViewMatrix * vec4(', 'modelViewMatrix * batchingMatrix * vec4(');
+}
+
+/** How many device pixels a stud has to span before edges start to show, and fully show. */
+export const EDGE_FADE_PIXELS = { hidden: 5, full: 14 } as const;
+
+/**
+ * Fades a line material out as studs shrink on screen. Zoomed out, a stud's dozen-plus outline
+ * segments would land in a few pixels and turn into noise; counting device pixels keeps edges
+ * longer on high-density screens, where they still resolve.
+ */
+function fadeWithZoom(material: Material, viewport: { value: number }) {
+  const before = material.onBeforeCompile.bind(material);
+  material.onBeforeCompile = (shader, renderer) => {
+    before(shader, renderer);
+    shader.uniforms.edgeViewport = viewport;
+    shader.vertexShader = shader.vertexShader
+      .replace(
+        '#include <common>',
+        `#include <common>
+        uniform float edgeViewport;
+        varying float vEdgeFade;`,
+      )
+      .replace(
+        '#include <logdepthbuf_vertex>',
+        `#include <logdepthbuf_vertex>
+        // Pixels one world unit (a stud) spans at this depth, for perspective and ortho alike.
+        float studPixels = projectionMatrix[1][1] * 0.5 * edgeViewport / gl_Position.w;
+        vEdgeFade = smoothstep(${EDGE_FADE_PIXELS.hidden.toFixed(1)}, ${EDGE_FADE_PIXELS.full.toFixed(1)}, studPixels);`,
+      );
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', '#include <common>\nvarying float vEdgeFade;')
+      .replace(
+        '#include <color_fragment>',
+        `#include <color_fragment>
+        if (vEdgeFade <= 0.0) discard;
+        diffuseColor.a *= vEdgeFade;`,
+      );
+  };
+  material.customProgramCacheKey = () => 'ldraw-edge-fade';
+  // Fading needs blending, which three only enables for transparent materials.
+  material.transparent = true;
+}
+
+const drawingBuffer = new Vector2();
+
+/**
  * Every LDraw brick in one batched mesh: each finish (plain, pearl, chrome…) is a single
  * multi-draw call with colors in the vertices, and see-through faces share one more layer that
  * three sorts back to front per brick, with each color's opacity in the vertex alpha. Edges are
- * four merged line buffers: plain and conditional, opaque and see-through.
+ * four more batched draws: plain and conditional, opaque and see-through, with each part's
+ * edges stored once and placed per brick on the GPU.
  * Updates are incremental: only bricks that changed are rewritten, and freed slots are reused.
  */
 export class LDrawBatch {
@@ -318,38 +376,67 @@ export class LDrawBatch {
   private readonly layers = new Map<string, Layer>();
   private readonly looks = new Map<string, Look>();
   private readonly placements = new Map<string, Placement>();
-  private readonly lineObjects: Record<LineKind, LineSegments>;
+  private readonly lineLayers: Record<LineKind, Layer>;
 
   private readonly colorize: Colorize;
 
-  constructor(colorize: Colorize = coloredLDrawModel) {
+  /**
+   * `fadeEdges` fades edges out as the camera pulls back, for the interactive view; renders at
+   * a fixed scale, like the instructions, keep them as they are.
+   */
+  constructor(
+    colorize: Colorize = coloredLDrawModel,
+    { fadeEdges = false }: { fadeEdges?: boolean } = {},
+  ) {
     this.colorize = colorize;
+    const viewport = { value: 1 };
     this.object.name = 'Native brick batch';
     this.object.scale.set(0.05, -0.05, 0.05);
     const lineMaterial = (kind: LineKind) => {
       const glass = kind.startsWith('glass');
-      const material = kind.endsWith('onditional')
+      const conditional = kind.endsWith('onditional');
+      const material = conditional
         ? new LDrawConditionalLineMaterial({ fog: true })
         : new LineBasicMaterial();
       material.vertexColors = true;
       material.transparent = glass;
       material.depthWrite = !glass;
       (material as unknown as { color: Color }).color.set(0xffffff);
+      if (conditional) {
+        material.onBeforeCompile = batchConditionalLines;
+        material.customProgramCacheKey = () => 'ldraw-batched-conditional';
+      }
+      if (fadeEdges) fadeWithZoom(material, viewport);
       return material;
     };
-    this.lineObjects = Object.fromEntries(
-      LINE_KINDS.map((kind) => [kind, new LineSegments(new BufferGeometry(), lineMaterial(kind))]),
-    ) as unknown as Record<LineKind, LineSegments>;
-    for (const lines of this.lines) {
-      lines.raycast = () => {};
-      lines.frustumCulled = false;
-      this.object.add(lines);
-    }
+    this.lineLayers = Object.fromEntries(
+      LINE_KINDS.map((kind): [LineKind, Layer] => {
+        // three types `customSort` against its own class, so the subclass needs widening.
+        const mesh = new BatchedLines(lineMaterial(kind)) as unknown as BatchedMesh;
+        mesh.visible = false;
+        if (fadeEdges) {
+          // Faded edges blend, so they join the transparent queue: ahead of glass, which draws
+          // over them, as the opaque edges they are.
+          if ((mesh.material as Material).depthWrite) mesh.renderOrder = -1;
+          // `this`, not a bound mesh: dispose() hands this hook on to the meshes it recreates.
+          mesh.onBeforeRender = function (this: BatchedMesh, renderer, ...rest) {
+            viewport.value =
+              renderer.getRenderTarget()?.height ?? renderer.getDrawingBufferSize(drawingBuffer).y;
+            BatchedMesh.prototype.onBeforeRender.call(this, renderer, ...rest);
+          };
+        }
+        this.object.add(mesh);
+        return [
+          kind,
+          { mesh, geometries: new Map(), sources: [], free: [], brickIds: [], size: 0 },
+        ];
+      }),
+    ) as Record<LineKind, Layer>;
   }
 
   /** The edge objects, for callers that move them onto their own render layer. */
-  get lines(): readonly LineSegments[] {
-    return LINE_KINDS.map((kind) => this.lineObjects[kind]);
+  get lines(): readonly BatchedMesh[] {
+    return LINE_KINDS.map((kind) => this.lineLayers[kind].mesh);
   }
 
   /** The face meshes, one per finish in use. */
@@ -357,27 +444,106 @@ export class LDrawBatch {
     return [...this.layers.values()].map((layer) => layer.mesh);
   }
 
+  /** Brings the batch in line with `entries` in one go: right for edits, which touch a few. */
   update(entries: readonly BatchEntry[], buildArea: number, explode = false) {
-    const seen = new Set<string>();
-    let changed = false;
-    for (const { brick, model } of entries) {
-      seen.add(brick.id);
-      const key = `${PLACEMENT_KEYS.map((name) => String(brick[name] ?? '')).join(':')}:${model.uuid}:${buildArea}:${explode}`;
-      const current = this.placements.get(brick.id);
-      if (current?.key === key) continue;
-      if (current) this.release(current);
-      this.placements.set(brick.id, this.place(brick, model, key, buildArea, explode));
-      changed = true;
+    this.run++;
+    const steps = this.steps(entries, buildArea, explode);
+    while (!steps.next().done);
+  }
+
+  /**
+   * The same as `update`, in slices of about `budget` ms between frames, so swapping in a big
+   * build keeps the page responsive. A newer update or `dispose` cancels it; it resolves to
+   * whether it ran to the end. `onProgress` hears how many changed bricks are placed so far.
+   */
+  async updateInSlices(
+    entries: readonly BatchEntry[],
+    buildArea: number,
+    explode = false,
+    {
+      budget = 12,
+      onProgress,
+    }: { budget?: number; onProgress?: (done: number, total: number) => void } = {},
+  ): Promise<boolean> {
+    const run = ++this.run;
+    const progress = { done: 0, total: 0 };
+    const steps = this.steps(entries, buildArea, explode, progress);
+    for (;;) {
+      const start = performance.now();
+      for (;;) {
+        if (steps.next().done) {
+          onProgress?.(progress.total, progress.total);
+          return true;
+        }
+        if (performance.now() - start >= budget) break;
+      }
+      // Bricks placed so far may sit outside the old bounds, which would cull them.
+      this.refreshBounds();
+      onProgress?.(progress.done, progress.total);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      if (run !== this.run) return false;
     }
+  }
+
+  /** How many changed bricks `entries` would place, to decide between the two ways to update. */
+  changes(entries: readonly BatchEntry[], buildArea: number, explode = false) {
+    let count = 0;
+    for (const { brick, model } of entries)
+      if (this.placements.get(brick.id)?.key !== placementKey(brick, model, buildArea, explode))
+        count++;
+    return count;
+  }
+
+  private run = 0;
+
+  /** The update as steps: one per brick placed, then the lines and bounds as a last step. */
+  private *steps(
+    entries: readonly BatchEntry[],
+    buildArea: number,
+    explode: boolean,
+    progress = { done: 0, total: 0 },
+  ): Generator<void, void> {
+    const seen = new Set<string>();
+    const changed: BatchEntry[] = [];
+    for (const entry of entries) {
+      seen.add(entry.brick.id);
+      if (
+        this.placements.get(entry.brick.id)?.key !==
+        placementKey(entry.brick, entry.model, buildArea, explode)
+      )
+        changed.push(entry);
+    }
+    let removed = false;
     for (const [id, placement] of this.placements)
       if (!seen.has(id)) {
         this.release(placement);
         this.placements.delete(id);
-        changed = true;
+        removed = true;
       }
-    if (!changed) return;
-    this.rebuildLines();
+    if (!changed.length && !removed) return;
+    progress.total = changed.length;
+    for (const [index, { brick, model }] of changed.entries()) {
+      const key = placementKey(brick, model, buildArea, explode);
+      const current = this.placements.get(brick.id);
+      // A cancelled run may have placed this brick already.
+      if (current?.key === key) continue;
+      if (current) this.release(current);
+      this.placements.set(brick.id, this.place(brick, model, key, buildArea, explode));
+      progress.done = index + 1;
+      yield;
+    }
+    this.refreshBounds();
+  }
+
+  private refreshBounds() {
     for (const layer of this.layers.values()) {
+      layer.mesh.computeBoundingBox();
+      layer.mesh.computeBoundingSphere();
+    }
+    for (const layer of Object.values(this.lineLayers)) {
+      // An empty batch still costs a draw call; a hidden one doesn't.
+      layer.mesh.visible = layer.size > layer.free.length;
+      if (!layer.mesh.visible) continue;
       layer.mesh.computeBoundingBox();
       layer.mesh.computeBoundingSphere();
     }
@@ -387,14 +553,19 @@ export class LDrawBatch {
   stats(): BatchStats {
     const next = (mesh: BatchedMesh) =>
       mesh as unknown as { _nextVertexStart: number; _nextIndexStart: number };
-    const segments = (lines: LineSegments) =>
-      (lines.geometry.getAttribute('position')?.count ?? 0) / 2;
+    const segments = (kind: LineKind) => {
+      const { mesh, sources, brickIds, size } = this.lineLayers[kind];
+      let vertices = 0;
+      for (let id = 0; id < size; id++)
+        if (brickIds[id] !== undefined)
+          vertices += sources[mesh.getGeometryIdAt(id)].getAttribute('position').count;
+      return vertices / 2;
+    };
     return {
       bricks: this.placements.size,
       looks: this.looks.size,
-      edgeSegments: segments(this.lineObjects.edge) + segments(this.lineObjects.glassEdge),
-      conditionalSegments:
-        segments(this.lineObjects.conditional) + segments(this.lineObjects.glassConditional),
+      edgeSegments: segments('edge') + segments('glassEdge'),
+      conditionalSegments: segments('conditional') + segments('glassConditional'),
       layers: [...this.layers.entries()].map(([finish, layer]) => ({
         finish,
         instances: layer.size - layer.free.length,
@@ -411,18 +582,38 @@ export class LDrawBatch {
 
   /** Frees GPU resources; the batch is left empty and can be filled again. */
   dispose() {
+    this.run++;
     for (const layer of this.layers.values()) {
       this.object.remove(layer.mesh);
       layer.mesh.dispose();
       (layer.mesh.material as Material).dispose();
     }
-    for (const lines of this.lines) {
-      lines.geometry.dispose();
-      lines.geometry = new BufferGeometry();
-      (lines.material as Material).dispose();
+    for (const layer of Object.values(this.lineLayers)) {
+      layer.mesh.dispose();
+      (layer.mesh.material as Material).dispose();
+      // Left empty and hidden, ready to be filled again.
+      const mesh = new BatchedLines(layer.mesh.material as Material) as unknown as BatchedMesh;
+      Object.assign(mesh, {
+        renderOrder: layer.mesh.renderOrder,
+        onBeforeRender: layer.mesh.onBeforeRender,
+      });
+      mesh.layers.mask = layer.mesh.layers.mask;
+      mesh.visible = false;
+      this.object.remove(layer.mesh);
+      this.object.add(mesh);
+      Object.assign(layer, {
+        mesh,
+        geometries: new Map(),
+        sources: [],
+        free: [],
+        brickIds: [],
+        size: 0,
+      });
     }
-    for (const look of this.looks.values())
+    for (const look of this.looks.values()) {
       for (const surface of look.surfaces) surface.geometry.dispose();
+      for (const geometry of Object.values(look.lines)) geometry?.dispose();
+    }
     this.layers.clear();
     this.looks.clear();
     this.placements.clear();
@@ -464,12 +655,12 @@ export class LDrawBatch {
     return layer;
   }
 
-  private geometryId(layer: Layer, surface: Surface) {
-    const existing = layer.geometries.get(surface.key);
+  private geometryId(layer: Layer, key: string, geometry: BufferGeometry) {
+    const existing = layer.geometries.get(key);
     if (existing !== undefined) return existing;
     const mesh = layer.mesh;
-    const vertices = surface.geometry.getAttribute('position').count;
-    const indices = surface.geometry.index!.count;
+    const vertices = geometry.getAttribute('position').count;
+    const indices = geometry.index?.count ?? 0;
     if (mesh.unusedVertexCount < vertices || mesh.unusedIndexCount < indices) {
       const next = mesh as unknown as { _nextVertexStart: number; _nextIndexStart: number };
       mesh.setGeometrySize(
@@ -483,10 +674,27 @@ export class LDrawBatch {
         ),
       );
     }
-    const id = mesh.addGeometry(surface.geometry);
-    layer.sources[id] = surface.geometry;
-    layer.geometries.set(surface.key, id);
+    const id = mesh.addGeometry(geometry);
+    layer.sources[id] = geometry;
+    layer.geometries.set(key, id);
     return id;
+  }
+
+  /** Puts one instance of `geometryId` in `layer` for a brick, reusing a freed slot if any. */
+  private slot(layer: Layer, geometryId: number, matrix: Matrix4, brickId: string) {
+    let id = layer.free.pop();
+    if (id === undefined) {
+      if (layer.size >= layer.mesh.maxInstanceCount)
+        layer.mesh.setInstanceCount(layer.mesh.maxInstanceCount * 2);
+      id = layer.mesh.addInstance(geometryId);
+      layer.size++;
+    } else {
+      layer.mesh.setGeometryIdAt(id, geometryId);
+      layer.mesh.setVisibleAt(id, true);
+    }
+    layer.mesh.setMatrixAt(id, matrix);
+    layer.brickIds[id] = brickId;
+    return { layer, id };
   }
 
   private place(
@@ -501,34 +709,17 @@ export class LDrawBatch {
     const slots: Placement['slots'] = [];
     for (const surface of look.surfaces) {
       const layer = this.layer(surface);
-      const geometryId = this.geometryId(layer, surface);
-      let id = layer.free.pop();
-      if (id === undefined) {
-        if (layer.size >= layer.mesh.maxInstanceCount)
-          layer.mesh.setInstanceCount(layer.mesh.maxInstanceCount * 2);
-        id = layer.mesh.addInstance(geometryId);
-        layer.size++;
-      } else {
-        layer.mesh.setGeometryIdAt(id, geometryId);
-        layer.mesh.setVisibleAt(id, true);
-      }
-      layer.mesh.setMatrixAt(id, matrix);
-      layer.brickIds[id] = brick.id;
-      slots.push({ layer, id });
+      slots.push(
+        this.slot(layer, this.geometryId(layer, surface.key, surface.geometry), matrix, brick.id),
+      );
     }
-    const linear = new Matrix3().setFromMatrix4(matrix);
-    const lines = Object.fromEntries(
-      LINE_KINDS.map((kind) => [
-        kind,
-        Object.fromEntries(
-          Object.entries(look.lines[kind]).map(([name, data]) => [
-            name,
-            name === 'color' ? data : transformed(data, name === 'direction' ? linear : matrix),
-          ]),
-        ),
-      ]),
-    ) as Record<LineKind, LineArrays>;
-    return { key, slots, lines };
+    for (const kind of LINE_KINDS) {
+      const geometry = look.lines[kind];
+      if (!geometry) continue;
+      const layer = this.lineLayers[kind];
+      slots.push(this.slot(layer, this.geometryId(layer, look.key, geometry), matrix, brick.id));
+    }
+    return { key, slots };
   }
 
   private release(placement: Placement) {
@@ -537,24 +728,6 @@ export class LDrawBatch {
       layer.mesh.setVisibleAt(id, false);
       layer.brickIds[id] = undefined;
       layer.free.push(id);
-    }
-  }
-
-  private rebuildLines() {
-    const placements = [...this.placements.values()];
-    for (const kind of LINE_KINDS) {
-      const lines = this.lineObjects[kind];
-      lines.geometry.dispose();
-      const geometry = new BufferGeometry();
-      const picked = placements.map((placement) => placement.lines[kind]);
-      for (const name of Object.keys(picked[0] ?? {}))
-        geometry.setAttribute(
-          name,
-          new BufferAttribute(concat(picked.map((entry) => entry[name])), itemSize(name)),
-        );
-      lines.geometry = geometry;
-      // Nothing to draw costs nothing: an empty buffer would still be a draw call.
-      lines.visible = geometry.getAttribute('position')?.count > 0;
     }
   }
 }

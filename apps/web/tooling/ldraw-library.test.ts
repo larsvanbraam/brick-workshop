@@ -21,10 +21,10 @@ import {
   Raycaster,
   Vector3,
 } from 'three';
-import type { Material } from 'three';
+import type { Material, ShaderMaterial } from 'three';
 import { LDrawBatch, canBatchLDrawModel } from '../src/ldraw-batches';
 import { createFallbackGeometry } from '../src/fallback-geometry';
-import { getLDrawModelOffset, getSceneFrame } from '../src/scene-frame';
+import { getLDrawModelOffset, getMaxZoomDistance, getSceneFrame } from '../src/scene-frame';
 import { LDrawLoader } from 'three/addons/loaders/LDrawLoader.js';
 import { LDrawConditionalLineMaterial } from 'three/addons/materials/LDrawConditionalLineMaterial.js';
 import { PARTS, footprint, getLDrawTransform } from '@lego-builder/brick-engine';
@@ -145,6 +145,45 @@ describe('local LDraw assets', () => {
     expect(dispose).not.toHaveBeenCalled();
     geometry.dispose();
   });
+  it('places big rebuilds in slices, and a newer update cancels a running one', async () => {
+    const geometry = new BoxGeometry(20, 24, 20).translate(0, 12, 0);
+    const model = new Group().add(new Mesh(geometry, new MeshStandardMaterial()));
+    const bricks = Array.from({ length: 600 }, (_, index) => ({
+      id: `brick-${index}`,
+      partId: '3005',
+      color: 4,
+      x: index % 16,
+      y: Math.floor(index / 16) * 3,
+      z: 0,
+      rotation: 0 as const,
+    }));
+    const entries = bricks.map((brick) => ({ brick, model }));
+    const batch = new LDrawBatch((part) => part);
+    expect(batch.changes(entries, 16)).toBe(600);
+    const reports: number[] = [];
+    const first = batch.updateInSlices(entries, 16, false, {
+      budget: 0,
+      onProgress: (done) => reports.push(done),
+    });
+    // Before it finishes, the build shrinks to its first 100 bricks.
+    await Promise.resolve();
+    const second = batch.updateInSlices(entries.slice(0, 100), 16, false, { budget: 0 });
+    expect(await first).toBe(false);
+    expect(await second).toBe(true);
+    expect(reports.length).toBeGreaterThan(0);
+    expect(batch.changes(entries.slice(0, 100), 16)).toBe(0);
+    const [mesh] = batch.meshes;
+    expect(mesh.userData.brickIds.filter(Boolean)).toHaveLength(100);
+    // Finishing in slices leaves the same batch a one-shot update does.
+    await batch.updateInSlices(entries, 16);
+    const once = new LDrawBatch((part) => part);
+    once.update(entries, 16);
+    expect(mesh.userData.brickIds.filter(Boolean)).toHaveLength(600);
+    expect(batch.stats().edgeSegments).toBe(once.stats().edgeSegments);
+    batch.dispose();
+    once.dispose();
+    geometry.dispose();
+  });
   it('batches see-through and mirrored faces into a sorted glass layer that faces outward', () => {
     const geometry = new BoxGeometry(20, 24, 20).translate(0, 12, 0);
     const opaque = new Mesh(geometry, new MeshStandardMaterial());
@@ -194,7 +233,7 @@ describe('local LDraw assets', () => {
     batch.dispose();
     geometry.dispose();
   });
-  it('transforms conditional edge controls as points and directions without translation', () => {
+  it('stores conditional edges once and moves ends, controls and direction with the brick', () => {
     const geometry = new BufferGeometry();
     for (const name of ['position', 'control0', 'control1', 'direction'])
       geometry.setAttribute(name, new Float32BufferAttribute([1, 2, 3, 4, 5, 6], 3));
@@ -208,17 +247,27 @@ describe('local LDraw assets', () => {
     batch.update([{ brick, model }], 16, true);
     const transform = new Matrix4().makeRotationY(Math.PI / 2).setPosition(-90, -58.8, -110);
     const lines = batch.lines[1];
-    const control = new Vector3().fromBufferAttribute(lines.geometry.getAttribute('control0'), 0);
-    const direction = new Vector3().fromBufferAttribute(
-      lines.geometry.getAttribute('direction'),
-      0,
-    );
-    expect(control.distanceTo(new Vector3(1, 2, 3).applyMatrix4(transform))).toBeLessThan(0.00001);
+    expect(lines.visible).toBe(true);
+    expect(batch.lines[0].visible).toBe(false);
+    expect(batch.stats().conditionalSegments).toBe(1);
+    // The part's edges stay in part space; the brick's turn and place are its instance matrix.
     expect(
-      direction.distanceTo(
-        new Vector3(1, 2, 3).applyMatrix3(new Matrix3().setFromMatrix4(transform)),
-      ),
-    ).toBeLessThan(0.00001);
+      new Vector3().fromBufferAttribute(lines.geometry.getAttribute('control0'), 0).toArray(),
+    ).toEqual([1, 2, 3]);
+    const placed = lines.getMatrixAt(0, new Matrix4());
+    for (const [index, value] of transform.elements.entries())
+      expect(placed.elements[index]).toBeCloseTo(value, 5);
+    // ...which the conditional shader applies to the ends, both controls and the direction.
+    const shader = {
+      vertexShader: (lines.material as ShaderMaterial).vertexShader,
+      fragmentShader: (lines.material as ShaderMaterial).fragmentShader,
+      uniforms: {},
+    };
+    (lines.material as ShaderMaterial).onBeforeCompile(shader as never, undefined as never);
+    expect(shader.vertexShader).toContain('#include <batching_vertex>');
+    for (const input of ['position', 'control0', 'control1', 'position + direction'])
+      expect(shader.vertexShader).toContain(`batchingMatrix * vec4( ${input}, 1.0 )`);
+    expect(shader.vertexShader).not.toMatch(/modelViewMatrix \* vec4\(/);
     batch.dispose();
     geometry.dispose();
   });
@@ -306,6 +355,17 @@ describe('local LDraw assets', () => {
                   expect(Math.abs(projected.y)).toBeLessThan(0.95);
                 }
           }
+  });
+  it('caps zooming out a little past the starting view, for boards of every size', () => {
+    for (const buildArea of [16, 64, 128])
+      for (const height of [4, 29])
+        for (const aspect of [921 / 745, 375 / 395]) {
+          const frame = getSceneFrame(height, 'perspective', aspect, 38, buildArea);
+          const start = new Vector3(...frame.position).distanceTo(new Vector3(...frame.target));
+          const max = getMaxZoomDistance(buildArea, height, aspect, 38);
+          expect(max).toBeGreaterThan(start * 1.4);
+          expect(max).toBeLessThan(start * 2);
+        }
   });
   it('applies native off-centre slope origins to rendering in all rotations', () => {
     const brick = { id: 'slope', partId: '3039', color: 4, x: 0, y: 0, z: 0, rotation: 0 as const };

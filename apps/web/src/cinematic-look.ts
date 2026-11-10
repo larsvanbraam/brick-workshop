@@ -120,6 +120,20 @@ export const BLOOM = { luminanceThreshold: 1, luminanceSmoothing: 0.15 };
 export const VIGNETTE_OFFSET = 0.25;
 
 /**
+ * The most pixels the stage renders while it is being looked at. Ambient occlusion, bloom and
+ * antialiasing all cost per pixel, so a 2x screen would pay four times over for detail the
+ * postprocessing softens anyway. Saved screenshots render at the full pixel ratio.
+ */
+export const CINEMATIC_MAX_PIXELS = 3_000_000;
+
+/** The pixel ratio the stage renders at: the screen's own, unless that passes the budget. */
+export function getCinematicDpr(width: number, height: number, deviceRatio: number) {
+  const full = Math.min(deviceRatio, 2);
+  const budget = Math.sqrt(CINEMATIC_MAX_PIXELS / Math.max(width * height, 1));
+  return Math.max(1, Math.min(full, budget));
+}
+
+/**
  * Directions relative to the default 3D view, which looks at the board from +x, -z: the key light
  * comes from the camera's front left and high, the rim light from behind the model on its right.
  * The rim light stands steep: any lower and the flat tops of plates and studs mirror it straight

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { Group } from 'three';
 import { LDrawLoader } from 'three/addons/loaders/LDrawLoader.js';
 import { LDrawConditionalLineMaterial } from 'three/addons/materials/LDrawConditionalLineMaterial.js';
@@ -21,6 +21,11 @@ type Library = {
   status: 'loading' | 'ready' | 'fallback';
   models: Record<string, Group>;
   message: string;
+  /**
+   * Required parts still on their way. Bricks of these parts have nothing to show yet: drawing
+   * them as fallback shapes first would build thousands of throwaway meshes for a big model.
+   */
+  pending: readonly string[];
 };
 
 let pendingCatalog: Promise<LibraryCatalog> | undefined;
@@ -131,34 +136,55 @@ export function loadLDrawPart(id: string): Promise<Group> {
 
 export function useLDrawLibrary(requiredParts: readonly string[]): Library {
   const requiredKey = [...new Set(requiredParts)].sort().join('\0');
-  const [library, setLibrary] = useState<Library>({
+  const [library, setLibrary] = useState<Omit<Library, 'pending'> & { failed: readonly string[] }>({
     status: 'loading',
     models: {},
     message: 'Loading LDraw geometry',
+    failed: [],
   });
+  // The last request that settled; parts of a newer one are pending until it settles too.
+  const [settledKey, setSettledKey] = useState<string | null>(null);
   useEffect(() => {
     let cancelled = false;
     const ids = requiredKey ? requiredKey.split('\0') : [];
     loadLDrawModels(ids)
       .then((models) => {
-        if (!cancelled)
-          setLibrary((current) => ({
-            status: 'ready',
-            models: { ...current.models, ...models },
-            message: `LDraw geometry / ${Object.keys({ ...current.models, ...models }).length} parts`,
-          }));
+        if (cancelled) return;
+        setLibrary((current) => ({
+          status: 'ready',
+          models: { ...current.models, ...models },
+          message: `LDraw geometry / ${Object.keys({ ...current.models, ...models }).length} parts`,
+          failed: current.failed.filter((id) => !(id in models)),
+        }));
+        setSettledKey(requiredKey);
       })
       .catch((error: unknown) => {
-        if (!cancelled)
-          setLibrary((current) => ({
-            status: Object.keys(current.models).length ? current.status : 'fallback',
-            models: current.models,
-            message: error instanceof Error ? error.message : 'LDraw loading failed.',
-          }));
+        if (cancelled) return;
+        setLibrary((current) => ({
+          status: Object.keys(current.models).length ? current.status : 'fallback',
+          models: current.models,
+          message: error instanceof Error ? error.message : 'LDraw loading failed.',
+          // Whatever didn't arrive is drawn from fallback shapes rather than waited on forever.
+          failed: [...new Set([...current.failed, ...ids.filter((id) => !(id in current.models))])],
+        }));
+        setSettledKey(requiredKey);
       });
     return () => {
       cancelled = true;
     };
   }, [requiredKey]);
-  return library;
+  const pending = useMemo(() => {
+    if (settledKey === requiredKey || !requiredKey) return [];
+    const failed = new Set(library.failed);
+    return requiredKey.split('\0').filter((id) => !(id in library.models) && !failed.has(id));
+  }, [requiredKey, settledKey, library.models, library.failed]);
+  return useMemo(
+    () => ({
+      status: library.status,
+      models: library.models,
+      message: library.message,
+      pending,
+    }),
+    [library.status, library.models, library.message, pending],
+  );
 }

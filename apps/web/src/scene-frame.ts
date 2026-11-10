@@ -12,6 +12,28 @@ export function getSceneHeight(assembly: Assembly, explode = false) {
   );
 }
 
+/** How far back the camera starts, as a multiple of the distance that just fits the board. */
+const FRAME_MARGIN = 1.12;
+/** How far back zooming may go: a little past the starting view, and never out of sight. */
+const MAX_ZOOM_OUT = 1.8;
+
+/** The distance at which the whole board, up to `height`, just fits the view. */
+function fitDistance(height: number, aspect: number, fov: number, buildArea: number) {
+  const bounds = new Box3(
+    new Vector3(-buildArea / 2, 0, -buildArea / 2),
+    new Vector3(buildArea / 2, height, buildArea / 2),
+  );
+  const radius = bounds.getBoundingSphere(new Sphere()).radius;
+  const vertical = (fov * Math.PI) / 360;
+  const horizontal = Math.atan(Math.tan(vertical) * aspect);
+  return radius / Math.sin(Math.min(vertical, horizontal));
+}
+
+/** The farthest the camera may pull back from its target. */
+export function getMaxZoomDistance(buildArea: number, height: number, aspect: number, fov = 38) {
+  return fitDistance(height, aspect, fov, buildArea) * MAX_ZOOM_OUT;
+}
+
 export function getSceneFrame(
   height: number,
   view: 'perspective' | 'top' | 'front',
@@ -24,9 +46,7 @@ export function getSceneFrame(
     new Vector3(buildArea / 2, height, buildArea / 2),
   );
   const sphere = bounds.getBoundingSphere(new Sphere());
-  const vertical = (fov * Math.PI) / 360;
-  const horizontal = Math.atan(Math.tan(vertical) * aspect);
-  const distance = (sphere.radius / Math.sin(Math.min(vertical, horizontal))) * 1.12;
+  const distance = fitDistance(height, aspect, fov, buildArea) * FRAME_MARGIN;
   const direction =
     view === 'top'
       ? new Vector3(0, 1, 0.001)
