@@ -4,7 +4,8 @@ import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { CameraControls, CameraControlsImpl, Edges, Environment, Grid } from '@react-three/drei';
 import { Box3, Group, Line, LineSegments, Matrix4, Mesh, PerspectiveCamera, Vector3 } from 'three';
 import type { Object3D } from 'three';
-import { createFallbackGeometry } from './fallback-geometry';
+import { FallbackBatch } from './fallback-batch';
+import { createFallbackBrickGeometry, fallbackShapeKey } from './fallback-geometry';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { coloredLDrawModel } from './ldraw';
 import { LDrawBatch, canBatchLDrawModel } from './ldraw-batches';
@@ -24,7 +25,6 @@ import {
   COLORS,
   PLATE_HEIGHT,
   footprint,
-  getConnectionSites,
   getBuildArea,
   getLDrawTransform,
 } from '@lego-builder/brick-engine';
@@ -440,7 +440,7 @@ export function LDrawMesh({
 }
 
 function FallbackGeometry({ brick }: { brick: Brick }) {
-  const [geometry] = useState(() => createFallbackGeometry(brick));
+  const [geometry] = useState(() => createFallbackBrickGeometry(brick));
   useEffect(() => () => geometry.dispose(), [geometry]);
   return <primitive object={geometry} attach="geometry" />;
 }
@@ -468,7 +468,6 @@ const BrickMesh = memo(function BrickMesh({
   const color = overrideColor ?? displayHex(definition);
   const actualOpacity = overrideColor ? opacity : opacity * material.opacity;
   const elevation = brick.y * PLATE_HEIGHT + (explode ? brick.y * 0.18 : 0);
-  const bodyHeight = size.height * PLATE_HEIGHT;
   return (
     <group
       position={[
@@ -489,39 +488,16 @@ const BrickMesh = memo(function BrickMesh({
           />
         </group>
       ) : (
-        <>
-          <mesh position={[0, bodyHeight / 2, 0]} castShadow={castShadow} receiveShadow>
-            <FallbackGeometry key={`${brick.partId}:${brick.rotation}`} brick={brick} />
-            <meshStandardMaterial
-              {...material}
-              color={color}
-              transparent={actualOpacity < 1}
-              opacity={actualOpacity}
-              depthWrite={actualOpacity === 1}
-            />
-          </mesh>
-          {getConnectionSites(brick, 'top').map((site) => (
-            <mesh
-              key={`${site.x}:${site.z}`}
-              position={[
-                site.x - brick.x - size.width / 2,
-                bodyHeight + 0.07,
-                site.z - brick.z - size.depth / 2,
-              ]}
-              castShadow={castShadow}
-              receiveShadow
-            >
-              <cylinderGeometry args={[0.3, 0.3, 0.17, 24]} />
-              <meshStandardMaterial
-                {...material}
-                color={color}
-                transparent={actualOpacity < 1}
-                opacity={actualOpacity}
-                depthWrite={actualOpacity === 1}
-              />
-            </mesh>
-          ))}
-        </>
+        <mesh castShadow={castShadow} receiveShadow>
+          <FallbackGeometry key={fallbackShapeKey(brick)} brick={brick} />
+          <meshStandardMaterial
+            {...material}
+            color={color}
+            transparent={actualOpacity < 1}
+            opacity={actualOpacity}
+            depthWrite={actualOpacity === 1}
+          />
+        </mesh>
       )}
     </group>
   );
@@ -585,6 +561,29 @@ function NativeBatch({
         if (complete) finish();
       });
   }, [batch, bricks, models, buildArea, explode, invalidate, shadows]);
+  useEffect(() => () => batch.dispose(), [batch]);
+  return <primitive object={batch.object} dispose={null} />;
+}
+
+/** Bricks without an LDraw model, batched from procedural shapes a few draw calls at a time. */
+function FallbackBatchView({
+  bricks,
+  buildArea,
+  explode,
+}: {
+  bricks: readonly Brick[];
+  buildArea: number;
+  explode: boolean;
+}) {
+  const [batch] = useState(() => new FallbackBatch());
+  const invalidate = useThree((state) => state.invalidate);
+  const shadows = useThree((state) => state.gl.shadowMap);
+  useLayoutEffect(() => {
+    if (!batch.update(bricks, buildArea, explode)) return;
+    // The cinematic stage only redraws shadows on request.
+    shadows.needsUpdate = true;
+    invalidate();
+  }, [batch, bricks, buildArea, explode, invalidate, shadows]);
   useEffect(() => () => batch.dispose(), [batch]);
   return <primitive object={batch.object} dispose={null} />;
 }
@@ -743,16 +742,19 @@ export const Scene = memo(function Scene(props: SceneProps) {
   const pending = useMemo(() => new Set(props.pendingParts ?? []), [props.pendingParts]);
   const displays = useMemo(() => {
     const batched: Brick[] = [];
+    const fallback: Brick[] = [];
     const separate: Brick[] = [];
     for (const brick of props.assembly.bricks) {
       if (brick.y >= props.layer) continue;
       if (pending.has(brick.partId)) continue;
-      // Only bricks without native geometry are drawn one by one, from fallback shapes.
+      // Bricks without native geometry are batched from fallback shapes; only models the
+      // batch can't take are drawn one by one.
       if (eligible[brick.partId]) batched.push(brick);
+      else if (!props.models[brick.partId]) fallback.push(brick);
       else separate.push(brick);
     }
-    return { batched, separate };
-  }, [props.assembly, props.layer, eligible, pending]);
+    return { batched, fallback, separate };
+  }, [props.assembly, props.layer, props.models, eligible, pending]);
   // A new object whenever anything that casts a shadow changes: the pieces shown, or parts
   // that finished loading. The piece being placed casts none.
   const scenery = useMemo(
@@ -892,6 +894,11 @@ export const Scene = memo(function Scene(props: SceneProps) {
             batchRef={batchRef}
             onProgress={props.onBuildProgress}
           />
+          <FallbackBatchView
+            bricks={displays.fallback}
+            buildArea={buildArea}
+            explode={props.explode}
+          />
           {displays.separate.map((brick) => (
             <BrickMesh
               key={brick.id}
@@ -967,7 +974,7 @@ export const Scene = memo(function Scene(props: SceneProps) {
             visible: visible.size,
             batched: displays.batched.length,
             separate: displays.separate.length,
-            fallback: displays.separate.filter((brick) => !props.models[brick.partId]).length,
+            fallback: displays.fallback.length,
             total: props.assembly.bricks.length,
           }}
         />

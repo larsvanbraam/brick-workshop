@@ -19,7 +19,7 @@ export interface DebugOptions {
   wireframe: boolean;
   /** Hides LDraw edge and conditional lines. */
   hideEdges: boolean;
-  /** Boxes around bricks drawn outside the batch: fallbacks, translucent colors, mirrored parts. */
+  /** Boxes around bricks drawn one by one: LDraw models the batch can't take. */
   unbatched: boolean;
   /** The box the camera frames, around every visible brick. */
   bounds: boolean;
@@ -310,7 +310,7 @@ export interface DebugCounts {
   visible: number;
   batched: number;
   separate: number;
-  /** Separate bricks without an LDraw model, drawn as simple boxes and studs. */
+  /** Bricks without an LDraw model, batched from simple boxes and studs. */
   fallback: number;
   total: number;
 }
@@ -383,12 +383,12 @@ export function DebugOverlay({
           {number(counts.visible)} / {number(counts.total)} visible
         </dd>
         <dt>Batched</dt>
-        <dd>{number(counts.batched)}</dd>
-        <dt>Separate</dt>
         <dd>
-          {number(counts.separate)}
-          {counts.fallback > 0 && ` (${number(counts.fallback)} fallback)`}
+          {number(counts.batched)}
+          {counts.fallback > 0 && ` + ${number(counts.fallback)} fallback`}
         </dd>
+        <dt>Separate</dt>
+        <dd>{number(counts.separate)}</dd>
         {stats?.batch && (
           <>
             <dt>Batch</dt>

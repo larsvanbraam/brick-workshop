@@ -1,6 +1,7 @@
 import { BoxGeometry, CylinderGeometry, ExtrudeGeometry, Path, Shape, SphereGeometry } from 'three';
+import type { BufferGeometry } from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { PLATE_HEIGHT, footprint, getPart } from '@lego-builder/brick-engine';
+import { PLATE_HEIGHT, footprint, getConnectionSites, getPart } from '@lego-builder/brick-engine';
 import type { Brick } from '@lego-builder/brick-engine';
 
 export function createFallbackGeometry(brick: Brick) {
@@ -143,5 +144,50 @@ export function createFallbackGeometry(brick: Brick) {
     geometry = new BoxGeometry(part.width - 0.035, height - 0.025, part.depth - 0.035);
   }
   geometry.rotateY((brick.rotation * Math.PI) / 180);
+  return geometry;
+}
+
+/** A stud's offset from the brick's footprint centre, for each of its top studs. */
+function studOffsets(brick: Brick) {
+  const size = footprint(brick);
+  return getConnectionSites(brick, 'top').map(
+    (site) => [site.x - brick.x - size.width / 2, site.z - brick.z - size.depth / 2] as const,
+  );
+}
+
+/**
+ * What a fallback brick's shape depends on. Bricks that share it share one geometry: the same
+ * part, turned and mounted the same way, with its studs in the same places.
+ */
+export function fallbackShapeKey(brick: Brick) {
+  const studs = studOffsets(brick)
+    .map(([x, z]) => `${x.toFixed(3)},${z.toFixed(3)}`)
+    .join(';');
+  return `${brick.partId}:${brick.rotation}:${brick.facing ?? ''}:${studs}`;
+}
+
+/** Only positions and normals, unindexed, so every shape can merge and share one batch. */
+function plain(geometry: BufferGeometry) {
+  const flat = geometry.index ? geometry.toNonIndexed() : geometry.clone();
+  for (const name of Object.keys(flat.attributes))
+    if (name !== 'position' && name !== 'normal') flat.deleteAttribute(name);
+  flat.clearGroups();
+  return flat;
+}
+
+/**
+ * A fallback brick in one piece: its body and studs, standing on the origin at the centre of its
+ * footprint, unindexed and with only positions and normals.
+ */
+export function createFallbackBrickGeometry(brick: Brick) {
+  const bodyHeight = footprint(brick).height * PLATE_HEIGHT;
+  const sources = [createFallbackGeometry(brick).translate(0, bodyHeight / 2, 0)];
+  for (const [x, z] of studOffsets(brick))
+    sources.push(new CylinderGeometry(0.3, 0.3, 0.17, 24).translate(x, bodyHeight + 0.07, z));
+  const parts = sources.map(plain);
+  const geometry = mergeGeometries(parts)!;
+  for (const part of [...sources, ...parts]) part.dispose();
+  geometry.computeBoundingBox();
+  geometry.computeBoundingSphere();
   return geometry;
 }
