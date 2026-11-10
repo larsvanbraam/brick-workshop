@@ -986,7 +986,7 @@ kbd {
   z-index: 100;
   background: #0b0c10;
 }
-.workspace.cinematic .viewport > :not(:first-child, .cinematic-bar) {
+.workspace.cinematic .viewport > :not(:first-child, .cinematic-bar, .scene-debug) {
   display: none;
 }
 .cinematic-bar {

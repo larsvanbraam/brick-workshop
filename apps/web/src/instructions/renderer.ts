@@ -6,7 +6,6 @@ import {
   DirectionalLight,
   Fog,
   Group,
-  InstancedMesh,
   LineSegments,
   Mesh,
   MeshBasicMaterial,
@@ -36,7 +35,8 @@ import {
 import type { Assembly, Brick } from '@lego-builder/brick-engine';
 import { createFallbackGeometry } from '../fallback-geometry';
 import { coloredLDrawModel, loadLDrawModels } from '../ldraw';
-import { canBatchLDrawModel, createLDrawBatch } from '../ldraw-batches';
+import { LDrawBatch, canBatchLDrawModel } from '../ldraw-batches';
+import type { BatchEntry } from '../ldraw-batches';
 import { colorMaterialProperties } from '../ldraw-materials';
 import {
   DAYLIGHT,
@@ -163,6 +163,9 @@ export class ManualRenderer {
   /** The area close-ups show, kept while work stays inside it so the camera holds still. */
   private focus: Box3 | null = null;
   private loose: { brick: Brick; object: Object3D }[] = [];
+  /** Every consolidated piece, drawn by one batched mesh. */
+  private batch: LDrawBatch | null = null;
+  private readonly batched: BatchEntry[] = [];
   private view = 0;
   private readonly models: Record<string, Group>;
 
@@ -247,42 +250,29 @@ export class ManualRenderer {
     return piece;
   }
 
-  /** Merges loose opaque LDraw pieces into one instanced batch per part and color. */
+  /** Merges loose opaque LDraw pieces into the batched mesh. */
   private consolidate() {
-    const groups = new Map<string, Brick[]>();
     const remaining: typeof this.loose = [];
+    let added = false;
     for (const entry of this.loose) {
       const { brick } = entry;
       const model = this.models[brick.partId];
-      if (
-        !model ||
-        !canBatchLDrawModel(model) ||
-        COLORS.find((color) => color.id === brick.color)?.alpha !== 255
-      ) {
+      if (!model || !canBatchLDrawModel(model)) {
         remaining.push(entry);
         continue;
       }
       this.placed.remove(entry.object);
-      const key = `${brick.partId}:${brick.color}`;
-      const list = groups.get(key);
-      if (list) list.push(brick);
-      else groups.set(key, [brick]);
+      this.batched.push({ brick, model });
+      added = true;
     }
-    for (const bricks of groups.values()) {
-      const batch = createLDrawBatch(
-        bricks,
-        this.coloredModel(bricks[0].partId, bricks[0].color),
-        0,
-      );
-      batch.traverse((object) => {
-        if (object instanceof LineSegments) {
-          object.layers.set(EDGE_LAYER);
-          this.owned.push(object.geometry);
-        } else if (object instanceof InstancedMesh) {
-          this.owned.push(object);
-        }
-      });
-      this.placed.add(batch);
+    if (added) {
+      if (!this.batch) {
+        this.batch = new LDrawBatch();
+        for (const lines of this.batch.lines) lines.layers.set(EDGE_LAYER);
+        this.owned.push(this.batch);
+      }
+      this.batch.update(this.batched, 0);
+      if (!this.batch.object.parent) this.placed.add(this.batch.object);
     }
     this.loose = remaining;
   }

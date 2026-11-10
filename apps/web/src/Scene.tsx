@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { RefObject } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { CameraControls, CameraControlsImpl, Edges, Environment, Grid } from '@react-three/drei';
@@ -7,7 +7,7 @@ import type { Object3D } from 'three';
 import { createFallbackGeometry } from './fallback-geometry';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { coloredLDrawModel } from './ldraw';
-import { canBatchLDrawModel, createLDrawBatch, disposeLDrawBatch } from './ldraw-batches';
+import { LDrawBatch, canBatchLDrawModel } from './ldraw-batches';
 import type { ThreeEvent } from '@react-three/fiber';
 import { colorMaterialProperties, displayHex } from './ldraw-materials';
 import {
@@ -28,6 +28,7 @@ import {
   getLDrawTransform,
 } from '@lego-builder/brick-engine';
 import type { Assembly, Brick } from '@lego-builder/brick-engine';
+import { DebugHelpers, DebugOverlay, DebugProbe, DebugStore, useDebugOptions } from './scene-debug';
 
 /** Where the pointer rests on the board, in stud and plate units. */
 export interface PointerTarget {
@@ -148,9 +149,21 @@ function CameraRig({
 }) {
   const { camera, size, gl, invalidate } = useThree();
   const first = useRef(true);
-  const latest = useRef({ height, aspect: size.width / size.height, bounds, trackpad, onDevice });
+  const latest = useRef({
+    height,
+    aspect: size.width / size.height,
+    bounds,
+    trackpad,
+    onDevice,
+  });
   useEffect(() => {
-    latest.current = { height, aspect: size.width / size.height, bounds, trackpad, onDevice };
+    latest.current = {
+      height,
+      aspect: size.width / size.height,
+      bounds,
+      trackpad,
+      onDevice,
+    };
   });
   useEffect(() => {
     const rig = controls.current;
@@ -262,7 +275,11 @@ function CameraRig({
     };
     const gesturechange = (event: Event) => {
       event.preventDefault();
-      const gesture = event as Event & { scale: number; clientX: number; clientY: number };
+      const gesture = event as Event & {
+        scale: number;
+        clientX: number;
+        clientY: number;
+      };
       zoom(-100 * Math.log(gesture.scale / scale), gesture.clientX, gesture.clientY);
       scale = gesture.scale;
     };
@@ -442,24 +459,41 @@ const BrickMesh = memo(function BrickMesh({
   );
 });
 
-const NativeBatch = memo(function NativeBatch({
+/** Every batchable brick in one batched mesh, updated in place as the build changes. */
+function NativeBatch({
   bricks,
-  model,
+  models,
   buildArea,
   explode,
+  batchRef,
 }: {
   bricks: readonly Brick[];
-  model: Group;
+  models: Record<string, Group>;
   buildArea: number;
   explode: boolean;
+  /** Exposes the batch to the debug overlay. */
+  batchRef?: RefObject<LDrawBatch | null>;
 }) {
-  const batch = useMemo(
-    () => createLDrawBatch(bricks, coloredLDrawModel(model, bricks[0].color), buildArea, explode),
-    [bricks, model, buildArea, explode],
-  );
-  useEffect(() => () => disposeLDrawBatch(batch), [batch]);
-  return <primitive object={batch} dispose={null} />;
-});
+  const [batch] = useState(() => new LDrawBatch());
+  useEffect(() => {
+    if (!batchRef) return;
+    batchRef.current = batch;
+    return () => {
+      batchRef.current = null;
+    };
+  }, [batch, batchRef]);
+  const invalidate = useThree((state) => state.invalidate);
+  useLayoutEffect(() => {
+    batch.update(
+      bricks.map((brick) => ({ brick, model: models[brick.partId] })),
+      buildArea,
+      explode,
+    );
+    invalidate();
+  }, [batch, bricks, models, buildArea, explode, invalidate]);
+  useEffect(() => () => batch.dispose(), [batch]);
+  return <primitive object={batch.object} dispose={null} />;
+}
 
 function Outline({
   brick,
@@ -516,7 +550,7 @@ function pointerTarget(
   const x = event.point.x + buildArea / 2;
   const z = event.point.z + buildArea / 2;
   if (event.object.userData.ground) return { face: 'ground', x, z };
-  const id = hitBrickId(event.object, event.instanceId);
+  const id = hitBrickId(event.object, event.batchId ?? event.instanceId);
   const brick = id === undefined ? undefined : bricks.get(id);
   if (!brick) return undefined;
   const size = footprint(brick);
@@ -598,23 +632,15 @@ export const Scene = memo(function Scene(props: SceneProps) {
     [props.models],
   );
   const displays = useMemo(() => {
-    const batches = new Map<string, Brick[]>();
+    const batched: Brick[] = [];
     const separate: Brick[] = [];
     for (const brick of props.assembly.bricks) {
       if (brick.y >= props.layer) continue;
-      if (
-        !eligible[brick.partId] ||
-        COLORS.find((color) => color.id === brick.color)?.alpha !== 255
-      ) {
-        separate.push(brick);
-        continue;
-      }
-      const key = `${brick.partId}:${brick.color}`;
-      const group = batches.get(key);
-      if (group) group.push(brick);
-      else batches.set(key, [brick]);
+      // Only bricks without native geometry are drawn one by one, from fallback shapes.
+      if (eligible[brick.partId]) batched.push(brick);
+      else separate.push(brick);
     }
-    return { batches: [...batches.entries()], separate };
+    return { batched, separate };
   }, [props.assembly, props.layer, eligible]);
   const visible = useMemo(
     () =>
@@ -651,6 +677,29 @@ export const Scene = memo(function Scene(props: SceneProps) {
     }
     return box;
   }, [visible, buildArea, props.explode]);
+  const [debug, setDebug] = useDebugOptions();
+  const [debugStore] = useState(() => new DebugStore());
+  useEffect(() => () => debugStore.dispose(), [debugStore]);
+  const batchRef = useRef<LDrawBatch | null>(null);
+  const unbatchedBoxes = useMemo(() => {
+    if (!debug.enabled || !debug.unbatched) return [];
+    return displays.separate.map((brick) => {
+      const size = footprint(brick);
+      const lift = props.explode ? brick.y * 0.18 : 0;
+      return new Box3(
+        new Vector3(
+          brick.x - buildArea / 2,
+          brick.y * PLATE_HEIGHT + lift,
+          brick.z - buildArea / 2,
+        ),
+        new Vector3(
+          brick.x + size.width - buildArea / 2,
+          (brick.y + size.height) * PLATE_HEIGHT + lift,
+          brick.z + size.depth - buildArea / 2,
+        ),
+      );
+    });
+  }, [debug.enabled, debug.unbatched, displays.separate, buildArea, props.explode]);
   const hoverKey = useRef('');
   const rig = useRef<CameraControls>(null);
   const { onHover } = props;
@@ -659,6 +708,7 @@ export const Scene = memo(function Scene(props: SceneProps) {
     if (key === hoverKey.current) return;
     hoverKey.current = key;
     onHover?.(target);
+    if (debug.enabled) debugStore.hover(target);
   }
   function resolve(event: ThreeEvent<PointerEvent | MouseEvent>) {
     // Explode spreads bricks apart, so hits no longer map onto build positions.
@@ -668,108 +718,137 @@ export const Scene = memo(function Scene(props: SceneProps) {
     return target;
   }
   return (
-    <Canvas
-      shadows
-      frameloop="demand"
-      camera={{ position: [21, 19, 24], fov: 38, near: 0.1, far: 500 }}
-      gl={{ antialias: true, preserveDrawingBuffer: true }}
-      dpr={[1, 2]}
-      onPointerMissed={(event) => {
-        if (mode === 'select' && event.type === 'click') props.onSelect(null);
-      }}
-      onPointerLeave={() => hover(null)}
-      style={{ cursor: mode === 'place' ? 'crosshair' : 'default' }}
-      aria-label="Interactive 3D brick model"
-    >
-      {cinematic ? (
-        <CinematicStage mood={cinematic.mood} bounds={bounds} />
-      ) : (
-        <WorkshopStage buildArea={buildArea} />
-      )}
-      <group
-        onPointerMove={(event) => {
-          const target = resolve(event);
-          if (target !== undefined) hover(target);
+    <>
+      <Canvas
+        shadows
+        frameloop="demand"
+        camera={{ position: [21, 19, 24], fov: 38, near: 0.1, far: 500 }}
+        gl={{ antialias: true, preserveDrawingBuffer: true }}
+        dpr={[1, 2]}
+        onPointerMissed={(event) => {
+          if (mode === 'select' && event.type === 'click') props.onSelect(null);
         }}
-        onClick={(event) => {
-          // A drag orbits the camera; only a still click acts on the build.
-          if (event.delta > 5) return;
-          const target = resolve(event);
-          if (target === undefined) return;
-          if (mode === 'select') props.onSelect(target?.brick?.id ?? null);
-          else if (target) props.onActivate?.(target, { alt: event.altKey, shift: event.shiftKey });
-        }}
-        onDoubleClick={(event) => {
-          // Double-click recenters the orbit on that spot; while building, clicks place pieces.
-          if (mode !== 'select' || event.object instanceof Line) return;
-          event.stopPropagation();
-          void rig.current?.moveTo(event.point.x, event.point.y, event.point.z, true);
-        }}
+        onPointerLeave={() => hover(null)}
+        style={{ cursor: mode === 'place' ? 'crosshair' : 'default' }}
+        aria-label="Interactive 3D brick model"
       >
-        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]} userData={{ ground: true }}>
-          <planeGeometry args={[200, 200]} />
-          <meshBasicMaterial transparent opacity={0} depthWrite={false} />
-        </mesh>
-        {displays.batches.map(([key, bricks]) => (
+        {cinematic ? (
+          <CinematicStage mood={cinematic.mood} bounds={bounds} />
+        ) : (
+          <WorkshopStage buildArea={buildArea} />
+        )}
+        <group
+          onPointerMove={(event) => {
+            const target = resolve(event);
+            if (target !== undefined) hover(target);
+          }}
+          onClick={(event) => {
+            // A drag orbits the camera; only a still click acts on the build.
+            if (event.delta > 5) return;
+            const target = resolve(event);
+            if (target === undefined) return;
+            if (mode === 'select') props.onSelect(target?.brick?.id ?? null);
+            else if (target)
+              props.onActivate?.(target, {
+                alt: event.altKey,
+                shift: event.shiftKey,
+              });
+          }}
+          onDoubleClick={(event) => {
+            // Double-click recenters the orbit on that spot; while building, clicks place pieces.
+            if (mode !== 'select' || event.object instanceof Line) return;
+            event.stopPropagation();
+            void rig.current?.moveTo(event.point.x, event.point.y, event.point.z, true);
+          }}
+        >
+          <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]} userData={{ ground: true }}>
+            <planeGeometry args={[200, 200]} />
+            <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+          </mesh>
           <NativeBatch
-            key={key}
-            bricks={bricks}
-            model={props.models[bricks[0].partId]}
+            bricks={displays.batched}
+            models={props.models}
             buildArea={buildArea}
             explode={props.explode}
+            batchRef={batchRef}
           />
-        ))}
-        {displays.separate.map((brick) => (
-          <BrickMesh
-            key={brick.id}
-            brick={brick}
+          {displays.separate.map((brick) => (
+            <BrickMesh
+              key={brick.id}
+              brick={brick}
+              buildArea={buildArea}
+              explode={props.explode}
+              model={props.models[brick.partId]}
+            />
+          ))}
+        </group>
+        {selected && (
+          <Outline brick={selected} buildArea={buildArea} explode={props.explode} color="#0a84ff" />
+        )}
+        {highlighted && highlighted !== selected && (
+          <Outline
+            brick={highlighted}
             buildArea={buildArea}
             explode={props.explode}
-            model={props.models[brick.partId]}
+            color="#b0000f"
+            fill="#ffffff"
           />
-        ))}
-      </group>
-      {selected && (
-        <Outline brick={selected} buildArea={buildArea} explode={props.explode} color="#0a84ff" />
-      )}
-      {highlighted && highlighted !== selected && (
-        <Outline
-          brick={highlighted}
+        )}
+        {props.ghost && (
+          <group raycast={() => null}>
+            <BrickMesh
+              brick={props.ghost}
+              buildArea={buildArea}
+              opacity={props.ghostValid ? 0.6 : 0.45}
+              overrideColor={props.ghostValid ? undefined : '#ff453a'}
+            />
+            <Outline
+              brick={props.ghost}
+              buildArea={buildArea}
+              explode={false}
+              color={props.ghostValid ? '#ffffff' : '#ff453a'}
+            />
+          </group>
+        )}
+        <CameraRig
+          view={props.view}
+          revision={props.cameraRevision}
+          height={height}
           buildArea={buildArea}
-          explode={props.explode}
-          color="#b0000f"
-          fill="#ffffff"
+          bounds={bounds}
+          controls={rig}
+          trackpad={props.trackpad ?? false}
+          onDevice={props.onPointerDevice}
+          cinematic={cinematic !== null}
+          turntable={cinematic?.turntable ?? false}
+        />
+        <SceneReady onReady={props.onReady} />
+        {debug.enabled && (
+          <>
+            <DebugProbe store={debugStore} options={debug} batch={batchRef} />
+            <DebugHelpers
+              options={debug}
+              bounds={bounds}
+              unbatched={unbatchedBoxes}
+              buildArea={buildArea}
+            />
+          </>
+        )}
+      </Canvas>
+      {debug.enabled && (
+        <DebugOverlay
+          store={debugStore}
+          options={debug}
+          onChange={setDebug}
+          counts={{
+            visible: visible.size,
+            batched: displays.batched.length,
+            separate: displays.separate.length,
+            fallback: displays.separate.filter((brick) => !props.models[brick.partId]).length,
+            total: props.assembly.bricks.length,
+          }}
         />
       )}
-      {props.ghost && (
-        <group raycast={() => null}>
-          <BrickMesh
-            brick={props.ghost}
-            buildArea={buildArea}
-            opacity={props.ghostValid ? 0.6 : 0.45}
-            overrideColor={props.ghostValid ? undefined : '#ff453a'}
-          />
-          <Outline
-            brick={props.ghost}
-            buildArea={buildArea}
-            explode={false}
-            color={props.ghostValid ? '#ffffff' : '#ff453a'}
-          />
-        </group>
-      )}
-      <CameraRig
-        view={props.view}
-        revision={props.cameraRevision}
-        height={height}
-        buildArea={buildArea}
-        bounds={bounds}
-        controls={rig}
-        trackpad={props.trackpad ?? false}
-        onDevice={props.onPointerDevice}
-        cinematic={cinematic !== null}
-        turntable={cinematic?.turntable ?? false}
-      />
-      <SceneReady onReady={props.onReady} />
-    </Canvas>
+    </>
   );
 });

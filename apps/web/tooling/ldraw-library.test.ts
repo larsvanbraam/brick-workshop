@@ -10,7 +10,6 @@ import {
   BufferGeometry,
   Float32BufferAttribute,
   Group,
-  InstancedMesh,
   LineBasicMaterial,
   LineSegments,
   LoadingManager,
@@ -22,7 +21,8 @@ import {
   Raycaster,
   Vector3,
 } from 'three';
-import { canBatchLDrawModel, createLDrawBatch, disposeLDrawBatch } from '../src/ldraw-batches';
+import type { Material } from 'three';
+import { LDrawBatch, canBatchLDrawModel } from '../src/ldraw-batches';
 import { createFallbackGeometry } from '../src/fallback-geometry';
 import { getLDrawModelOffset, getSceneFrame } from '../src/scene-frame';
 import { LDrawLoader } from 'three/addons/loaders/LDrawLoader.js';
@@ -108,36 +108,106 @@ describe('local LDraw assets', () => {
       z: 0,
       rotation: index === 0 ? (0 as const) : (90 as const),
     }));
-    const batch = createLDrawBatch(bricks, model, 16);
-    batch.updateMatrixWorld(true);
-    const instances = batch.children[0] as InstancedMesh;
-    expect(instances.count).toBe(2);
-    expect(instances.geometry).toBe(geometry);
-    expect(instances.geometry.groups).toHaveLength(6);
+    const batch = new LDrawBatch((part) => part);
+    batch.update(
+      bricks.map((brick) => ({ brick, model })),
+      16,
+    );
+    batch.object.updateMatrixWorld(true);
+    // One finish, so every face of every brick lands in a single batched mesh.
+    expect(batch.meshes).toHaveLength(1);
+    const [instances] = batch.meshes;
+    expect(instances.instanceCount).toBe(2);
+    const hitAt = (x: number) =>
+      new Raycaster(new Vector3(x + 0.5 - 8, 4, -7.5), new Vector3(0, -1, 0)).intersectObject(
+        batch.object,
+      )[0];
     for (const [index, brick] of bricks.entries()) {
-      const ray = new Raycaster(new Vector3(brick.x + 0.5 - 8, 4, -7.5), new Vector3(0, -1, 0));
-      const hit = ray.intersectObject(batch)[0];
-      expect(hit.instanceId).toBe(index);
+      const hit = hitAt(brick.x);
+      expect(hit.batchId).toBe(index);
       expect(hit.point.y).toBeCloseTo(1.2);
-      expect(instances.userData.brickIds[hit.instanceId!]).toBe(brick.id);
+      expect(instances.userData.brickIds[hit.batchId!]).toBe(brick.id);
     }
+    // Moving a brick rewrites only that brick, in the slot it already had.
+    const moved = { ...bricks[1], x: 6 };
+    batch.update(
+      [bricks[0], moved].map((brick) => ({ brick, model })),
+      16,
+    );
+    expect(instances.instanceCount).toBe(2);
+    expect(hitAt(bricks[1].x)).toBeUndefined();
+    expect(instances.userData.brickIds[hitAt(moved.x).batchId!]).toBe(moved.id);
+    batch.update([{ brick: bricks[0], model }], 16);
+    expect(hitAt(moved.x)).toBeUndefined();
     expect(canBatchLDrawModel(model)).toBe(true);
-    material.transparent = true;
-    expect(canBatchLDrawModel(model)).toBe(false);
     const dispose = vi.spyOn(geometry, 'dispose');
-    disposeLDrawBatch(batch);
+    batch.dispose();
     expect(dispose).not.toHaveBeenCalled();
+    geometry.dispose();
+  });
+  it('batches see-through and mirrored faces into a sorted glass layer that faces outward', () => {
+    const geometry = new BoxGeometry(20, 24, 20).translate(0, 12, 0);
+    const opaque = new Mesh(geometry, new MeshStandardMaterial());
+    const glass = new Mesh(
+      geometry,
+      new MeshStandardMaterial({ color: 0x2255ff, transparent: true, opacity: 0.5 }),
+    );
+    // Mirrored, as LDraw sub-parts sometimes are: the bake has to turn its triangles back out.
+    glass.scale.x = -1;
+    const solid = new Group().add(opaque);
+    const window = new Group().add(glass);
+    expect(canBatchLDrawModel(window)).toBe(true);
+    const bricks = [0, 3].map((x, index) => ({
+      id: `brick-${index}`,
+      partId: '3005',
+      color: 4,
+      x,
+      y: 0,
+      z: 0,
+      rotation: 0 as const,
+    }));
+    const batch = new LDrawBatch((part) => part);
+    batch.update(
+      [
+        { brick: bricks[0], model: solid },
+        { brick: bricks[1], model: window },
+      ],
+      16,
+    );
+    batch.object.updateMatrixWorld(true);
+    expect(batch.meshes).toHaveLength(2);
+    const layer = batch.meshes.find((mesh) => (mesh.material as Material).transparent)!;
+    expect(layer.sortObjects).toBe(true);
+    expect((layer.material as Material).depthWrite).toBe(false);
+    const color = layer.geometry.getAttribute('color');
+    expect(color.itemSize).toBe(4);
+    expect(color.getW(0)).toBeCloseTo(0.5);
+    const hit = new Raycaster(
+      new Vector3(bricks[1].x + 0.5 - 8, 4, -7.5),
+      new Vector3(0, -1, 0),
+    ).intersectObject(batch.object)[0];
+    expect(hit.object).toBe(layer);
+    expect(layer.userData.brickIds[hit.batchId!]).toBe('brick-1');
+    expect(hit.point.y).toBeCloseTo(1.2);
+    const glassEdges = batch.lines.filter((lines) => (lines.material as Material).transparent);
+    expect(glassEdges).toHaveLength(2);
+    batch.dispose();
     geometry.dispose();
   });
   it('transforms conditional edge controls as points and directions without translation', () => {
     const geometry = new BufferGeometry();
     for (const name of ['position', 'control0', 'control1', 'direction'])
       geometry.setAttribute(name, new Float32BufferAttribute([1, 2, 3, 4, 5, 6], 3));
-    const model = new Group().add(new LineSegments(geometry, new LineBasicMaterial()));
+    const model = new Group().add(
+      Object.assign(new LineSegments(geometry, new LineBasicMaterial()), {
+        isConditionalLine: true,
+      }),
+    );
     const brick = { id: 'edge', partId: '3005', color: 4, x: 3, y: 3, z: 2, rotation: 90 as const };
-    const batch = createLDrawBatch([brick], model, 16, true);
+    const batch = new LDrawBatch((part) => part);
+    batch.update([{ brick, model }], 16, true);
     const transform = new Matrix4().makeRotationY(Math.PI / 2).setPosition(-90, -58.8, -110);
-    const lines = batch.children[0] as LineSegments;
+    const lines = batch.lines[1];
     const control = new Vector3().fromBufferAttribute(lines.geometry.getAttribute('control0'), 0);
     const direction = new Vector3().fromBufferAttribute(
       lines.geometry.getAttribute('direction'),
@@ -149,7 +219,7 @@ describe('local LDraw assets', () => {
         new Vector3(1, 2, 3).applyMatrix3(new Matrix3().setFromMatrix4(transform)),
       ),
     ).toBeLessThan(0.00001);
-    disposeLDrawBatch(batch);
+    batch.dispose();
     geometry.dispose();
   });
   it('renders open arch and frame fallbacks rather than solid collision boxes', () => {
@@ -284,7 +354,11 @@ describe('local LDraw assets', () => {
               z: 0,
               rotation,
             }));
-            const batch = createLDrawBatch(bricks, cloneLDrawModel(model, 4, loader), 64);
+            const batch = new LDrawBatch((part, color) => cloneLDrawModel(part, color, loader));
+            batch.update(
+              bricks.map((brick) => ({ brick, model })),
+              64,
+            );
             const reference = new Group();
             for (const brick of bricks) {
               const size = footprint(brick);
@@ -304,9 +378,9 @@ describe('local LDraw assets', () => {
               reference.add(root);
             }
             reference.updateMatrixWorld(true);
-            batch.updateMatrixWorld(true);
+            batch.object.updateMatrixWorld(true);
             const expectedBounds = new Box3().setFromObject(reference);
-            const actualBounds = new Box3().setFromObject(batch);
+            const actualBounds = new Box3().setFromObject(batch.object);
             expect(
               actualBounds.min.distanceTo(expectedBounds.min),
               `${part.id} batched minimum`,
@@ -326,7 +400,7 @@ describe('local LDraw assets', () => {
                 new Vector3(0, -1, 0),
               );
               const expected = ray.intersectObject(reference)[0];
-              const actual = ray.intersectObject(batch)[0];
+              const actual = ray.intersectObject(batch.object)[0];
               expect(Boolean(actual), `${part.id} face hit`).toBe(Boolean(expected));
               if (actual && expected) {
                 expect(
@@ -334,12 +408,12 @@ describe('local LDraw assets', () => {
                   `${part.id} hit position`,
                 ).toBeLessThan(0.0001);
                 expect(
-                  actual.object.userData.brickIds[actual.instanceId!],
+                  actual.object.userData.brickIds[actual.batchId!],
                   `${part.id} selected instance`,
                 ).toBe(expected.object.userData.brickId);
               }
             }
-            disposeLDrawBatch(batch);
+            batch.dispose();
           }
           const bounds = new Box3().setFromObject(model);
           const quarterTurn = part.ldrawRotation === 90;
