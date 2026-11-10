@@ -165,7 +165,8 @@ describe('local LDraw assets', () => {
     });
     const lower = brick('lower', 0);
     const batch = new LDrawBatch((part) => part);
-    const vertices = () => batch.stats().layers[0].vertices;
+    // Triangle corners: indices count them whether or not neighbours share vertices.
+    const vertices = () => batch.stats().layers[0].indices;
     batch.update([{ brick: lower, model }], 16);
     const single = vertices();
     const studVertices = stud.toNonIndexed().getAttribute('position').count;
@@ -219,7 +220,7 @@ describe('local LDraw assets', () => {
     grounded.update(entries(brick('lower', 0), brick('upper', 3)), 16);
     expect(grounded.stats().closedUndersides).toBe(2);
     const bodyVertices = body.toNonIndexed().getAttribute('position').count;
-    expect(grounded.stats().layers[0].vertices).toBe(bodyVertices);
+    expect(grounded.stats().layers[0].indices).toBe(bodyVertices);
     expect(tubeVertices).toBeGreaterThan(0);
     grounded.dispose();
 
@@ -355,9 +356,15 @@ describe('local LDraw assets', () => {
     };
     (lines.material as ShaderMaterial).onBeforeCompile(shader as never, undefined as never);
     expect(shader.vertexShader).toContain('#include <batching_vertex>');
-    for (const input of ['position', 'control0', 'control1', 'position + direction'])
+    for (const input of ['position', 'control0', 'control1', 'segmentStart + direction'])
       expect(shader.vertexShader).toContain(`batchingMatrix * vec4( ${input}, 1.0 )`);
     expect(shader.vertexShader).not.toMatch(/modelViewMatrix \* vec4\(/);
+    // Both ends test the segment from its start, so they agree on dropping it.
+    expect(shader.vertexShader).toContain('batchingMatrix * vec4( segmentStart, 1.0 )');
+    expect(shader.vertexShader).toContain('if (discardFlag > 0.5) gl_Position =');
+    expect(
+      new Vector3().fromBufferAttribute(lines.geometry.getAttribute('segmentStart'), 1).toArray(),
+    ).toEqual([1, 2, 3]);
     batch.dispose();
     geometry.dispose();
   });

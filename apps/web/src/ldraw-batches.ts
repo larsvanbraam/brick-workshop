@@ -47,8 +47,19 @@ type Surface = {
 /** Opaque and see-through edges are drawn apart, and conditional edges need their own shader. */
 const LINE_KINDS = ['edge', 'conditional', 'glassEdge', 'glassConditional'] as const;
 type LineKind = (typeof LINE_KINDS)[number];
-/** A part in one color, ready to place: faces per finish, and each kind of edge it has. */
-type Look = { key: string; surfaces: Surface[]; lines: Record<LineKind, BufferGeometry | null> };
+/** The kinds whose segments share their end vertices through an index. */
+const INDEXED_LINES: ReadonlySet<LineKind> = new Set(['edge', 'glassEdge']);
+/**
+ * A part in one color with some regions left out, ready to place: faces per finish, and each
+ * kind of edge it has. `users` counts the placements drawing it, so it can go once none do.
+ */
+type Look = {
+  key: string;
+  baked: Baked;
+  surfaces: Surface[];
+  lines: Record<LineKind, BufferGeometry | null>;
+  users: number;
+};
 /** Faces that share a finish share one batched mesh, and so one draw call. */
 type Layer = {
   mesh: BatchedMesh;
@@ -57,9 +68,12 @@ type Layer = {
   sources: BufferGeometry[];
   free: number[];
   brickIds: (string | undefined)[];
+  /** One past the highest instance id handed out. */
   size: number;
+  /** Vertices of deleted geometries still taking up buffer space, until `optimize` packs it. */
+  dead: number;
 };
-type Placement = { key: string; slots: { layer: Layer; id: number }[] };
+type Placement = { key: string; look: Look; slots: { layer: Layer; id: number }[] };
 
 export type BatchEntry = { brick: Brick; model: Group };
 export type BatchLayerStats = {
@@ -112,6 +126,80 @@ function fill(color: Color, count: number, alpha?: number) {
 
 const itemSize = (name: string) => (name === 'color' ? 4 : 3);
 
+/**
+ * The first end of each segment, on both of its vertices. The conditional line shader tests a
+ * segment from each end; fed the same numbers, both ends reach the same verdict, so a rejected
+ * segment can be dropped whole in the vertex shader (one dropped end would streak).
+ */
+function segmentStarts(position: Float32Array) {
+  const out = new Float32Array(position.length);
+  for (let segment = 0; segment < position.length; segment += 6) {
+    out.set(position.subarray(segment, segment + 3), segment);
+    out.set(position.subarray(segment, segment + 3), segment + 3);
+  }
+  return out;
+}
+
+/**
+ * An indexed geometry of `attributes`, with vertices that match bit for bit merged into one.
+ * Baked parts store every corner of every primitive apart, so neighbours repeat each vertex;
+ * sharing them runs the vertex shader (and its batched matrix fetch) about a third as often.
+ * Exact matches only, so nothing moves: the same LDraw point through the same matrix comes out
+ * the same. An open-addressed table keyed on the position's raw words keeps it linear and free
+ * of string keys. Takes over the arrays, which it compacts in place.
+ */
+function weld(attributes: ReadonlyMap<string, Float32Array>) {
+  const count = attributes.get('position')!.length / 3;
+  const layout = [...attributes].map(([name, data]) => {
+    // -0 draws the same as 0, so it counts as 0.
+    for (let i = 0; i < data.length; i++) if (data[i] === 0) data[i] = 0;
+    const words = new Uint32Array(data.buffer, data.byteOffset, data.length);
+    return { name, data, words, width: data.length / count };
+  });
+  const position = layout.find(({ name }) => name === 'position')!.words;
+  const index = new Uint32Array(count);
+  let unique = 0;
+  let mask = 1;
+  while (mask < count * 2) mask <<= 1;
+  // Kept vertex + 1 per slot, so a fresh table reads empty.
+  const table = new Int32Array(mask);
+  mask--;
+  const same = (a: number, b: number) => {
+    for (const { width, words } of layout)
+      for (let i = 0; i < width; i++)
+        if (words[a * width + i] !== words[b * width + i]) return false;
+    return true;
+  };
+  for (let vertex = 0; vertex < count; vertex++) {
+    const at = vertex * 3;
+    const hash =
+      Math.imul(position[at], 0x9e3779b1) ^
+      Math.imul(position[at + 1], 0x85ebca77) ^
+      Math.imul(position[at + 2], 0xc2b2ae3d);
+    for (let slot = (hash ^ (hash >>> 16)) & mask; ; slot = (slot + 1) & mask) {
+      const entry = table[slot] - 1;
+      if (entry < 0) {
+        // Kept vertices move down in place: `unique` never passes `vertex`.
+        if (unique !== vertex)
+          for (const { width, words } of layout)
+            for (let i = 0; i < width; i++) words[unique * width + i] = words[vertex * width + i];
+        table[slot] = unique + 1;
+        index[vertex] = unique++;
+        break;
+      }
+      if (same(entry, vertex)) {
+        index[vertex] = entry;
+        break;
+      }
+    }
+  }
+  const geometry = new BufferGeometry();
+  for (const { name, width, data } of layout)
+    geometry.setAttribute(name, new BufferAttribute(data.slice(0, unique * width), width));
+  geometry.setIndex(new BufferAttribute(index, 1));
+  return geometry;
+}
+
 /** The material each draw group of an object uses, with its vertex range. */
 function drawGroups(object: Mesh | LineSegments, count: number) {
   const materials: Material[] = Array.isArray(object.material)
@@ -156,9 +244,6 @@ const emptySplit = (): Split => ({ body: new Map(), studs: new Map() });
  * be seen anyway.
  */
 const STUD = { top: -5, base: 0.01, radius: 6.5, grid: 10 } as const;
-/** Parts with more studs keep all of them: each coverage pattern bakes its own copy. */
-const MAX_COVERABLE_STUDS = 32;
-
 /**
  * The grid points a triangle or segment of `count` vertices from `first` could be a stud
  * around: it sits in the stud's height band and within its radius of the point.
@@ -273,6 +358,8 @@ type Baked = {
   key: string;
   faces: { finish: string; material: MeshStandardMaterial; split: Split }[];
   lines: Record<LineKind, Split>;
+  /** How many looks are cut from it; it is dropped with the last one. */
+  looks: number;
 };
 
 function bakePart(
@@ -360,6 +447,7 @@ function bakePart(
           attributes.control0 = slice('control0', group.start, group.count, 'point');
           attributes.control1 = slice('control1', group.start, group.count, 'point');
           attributes.direction = slice('direction', group.start, group.count, 'vector');
+          attributes.segmentStart = segmentStarts(attributes.position);
         }
         splitPrimitives(lines[kind], shape, attributes, 2);
       }
@@ -372,6 +460,7 @@ function bakePart(
     key,
     faces: [...faces.entries()].map(([finish, face]) => ({ finish, ...face })),
     lines,
+    looks: 0,
   };
 }
 
@@ -380,19 +469,9 @@ function bakeLook(baked: Baked, covered: ReadonlySet<string>, key: string): Look
   const surfaces: Surface[] = [];
   for (const { finish, material, split } of baked.faces) {
     const attributes = gather(split, covered);
-    const position = attributes.get('position');
-    if (!position?.length) continue;
-    const geometry = new BufferGeometry();
-    geometry.setAttribute('position', new BufferAttribute(position, 3));
-    geometry.setAttribute('normal', new BufferAttribute(attributes.get('normal')!, 3));
-    geometry.setAttribute(
-      'color',
-      new BufferAttribute(attributes.get('color')!, finish.endsWith(':glass') ? 4 : 3),
-    );
-    const count = position.length / 3;
-    const index = new Uint32Array(count);
-    for (let vertex = 0; vertex < count; vertex++) index[vertex] = vertex;
-    geometry.setIndex(new BufferAttribute(index, 1));
+    if (!attributes.get('position')?.length) continue;
+    // Indexed, also for the BVH: `indirect` leaves the welded index as it is.
+    const geometry = weld(attributes);
     geometry.computeBoundingBox();
     geometry.computeBoundingSphere();
     geometry.boundsTree = new MeshBVH(geometry, BVH_OPTIONS);
@@ -401,6 +480,12 @@ function bakeLook(baked: Baked, covered: ReadonlySet<string>, key: string): Look
   const lineGeometry = (kind: LineKind) => {
     const attributes = gather(baked.lines[kind], covered);
     if (!attributes.get('position')?.length) return null;
+    // Plain edges share their ends; conditional ones carry per-segment controls, so can't.
+    if (INDEXED_LINES.has(kind)) {
+      const geometry = weld(attributes);
+      geometry.computeBoundingSphere();
+      return geometry;
+    }
     const geometry = new BufferGeometry();
     for (const [name, data] of attributes)
       geometry.setAttribute(name, new BufferAttribute(data, itemSize(name)));
@@ -409,17 +494,19 @@ function bakeLook(baked: Baked, covered: ReadonlySet<string>, key: string): Look
   };
   return {
     key,
+    baked,
     surfaces,
     lines: Object.fromEntries(LINE_KINDS.map((kind) => [kind, lineGeometry(kind)])) as Record<
       LineKind,
       BufferGeometry | null
     >,
+    users: 0,
   };
 }
 
 /**
- * The studs a part model has, as `x:z` in part space (none if it has too many to track), and
- * its footprint. The side of a stud is also within reach of the next grid point over, so a
+ * The studs a part model has, as `x:z` in part space, and its footprint. Big plates get a look
+ * per coverage pattern, which is still far less than drawing every covered stud. The side of a stud is also within reach of the next grid point over, so a
  * point only counts as a stud when its faces wrap all the way around it.
  */
 function readShape(model: Group): PartShape {
@@ -476,8 +563,8 @@ function readShape(model: Group): PartShape {
         extent.maxZ >= around,
     )
     .map(([stud]) => stud);
-  const kept = studs.length <= MAX_COVERABLE_STUDS ? studs.sort() : [];
-  const shape: PartShape = { studs: kept, studSet: new Set(kept), box, underside: false };
+  studs.sort();
+  const shape: PartShape = { studs, studSet: new Set(studs), box, underside: false };
   // The footprint is only known once every face is read, so the underside takes a second look.
   const all = new Float32Array(corners);
   for (let triangle = 0; !shape.underside && triangle < all.length / 9; triangle++)
@@ -554,8 +641,9 @@ class BatchedLines extends BatchedMesh {
   readonly isLine = true;
   readonly isLineSegments = true;
 
-  constructor(material: Material) {
-    super(64, 8192, 0, material);
+  /** `indexed` lines share vertices between segments, which needs room for an index. */
+  constructor(material: Material, indexed: boolean) {
+    super(64, 8192, indexed ? 8192 : 0, material);
     (this as unknown as { isMesh: boolean }).isMesh = false;
     this.castShadow = false;
     this.receiveShadow = false;
@@ -566,14 +654,36 @@ class BatchedLines extends BatchedMesh {
 }
 
 /**
+ * Where a vertex goes to not be drawn: outside the clip volume, so when both ends of a segment
+ * go there the GPU drops it before rasterizing. A fragment `discard` would still pay for every
+ * pixel of the segment.
+ */
+const OFFSCREEN = 'vec4(2.0, 2.0, 2.0, 1.0)';
+
+/**
  * Teaches LDraw's conditional line shader the batched matrices: its line ends, control points
- * and direction all move with the brick. (The basic line shader knows them already.)
+ * and direction all move with the brick. (The basic line shader knows them already.) It also
+ * tests from `segmentStart` rather than each vertex's own position, so both ends agree, and
+ * drops a hidden segment in the vertex shader; the fragment discard stays as a backstop.
  */
 function batchConditionalLines(shader: { vertexShader: string }) {
   shader.vertexShader = shader.vertexShader
-    .replace('#include <common>', '#include <common>\n#include <batching_pars_vertex>')
+    .replace(
+      '#include <common>',
+      '#include <common>\nattribute vec3 segmentStart;\n#include <batching_pars_vertex>',
+    )
     .replace('#include <color_vertex>', '#include <color_vertex>\n#include <batching_vertex>')
-    .replaceAll('modelViewMatrix * vec4(', 'modelViewMatrix * batchingMatrix * vec4(');
+    .replace(
+      'vec4 p0 = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );',
+      'vec4 p0 = projectionMatrix * modelViewMatrix * vec4( segmentStart, 1.0 );',
+    )
+    .replace('vec4( position + direction, 1.0 )', 'vec4( segmentStart + direction, 1.0 )')
+    .replaceAll('modelViewMatrix * vec4(', 'modelViewMatrix * batchingMatrix * vec4(')
+    .replace(
+      '#include <logdepthbuf_vertex>',
+      `#include <logdepthbuf_vertex>
+      if (discardFlag > 0.5) gl_Position = ${OFFSCREEN};`,
+    );
 }
 
 /** How many device pixels a stud has to span before edges start to show, and fully show. */
@@ -599,9 +709,17 @@ function fadeWithZoom(material: Material, viewport: { value: number }) {
       .replace(
         '#include <logdepthbuf_vertex>',
         `#include <logdepthbuf_vertex>
-        // Pixels one world unit (a stud) spans at this depth, for perspective and ortho alike.
-        float studPixels = projectionMatrix[1][1] * 0.5 * edgeViewport / gl_Position.w;
-        vEdgeFade = smoothstep(${EDGE_FADE_PIXELS.hidden.toFixed(1)}, ${EDGE_FADE_PIXELS.full.toFixed(1)}, studPixels);`,
+        // Pixels one world unit (a stud) spans at the brick's origin, for perspective and ortho
+        // alike. One depth per brick gives all its vertices the same fade, so a faded-out
+        // segment loses both ends here; a brick around the camera counts as close.
+        vec4 edgeOrigin = vec4(0.0, 0.0, 0.0, 1.0);
+        #ifdef USE_BATCHING
+          edgeOrigin = batchingMatrix[3];
+        #endif
+        float edgeDepth = max((projectionMatrix * modelViewMatrix * edgeOrigin).w, 1e-3);
+        float studPixels = projectionMatrix[1][1] * 0.5 * edgeViewport / edgeDepth;
+        vEdgeFade = smoothstep(${EDGE_FADE_PIXELS.hidden.toFixed(1)}, ${EDGE_FADE_PIXELS.full.toFixed(1)}, studPixels);
+        if (vEdgeFade <= 0.0) gl_Position = ${OFFSCREEN};`,
       );
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', '#include <common>\nvarying float vEdgeFade;')
@@ -632,6 +750,8 @@ export class LDrawBatch {
   private readonly layers = new Map<string, Layer>();
   private readonly baked = new Map<string, Baked>();
   private readonly looks = new Map<string, Look>();
+  /** Looks no placement uses since the last update, freed when it finishes. */
+  private readonly idle = new Set<Look>();
   private readonly shapes = new WeakMap<Group, PartShape>();
   private coverageCache?: {
     entries: readonly BatchEntry[];
@@ -686,12 +806,20 @@ export class LDrawBatch {
     this.lineLayers = Object.fromEntries(
       LINE_KINDS.map((kind): [LineKind, Layer] => {
         // three types `customSort` against its own class, so the subclass needs widening.
-        const mesh = new BatchedLines(lineMaterial(kind)) as unknown as BatchedMesh;
+        const mesh = new BatchedLines(
+          lineMaterial(kind),
+          INDEXED_LINES.has(kind),
+        ) as unknown as BatchedMesh;
         mesh.visible = false;
         if (fadeEdges) {
           // Faded edges blend, so they join the transparent queue: ahead of glass, which draws
           // over them, as the opaque edges they are.
-          if ((mesh.material as Material).depthWrite) mesh.renderOrder = -1;
+          if ((mesh.material as Material).depthWrite) {
+            mesh.renderOrder = -1;
+            // Ambient occlusion (N8AO) redraws transparent objects in two passes of their own
+            // every frame; these write depth like opaque ones, so they can skip that.
+            mesh.userData.treatAsOpaque = true;
+          }
           // `this`, not a bound mesh: dispose() hands this hook on to the meshes it recreates.
           mesh.onBeforeRender = function (this: BatchedMesh, renderer, ...rest) {
             viewport.value =
@@ -702,7 +830,7 @@ export class LDrawBatch {
         this.object.add(mesh);
         return [
           kind,
-          { mesh, geometries: new Map(), sources: [], free: [], brickIds: [], size: 0 },
+          { mesh, geometries: new Map(), sources: [], free: [], brickIds: [], size: 0, dead: 0 },
         ];
       }),
     ) as Record<LineKind, Layer>;
@@ -859,7 +987,8 @@ export class LDrawBatch {
         this.placements.delete(id);
         removed = true;
       }
-    if (!changed.length && !removed) return;
+    // A cancelled run may have left looks to free.
+    if (!changed.length && !removed) return this.collect();
     progress.total = changed.length;
     for (const [index, { brick, model }] of changed.entries()) {
       const hidden = covered.get(brick.id);
@@ -875,7 +1004,49 @@ export class LDrawBatch {
       progress.done = index + 1;
       yield;
     }
+    this.collect();
     this.refreshBounds();
+  }
+
+  /**
+   * Frees the looks no placement uses any more, with their geometries in the batch, and parts
+   * no look is cut from. Waiting for the end of an update keeps a look that one brick lets go
+   * of and another picks up, as when a brick moves without changing what covers it.
+   */
+  private collect() {
+    if (!this.idle.size) return;
+    const gone = new Map<Layer, Set<number>>();
+    const drop = (layer: Layer, key: string) => {
+      const id = layer.geometries.get(key);
+      if (id === undefined) return;
+      layer.geometries.delete(key);
+      layer.dead += layer.sources[id].getAttribute('position').count;
+      delete layer.sources[id];
+      const ids = gone.get(layer) ?? new Set();
+      gone.set(layer, ids.add(id));
+    };
+    for (const look of this.idle) {
+      for (const surface of look.surfaces) {
+        const layer = this.layers.get(surface.finish);
+        if (layer) drop(layer, surface.key);
+        surface.geometry.dispose();
+      }
+      for (const kind of LINE_KINDS) {
+        const geometry = look.lines[kind];
+        if (!geometry) continue;
+        drop(this.lineLayers[kind], look.key);
+        geometry.dispose();
+      }
+      this.looks.delete(look.key);
+      if (--look.baked.looks === 0) this.baked.delete(look.baked.key);
+    }
+    this.idle.clear();
+    for (const [layer, ids] of gone) {
+      // Deleting a geometry deletes the hidden slots still pointing at it, so they leave the
+      // free list; three hands their ids out again first.
+      layer.free = layer.free.filter((slot) => !ids.has(layer.mesh.getGeometryIdAt(slot)));
+      for (const id of ids) layer.mesh.deleteGeometry(id);
+    }
   }
 
   private refreshBounds() {
@@ -885,7 +1056,7 @@ export class LDrawBatch {
     }
     for (const layer of Object.values(this.lineLayers)) {
       // An empty batch still costs a draw call; a hidden one doesn't.
-      layer.mesh.visible = layer.size > layer.free.length;
+      layer.mesh.visible = layer.mesh.instanceCount > layer.free.length;
       if (!layer.mesh.visible) continue;
       layer.mesh.computeBoundingBox();
       layer.mesh.computeBoundingSphere();
@@ -898,11 +1069,14 @@ export class LDrawBatch {
       mesh as unknown as { _nextVertexStart: number; _nextIndexStart: number };
     const segments = (kind: LineKind) => {
       const { mesh, sources, brickIds, size } = this.lineLayers[kind];
-      let vertices = 0;
-      for (let id = 0; id < size; id++)
-        if (brickIds[id] !== undefined)
-          vertices += sources[mesh.getGeometryIdAt(id)].getAttribute('position').count;
-      return vertices / 2;
+      // Two indices a segment when indexed, two vertices when not.
+      let ends = 0;
+      for (let id = 0; id < size; id++) {
+        if (brickIds[id] === undefined) continue;
+        const geometry = sources[mesh.getGeometryIdAt(id)];
+        ends += geometry.index?.count ?? geometry.getAttribute('position').count;
+      }
+      return ends / 2;
     };
     const hidden = [...this.placements.values()].flatMap(({ key }) =>
       key.split('|')[1].split(',').filter(Boolean),
@@ -916,8 +1090,8 @@ export class LDrawBatch {
       conditionalSegments: segments('conditional') + segments('glassConditional'),
       layers: [...this.layers.entries()].map(([finish, layer]) => ({
         finish,
-        instances: layer.size - layer.free.length,
-        free: layer.free.length,
+        instances: layer.mesh.instanceCount - layer.free.length,
+        free: layer.size - layer.mesh.instanceCount + layer.free.length,
         maxInstances: layer.mesh.maxInstanceCount,
         geometries: layer.geometries.size,
         vertices: next(layer.mesh)._nextVertexStart,
@@ -936,14 +1110,19 @@ export class LDrawBatch {
       layer.mesh.dispose();
       (layer.mesh.material as Material).dispose();
     }
-    for (const layer of Object.values(this.lineLayers)) {
+    for (const kind of LINE_KINDS) {
+      const layer = this.lineLayers[kind];
       layer.mesh.dispose();
       (layer.mesh.material as Material).dispose();
       // Left empty and hidden, ready to be filled again.
-      const mesh = new BatchedLines(layer.mesh.material as Material) as unknown as BatchedMesh;
+      const mesh = new BatchedLines(
+        layer.mesh.material as Material,
+        INDEXED_LINES.has(kind),
+      ) as unknown as BatchedMesh;
       Object.assign(mesh, {
         renderOrder: layer.mesh.renderOrder,
         onBeforeRender: layer.mesh.onBeforeRender,
+        userData: { ...layer.mesh.userData },
       });
       mesh.layers.mask = layer.mesh.layers.mask;
       mesh.visible = false;
@@ -956,6 +1135,7 @@ export class LDrawBatch {
         free: [],
         brickIds: [],
         size: 0,
+        dead: 0,
       });
     }
     for (const look of this.looks.values()) {
@@ -965,6 +1145,7 @@ export class LDrawBatch {
     this.layers.clear();
     this.baked.clear();
     this.looks.clear();
+    this.idle.clear();
     this.placements.clear();
     this.coverageCache = undefined;
   }
@@ -980,6 +1161,7 @@ export class LDrawBatch {
         this.baked.set(partKey, baked);
       }
       look = bakeLook(baked, new Set(hidden ? hidden.split(',') : []), key);
+      baked.looks++;
       this.looks.set(key, look);
     }
     return look;
@@ -1002,7 +1184,15 @@ export class LDrawBatch {
     const mesh = new BatchedMesh(64, 8192, 8192, material);
     mesh.castShadow = true;
     mesh.receiveShadow = true;
-    layer = { mesh, geometries: new Map(), sources: [], free: [], brickIds: [], size: 0 };
+    layer = {
+      mesh,
+      geometries: new Map(),
+      sources: [],
+      free: [],
+      brickIds: [],
+      size: 0,
+      dead: 0,
+    };
     mesh.userData.brickIds = layer.brickIds;
     const owner = layer;
     mesh.raycast = (raycaster, intersects) => raycastLayer(owner, raycaster, intersects);
@@ -1017,7 +1207,15 @@ export class LDrawBatch {
     const mesh = layer.mesh;
     const vertices = geometry.getAttribute('position').count;
     const indices = geometry.index?.count ?? 0;
-    if (mesh.unusedVertexCount < vertices || mesh.unusedIndexCount < indices) {
+    const short = () => mesh.unusedVertexCount < vertices || mesh.unusedIndexCount < indices;
+    // Before growing, free what this update already let go of (an update that moves many
+    // bricks would otherwise hold the old looks and the new at once), then pack the holes.
+    if (short()) this.collect();
+    if (short() && layer.dead) {
+      mesh.optimize();
+      layer.dead = 0;
+    }
+    if (short()) {
       const next = mesh as unknown as { _nextVertexStart: number; _nextIndexStart: number };
       mesh.setGeometrySize(
         Math.max(
@@ -1040,10 +1238,10 @@ export class LDrawBatch {
   private slot(layer: Layer, geometryId: number, matrix: Matrix4, brickId: string) {
     let id = layer.free.pop();
     if (id === undefined) {
-      if (layer.size >= layer.mesh.maxInstanceCount)
+      if (layer.mesh.instanceCount >= layer.mesh.maxInstanceCount)
         layer.mesh.setInstanceCount(layer.mesh.maxInstanceCount * 2);
       id = layer.mesh.addInstance(geometryId);
-      layer.size++;
+      layer.size = Math.max(layer.size, id + 1);
     } else {
       layer.mesh.setGeometryIdAt(id, geometryId);
       layer.mesh.setVisibleAt(id, true);
@@ -1062,6 +1260,8 @@ export class LDrawBatch {
     hidden: string,
   ): Placement {
     const look = this.look(brick, model, hidden);
+    look.users++;
+    this.idle.delete(look);
     const matrix = brickMatrix(brick, buildArea, explode);
     const slots: Placement['slots'] = [];
     for (const surface of look.surfaces) {
@@ -1076,10 +1276,11 @@ export class LDrawBatch {
       const layer = this.lineLayers[kind];
       slots.push(this.slot(layer, this.geometryId(layer, look.key, geometry), matrix, brick.id));
     }
-    return { key, slots };
+    return { key, look, slots };
   }
 
   private release(placement: Placement) {
+    if (--placement.look.users === 0) this.idle.add(placement.look);
     // Slots are hidden and reused rather than deleted, so ids stay dense and stable.
     for (const { layer, id } of placement.slots) {
       layer.mesh.setVisibleAt(id, false);
