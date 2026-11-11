@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from 'react';
 import { Download, Trash2, Upload, X } from 'lucide-react';
 import {
   BUILD_AREA,
+  MAX_PHYSICS_PIECES,
   COLORS,
   getPart,
   getPartColorStatus,
@@ -40,6 +41,10 @@ export function DetailsPanel({
   issues,
   physical,
   buildability,
+  checking,
+  fullCheck,
+  onFullCheck,
+  onCancelFullCheck,
   hasEnvelopeOnlyParts,
   height,
   buildArea,
@@ -59,6 +64,12 @@ export function DetailsPanel({
   issues: Issue[];
   physical: PhysicalAssessment;
   buildability: BuildabilityReport;
+  /** The build changed and its physical check has not returned yet. */
+  checking: boolean;
+  /** Past the solver's piece limit only tipping is checked; a full check runs on request. */
+  fullCheck: 'none' | 'available' | 'running' | 'done';
+  onFullCheck: () => void;
+  onCancelFullCheck: () => void;
   hasEnvelopeOnlyParts: boolean;
   height: number;
   buildArea: number;
@@ -194,10 +205,37 @@ export function DetailsPanel({
             <div className={`check-row ${buildability.status === 'failed' ? 'failed' : 'warning'}`}>
               <span className="status-dot" />
               <div>
-                <strong>{buildability.label}</strong>
+                <strong>{checking ? 'Checking…' : buildability.label}</strong>
                 <small>Static model only, not a buildability guarantee.</small>
               </div>
             </div>
+            {fullCheck === 'available' && (
+              <div className="check-row warning">
+                <span className="status-dot" />
+                <div>
+                  <strong>Only tipping checked</strong>
+                  <small>
+                    Builds over {MAX_PHYSICS_PIECES.toLocaleString()} pieces skip the stud check. A
+                    full check runs in the background and can take minutes.
+                  </small>
+                  <button className="quiet" onClick={onFullCheck}>
+                    Run full check
+                  </button>
+                </div>
+              </div>
+            )}
+            {fullCheck === 'running' && (
+              <div className="check-row warning">
+                <span className="status-dot" />
+                <div>
+                  <strong>Running full check…</strong>
+                  <small>Editing the build stops it.</small>
+                  <button className="quiet" onClick={onCancelFullCheck}>
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
             <details className="disclosure">
               <summary>Physical feasibility</summary>
               <dl className="details-list" aria-label="Required buildability checks">

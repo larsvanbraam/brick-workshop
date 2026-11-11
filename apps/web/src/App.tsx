@@ -35,7 +35,8 @@ import {
   INSERT_FRAME_PARTS,
   MAX_HEIGHT,
   PARTS,
-  applyPatch,
+  MAX_PHYSICS_PIECES,
+  assessPhysicalFeasibility,
   previewPatch,
   evaluateAssemblyPolicy,
   createDemoAssembly,
@@ -54,20 +55,24 @@ import {
   isRuntimePart,
   registerPart,
   resizeBuildArea,
-  sharedPhysicalAssessment,
   validateAddition,
   validateAssembly,
 } from '@brick-workshop/engine';
 import type {
   Assembly,
+  AssemblyPatch,
   Brick,
   PartColorEvidence,
   PatchResult,
+  PhysicalAssessment,
   PhysicalData,
+  PhysicalOptions,
   Part,
+  PolicyAssessment,
   Rotation,
   EditPolicy,
 } from '@brick-workshop/engine';
+import { PhysicsClient } from './physics-client';
 import { Scene, captureScene } from './Scene';
 import { MOODS } from './cinematic';
 import type { CinematicMood } from './cinematic';
@@ -300,6 +305,14 @@ const PLACEMENT_KEYS = ['partId', 'color', 'x', 'y', 'z', 'rotation', 'facing'] 
 
 /** How long the pointer rests on a spot before the ghost's physical check runs. */
 const PREVIEW_REST_MS = 120;
+/** What the Details panel shows before the first physical check of a session returns. */
+const UNCHECKED = assessPhysicalFeasibility({ name: '', bricks: [] });
+
+/** The library parts an assembly uses, which the physics worker must register too. */
+function runtimePartsOf(assembly: Assembly): Part[] {
+  const ids = new Set(assembly.bricks.map((brick) => brick.partId).filter(isRuntimePart));
+  return [...ids].map(getPart);
+}
 
 function refusal(result: Extract<PatchResult, { ok: false }>) {
   const code = result.assessment?.geometry[0]?.code;
@@ -446,17 +459,96 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [message]);
   const buildArea = getBuildArea(assembly);
-  // Shared with the preview that checked this build, so read only.
-  const physical = useMemo(
-    () =>
-      sharedPhysicalAssessment(assembly, {
-        data: physicalData,
-        estimateMissingMasses,
-        useCatalogMasses,
-        useDefaultStudConnection,
-      }),
-    [assembly, physicalData, estimateMissingMasses, useCatalogMasses, useDefaultStudConnection],
+  const physicalOptions = useMemo<PhysicalOptions>(
+    () => ({
+      data: physicalData,
+      estimateMissingMasses,
+      useCatalogMasses,
+      useDefaultStudConnection,
+    }),
+    [physicalData, estimateMissingMasses, useCatalogMasses, useDefaultStudConnection],
   );
+  // The static solve runs in a worker. Its client is made on first use, so React's development
+  // double mount, which disposes it, simply makes another.
+  const physicsRef = useRef<PhysicsClient | null>(null);
+  const physics = () => (physicsRef.current ??= new PhysicsClient());
+  const fullCheckRef = useRef<PhysicsClient | null>(null);
+  useEffect(
+    () => () => {
+      physicsRef.current?.dispose();
+      physicsRef.current = null;
+      fullCheckRef.current?.dispose();
+      fullCheckRef.current = null;
+    },
+    [],
+  );
+  const [assessed, setAssessed] = useState<{
+    assembly: Assembly;
+    options: PhysicalOptions;
+    report: PhysicalAssessment;
+  } | null>(null);
+  useEffect(() => {
+    let live = true;
+    physics()
+      .assess(assembly, physicalOptions, runtimePartsOf(assembly), 'display')
+      .then((report) => live && setAssessed({ assembly, options: physicalOptions, report }))
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [assembly, physicalOptions]);
+  // Past MAX_PHYSICS_PIECES only tipping is checked; a full check runs on request, on its own
+  // worker so edits are not held up, and stops when the build changes.
+  const [fullCheck, setFullCheck] = useState<{
+    assembly: Assembly;
+    report: PhysicalAssessment | null;
+  } | null>(null);
+  function cancelFullCheck() {
+    fullCheckRef.current?.dispose();
+    fullCheckRef.current = null;
+    setFullCheck(null);
+  }
+  function runFullCheck() {
+    fullCheckRef.current?.dispose();
+    const client = (fullCheckRef.current = new PhysicsClient());
+    const target = assembly;
+    setFullCheck({ assembly: target, report: null });
+    client
+      .assess(target, { ...physicalOptions, fullCheck: true }, runtimePartsOf(target))
+      .then((report) =>
+        setFullCheck((state) =>
+          state?.assembly === target ? { assembly: target, report } : state,
+        ),
+      )
+      .catch((error: unknown) => {
+        if (fullCheckRef.current === client) {
+          setFullCheck(null);
+          setMessage(`Full check failed. ${error instanceof Error ? error.message : ''}`.trim());
+        }
+      })
+      .finally(() => {
+        client.dispose();
+        if (fullCheckRef.current === client) fullCheckRef.current = null;
+      });
+  }
+  useEffect(() => {
+    // A full check is of one build; an edit stops it.
+    if (fullCheck && fullCheck.assembly !== assembly) cancelFullCheck();
+  }, [assembly, fullCheck]);
+  const physicsCurrent = assessed?.assembly === assembly && assessed.options === physicalOptions;
+  const fullReport = fullCheck?.assembly === assembly ? fullCheck.report : null;
+  // Until this build's check returns, the last one stays up, marked as checking.
+  const physical = fullReport ?? assessed?.report ?? UNCHECKED;
+  const fullCheckState = fullReport
+    ? 'done'
+    : fullCheck?.assembly === assembly
+      ? 'running'
+      : physicsCurrent &&
+          physical.gravity === 'not-assessed' &&
+          physical.groundedGroups.length > 0 &&
+          assembly.bricks.length > MAX_PHYSICS_PIECES
+        ? 'available'
+        : 'none';
   const selected = assembly.bricks.find((brick) => brick.id === selectedId);
   useEffect(() => setSelectionColorsOpen(false), [selectedId, tool]);
   const buildability = useMemo(() => getBuildabilityReport(physical), [physical]);
@@ -495,21 +587,9 @@ export default function App() {
       evidence,
       requireObservedColors: false,
       rejectInfeasible,
-      physical: {
-        data: physicalData,
-        estimateMissingMasses,
-        useCatalogMasses,
-        useDefaultStudConnection,
-      },
+      physical: physicalOptions,
     }),
-    [
-      evidence,
-      rejectInfeasible,
-      physicalData,
-      estimateMissingMasses,
-      useCatalogMasses,
-      useDefaultStudConnection,
-    ],
+    [evidence, rejectInfeasible, physicalOptions],
   );
   const policyRef = useRef(editPolicy);
   useLayoutEffect(() => {
@@ -532,26 +612,30 @@ export default function App() {
     return previewPatch(
       assembly,
       { operations: [{ type: 'add', brick: ghost }] },
-      { policy: editPolicy },
+      { policy: { ...editPolicy, assessPhysics: false } },
     );
   }, [assembly, ghost, editPolicy, settled]);
   useEffect(() => {
     if (preview !== 'pending' || !ghost) return;
+    let live = true;
     const timer = setTimeout(
       () =>
-        setSettled({
+        void checkPatch(
           assembly,
-          ghost,
-          policy: editPolicy,
-          result: previewPatch(
-            assembly,
-            { operations: [{ type: 'add', brick: ghost }] },
-            { policy: editPolicy },
-          ),
-        }),
+          { operations: [{ type: 'add', brick: ghost }] },
+          editPolicy,
+          'preview',
+        )
+          .then((result) => live && setSettled({ assembly, ghost, policy: editPolicy, result }))
+          .catch(() => {}),
       PREVIEW_REST_MS,
     );
-    return () => clearTimeout(timer);
+    return () => {
+      live = false;
+      clearTimeout(timer);
+    };
+    // checkPatch only reads refs and the arguments given.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [preview, assembly, ghost, editPolicy]);
   const candidate = preview === 'pending' ? null : preview;
   // A placement the physical check refuses shows why on its own; otherwise on request.
@@ -603,44 +687,89 @@ export default function App() {
     }
   }
   function commit(next: Assembly) {
-    setHistory({
-      past: [...history.past.slice(-49), assembly],
+    setHistory((current) => ({
+      past: [...current.past.slice(-49), current.present],
       present: next,
       future: [],
-    });
+    }));
     setMessage('');
   }
+  /** The policy check of a build, with its physical part run in the worker first. */
+  async function checkAssembly(
+    next: Assembly,
+    policy = policyRef.current,
+    key?: string,
+  ): Promise<PolicyAssessment> {
+    if (policy.physical)
+      // On failure the policy check below assesses it here instead.
+      await physics()
+        .assess(next, policy.physical, runtimePartsOf(next), key)
+        .catch(() => {});
+    return evaluateAssemblyPolicy(next, policy);
+  }
+  /** A patch's result, like applyPatch's, with the physical check run in the worker. */
+  async function checkPatch(
+    base: Assembly,
+    patch: AssemblyPatch,
+    policy = policyRef.current,
+    key?: string,
+  ): Promise<PatchResult> {
+    const draft = previewPatch(base, patch, { policy: { ...policy, assessPhysics: false } });
+    if (!draft.ok) return draft;
+    const assessment = await checkAssembly(draft.assembly, policy, key);
+    if (assessment.allowed) return { ok: true, revision: 0, assembly: draft.assembly, assessment };
+    const issue = assessment.issues[0];
+    return {
+      ok: false,
+      revision: 0,
+      error: { code: issue.code, message: issue.message, issues: issue.details },
+      assessment,
+    };
+  }
+  // One edit is checked at a time, and only lands if the build is still the one it started from.
+  const editing = useRef(false);
+  async function exclusively(task: (base: Assembly) => Promise<void>) {
+    if (editing.current) return;
+    editing.current = true;
+    try {
+      await task(assemblyRef.current);
+    } finally {
+      editing.current = false;
+    }
+  }
+  function edit(patch: AssemblyPatch, done: (result: PatchResult) => void) {
+    return exclusively(async (base) => {
+      const result = await checkPatch(base, patch);
+      if (assemblyRef.current === base) done(result);
+    });
+  }
   function addBrick(brick: Brick) {
-    const result = applyPatch(
-      assembly,
+    void edit(
       { operations: [{ type: 'add', brick: { ...brick, id: crypto.randomUUID() } }] },
-      { policy: editPolicy },
+      (result) => {
+        if (result.ok) {
+          commit(result.assembly);
+          setLayer(MAX_HEIGHT);
+        } else setMessage(refusal(result));
+      },
     );
-    if (result.ok) {
-      commit(result.assembly);
-      setLayer(MAX_HEIGHT);
-    } else setMessage(refusal(result));
   }
   function removeBrick(id: string) {
-    const result = applyPatch(
-      assembly,
-      { operations: [{ type: 'remove', id }] },
-      { policy: editPolicy },
-    );
-    if (result.ok) {
-      commit(result.assembly);
-      if (selectedId === id) setSelectedId(null);
-    } else
-      setMessage(
-        result.error.code === 'physical_rejected'
-          ? 'Removing it would make the build fall: the physical check rejects it.'
-          : 'Other pieces rest on this one. Remove those first.',
-      );
+    void edit({ operations: [{ type: 'remove', id }] }, (result) => {
+      if (result.ok) {
+        commit(result.assembly);
+        setSelectedId((current) => (current === id ? null : current));
+      } else
+        setMessage(
+          result.error.code === 'physical_rejected'
+            ? 'Removing it would make the build fall: the physical check rejects it.'
+            : 'Other pieces rest on this one. Remove those first.',
+        );
+    });
   }
   function rotateSelected(direction: 1 | -1 = 1) {
     if (!selected) return;
-    const result = applyPatch(
-      assembly,
+    void edit(
       {
         operations: [
           {
@@ -650,20 +779,21 @@ export default function App() {
           },
         ],
       },
-      { policy: editPolicy },
+      (result) => {
+        if (result.ok) commit(result.assembly);
+        else setMessage(`Can't rotate here. ${refusal(result)}`);
+      },
     );
-    if (result.ok) commit(result.assembly);
-    else setMessage(`Can't rotate here. ${refusal(result)}`);
   }
   function recolorSelected(id: number) {
     if (!selected || selected.color === id) return;
-    const result = applyPatch(
-      assembly,
+    void edit(
       { operations: [{ type: 'update', id: selected.id, changes: { color: id } }] },
-      { policy: editPolicy },
+      (result) => {
+        if (result.ok) commit(result.assembly);
+        else setMessage(`Can't recolor this piece. ${refusal(result)}`);
+      },
     );
-    if (result.ok) commit(result.assembly);
-    else setMessage(`Can't recolor this piece. ${refusal(result)}`);
   }
   const pickColor = editingSelection ? recolorSelected : selectColor;
   function pickUp(brick: Brick) {
@@ -689,7 +819,7 @@ export default function App() {
     // On the previewed spot the preview already holds the checked build, or the refusal that the
     // hint above the dock explains.
     if (previewed && candidate) {
-      if (candidate.ok) {
+      if (candidate.ok && !editing.current) {
         commit(candidate.assembly);
         setLayer(MAX_HEIGHT);
       }
@@ -701,34 +831,44 @@ export default function App() {
   function undo() {
     const previous = history.past.at(-1);
     if (!previous) return;
-    const assessment = evaluateAssemblyPolicy(previous, editPolicy);
-    if (!assessment.allowed) {
-      setMessage(`Undo rejected by current policy. ${assessment.issues[0].message}`);
-      return;
-    }
-    setHistory({
-      past: history.past.slice(0, -1),
-      present: previous,
-      future: [assembly, ...history.future],
+    void exclusively(async (base) => {
+      const assessment = await checkAssembly(previous);
+      if (assemblyRef.current !== base) return;
+      if (!assessment.allowed) {
+        setMessage(`Undo rejected by current policy. ${assessment.issues[0].message}`);
+        return;
+      }
+      setHistory((current) =>
+        current.present !== base || current.past.at(-1) !== previous
+          ? current
+          : {
+              past: current.past.slice(0, -1),
+              present: previous,
+              future: [base, ...current.future],
+            },
+      );
+      setSelectedId(null);
+      setMessage('');
     });
-    setSelectedId(null);
-    setMessage('');
   }
   function redo() {
     const next = history.future[0];
     if (!next) return;
-    const assessment = evaluateAssemblyPolicy(next, editPolicy);
-    if (!assessment.allowed) {
-      setMessage(`Redo rejected by current policy. ${assessment.issues[0].message}`);
-      return;
-    }
-    setHistory({
-      past: [...history.past, assembly],
-      present: next,
-      future: history.future.slice(1),
+    void exclusively(async (base) => {
+      const assessment = await checkAssembly(next);
+      if (assemblyRef.current !== base) return;
+      if (!assessment.allowed) {
+        setMessage(`Redo rejected by current policy. ${assessment.issues[0].message}`);
+        return;
+      }
+      setHistory((current) =>
+        current.present !== base || current.future[0] !== next
+          ? current
+          : { past: [...current.past, base], present: next, future: current.future.slice(1) },
+      );
+      setSelectedId(null);
+      setMessage('');
     });
-    setSelectedId(null);
-    setMessage('');
   }
   function report() {
     return {
@@ -818,12 +958,16 @@ export default function App() {
     if (trimmed && trimmed !== assembly.name) commit({ ...assembly, name: trimmed });
   }
 
-  function applyImportedAssembly(next: Assembly, original: Assembly, label: string) {
+  async function applyImportedAssembly(next: Assembly, original: Assembly, label: string) {
     if (assemblyRef.current !== original) {
       setMessage('Current build changed. Try again with the latest build.');
       return false;
     }
-    const assessment = evaluateAssemblyPolicy(next, policyRef.current);
+    const assessment = await checkAssembly(next);
+    if (assemblyRef.current !== original) {
+      setMessage('Current build changed. Try again with the latest build.');
+      return false;
+    }
     if (!assessment.allowed) {
       setMessage(`${label} rejected. ${assessment.issues[0].message}`);
       return false;
@@ -840,7 +984,7 @@ export default function App() {
     try {
       if (file.size > 2_000_000) throw new Error('Assembly JSON must be smaller than 2 MB.');
       const next = importAssembly(JSON.parse(await file.text()));
-      if (applyImportedAssembly(next, assembly, 'Imported assembly')) setSavedId(null);
+      if (await applyImportedAssembly(next, assembly, 'Imported assembly')) setSavedId(null);
     } catch (error) {
       setMessage(
         `Import failed. ${error instanceof Error ? error.message : 'Invalid assembly JSON.'}`,
@@ -868,7 +1012,7 @@ export default function App() {
         ...current,
         ...parts.filter((part) => !current.some((entry) => entry.id === part.id)),
       ]);
-      if (applyImportedAssembly(next, original, `Saved build “${next.name}”`)) setSavedId(id);
+      if (await applyImportedAssembly(next, original, `Saved build “${next.name}”`)) setSavedId(id);
     } catch (error) {
       setMessage(`Open failed. ${error instanceof Error ? error.message : 'Invalid saved build.'}`);
     }
@@ -1701,6 +1845,10 @@ export default function App() {
             issues={issues}
             physical={physical}
             buildability={buildability}
+            checking={!physicsCurrent && !fullReport}
+            fullCheck={fullCheckState}
+            onFullCheck={runFullCheck}
+            onCancelFullCheck={cancelFullCheck}
             hasEnvelopeOnlyParts={hasEnvelopeOnlyParts}
             height={height}
             buildArea={buildArea}
@@ -1731,6 +1879,7 @@ export default function App() {
         <GenerationPanel
           assembly={assembly}
           policy={editPolicy}
+          checkAssembly={(next) => checkAssembly(next)}
           initialPrompt={generation.prompt}
           onClose={() => setGeneration(null)}
           onApply={(next, original) => applyImportedAssembly(next, original, 'AI draft')}

@@ -42,6 +42,12 @@ export interface EditPolicy {
   physical?: PhysicalOptions;
   rejectInfeasible?: boolean;
   maxPieces?: number;
+  /**
+   * Leaves out the physical check, for hosts that run it elsewhere, such as in a worker, and
+   * prime its result with primePhysicalAssessment before checking the build again. On unless
+   * set to false.
+   */
+  assessPhysics?: boolean;
 }
 
 export interface EditIssue {
@@ -76,7 +82,12 @@ export function evaluateAssemblyPolicy(assembly: Assembly, policy: EditPolicy = 
       code: 'piece_limit',
       message: `The policy allows at most ${policy.maxPieces} pieces.`,
     });
-  for (const name of ['requireObservedColors', 'requireInventory', 'rejectInfeasible'] as const)
+  for (const name of [
+    'requireObservedColors',
+    'requireInventory',
+    'rejectInfeasible',
+    'assessPhysics',
+  ] as const)
     if (policy[name] !== undefined && typeof policy[name] !== 'boolean')
       issues.push({ code: 'invalid_policy', message: `Expected a boolean for ${name}.` });
   const bill = geometry.length ? [] : getBillOfMaterials(assembly);
@@ -170,12 +181,14 @@ export function evaluateAssemblyPolicy(assembly: Assembly, policy: EditPolicy = 
       'useCatalogMasses',
       'estimateMissingMasses',
       'useDefaultStudConnection',
+      'fullCheck',
     ] as const)
       if (policy.physical?.[name] !== undefined && typeof policy.physical[name] !== 'boolean')
         throw new Error('Invalid physical option');
     importPhysicalData(policy.physical?.data ?? { version: 1, parts: {} });
     // The assessment imports the data itself; passing the caller's object lets it be cached.
-    if (!geometry.length) physical = sharedPhysicalAssessment(assembly, { ...policy.physical });
+    if (!geometry.length && policy.assessPhysics !== false)
+      physical = sharedPhysicalAssessment(assembly, { ...policy.physical });
   } catch {
     issues.push({ code: 'invalid_policy', message: 'Invalid physical data or options.' });
   }

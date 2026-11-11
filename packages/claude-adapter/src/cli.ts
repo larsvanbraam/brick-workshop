@@ -4,6 +4,9 @@ import { resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { importPhysicalData } from '@brick-workshop/engine';
 import { createBuilderSession, runClaudeBuild, runClaudeCodeBuild } from './index.ts';
+import { useHighsSolver } from './solver.ts';
+
+await useHighsSolver();
 
 const { values, positionals } = parseArgs({
   allowPositionals: true,

@@ -46,6 +46,8 @@ export interface PhysicalOptions {
    * own. On unless set to false.
    */
   useDefaultStudConnection?: boolean;
+  /** Runs the static solve past MAX_PHYSICS_PIECES, however long it takes. */
+  fullCheck?: boolean;
 }
 
 /**
@@ -255,9 +257,109 @@ export function getBuildabilityReport(assessment: PhysicalAssessment): Buildabil
   };
 }
 
+/**
+ * A linear program in javascript-lp-solver's shape: minimize the `optimize` attribute summed over
+ * the variables, which are all at least zero, subject to each constraint on the sum of their
+ * coefficients.
+ */
+export interface LinearProgram {
+  optimize: string;
+  opType: 'min';
+  constraints: Record<string, { equal?: number; max?: number }>;
+  variables: Record<string, Record<string, number>>;
+}
+
+/** A solver's answer: feasibility, boundedness, the optimum as `result`, and each variable. */
+export interface LinearSolution {
+  feasible: boolean;
+  bounded: boolean;
+  result: number;
+  [variable: string]: number | boolean;
+}
+
+export type LinearSolver = (program: LinearProgram) => LinearSolution;
+
+const simplexSolver: LinearSolver = (program) =>
+  (solver as unknown as SolverAPI).Solve(program, 1e-10) as unknown as LinearSolution;
+let linearSolver = simplexSolver;
+
+/**
+ * Swaps the static solver, such as for createHighsSolver; null restores the built-in pure
+ * JavaScript simplex. Every answer is still checked against its forces and moments.
+ */
+export function setLinearSolver(next: LinearSolver | null): void {
+  linearSolver = next ?? simplexSolver;
+}
+
+/** The part of a loaded HiGHS module (the `highs` package) the solver uses. */
+export interface HighsModule {
+  solve(
+    problem: string,
+    options?: Record<string, unknown>,
+  ): {
+    Status: string;
+    ObjectiveValue?: number;
+    /** Each column's values by name; `Primal` holds its value in the solution. */
+    Columns?: object;
+  };
+}
+
+/**
+ * A static solver backed by HiGHS, many times faster than the built-in simplex on large builds.
+ * The engine does not load HiGHS itself: pass a module from `await highsLoader()`.
+ */
+export function createHighsSolver(highs: HighsModule): LinearSolver {
+  return (program) => {
+    const names = Object.keys(program.variables);
+    const column = new Map(names.map((name, index) => [name, `c${index}`]));
+    const term = (coefficient: number, name: string) =>
+      `${coefficient < 0 ? '-' : '+'} ${Math.abs(coefficient)} ${column.get(name)}`;
+    const rows = new Map(Object.keys(program.constraints).map((name) => [name, [] as string[]]));
+    const objective: string[] = [];
+    for (const name of names)
+      for (const [attribute, coefficient] of Object.entries(program.variables[name])) {
+        if (!coefficient) continue;
+        if (attribute === program.optimize) objective.push(term(coefficient, name));
+        rows.get(attribute)?.push(term(coefficient, name));
+      }
+    const lines = [
+      'Minimize',
+      ` obj: ${objective.join(' ') || `0 ${column.get(names[0]) ?? 'c0'}`}`,
+      'Subject To',
+    ];
+    let index = 0;
+    for (const [name, terms] of rows) {
+      const bound = program.constraints[name];
+      if (!terms.length) {
+        // A row with nothing in it holds only if its bound allows zero.
+        if (bound.equal !== undefined ? bound.equal !== 0 : bound.max! < 0)
+          return { feasible: false, bounded: true, result: 0 };
+        continue;
+      }
+      lines.push(
+        ` r${index++}: ${terms.join(' ')} ${bound.equal !== undefined ? '=' : '<='} ${bound.equal ?? bound.max}`,
+      );
+    }
+    lines.push('End');
+    const answer = highs.solve(lines.join('\n'), { output_flag: false });
+    if (answer.Status === 'Infeasible' || answer.Status === 'Primal infeasible or unbounded')
+      return { feasible: false, bounded: true, result: 0 };
+    if (answer.Status === 'Unbounded') return { feasible: true, bounded: false, result: -Infinity };
+    if (answer.Status !== 'Optimal') throw new Error(`HiGHS returned ${answer.Status}.`);
+    const solution: LinearSolution = {
+      feasible: true,
+      bounded: true,
+      result: answer.ObjectiveValue ?? 0,
+    };
+    const columns = (answer.Columns ?? {}) as Record<string, { Primal?: number } | undefined>;
+    for (const name of names) solution[name] = columns[column.get(name)!]?.Primal ?? 0;
+    return solution;
+  };
+}
+
 const GRAVITY = 9.80665;
-export const MAX_PHYSICS_PIECES = 500;
-export const MAX_PHYSICS_CONTACT_VARIABLES = 8000;
+export const MAX_PHYSICS_PIECES = 1000;
+export const MAX_PHYSICS_CONTACT_VARIABLES = 30000;
 const TOLERANCE = 1e-7;
 const ASSUMPTIONS = [
   'Upright rigid bodies under gravity on a flat, non-adhesive floor; no external loads.',
@@ -497,6 +599,7 @@ const assessments = new WeakMap<
     estimateMissingMasses: boolean | undefined;
     useCatalogMasses: boolean | undefined;
     useDefaultStudConnection: boolean | undefined;
+    fullCheck: boolean | undefined;
     report: PhysicalAssessment;
   }
 >();
@@ -506,6 +609,28 @@ export function assessPhysicalFeasibility(
   options: PhysicalOptions = {},
 ): PhysicalAssessment {
   return structuredClone(sharedPhysicalAssessment(assembly, options));
+}
+
+/**
+ * Records an assessment made elsewhere, such as in a worker, as this assembly's under these
+ * options, so the next check of the same assembly, including an edit policy's, uses it as is.
+ * The report must come from assessing this very assembly with these options.
+ */
+export function primePhysicalAssessment(
+  assembly: Assembly,
+  options: PhysicalOptions,
+  report: PhysicalAssessment,
+): void {
+  if (report.status === 'invalid-geometry') return;
+  assessments.set(assembly.bricks, {
+    buildArea: assembly.buildArea,
+    data: options.data,
+    estimateMissingMasses: options.estimateMissingMasses,
+    useCatalogMasses: options.useCatalogMasses,
+    useDefaultStudConnection: options.useDefaultStudConnection,
+    fullCheck: options.fullCheck,
+    report,
+  });
 }
 
 /**
@@ -523,7 +648,8 @@ export function sharedPhysicalAssessment(
     cached.data === options.data &&
     cached.estimateMissingMasses === options.estimateMissingMasses &&
     cached.useCatalogMasses === options.useCatalogMasses &&
-    cached.useDefaultStudConnection === options.useDefaultStudConnection
+    cached.useDefaultStudConnection === options.useDefaultStudConnection &&
+    cached.fullCheck === options.fullCheck
   )
     return cached.report;
   const report = computePhysicalAssessment(assembly, options);
@@ -535,6 +661,7 @@ export function sharedPhysicalAssessment(
       estimateMissingMasses: options.estimateMissingMasses,
       useCatalogMasses: options.useCatalogMasses,
       useDefaultStudConnection: options.useDefaultStudConnection,
+      fullCheck: options.fullCheck,
       report,
     });
   return report;
@@ -611,19 +738,16 @@ function computePhysicalAssessment(
   report.assemblyOrder = [...bodies]
     .sort((first, second) => first.brick.y - second.brick.y)
     .map(({ brick }) => brick.id);
-  if (bodies.length > MAX_PHYSICS_PIECES) {
-    report.reasons.push(
-      `Static analysis is limited to ${MAX_PHYSICS_PIECES} pieces; this build was not assessed.`,
-    );
-    return report;
-  }
   // Upright pieces standing on studs are the solver's rigid bodies. A piece mounted on side
   // studs is clamped to its hosts, and a pane or door hangs inside its frame, so their weight
   // and leverage are carried by those hosts, shared equally between several.
   const carriers = getSideMountHosts(assembly.bricks);
   const framesByPart = new Map<string, Brick[]>();
-  for (const brick of assembly.bricks)
-    framesByPart.set(brick.partId, [...(framesByPart.get(brick.partId) ?? []), brick]);
+  for (const brick of assembly.bricks) {
+    const frames = framesByPart.get(brick.partId);
+    if (frames) frames.push(brick);
+    else framesByPart.set(brick.partId, [brick]);
+  }
   for (const brick of assembly.bricks) {
     const framePartId = INSERT_FRAME_PARTS[brick.partId];
     if (!framePartId || brick.facing) continue;
@@ -683,16 +807,35 @@ function computePhysicalAssessment(
     top: bearingRectangles(brick, 'top'),
     bottom: bearingRectangles(brick, 'bottom'),
   }));
-  const byTop = new Map<number, number[]>();
+  // Pieces by the height of their tops and the one-stud cells they cover, so each piece looks
+  // for supports only among those just under it.
+  const cells = (brick: Brick) => {
+    const size = footprint(brick);
+    const keys: string[] = [];
+    for (let x = Math.floor(brick.x); x < brick.x + size.width; x++)
+      for (let z = Math.floor(brick.z); z < brick.z + size.depth; z++) keys.push(`${x}:${z}`);
+    return keys;
+  };
+  const byTop = new Map<string, number[]>();
   for (const [index, { brick }] of solids.entries()) {
     const top = brick.y + footprint(brick).height;
-    byTop.set(top, [...(byTop.get(top) ?? []), index]);
+    for (const cell of cells(brick)) {
+      const key = `${top}:${cell}`;
+      const pieces = byTop.get(key);
+      if (pieces) pieces.push(index);
+      else byTop.set(key, [index]);
+    }
   }
   for (const [upper, { brick }] of solids.entries()) {
     const receivers = new Set(
       getConnectionSites(brick, 'bottom').map((site) => `${site.x}:${site.z}`),
     );
-    const supports = brick.y === 0 ? [null] : (byTop.get(brick.y) ?? []);
+    const supports =
+      brick.y === 0
+        ? [null]
+        : [...new Set(cells(brick).flatMap((cell) => byTop.get(`${brick.y}:${cell}`) ?? []))].sort(
+            (first, second) => first - second,
+          );
     for (const lower of supports) {
       // Whatever a piece on the floor leans on, the floor catches, so it bears on its body.
       const below = lower === null ? [floorRectangle(brick)] : bearings[lower].top;
@@ -782,6 +925,13 @@ function computePhysicalAssessment(
     );
     return report;
   }
+  // Tipping is settled for builds of any size; the solve past it grows quickly with size.
+  if (bodies.length > MAX_PHYSICS_PIECES && !options.fullCheck) {
+    report.reasons.push(
+      `No group tips. Beyond that, static analysis is limited to ${MAX_PHYSICS_PIECES} pieces unless a full check is asked for; stud tension and strength were not assessed.`,
+    );
+    return report;
+  }
   // Unlimited forces anywhere in a contact add up to the same totals and moments as forces at
   // the corners of its convex hull, so only those corners need a variable. A per-stud limit
   // caps each stud separately, so that check gives every stud its own.
@@ -791,7 +941,8 @@ function computePhysicalAssessment(
   const hullPulls = contacts.map((contact) => convexHull(contact.studs));
   if (
     count(studConnection ? contacts.map((contact) => contact.studs) : hullPulls) >
-    MAX_PHYSICS_CONTACT_VARIABLES
+      MAX_PHYSICS_CONTACT_VARIABLES &&
+    !options.fullCheck
   ) {
     report.reasons.push(
       'Contact complexity exceeds the static analysis limit; no result is assumed.',
@@ -844,19 +995,12 @@ function computePhysicalAssessment(
   };
   const solve = (model: Model) => {
     try {
-      const result = (solver as unknown as SolverAPI).Solve(
-        {
-          optimize: model.optimize,
-          opType: model.opType,
-          constraints: model.constraints,
-          variables: model.variables,
-        },
-        1e-10,
-      ) as {
-        feasible: boolean;
-        bounded: boolean;
-        [name: string]: number | boolean;
-      };
+      const result = linearSolver({
+        optimize: model.optimize,
+        opType: model.opType,
+        constraints: model.constraints,
+        variables: model.variables,
+      });
       if (typeof result.feasible !== 'boolean') return null;
       if (!result.feasible) return result;
       if (!result.bounded || !Number.isFinite(result.result)) return null;

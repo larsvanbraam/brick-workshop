@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Box,
   Download,
@@ -13,14 +13,18 @@ import {
 } from 'lucide-react';
 import {
   encodeVoxelModel,
-  evaluateAssemblyPolicy,
   getBuildArea,
   MAX_BUILD_AREA,
   MAX_HEIGHT,
   MAX_PIECES,
   MAX_VOXEL_LAYERS,
 } from '@brick-workshop/engine';
-import type { Assembly, EditPolicy, EncodedVoxelModel } from '@brick-workshop/engine';
+import type {
+  Assembly,
+  EditPolicy,
+  EncodedVoxelModel,
+  PolicyAssessment,
+} from '@brick-workshop/engine';
 import { Scene } from './Scene';
 import { useLDrawLibrary } from './ldraw';
 import { captureCanvas, preparePhoto, streamGeneration } from './generation';
@@ -98,6 +102,7 @@ async function readServerStatus(signal?: AbortSignal): Promise<ServerStatus | nu
 export function GenerationPanel({
   assembly,
   policy,
+  checkAssembly,
   initialPrompt = '',
   onClose,
   onApply,
@@ -105,9 +110,11 @@ export function GenerationPanel({
 }: {
   assembly: Assembly;
   policy: EditPolicy;
+  /** The policy check of a draft, with its physical part run off the main thread. */
+  checkAssembly: (draft: Assembly) => Promise<PolicyAssessment>;
   initialPrompt?: string;
   onClose: () => void;
-  onApply: (draft: Assembly, original: Assembly) => boolean;
+  onApply: (draft: Assembly, original: Assembly) => Promise<boolean>;
   onExport: (draft: Assembly) => void;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
@@ -149,10 +156,28 @@ export function GenerationPanel({
   const [previewMode, setPreviewMode] = useState<'draft' | 'reference'>('draft');
   const [photoIndex, setPhotoIndex] = useState(0);
   const library = useLDrawLibrary(result?.assembly.bricks.map((brick) => brick.partId) ?? []);
-  const assessment = useMemo(
-    () => (result ? evaluateAssemblyPolicy(result.assembly, policy) : null),
-    [result, policy],
-  );
+  const [checked, setChecked] = useState<{
+    draft: Assembly;
+    policy: EditPolicy;
+    assessment: PolicyAssessment;
+  } | null>(null);
+  useEffect(() => {
+    if (!result) return;
+    let live = true;
+    const draft = result.assembly;
+    void checkAssembly(draft).then(
+      (assessment) => live && setChecked({ draft, policy, assessment }),
+    );
+    return () => {
+      live = false;
+    };
+    // The check follows the draft and the policy, not the callback's identity.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [result, policy]);
+  const assessment =
+    result && checked?.draft === result.assembly && checked.policy === policy
+      ? checked.assessment
+      : null;
   const stale = assembly !== original;
   const activity = describeActivity(events.at(-1));
 
@@ -854,8 +879,11 @@ export function GenerationPanel({
           className="primary"
           disabled={!result?.assembly.bricks.length || busy || stale || !assessment?.allowed}
           onClick={() => {
-            if (result && onApply(result.assembly, original)) onClose();
-            else setError('Draft could not be applied under the current policy.');
+            if (!result) return;
+            void onApply(result.assembly, original).then((applied) => {
+              if (applied) onClose();
+              else setError('Draft could not be applied under the current policy.');
+            });
           }}
         >
           <Sparkles size={15} />

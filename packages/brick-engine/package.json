@@ -18,6 +18,7 @@
     "javascript-lp-solver": "^1.0.3"
   },
   "devDependencies": {
+    "highs": "1.15.4",
     "vite-plus": "1.4.0"
   }
 }

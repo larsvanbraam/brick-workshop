@@ -200,6 +200,9 @@ importers:
       '@react-three/postprocessing':
         specifier: ^3.2.2
         version: 3.2.2(@react-three/fiber@9.8.2(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(three@0.183.2))(@types/three@0.183.1)(postprocessing@6.39.6(three@0.183.2))(react@19.3.1)(three@0.183.2)
+      highs:
+        specifier: 1.15.4
+        version: 1.15.4
       jspdf:
         specifier: 4.2.1
         version: 4.2.1
@@ -256,6 +259,9 @@ importers:
         specifier: ^1.0.3
         version: 1.0.3
     devDependencies:
+      highs:
+        specifier: 1.15.4
+        version: 1.15.4
       vite-plus:
         specifier: 1.4.0
         version: 1.4.0(@opentelemetry/api@1.10.0)(@types/node@24.19.2)(@vitest/ui@5.0.5)(typescript@7.0.2)
@@ -277,6 +283,9 @@ importers:
       ajv:
         specifier: ^8.20.0
         version: 8.20.0
+      highs:
+        specifier: 1.15.4
+        version: 1.15.4
       sharp:
         specifier: ^0.35.5
         version: 0.35.5(@types/node@24.19.2)
@@ -1693,6 +1702,10 @@ packages:
   hasown@2.0.4:
     resolution: {integrity: sha512-T2UbfbBEF32wiepXIsMlTW9+dDYC6wMh/t/vYA4tuOMKqWz/n3vr1NFSxQiyP+zk2mXsoMA/i/7qV6LKut1t1A==}
     engines: {node: '>= 0.4'}
+
+  highs@1.15.4:
+    resolution: {integrity: sha512-vsC03XHDqWAVrEFUt22h8e4CDDMb+LAFa0bycjPUq2kadRigK5pNLVIlwspKvMxxVtrr4NAucZHP/CAgigxiDQ==}
+    engines: {node: '>=18'}
 
   hls.js@1.7.4:
     resolution: {integrity: sha512-3GlxGdPvT2YHvQYOt+yOzT/DEior/qJVNIylHA77kgeoBTdQQqi70GwefNEUmHQeNGyjC8U62+bruqW/Tpm+tg==}
@@ -3564,6 +3577,8 @@ snapshots:
   hasown@2.0.4:
     dependencies:
       function-bind: 1.1.2
+
+  highs@1.15.4: {}
 
   hls.js@1.7.4: {}
 

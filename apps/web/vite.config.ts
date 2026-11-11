@@ -18,6 +18,8 @@ export default defineConfig(({ mode }) => {
     envDir: workspaceRoot,
     server: { host: '127.0.0.1', proxy },
     preview: { host: '127.0.0.1', proxy },
+    // The physics worker imports the engine and HiGHS as modules.
+    worker: { format: 'es' as const },
     build: {
       rollupOptions: {
         input: {

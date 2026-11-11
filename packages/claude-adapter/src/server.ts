@@ -11,6 +11,7 @@ import {
   decodeVoxelModel,
 } from '@brick-workshop/engine';
 import { createBuilderSession } from './session.ts';
+import { useHighsSolver } from './solver.ts';
 import { DEFAULT_CLAUDE_MODEL, runClaudeBuild, validateReferenceImages } from './runner.ts';
 import { runClaudeCodeBuild } from './claude-code-runner.ts';
 import type { ClaudeTransport, ReferenceImage } from './runner.ts';
@@ -351,6 +352,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   const port = Number(process.env.WORKSHOP_API_PORT ?? 8787);
   if (!Number.isInteger(port) || port < 1024 || port > 65535)
     throw new Error('WORKSHOP_API_PORT must be 1024-65535.');
+  await useHighsSolver();
   createWorkshopServer({
     apiKey: process.env.ANTHROPIC_API_KEY,
     model: process.env.CLAUDE_MODEL,

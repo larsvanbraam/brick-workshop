@@ -671,7 +671,7 @@ describe('headless Claude builder tools', () => {
     expect(session.runTool('brick_catalog', {})).toMatchObject({
       ok: true,
       data: {
-        capabilities: { insertFrames: { '60602': '60593' }, staticGravity: { maxPieces: 500 } },
+        capabilities: { insertFrames: { '60602': '60593' }, staticGravity: { maxPieces: 1000 } },
       },
     });
     const before = session.snapshot();

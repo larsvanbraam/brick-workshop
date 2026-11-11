@@ -133,8 +133,8 @@ describe('connection-aware placement planning', () => {
       bricks: [{ ...base, partId: '3942c' }],
     });
     expect(capabilities.staticGravity).toEqual({
-      maxPieces: 500,
-      maxContactVariables: 8000,
+      maxPieces: 1000,
+      maxContactVariables: 30000,
       withinPieceLimit: true,
       unsupportedPartIds: [],
       approximatedContactPartIds: ['3942c'],

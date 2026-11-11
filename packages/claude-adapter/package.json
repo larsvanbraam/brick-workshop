@@ -20,6 +20,7 @@
     "@brick-workshop/engine": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.32.2",
     "ajv": "^8.20.0",
+    "highs": "1.15.4",
     "sharp": "^0.35.5"
   },
   "devDependencies": {

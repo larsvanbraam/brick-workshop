@@ -208,7 +208,7 @@ Loading and GPU preparation can still involve synchronous work; the loading
 screen does not move that work to a worker.
 
 Performance changes do not relax geometry validation, the Claude adapter's
-50,000-piece limit, the static solver's 500-piece limit, or certification rules.
+50,000-piece limit, the static solver's 1,000-piece limit, or certification rules.
 
 ## Adding Examples
 
@@ -613,9 +613,27 @@ matching frame, are taken as rigidly clamped to their hosts, which carry their
 weight and leverage. Sideways stud loads, hinge behaviour, aperture contacts and
 baseplate flexure are not simulated.
 
-Numerical force/moment residuals are checked independently. Solver failures,
-missing masses, more than 500 pieces, or more than 8,000 contact-force variables
-leave assessment unknown, never passed. Bottom-up `assemblyOrder` has idealized
+Numerical force/moment residuals are checked independently. Solver failures and
+missing masses leave assessment unknown, never passed. Tipping needs no solver:
+the floor can only push, so a group whose center of mass falls outside its floor
+outline cannot balance, and that is decided for builds of any size. The static
+solve past it is limited to 1,000 pieces and 30,000 contact-force variables;
+larger builds report `gravity: "not-assessed"` with stud strength unknown unless
+`fullCheck: true` is passed, which runs it however long it takes.
+
+The engine's built-in solver is a pure JavaScript simplex. Hosts can swap in
+HiGHS, about ten times faster on real builds, with
+`setLinearSolver(createHighsSolver(await highsLoader()))` from the `highs`
+package; the engine does not load the WebAssembly module itself. The Claude
+adapter's CLI and workshop server do this at startup. The workshop runs every
+physical check in a web worker on HiGHS (`apps/web/src/physics-worker.ts`), so
+the editor never blocks on it: an edit is checked for geometry at once, then
+lands when the worker's answer arrives, which is under a tenth of a second for a
+few hundred pieces. Hosts that check elsewhere like this pass
+`assessPhysics: false` in the edit policy, then hand the answer to
+`primePhysicalAssessment` so the next policy check of that assembly reuses it.
+For builds past the piece limit, the workshop's Details panel offers **Run full
+check**, which runs on its own worker and stops when the build changes. Bottom-up `assemblyOrder` has idealized
 vertical insertion clearance for upright bodies only. Bending,
 intermediate construction stability, temporary supports,
 shear, compression strength, friction, wear, disturbances, tipping margin,
