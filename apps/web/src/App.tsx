@@ -256,26 +256,21 @@ function seatInFrame(
 
 /**
  * Where along one axis a piece of `length` studs starts so that it covers the stud under the
- * pointer. A fresh piece centers on the pointer; once it is showing, it stays put while the
- * pointer moves over it and slides only as far as it must when the pointer leaves an end, so
- * sweeping toward a wall's end leaves a long brick flush with it instead of hanging past.
+ * pointer. It centers on the pointer, then `grab` steps which of its studs sits there, wrapping
+ * past either end so every stud is a few presses away whichever way the piece faces.
  */
-function spanStart(pointer: number, length: number, offset: number, previous?: number) {
+function spanStart(pointer: number, length: number, offset: number, grab = 0) {
   const centered = Math.round(pointer - length / 2 - offset) + offset;
-  // A ghost from a brick on another half-stud grid can't keep its place on this one.
-  const shift = previous === undefined ? NaN : previous - offset;
-  if (!(Math.abs(shift - Math.round(shift)) < 1e-6)) return centered;
-  previous = previous!;
+  if (!grab) return centered;
   const stud = Math.floor(pointer - offset) + offset;
-  if (stud < previous) return stud;
-  if (stud + 1 > previous + length) return stud + 1 - length;
-  return previous;
+  const index = stud - centered;
+  return stud - ((((index + grab) % length) + length) % length);
 }
 
 /**
  * Where a piece lands for the face under the pointer: on top of a brick, against one of its
  * sides at the same level, below it, or on the board. Studs line up with the brick that was hit.
- * `previous` is the ghost showing now, which the piece keeps its place from as the pointer moves.
+ * `grab` steps which stud along the piece's long side sits under the pointer.
  */
 function placementFor(
   target: PointerTarget,
@@ -283,7 +278,7 @@ function placementFor(
   color: number,
   rotation: Rotation,
   area: number,
-  previous?: Brick | null,
+  grab = 0,
 ): Brick | null {
   const brick: Brick = { id: 'placement-preview', partId, color, x: 0, y: 0, z: 0, rotation };
   const size = footprint(brick);
@@ -293,10 +288,9 @@ function placementFor(
   const offsetX = hit ? hit.x % 1 : 0;
   const offsetZ = hit ? hit.z % 1 : 0;
   const clamp = (value: number, max: number) => Math.min(Math.max(value, 0), max);
-  const anchor =
-    previous && previous.partId === partId && previous.rotation === rotation ? previous : null;
-  let x = clamp(spanStart(target.x, size.width, offsetX, anchor?.x), area - size.width);
-  let z = clamp(spanStart(target.z, size.depth, offsetZ, anchor?.z), area - size.depth);
+  const alongX = size.width >= size.depth;
+  let x = clamp(spanStart(target.x, size.width, offsetX, alongX ? grab : 0), area - size.width);
+  let z = clamp(spanStart(target.z, size.depth, offsetZ, alongX ? 0 : grab), area - size.depth);
   let y = 0;
   if (hit) {
     const hitSize = footprint(hit);
@@ -410,6 +404,9 @@ export default function App() {
   const [partId, setPartId] = useState('3001');
   const [color, setColor] = useState<number>(4);
   const [rotation, setRotation] = useState<Rotation>(0);
+  /** Which stud along the piece's long side the pointer holds it by, stepped with [ and ]. */
+  const [grabbed, setGrabbed] = useState({ partId, steps: 0 });
+  const grab = grabbed.partId === partId ? grabbed.steps : 0;
   const [tool, setTool] = useState<SceneMode>('select');
   const [target, setTarget] = useState<PointerTarget | null>(null);
   const [shiftHeld, setShiftHeld] = useState(false);
@@ -590,7 +587,7 @@ export default function App() {
   const ghost = useMemo(() => {
     const brick =
       tool === 'place' && !shiftHeld && target
-        ? placementFor(target, partId, color, rotation, buildArea, ghostRef.current.ghost)
+        ? placementFor(target, partId, color, rotation, buildArea, grab)
         : null;
     const previous = ghostRef.current;
     if (
@@ -601,7 +598,7 @@ export default function App() {
     )
       return previous.ghost;
     return brick && { ...brick, id: crypto.randomUUID() };
-  }, [assembly, tool, shiftHeld, target, partId, color, rotation, buildArea]);
+  }, [assembly, tool, shiftHeld, target, partId, color, rotation, buildArea, grab]);
   useLayoutEffect(() => {
     ghostRef.current = { assembly, ghost };
   }, [assembly, ghost]);
@@ -834,7 +831,7 @@ export default function App() {
       if (hit.brick) pickUp(hit.brick);
       return;
     }
-    const brick = placementFor(hit, partId, color, rotation, buildArea, ghost);
+    const brick = placementFor(hit, partId, color, rotation, buildArea, grab);
     const previewed =
       ghost !== null &&
       brick !== null &&
@@ -1137,6 +1134,8 @@ export default function App() {
         const direction = event.shiftKey ? -1 : 1;
         if (tool === 'select' && selected) rotateSelected(direction);
         else setRotation(((rotation + 360 + direction * 90) % 360) as Rotation);
+      } else if ((key === '[' || key === ']') && tool === 'place') {
+        setGrabbed({ partId, steps: grab + (key === ']' ? 1 : -1) });
       } else if ((key === 'delete' || key === 'backspace') && selected) {
         event.preventDefault();
         removeBrick(selected.id);
@@ -1834,8 +1833,8 @@ export default function App() {
             </div>
             {tool === 'place' && (
               <p className="shortcut-hint">
-                <kbd>Click</kbd> place · <kbd>R</kbd> rotate · <kbd>⇧</kbd> remove · <kbd>⌥</kbd>{' '}
-                pick · <kbd>Esc</kbd> done
+                <kbd>Click</kbd> place · <kbd>R</kbd> rotate · <kbd>[</kbd> <kbd>]</kbd> shift grip
+                · <kbd>⇧</kbd> remove · <kbd>⌥</kbd> pick · <kbd>Esc</kbd> done
               </p>
             )}
             {tool === 'select' && !selected && !empty && (
