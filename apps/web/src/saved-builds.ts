@@ -3,6 +3,9 @@ import type { Assembly, Part } from '@brick-workshop/engine';
 
 const AUTOSAVE_KEY = 'brick-workshop-current-build-v1';
 
+/** Set VITE_WORKSHOP_SAVED_BUILDS=false at build time when no workshop server hosts /api/builds. */
+export const SAVED_BUILDS_ENABLED = import.meta.env.VITE_WORKSHOP_SAVED_BUILDS !== 'false';
+
 export interface SavedBuildSummary {
   id: string;
   name: string;
@@ -57,6 +60,7 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
 }
 
 export function listSavedBuilds() {
+  if (!SAVED_BUILDS_ENABLED) return Promise.resolve([]);
   return request<SavedBuildSummary[]>('/api/builds');
 }
 

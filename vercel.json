@@ -2,7 +2,7 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": null,
   "installCommand": "npx -y pnpm@12.16.1 install --frozen-lockfile",
-  "buildCommand": "node apps/web/tooling/fetch-ldraw.ts && VITE_WORKSHOP_GENERATION=false ./node_modules/.bin/vp -C apps/web build",
+  "buildCommand": "node apps/web/tooling/fetch-ldraw.ts && VITE_WORKSHOP_GENERATION=false VITE_WORKSHOP_SAVED_BUILDS=false ./node_modules/.bin/vp -C apps/web build",
   "outputDirectory": "apps/web/dist",
   "headers": [
     {

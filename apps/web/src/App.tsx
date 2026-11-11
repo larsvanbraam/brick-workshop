@@ -100,6 +100,7 @@ import {
   openBuildDocument,
   readAutosave,
   saveBuild,
+  SAVED_BUILDS_ENABLED,
   writeAutosave,
 } from './saved-builds';
 import type { SavedBuildSummary } from './saved-builds';
@@ -1105,7 +1106,7 @@ export default function App() {
         redo();
       } else if (command && key === 's') {
         event.preventDefault();
-        void saveCurrent();
+        if (SAVED_BUILDS_ENABLED) void saveCurrent();
       } else if (command || event.altKey) return;
       else if (key === 'v') chooseTool('select');
       else if (key === 'b') chooseTool('place');
@@ -1204,13 +1205,17 @@ export default function App() {
                       resetView();
                     },
                   },
-                  {
-                    label: 'Save',
-                    icon: <Save size={15} />,
-                    hint: '⌘S',
-                    disabled: empty || issues.length > 0,
-                    onSelect: () => void saveCurrent(),
-                  },
+                  ...(SAVED_BUILDS_ENABLED
+                    ? [
+                        {
+                          label: 'Save',
+                          icon: <Save size={15} />,
+                          hint: '⌘S',
+                          disabled: empty || issues.length > 0,
+                          onSelect: () => void saveCurrent(),
+                        },
+                      ]
+                    : []),
                   {
                     label: 'Import JSON…',
                     icon: <Upload size={15} />,
