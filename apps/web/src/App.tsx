@@ -255,27 +255,10 @@ function seatInFrame(
 }
 
 /**
- * Where along one axis a piece of `length` studs starts so that it covers the stud under the
- * pointer and stays on the board. It centers on the pointer, then `grab` steps through the other
- * starts that still cover that stud, wrapping past either end so every one is a few presses away
- * whichever way the piece faces.
- */
-function spanStart(pointer: number, length: number, offset: number, area: number, grab = 0) {
-  const stud = Math.floor(pointer - offset) + offset;
-  const first = Math.max(stud + 1 - length, Math.ceil(-offset) + offset);
-  const last = Math.min(stud, Math.floor(area - length - offset) + offset);
-  const centered = Math.round(pointer - length / 2 - offset) + offset;
-  if (last < first) return centered;
-  const count = last - first + 1;
-  const index = Math.min(Math.max(centered, first), last) - first;
-  return first + ((((index + grab) % count) + count) % count);
-}
-
-/**
  * Where a piece lands for the face under the pointer: on top of a brick, against one of its
  * sides at the same level, below it, or on the board. Studs line up with the brick that was hit.
- * `grab` steps which stud along the piece's long side (or along the side it is set against)
- * sits under the pointer.
+ * `nudge` moves it that many studs along its long side (or along the side it is set against),
+ * so it can sit anywhere along a wall, not only centered on the pointer.
  */
 function placementFor(
   target: PointerTarget,
@@ -283,7 +266,7 @@ function placementFor(
   color: number,
   rotation: Rotation,
   area: number,
-  grab = 0,
+  nudge = 0,
 ): Brick | null {
   const brick: Brick = { id: 'placement-preview', partId, color, x: 0, y: 0, z: 0, rotation };
   const size = footprint(brick);
@@ -293,21 +276,21 @@ function placementFor(
   const offsetX = hit ? hit.x % 1 : 0;
   const offsetZ = hit ? hit.z % 1 : 0;
   const clamp = (value: number, max: number) => Math.min(Math.max(value, 0), max);
-  // Against a side the piece's place across that side is fixed, so the grip steps along it.
+  // Against a side the piece's place across that side is fixed, so the nudge moves it along it.
   const alongX =
     target.face === 'x-' || target.face === 'x+'
       ? false
       : target.face === 'z-' || target.face === 'z+'
         ? true
         : size.width >= size.depth;
-  let x = clamp(
-    spanStart(target.x, size.width, offsetX, area, alongX ? grab : 0),
-    area - size.width,
-  );
-  let z = clamp(
-    spanStart(target.z, size.depth, offsetZ, area, alongX ? 0 : grab),
-    area - size.depth,
-  );
+  // Kept on the board before the nudge too, so the first press away from an edge moves it.
+  const start = (pointer: number, length: number, offset: number, shift: number) =>
+    clamp(
+      clamp(Math.round(pointer - length / 2 - offset) + offset, area - length) + shift,
+      area - length,
+    );
+  let x = start(target.x, size.width, offsetX, alongX ? nudge : 0);
+  let z = start(target.z, size.depth, offsetZ, alongX ? 0 : nudge);
   let y = 0;
   if (hit) {
     const hitSize = footprint(hit);
@@ -421,9 +404,9 @@ export default function App() {
   const [partId, setPartId] = useState('3001');
   const [color, setColor] = useState<number>(4);
   const [rotation, setRotation] = useState<Rotation>(0);
-  /** Which stud along the piece's long side the pointer holds it by, stepped with [ and ]. */
-  const [grabbed, setGrabbed] = useState({ partId, steps: 0 });
-  const grab = grabbed.partId === partId ? grabbed.steps : 0;
+  /** How many studs [ and ] have moved the piece along its long side, away from the pointer. */
+  const [nudged, setNudged] = useState({ partId, steps: 0 });
+  const nudge = nudged.partId === partId ? nudged.steps : 0;
   const [tool, setTool] = useState<SceneMode>('select');
   const [target, setTarget] = useState<PointerTarget | null>(null);
   const [shiftHeld, setShiftHeld] = useState(false);
@@ -604,7 +587,7 @@ export default function App() {
   const ghost = useMemo(() => {
     const brick =
       tool === 'place' && !shiftHeld && target
-        ? placementFor(target, partId, color, rotation, buildArea, grab)
+        ? placementFor(target, partId, color, rotation, buildArea, nudge)
         : null;
     const previous = ghostRef.current;
     if (
@@ -615,7 +598,7 @@ export default function App() {
     )
       return previous.ghost;
     return brick && { ...brick, id: crypto.randomUUID() };
-  }, [assembly, tool, shiftHeld, target, partId, color, rotation, buildArea, grab]);
+  }, [assembly, tool, shiftHeld, target, partId, color, rotation, buildArea, nudge]);
   useLayoutEffect(() => {
     ghostRef.current = { assembly, ghost };
   }, [assembly, ghost]);
@@ -848,7 +831,7 @@ export default function App() {
       if (hit.brick) pickUp(hit.brick);
       return;
     }
-    const brick = placementFor(hit, partId, color, rotation, buildArea, grab);
+    const brick = placementFor(hit, partId, color, rotation, buildArea, nudge);
     const previewed =
       ghost !== null &&
       brick !== null &&
@@ -1152,7 +1135,12 @@ export default function App() {
         if (tool === 'select' && selected) rotateSelected(direction);
         else setRotation(((rotation + 360 + direction * 90) % 360) as Rotation);
       } else if ((key === '[' || key === ']') && tool === 'place') {
-        setGrabbed({ partId, steps: grab + (key === ']' ? 1 : -1) });
+        // Past the board's edge the piece stops, and so does the count, so stepping back is
+        // seen at once.
+        const steps = nudge + (key === ']' ? 1 : -1);
+        const moved = target && placementFor(target, partId, color, rotation, buildArea, steps);
+        if (!target || (moved && (moved.x !== ghost?.x || moved.z !== ghost?.z)))
+          setNudged({ partId, steps });
       } else if ((key === 'delete' || key === 'backspace') && selected) {
         event.preventDefault();
         removeBrick(selected.id);
@@ -1850,8 +1838,8 @@ export default function App() {
             </div>
             {tool === 'place' && (
               <p className="shortcut-hint">
-                <kbd>Click</kbd> place · <kbd>R</kbd> rotate · <kbd>[</kbd> <kbd>]</kbd> shift grip
-                · <kbd>⇧</kbd> remove · <kbd>⌥</kbd> pick · <kbd>Esc</kbd> done
+                <kbd>Click</kbd> place · <kbd>R</kbd> rotate · <kbd>[</kbd> <kbd>]</kbd> slide ·{' '}
+                <kbd>⇧</kbd> remove · <kbd>⌥</kbd> pick · <kbd>Esc</kbd> done
               </p>
             )}
             {tool === 'select' && !selected && !empty && (
