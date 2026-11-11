@@ -671,7 +671,7 @@ describe('headless Claude builder tools', () => {
     expect(session.runTool('brick_catalog', {})).toMatchObject({
       ok: true,
       data: {
-        capabilities: { insertFrames: { '60602': '60593' }, staticGravity: { maxPieces: 200 } },
+        capabilities: { insertFrames: { '60602': '60593' }, staticGravity: { maxPieces: 500 } },
       },
     });
     const before = session.snapshot();
@@ -754,7 +754,7 @@ describe('headless Claude builder tools', () => {
     }
   });
 
-  it('keeps missing-mass and shaped candidates unknown and enforces piece limits', () => {
+  it('keeps missing-mass candidates unknown, assesses shaped ones and enforces piece limits', () => {
     const missingMass = createBuilderSession(undefined, {
       physical: { useCatalogMasses: false, estimateMissingMasses: false },
     });
@@ -786,7 +786,7 @@ describe('headless Claude builder tools', () => {
             placementAllowed: true,
             physical: expect.objectContaining({
               status: 'unknown',
-              gravity: 'not-assessed',
+              gravity: 'balanced',
               certified: false,
             }),
           }),
@@ -848,10 +848,10 @@ describe('headless Claude builder tools', () => {
     expect(session.snapshot()).toEqual(before);
     expect(session.runTool('brick_physics', {})).toMatchObject({
       ok: true,
-      data: { status: 'unknown', gravity: 'not-assessed' },
+      data: { status: 'unknown', gravity: 'balanced' },
     });
   });
-  it('exposes and places new families without claiming shaped contact physics', () => {
+  it('exposes and places new families with approximated shaped contact physics', () => {
     const catalogue = createBuilderSession().runTool('brick_catalog', {}) as {
       data: { partColumns: string[]; partRows: unknown[][] };
     };
@@ -865,13 +865,13 @@ describe('headless Claude builder tools', () => {
           id: '3039',
           family: 'slope',
           shape: 'slope',
-          contactPhysics: 'not-assessed',
+          contactPhysics: 'connection-cell-model',
         }),
         expect.objectContaining({
           id: '3062b',
           family: 'round',
           shape: 'round',
-          contactPhysics: 'not-assessed',
+          contactPhysics: 'connection-cell-model',
         }),
       ]),
     );
@@ -881,7 +881,7 @@ describe('headless Claude builder tools', () => {
       if (partId !== '2453b')
         expect(session.runTool('brick_physics', {})).toMatchObject({
           ok: true,
-          data: { gravity: 'not-assessed', status: 'unknown', massBasis: 'catalog' },
+          data: { gravity: 'balanced', status: 'unknown', massBasis: 'catalog' },
         });
     }
   });

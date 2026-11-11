@@ -1,6 +1,15 @@
 import solver from 'javascript-lp-solver';
 import type { SolverAPI } from 'javascript-lp-solver';
-import { footprint, getConnectionSites, getPart, isRuntimePart, validateAssembly } from './core.ts';
+import {
+  INSERT_FRAME_PARTS,
+  footprint,
+  getConnectionSites,
+  getPart,
+  getSideMountHosts,
+  isMatchingInsertFrame,
+  isRuntimePart,
+  validateAssembly,
+} from './core.ts';
 import type { Assembly, Brick } from './core.ts';
 import { CATALOG_PART_MASSES } from './part-masses.ts';
 
@@ -202,14 +211,16 @@ export function getBuildabilityReport(assessment: PhysicalAssessment): Buildabil
 }
 
 const GRAVITY = 9.80665;
-export const MAX_PHYSICS_PIECES = 200;
-export const MAX_PHYSICS_CONTACT_VARIABLES = 4000;
+export const MAX_PHYSICS_PIECES = 500;
+export const MAX_PHYSICS_CONTACT_VARIABLES = 8000;
 const TOLERANCE = 1e-7;
 const ASSUMPTIONS = [
-  'Upright rigid rectangular bodies under gravity on a flat, non-adhesive floor; no external loads.',
-  'Full overlapping body rectangles transmit compression; matching studs alone transmit tension.',
+  'Upright rigid bodies under gravity on a flat, non-adhesive floor; no external loads.',
+  'Overlapping flat faces transmit compression; matching studs alone transmit tension.',
+  'Shaped parts bear only where they have studs or receivers (a slope on its rear row, an arch on its legs); door and window frames, baseplates and anything on the floor bear on their whole footprint.',
+  'Pieces mounted on side studs and panes or doors hung in frames are rigidly clamped to their hosts; sideways stud loads are not strength-checked.',
   'Compression, bending, shear, friction, wear and insertion forces are not strength-verified.',
-  'Absent supplied centers of mass, body footprint centers are assumed; color/material differences are not modeled.',
+  'Absent supplied centers of mass, slopes are taken as a rear block plus a wedge and other bodies as even across their footprint; color/material differences are not modeled.',
   'Bottom-up order has ideal vertical insertion clearance only; hand/tool access is not verified.',
   'Assembly order does not verify intermediate construction stability or temporary supports.',
   'Equilibrium may be marginal at a support edge; perturbations and minimum tipping margins are not verified.',
@@ -296,14 +307,112 @@ function estimatedMass(brick: Brick): PartMass {
   };
 }
 
+/**
+ * Where a part's weight acts in its own studs. Slopes, upright or inverted, are a one-stud
+ * block at the high rear end (z = depth) with a wedge tapering away to the front, so their
+ * mass sits toward the rear. Everything else is assumed even across its body.
+ */
+function localCenter(partId: string) {
+  const part = getPart(partId);
+  const run = part.depth - 1;
+  if ((part.shape === 'slope' || part.shape === 'inverted-slope') && run > 0) {
+    const fromRear = (0.5 + (run / 2) * (1 + run / 3)) / (1 + run / 2);
+    return { x: part.width / 2, z: part.depth - fromRear };
+  }
+  return { x: part.width / 2, z: part.depth / 2 };
+}
+
 function worldCenter(brick: Brick, mass: PartMass) {
   const part = getPart(brick.partId);
-  const center = mass.centerOfMassStuds ?? { x: part.width / 2, z: part.depth / 2 };
+  const center = mass.centerOfMassStuds ?? localCenter(brick.partId);
   let { x, z } = center;
   if (brick.rotation === 90) [x, z] = [center.z, part.width - center.x];
   if (brick.rotation === 180) [x, z] = [part.width - center.x, part.depth - center.z];
   if (brick.rotation === 270) [x, z] = [part.depth - center.z, center.x];
   return { x: brick.x + x, z: brick.z + z };
+}
+
+interface Rectangle {
+  left: number;
+  right: number;
+  near: number;
+  far: number;
+}
+
+const EPSILON = 1e-9;
+
+function floorRectangle(brick: Brick): Rectangle {
+  const size = footprint(brick);
+  return { left: brick.x, right: brick.x + size.width, near: brick.z, far: brick.z + size.depth };
+}
+
+/** Shapes whose top is only flat where its studs are: a slope's rear row, a cone's tip. */
+const STUDDED_TOPS = new Set(['slope', 'round', 'cone', 'detail', 'foliage']);
+/** Shapes whose underside is cut away except at its receivers: an arch's legs. */
+const OPEN_UNDERSIDES = new Set(['inverted-slope', 'arch', 'detail', 'foliage']);
+
+/**
+ * Where a piece can bear load on its top or underside. Plain bricks, plates and tiles are flat
+ * across their whole body, as are door and window frames below and baseplates. Other shaped
+ * parts are only flat where they have studs or receivers, and those one-stud cells are merged
+ * into as few rectangles as a row-then-column sweep gives. An underside with no receivers at
+ * all bears on its whole body.
+ */
+function bearingRectangles(brick: Brick, surface: 'top' | 'bottom'): Rectangle[] {
+  const shape = getPart(brick.partId).shape;
+  if (!shape || !(surface === 'top' ? STUDDED_TOPS : OPEN_UNDERSIDES).has(shape))
+    return [floorRectangle(brick)];
+  const rows = new Map<number, number[]>();
+  for (const site of getConnectionSites(brick, surface))
+    rows.set(site.z, [...(rows.get(site.z) ?? []), site.x]);
+  const runs: Rectangle[] = [];
+  for (const [z, xs] of [...rows].sort(([first], [second]) => first - second)) {
+    xs.sort((first, second) => first - second);
+    let start = xs[0];
+    for (const [index, x] of xs.entries()) {
+      const next = xs[index + 1];
+      if (next !== undefined && Math.abs(next - x - 1) < EPSILON) continue;
+      runs.push({ left: start - 0.5, right: x + 0.5, near: z - 0.5, far: z + 0.5 });
+      start = next;
+    }
+  }
+  if (!runs.length) return surface === 'bottom' ? [floorRectangle(brick)] : [];
+  const merged: Rectangle[] = [];
+  for (const run of runs) {
+    const above = merged.find(
+      (rectangle) =>
+        Math.abs(rectangle.left - run.left) < EPSILON &&
+        Math.abs(rectangle.right - run.right) < EPSILON &&
+        Math.abs(rectangle.far - run.near) < EPSILON,
+    );
+    if (above) above.far = run.far;
+    else merged.push({ ...run });
+  }
+  return merged;
+}
+
+/** The corners of the convex hull of some points, without points along its edges. */
+function convexHull(points: readonly { x: number; z: number }[]) {
+  const sorted = [
+    ...new Map(points.map((point) => [`${point.x}:${point.z}`, point])).values(),
+  ].sort((first, second) => first.x - second.x || first.z - second.z);
+  if (sorted.length < 3) return sorted;
+  const turn = (
+    origin: { x: number; z: number },
+    first: { x: number; z: number },
+    second: { x: number; z: number },
+  ) => (first.x - origin.x) * (second.z - origin.z) - (first.z - origin.z) * (second.x - origin.x);
+  const chain = (ordered: { x: number; z: number }[]) => {
+    const hull: { x: number; z: number }[] = [];
+    for (const point of ordered) {
+      while (hull.length >= 2 && turn(hull.at(-2)!, hull.at(-1)!, point) <= EPSILON) hull.pop();
+      hull.push(point);
+    }
+    return hull.slice(0, -1);
+  };
+  const hull = [...chain(sorted), ...chain([...sorted].reverse())];
+  // Points all on one line leave just its two ends.
+  return hull.length ? hull : [sorted[0], sorted.at(-1)!];
 }
 
 /**
@@ -425,23 +534,67 @@ function computePhysicalAssessment(
   report.assemblyOrder = [...bodies]
     .sort((first, second) => first.brick.y - second.brick.y)
     .map(({ brick }) => brick.id);
-  if (bodies.some(({ brick }) => brick.facing)) {
-    report.reasons.push(
-      'Pieces mounted on side studs load their hosts sideways, which the vertical static solver does not model; gravity and connection strength remain unknown.',
-    );
-    return report;
-  }
-  if (bodies.some(({ brick }) => getPart(brick.partId).shape)) {
-    report.reasons.push(
-      'Unsupported contact surfaces of shaped parts and thin baseplates are outside the rectangular static solver; gravity, hinge behaviour, flexure and connection strength remain unknown.',
-    );
-    return report;
-  }
   if (bodies.length > MAX_PHYSICS_PIECES) {
     report.reasons.push(
       `Static analysis is limited to ${MAX_PHYSICS_PIECES} pieces; this build was not assessed.`,
     );
     return report;
+  }
+  // Upright pieces standing on studs are the solver's rigid bodies. A piece mounted on side
+  // studs is clamped to its hosts, and a pane or door hangs inside its frame, so their weight
+  // and leverage are carried by those hosts, shared equally between several.
+  const carriers = getSideMountHosts(assembly.bricks);
+  const framesByPart = new Map<string, Brick[]>();
+  for (const brick of assembly.bricks)
+    framesByPart.set(brick.partId, [...(framesByPart.get(brick.partId) ?? []), brick]);
+  for (const brick of assembly.bricks) {
+    const framePartId = INSERT_FRAME_PARTS[brick.partId];
+    if (!framePartId || brick.facing) continue;
+    const frames = (framesByPart.get(framePartId) ?? []).filter((frame) =>
+      isMatchingInsertFrame(brick, frame),
+    );
+    if (frames.length)
+      carriers.set(
+        brick.id,
+        frames.map((frame) => frame.id),
+      );
+  }
+  const solids = bodies.filter(({ brick }) => !carriers.has(brick.id));
+  const solidIndex = new Map(solids.map((body, index) => [body.brick.id, index]));
+  const loads = solids.map((body) => ({
+    weight: body.weight,
+    momentX: body.weight * body.center.x,
+    momentZ: body.weight * body.center.z,
+  }));
+  const carryingSolids = (id: string, seen = new Set<string>()): Map<number, number> => {
+    const shares = new Map<number, number>();
+    if (seen.has(id)) return shares;
+    seen.add(id);
+    const direct = carriers.get(id) ?? [];
+    for (const host of direct) {
+      const share = 1 / direct.length;
+      const index = solidIndex.get(host);
+      if (index !== undefined) shares.set(index, (shares.get(index) ?? 0) + share);
+      else
+        for (const [nested, part] of carryingSolids(host, seen))
+          shares.set(nested, (shares.get(nested) ?? 0) + share * part);
+    }
+    return shares;
+  };
+  for (const body of bodies) {
+    if (solidIndex.has(body.brick.id)) continue;
+    const shares = carryingSolids(body.brick.id);
+    if (!shares.size) {
+      report.reasons.push(
+        `Piece ${body.brick.id} has no upright host to carry it; gravity remains unknown.`,
+      );
+      return report;
+    }
+    for (const [index, share] of shares) {
+      loads[index].weight += body.weight * share;
+      loads[index].momentX += body.weight * share * body.center.x;
+      loads[index].momentZ += body.weight * share * body.center.z;
+    }
   }
   const contacts: {
     lower: number | null;
@@ -449,43 +602,58 @@ function computePhysicalAssessment(
     corners: { x: number; z: number }[];
     studs: { x: number; z: number }[];
   }[] = [];
-  for (const [upper, { brick }] of bodies.entries()) {
-    const size = footprint(brick);
-    const supports = brick.y === 0 ? [null] : bodies.map((_, index) => index);
+  const bearings = solids.map(({ brick }) => ({
+    top: bearingRectangles(brick, 'top'),
+    bottom: bearingRectangles(brick, 'bottom'),
+  }));
+  const byTop = new Map<number, number[]>();
+  for (const [index, { brick }] of solids.entries()) {
+    const top = brick.y + footprint(brick).height;
+    byTop.set(top, [...(byTop.get(top) ?? []), index]);
+  }
+  for (const [upper, { brick }] of solids.entries()) {
+    const receivers = new Set(
+      getConnectionSites(brick, 'bottom').map((site) => `${site.x}:${site.z}`),
+    );
+    const supports = brick.y === 0 ? [null] : (byTop.get(brick.y) ?? []);
     for (const lower of supports) {
-      const support = lower === null ? null : bodies[lower].brick;
-      const supportSize = support ? footprint(support) : null;
-      if (support && support.y + supportSize!.height !== brick.y) continue;
-      const left = Math.max(brick.x, support?.x ?? brick.x);
-      const right = Math.min(
-        brick.x + size.width,
-        support ? support.x + supportSize!.width : brick.x + size.width,
+      // Whatever a piece on the floor leans on, the floor catches, so it bears on its body.
+      const below = lower === null ? [floorRectangle(brick)] : bearings[lower].top;
+      const above = lower === null ? [floorRectangle(brick)] : bearings[upper].bottom;
+      const corners = below.flatMap((first) =>
+        above.flatMap((second) => {
+          const left = Math.max(first.left, second.left);
+          const right = Math.min(first.right, second.right);
+          const near = Math.max(first.near, second.near);
+          const far = Math.min(first.far, second.far);
+          if (left >= right - EPSILON || near >= far - EPSILON) return [];
+          return [
+            { x: left, z: near },
+            { x: right, z: near },
+            { x: right, z: far },
+            { x: left, z: far },
+          ];
+        }),
       );
-      const near = Math.max(brick.z, support?.z ?? brick.z);
-      const far = Math.min(
-        brick.z + size.depth,
-        support ? support.z + supportSize!.depth : brick.z + size.depth,
-      );
-      if (left >= right || near >= far) continue;
-      const studs = support ? getConnectionSites(support, 'top') : [];
-      const receivers = new Set(
-        getConnectionSites(brick, 'bottom').map((site) => `${site.x}:${site.z}`),
-      );
-      contacts.push({
-        lower,
-        upper,
-        corners: [
-          { x: left, z: near },
-          { x: right, z: near },
-          { x: right, z: far },
-          { x: left, z: far },
-        ],
-        studs: studs.filter((site) => receivers.has(`${site.x}:${site.z}`)),
-      });
+      const studs =
+        lower === null
+          ? []
+          : getConnectionSites(solids[lower].brick, 'top').filter((site) =>
+              receivers.has(`${site.x}:${site.z}`),
+            );
+      if (!corners.length && !studs.length) continue;
+      contacts.push({ lower, upper, corners, studs });
     }
   }
+  // Unlimited forces anywhere in a contact add up to the same totals and moments as forces at
+  // the corners of its convex hull, so only those corners need a variable. A per-stud limit
+  // caps each stud separately, so then every stud keeps its own.
+  const sites = contacts.map((contact) => ({
+    push: convexHull(contact.corners),
+    pull: data.studConnection ? contact.studs : convexHull(contact.studs),
+  }));
   if (
-    contacts.reduce((sum, contact) => sum + 4 + contact.studs.length, 0) >
+    sites.reduce((sum, { push, pull }) => sum + push.length + pull.length, 0) >
     MAX_PHYSICS_CONTACT_VARIABLES
   ) {
     report.reasons.push(
@@ -499,18 +667,18 @@ function computePhysicalAssessment(
     constraints: {} as Record<string, { equal?: number; max?: number }>,
     variables: {} as Record<string, Record<string, number>>,
   };
-  for (const [index, body] of bodies.entries()) {
-    model.constraints[`force${index}`] = { equal: body.weight };
-    model.constraints[`momentX${index}`] = { equal: body.weight * body.center.x };
-    model.constraints[`momentZ${index}`] = { equal: body.weight * body.center.z };
+  for (const [index, load] of loads.entries()) {
+    model.constraints[`force${index}`] = { equal: load.weight };
+    model.constraints[`momentX${index}`] = { equal: load.momentX };
+    model.constraints[`momentZ${index}`] = { equal: load.momentZ };
   }
   const variables: { name: string; contact: number; tension: boolean }[] = [];
   for (const [contactIndex, contact] of contacts.entries()) {
-    for (const [tension, sites] of [
-      [false, contact.corners],
-      [true, contact.studs],
+    for (const [tension, points] of [
+      [false, sites[contactIndex].push],
+      [true, sites[contactIndex].pull],
     ] as const) {
-      for (const [siteIndex, site] of sites.entries()) {
+      for (const [siteIndex, site] of points.entries()) {
         const name = `${tension ? 'pull' : 'push'}${contactIndex}_${siteIndex}`;
         const sign = tension ? -1 : 1;
         const coefficients: Record<string, number> = {
@@ -539,12 +707,15 @@ function computePhysicalAssessment(
       if (typeof result.feasible !== 'boolean') return null;
       if (!result.feasible) return result;
       if (!result.bounded || !Number.isFinite(result.result)) return null;
+      const totals = new Map<string, number>();
+      for (const [variable, coefficients] of Object.entries(model.variables)) {
+        const value = Number(result[variable] ?? 0);
+        if (!value) continue;
+        for (const [name, coefficient] of Object.entries(coefficients))
+          totals.set(name, (totals.get(name) ?? 0) + value * coefficient);
+      }
       for (const [name, bounds] of Object.entries(model.constraints)) {
-        const total = Object.entries(model.variables).reduce(
-          (sum, [variable, coefficients]) =>
-            sum + Number(result[variable] ?? 0) * (coefficients[name] ?? 0),
-          0,
-        );
+        const total = totals.get(name) ?? 0;
         const expected = bounds.equal ?? bounds.max!;
         const tolerance = 1e-7 * Math.max(Math.abs(expected), 0.001);
         if (
@@ -607,8 +778,8 @@ function computePhysicalAssessment(
   report.connections = contacts.flatMap((contact, index) => {
     if (contact.lower === null) return [];
     const load = {
-      lowerId: bodies[contact.lower].brick.id,
-      upperId: bodies[contact.upper].brick.id,
+      lowerId: solids[contact.lower].brick.id,
+      upperId: solids[contact.upper].brick.id,
       studCount: contact.studs.length,
       compressionNewtons: 0,
       tensionNewtons: 0,

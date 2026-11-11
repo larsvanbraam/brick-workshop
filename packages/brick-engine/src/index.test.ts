@@ -17,6 +17,7 @@ import {
   EXAMPLES,
   createDemoAssembly,
   createExampleAssembly,
+  MAX_PHYSICS_PIECES,
   createExampleRegistry,
   exportLDraw,
   footprint,
@@ -125,17 +126,18 @@ describe('connection-aware placement planning', () => {
   it('reports engine-owned insert rules and honest physics coverage', () => {
     expect(getPartCapabilities('60602')).toMatchObject({
       matchingInsertFrameId: '60593',
-      contactPhysics: 'not-assessed',
+      contactPhysics: 'connection-cell-model',
     });
     const capabilities = getEngineCapabilities({
       ...empty,
       bricks: [{ ...base, partId: '3942c' }],
     });
     expect(capabilities.staticGravity).toEqual({
-      maxPieces: 200,
-      maxContactVariables: 4000,
+      maxPieces: 500,
+      maxContactVariables: 8000,
       withinPieceLimit: true,
-      unsupportedPartIds: ['3942c'],
+      unsupportedPartIds: [],
+      approximatedContactPartIds: ['3942c'],
       unknownConnectorPartIds: [],
       certification: 'not-certified',
     });
@@ -677,12 +679,13 @@ describe('physical feasibility', () => {
       ).toBe('unstable');
     const large = {
       ...empty,
-      bricks: Array.from({ length: 201 }, (_, index) => ({
+      buildArea: 32,
+      bricks: Array.from({ length: MAX_PHYSICS_PIECES + 1 }, (_, index) => ({
         ...base,
         id: `ground-${index}`,
         partId: '3005',
-        x: index % 16,
-        z: Math.floor(index / 16),
+        x: index % 32,
+        z: Math.floor(index / 32),
       })),
     };
     expect(assessPhysicalFeasibility(large, { estimateMissingMasses: true })).toMatchObject({
@@ -1161,7 +1164,7 @@ describe('basic part families', () => {
     },
   );
   it.each(PARTS.filter((part) => part.shape))(
-    'withholds rectangular contact physics for $id',
+    'assesses $id standing on the floor with its approximated contacts',
     (part) => {
       const assessment = assessPhysicalFeasibility(
         { ...empty, bricks: [{ ...base, partId: part.id }] },
@@ -1169,38 +1172,70 @@ describe('basic part families', () => {
       );
       expect(assessment).toMatchObject({
         status: 'unknown',
-        gravity: 'not-assessed',
+        gravity: 'balanced',
         connectionStrength: 'unknown',
-        minimumStudTensionNewtons: null,
+        minimumStudTensionNewtons: 0,
       });
       expect(assessment.totalMassGrams).toBeGreaterThan(0);
-      expect(assessment.reasons.join(' ')).toContain('contact surfaces');
+      expect(assessment.assumptions.join(' ')).toContain('Shaped parts bear only where');
       expect(
         getBuildabilityReport(assessment).checks.find((check) => check.id === 'gravity')?.status,
-      ).toBe('unknown');
-      const measured = assessPhysicalFeasibility(
-        { ...empty, bricks: [{ ...base, partId: part.id }] },
-        {
-          data: {
-            version: 1,
-            parts: {
-              [part.id]: {
-                massGrams: 1,
-                kind: 'measured',
-                source: 'Synthetic regression fixture.',
-              },
-            },
-          },
-        },
-      );
-      expect(measured).toMatchObject({
-        massBasis: 'measured',
-        gravity: 'not-assessed',
-        status: 'unknown',
-        connectionStrength: 'unknown',
-      });
+      ).toBe('estimated');
     },
   );
+});
+
+describe('shaped and carried pieces in the static solver', () => {
+  const slope: Brick = { ...base, id: 'slope', partId: '3039', y: 3, z: 1 };
+  const pillar: Brick = { ...base, id: 'pillar', partId: '3003', z: 1 };
+  it('bears load on a slope only along its rear stud row', () => {
+    // A 2 x 3 brick held by the slope's rear studs reaches out over the sloped face.
+    const over = { ...base, id: 'over', partId: '3002', y: 6, z: 0 };
+    const build = { ...empty, bricks: [pillar, slope, over] };
+    expect(validateAssembly(build)).toEqual([]);
+    const report = assessPhysicalFeasibility(build, { estimateMissingMasses: true });
+    expect(report.gravity).toBe('requires-clutch');
+    expect(
+      report.connections.find((load) => load.upperId === 'over')!.tensionNewtons,
+    ).toBeGreaterThan(0);
+    // The same brick over a plain 2 x 2 is held by compression across its whole underside.
+    const flat = { ...empty, bricks: [pillar, { ...slope, partId: '3003' }, over] };
+    expect(assessPhysicalFeasibility(flat, { estimateMissingMasses: true }).gravity).toBe(
+      'balanced',
+    );
+  });
+  it("puts a slope's weight toward its high rear end", () => {
+    const report = assessPhysicalFeasibility(
+      { ...empty, bricks: [{ ...base, partId: '3039' }] },
+      { estimateMissingMasses: true },
+    );
+    expect(report.centerOfMassStuds!.x).toBeCloseTo(1, 6);
+    expect(report.centerOfMassStuds!.z).toBeGreaterThan(1);
+  });
+  it('carries pieces mounted on side studs by their hosts', () => {
+    const bracket: Brick = { ...base, id: 'bracket', partId: '87087', x: 4, z: 4 };
+    const plate: Brick = {
+      ...base,
+      id: 'plate',
+      partId: '3710',
+      x: 4.1,
+      y: 0.5,
+      z: 4,
+      rotation: 90,
+      facing: '-x',
+    };
+    const build = { ...empty, bricks: [bracket, plate] };
+    expect(validateAssembly(build)).toEqual([]);
+    const report = assessPhysicalFeasibility(build, { estimateMissingMasses: true });
+    expect(report.gravity).not.toBe('not-assessed');
+    expect(report.masses.map(({ brickId }) => brickId)).toEqual(['bracket', 'plate']);
+  });
+  it.each(SMALL_EXAMPLES)('assesses gravity for the $name example', ({ id }) => {
+    const report = assessPhysicalFeasibility(createExampleAssembly(id), {
+      estimateMissingMasses: true,
+    });
+    expect(['balanced', 'requires-clutch']).toContain(report.gravity);
+  });
 });
 
 describe('tile connections', () => {

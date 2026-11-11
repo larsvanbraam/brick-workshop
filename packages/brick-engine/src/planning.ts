@@ -24,7 +24,11 @@ export function getPartCapabilities(partId: string) {
     kind: part.kind,
     family: part.family ?? part.kind,
     shape: part.shape ?? 'box',
-    contactPhysics: part.shape || isRuntimePart(partId) ? 'not-assessed' : 'rectangular-model',
+    contactPhysics: isRuntimePart(partId)
+      ? 'not-assessed'
+      : part.shape
+        ? 'connection-cell-model'
+        : 'rectangular-model',
     connectorFit: isRuntimePart(partId) ? 'unknown' : 'curated',
     connections: structuredClone(part.connections),
     matchingInsertFrameId: INSERT_FRAME_PARTS[partId] ?? null,
@@ -47,7 +51,8 @@ export function getEngineCapabilities(assembly: Assembly) {
       maxPieces: MAX_PHYSICS_PIECES,
       maxContactVariables: MAX_PHYSICS_CONTACT_VARIABLES,
       withinPieceLimit: assembly.bricks.length <= MAX_PHYSICS_PIECES,
-      unsupportedPartIds: partIds.filter((partId) => getPart(partId).shape),
+      unsupportedPartIds: [],
+      approximatedContactPartIds: partIds.filter((partId) => getPart(partId).shape),
       unknownConnectorPartIds: partIds.filter(isRuntimePart),
       certification: 'not-certified',
     },

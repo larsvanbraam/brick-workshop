@@ -208,7 +208,7 @@ Loading and GPU preparation can still involve synchronous work; the loading
 screen does not move that work to a worker.
 
 Performance changes do not relax geometry validation, the Claude adapter's
-50,000-piece limit, the static solver's 200-piece limit, or certification rules.
+50,000-piece limit, the static solver's 500-piece limit, or certification rules.
 
 ## Adding Examples
 
@@ -579,17 +579,22 @@ under the selected model or supplied limits. Otherwise physical feasibility
 remains `unknown`, even for measured masses and apparently balanced builds.
 Empty and geometrically invalid assemblies have separate statuses.
 
-Assemblies containing slopes, round/conical parts, arches, doors/windows or thin
-baseplates retain their mass/provenance report,
-but return `gravity: "not-assessed"` and unknown connection strength. The
-rectangular static solver does not represent their actual contact surfaces;
-even host-supplied measured masses or tensile limits cannot bypass that boundary.
-Hinge behaviour, aperture contacts and baseplate flexure are not simulated.
+Shaped parts are approximated by where they can bear load. Slopes, round and
+conical parts, and organic detail or foliage bear on their tops only where they
+have studs, so a slope carries load only along its rear stud row. Inverted
+slopes, arches and organic parts bear on their undersides only at their
+receivers, so an arch stands on its legs. Door and window frames, baseplates and
+anything standing on the floor bear on their whole footprint. Without a supplied
+center of mass, a slope's weight sits toward its high rear end (a one-stud
+block plus a wedge). Pieces mounted on side studs, and panes or doors hung in a
+matching frame, are taken as rigidly clamped to their hosts, which carry their
+weight and leverage. Sideways stud loads, hinge behaviour, aperture contacts and
+baseplate flexure are not simulated.
 
 Numerical force/moment residuals are checked independently. Solver failures,
-missing masses, more than 200 pieces, or more than 4,000 contact-force variables
+missing masses, more than 500 pieces, or more than 8,000 contact-force variables
 leave assessment unknown, never passed. Bottom-up `assemblyOrder` has idealized
-vertical insertion clearance for these upright rectangular bodies only. Bending,
+vertical insertion clearance for upright bodies only. Bending,
 intermediate construction stability, temporary supports,
 shear, compression strength, friction, wear, disturbances, tipping margin,
 real contact patches, deformation, and hand/tool clearance remain unverified.
