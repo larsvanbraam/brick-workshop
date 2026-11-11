@@ -727,9 +727,36 @@ function addApseRoof(
       plus: [] as [number, number][],
     };
     const cheeses: [number, number, Rotation][] = [];
+    // The angled faces step back a stud a row. Two neighbouring steps share an outside corner
+    // slope, its low corner hanging out past the lower step and its stud on the cell inside
+    // both, which the next layer stands on: a hip rather than a staircase.
+    const hipped = new Set<string>();
+    for (const side of [-1, 1] as const) {
+      const steps = cells
+        .filter(([u, d]) => !next.has(key(u, d)) && !has(u, d + 1) && !has(u + side, d))
+        .sort(([, first], [, second]) => second - first);
+      for (let index = 0; index + 1 < steps.length; index++) {
+        const [[u1, d1], [u0, d0]] = [steps[index], steps[index + 1]];
+        const inner = key(u1, d0);
+        if (u1 !== u0 - side || d1 !== d0 + 1 || !next.has(inner) || covered.has(inner)) continue;
+        const block = [cell(u0, d0), cell(u1, d0), cell(u0, d1), cell(u1, d1)];
+        const [x, z] = [0, 1].map((axis) => Math.min(...block.map((at) => at[axis])));
+        const [studX, studZ] = cell(u1, d0);
+        const rotation = ([0, 90, 180, 270] as const).find((turn) =>
+          getConnectionSites(
+            { id: 'hip', partId: '3045', color: ROOFING, x, y, z, rotation: turn },
+            'top',
+          ).some((stud) => stud.x === studX + 0.5 && stud.z === studZ + 0.5),
+        )!;
+        add('3045', ROOFING, x, y, z, rotation);
+        covered.add(inner);
+        hipped.add(key(u0, d0)).add(key(u1, d1));
+        index++;
+      }
+    }
     // Outer faces first, then the sides; a slope whose back row is taken becomes a cheese slope.
     const rimCells = cells
-      .filter(([u, d]) => !next.has(key(u, d)))
+      .filter(([u, d]) => !next.has(key(u, d)) && !hipped.has(key(u, d)))
       .sort(([, first], [, second]) => second - first);
     for (const [u, d] of rimCells) {
       const exposed = [!has(u, d + 1), !has(u - 1, d), !has(u + 1, d)];
@@ -755,9 +782,11 @@ function addApseRoof(
     for (const [u0, u1, d] of runs(faces.out, 0)) slope(u0, u1, d - 1, d, out, y);
     for (const [d0, d1, u] of runs(faces.minus, 1)) slope(u, u + 1, d0, d1, minus, y);
     for (const [d0, d1, u] of runs(faces.plus, 1)) slope(u - 1, u, d0, d1, plus, y);
+    // A plate lifts each cheese slope level with the brick-high slopes round it.
     for (const [u, d, rotation] of cheeses) {
       const [x, z] = cell(u, d);
-      add('54200', ROOFING, x, y, z, rotation);
+      add('3024', ROOFING, x, y, z);
+      add('54200', ROOFING, x, y + 1, z, rotation);
     }
     const fill = new Set(
       [...next]
@@ -1028,7 +1057,7 @@ export const nordiskaMuseet: ExampleDefinition = {
     'park',
     'waterfront',
   ],
-  expectedPieceCount: 11571,
+  expectedPieceCount: 11568,
   buildArea: SIZE,
   brickIdPrefix: 'museet',
   build(drawnAdd) {
@@ -1711,22 +1740,28 @@ export const nordiskaMuseet: ExampleDefinition = {
       add('3062b', COPPER, x, lantern + 9, z);
     }
     // The bell: a copper plate over the lantern, then a ring of steep copper slopes round a
-    // brick core, narrowing it from eight studs to four.
+    // brick core, narrowing it from eight studs to four, with a corner slope at each corner.
     const dome = lantern + 12;
+    const BELL = 9;
     add('41539', COPPER, 60, dome, 44);
-    for (const x of [60, 62, 64, 66]) {
-      add('3678b', COPPER, x, dome + 1, 44, 0);
-      add('3678b', COPPER, x, dome + 1, 50, 180);
+    for (const [x, z, rotation] of [
+      [60, 44, 90],
+      [66, 44, 0],
+      [60, 50, 180],
+      [66, 50, 270],
+    ] as const)
+      add('3685', COPPER, x, dome + 1, z, rotation);
+    for (let at = 62; at <= 65; at++) {
+      add('4460b', COPPER, at, dome + 1, 44, 0);
+      add('4460b', COPPER, at, dome + 1, 50, 180);
+      add('4460b', COPPER, 60, dome + 1, at - 16, 90);
+      add('4460b', COPPER, 66, dome + 1, at - 16, 270);
     }
-    for (const z of [46, 48]) {
-      add('3678b', COPPER, 60, dome + 1, z, 90);
-      add('3678b', COPPER, 66, dome + 1, z, 270);
-    }
-    for (const y of [1, 4])
+    for (const y of [1, 4, 7])
       for (const x of [62, 64]) for (const z of [46, 48]) add('3003', COPPER, x, dome + y, z);
     // The upper lantern: copper corner posts and a window in each face on the bell's field of
     // studs, under a copper plate and a copper cone.
-    const upper = dome + 7;
+    const upper = dome + 1 + BELL;
     for (const [x, z] of [
       [62, 46],
       [65, 46],

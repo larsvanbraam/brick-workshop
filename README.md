@@ -154,7 +154,7 @@ from similar numbers, names or RGB values.
 | Catalog sampler     | all    | Every supported part once, on an 80 x 80 board.                           |
 | Seaside Lighthouse  | 415    | Striped tower on a rocky island with keeper's cottage, jetty and rowboat. |
 | Flower Market Stall | 351    | Booth with striped awning, flower buckets, crates, tree and bench.        |
-| Nordiska Museet     | 11,571 | The Stockholm museum with its towers, gables, dormers and windows.        |
+| Nordiska Museet     | 11,568 | The Stockholm museum with its towers, gables, dormers and windows.        |
 
 Each example is a module in
 [packages/brick-engine/src/examples](packages/brick-engine/src/examples)
