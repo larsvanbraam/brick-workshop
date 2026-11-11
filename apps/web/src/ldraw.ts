@@ -30,11 +30,24 @@ type Library = {
 
 let pendingCatalog: Promise<LibraryCatalog> | undefined;
 
+/** Release builds only ship curated parts, so the library browser hides everything else. */
+export const CURATED_PARTS_ONLY = import.meta.env.PROD;
+
+function curatedOnly(catalog: LibraryCatalog): LibraryCatalog {
+  const parts = catalog.parts.filter((part) => part.supported);
+  return {
+    ...catalog,
+    parts,
+    categories: [...new Set(parts.map((part) => part.category))].sort(),
+  };
+}
+
 export function loadLDrawCatalog(): Promise<LibraryCatalog> {
   pendingCatalog ??= fetch('/ldraw/catalog.json')
     .then(async (response) => {
       if (!response.ok) throw new Error('The local parts catalog could not be read.');
-      return response.json() as Promise<LibraryCatalog>;
+      const catalog = (await response.json()) as LibraryCatalog;
+      return CURATED_PARTS_ONLY ? curatedOnly(catalog) : catalog;
     })
     .catch((error: unknown) => {
       pendingCatalog = undefined;

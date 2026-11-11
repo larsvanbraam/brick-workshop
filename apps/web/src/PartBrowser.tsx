@@ -20,7 +20,7 @@ import { ColorPicker } from './ColorPicker';
 import { getPart } from '@brick-workshop/engine';
 import type { Part } from '@brick-workshop/engine';
 import type { CatalogPart, LibraryCatalog } from '../tooling/ldraw-library';
-import { loadLDrawCatalog, loadLDrawPart } from './ldraw';
+import { CURATED_PARTS_ONLY, loadLDrawCatalog, loadLDrawPart } from './ldraw';
 import { LDrawMesh, WorkshopEnvironment } from './Scene';
 import { inferLDrawPartDefinition, searchCatalog } from './catalog';
 import './part-browser.css';
@@ -342,17 +342,19 @@ export function PartBrowser({
                 </option>
               ))}
             </select>
-            <label className="checkbox-label catalog-supported-filter">
-              <input
-                type="checkbox"
-                checked={supportedOnly}
-                onChange={(event) => {
-                  setSupportedOnly(event.target.checked);
-                  setPage(0);
-                }}
-              />
-              Curated grid rules only
-            </label>
+            {!CURATED_PARTS_ONLY && (
+              <label className="checkbox-label catalog-supported-filter">
+                <input
+                  type="checkbox"
+                  checked={supportedOnly}
+                  onChange={(event) => {
+                    setSupportedOnly(event.target.checked);
+                    setPage(0);
+                  }}
+                />
+                Curated grid rules only
+              </label>
+            )}
             <div className="catalog-result-count">
               <span>{results.length.toLocaleString()} results</span>
               <span>
