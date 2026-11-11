@@ -2,6 +2,27 @@ import { BUILD_AREA } from '../core.ts';
 import type { Part, Rotation } from '../core.ts';
 import type { ExampleBrickAdder } from './types.ts';
 
+/** LDraw colours by family: an earthy, building-like palette rather than primaries. */
+const FAMILY_COLORS: Partial<Record<NonNullable<Part['family']>, number>> = {
+  tall: 28, // Dark Tan
+  slope: 320, // Dark Red, like roof tiles
+  round: 379, // Sand Blue
+  cone: 484, // Dark Orange
+  arch: 71, // Light Bluish Grey, like stone
+  baseplate: 288, // Dark Green
+  door: 70, // Reddish Brown
+  window: 15, // White
+  detail: 72, // Dark Bluish Grey
+  foliage: 288, // Dark Green
+};
+
+function showcaseColor(part: Part) {
+  if (part.name.startsWith('Glass')) return 47; // Trans Clear
+  if (part.id === '24866') return 191; // Bright Light Orange flower
+  if (part.family && FAMILY_COLORS[part.family]) return FAMILY_COLORS[part.family]!;
+  return part.kind === 'tile' ? 71 : part.kind === 'plate' ? 378 : 19; // Light Bluish Grey, Sand Green, Tan
+}
+
 export function createShowcase(parts: readonly Part[], buildArea = BUILD_AREA, gap: 0.5 | 1 = 1) {
   const placements: Parameters<ExampleBrickAdder>[] = [];
   const resolution = 1 / gap;
@@ -33,24 +54,7 @@ export function createShowcase(parts: readonly Part[], buildArea = BUILD_AREA, g
         `No showcase position for ${part.id} on the ${buildArea} x ${buildArea} board.`,
       );
     const { x, z, rotation, width, depth } = location;
-    placements.push([
-      part.id,
-      part.family === 'foliage'
-        ? part.id === '24866'
-          ? 4
-          : 2
-        : part.family === 'round' || part.family === 'cone'
-          ? 1
-          : part.kind === 'tile'
-            ? 15
-            : part.kind === 'plate'
-              ? 2
-              : 4,
-      x / resolution,
-      0,
-      z / resolution,
-      rotation,
-    ]);
+    placements.push([part.id, showcaseColor(part), x / resolution, 0, z / resolution, rotation]);
     for (let column = Math.max(0, x - 1); column < Math.min(cells, x + width + 1); column++)
       for (let row = Math.max(0, z - 1); row < Math.min(cells, z + depth + 1); row++)
         occupied[column][row] = true;

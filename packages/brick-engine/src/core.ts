@@ -177,7 +177,7 @@ function sculptedPart(
   width: number,
   depth: number,
   height: number,
-  family: 'detail' | 'foliage' | 'slope',
+  family: 'detail' | 'foliage' | 'slope' | 'round' | 'arch',
   options: Partial<
     Pick<Part, 'connections' | 'ldrawRotation' | 'ldrawCenter' | 'ldrawBaseY' | 'kind' | 'shape'>
   > = {},
@@ -196,6 +196,67 @@ function sculptedPart(
     connections: { topStuds: [], bottomReceivers: [] },
     ...options,
   };
+}
+
+/** Cells row by row from the front: each row is an inclusive [from, to] run of x, or null. */
+function spans(...rows: readonly (readonly [number, number] | null)[]): ConnectionSite[] {
+  return rows.flatMap((row, z) =>
+    row
+      ? Array.from({ length: row[1] - row[0] + 1 }, (_, index) => ({
+          x: row[0] + index,
+          z,
+        }))
+      : [],
+  );
+}
+
+/**
+ * A piece whose outline is not a full rectangle: corner, wedge, rounded and macaroni tiles,
+ * plates and bricks. It reserves its whole envelope, and connects only on the cells its LDraw
+ * mesh covers, measured from the mesh rather than inferred from the grid. Full circles keep the
+ * round shape; the rest bear load only at their studs and receivers.
+ */
+function contouredPart(
+  id: string,
+  name: string,
+  width: number,
+  depth: number,
+  height: number,
+  kind: Part['kind'],
+  family: 'detail' | 'round' | 'arch' | 'slope',
+  connections: { top?: ConnectionSite[]; bottom: ConnectionSite[] },
+  options: Partial<Pick<Part, 'ldrawCenter' | 'ldrawBaseY' | 'shape'>> = {},
+): Part {
+  return sculptedPart(id, name, width, depth, height, family, {
+    kind,
+    shape: 'detail',
+    connections: {
+      topStuds: connections.top ?? [],
+      bottomReceivers: connections.bottom,
+    },
+    ...options,
+  });
+}
+
+/** A curved slope: smooth but for any studs on its high rear end, held off its thin front lip. */
+function curvedSlopePart(
+  id: string,
+  name: string,
+  width: number,
+  depth: number,
+  studRows = 0,
+  ldrawCenter?: Part['ldrawCenter'],
+): Part {
+  const row = [0, width - 1] as const;
+  return sculptedPart(id, name, width, depth, 3, 'slope', {
+    ...(ldrawCenter ? { ldrawCenter } : {}),
+    connections: {
+      topStuds: spans(
+        ...Array.from({ length: depth }, (_, z) => (z >= depth - studRows ? row : null)),
+      ),
+      bottomReceivers: spans(null, ...Array.from({ length: depth - 1 }, () => row)),
+    },
+  });
 }
 
 function roofPart(
@@ -223,7 +284,10 @@ function roofPart(
  * studs, which stand 14 LDU up on the body's face; only the plain brick height places them.
  */
 function sideStudPart(id: string, name: string, depth: number, height = 3): Part {
-  const sites = rectangularConnections(1, depth).topStuds.map(({ z }) => ({ x: 0.5, z }));
+  const sites = rectangularConnections(1, depth).topStuds.map(({ z }) => ({
+    x: 0.5,
+    z,
+  }));
   return {
     ...sculptedPart(id, name, 1.5, depth, height, 'detail', {
       ldrawRotation: 90,
@@ -232,7 +296,12 @@ function sideStudPart(id: string, name: string, depth: number, height = 3): Part
     }),
     ...(height === 3
       ? {
-          sideStuds: sites.map(({ z }) => ({ x: 0.5, y: 1.75, z: z + 0.5, facing: '-x' as const })),
+          sideStuds: sites.map(({ z }) => ({
+            x: 0.5,
+            y: 1.75,
+            z: z + 0.5,
+            facing: '-x' as const,
+          })),
         }
       : {}),
   };
@@ -470,7 +539,10 @@ export const PARTS: readonly Part[] = [
     height: 1,
     kind: 'tile',
     ldrawRotation: 0,
-    connections: { topStuds: [], bottomReceivers: rectangularConnections(1, 1).bottomReceivers },
+    connections: {
+      topStuds: [],
+      bottomReceivers: rectangularConnections(1, 1).bottomReceivers,
+    },
   },
   {
     id: '3069b',
@@ -480,7 +552,10 @@ export const PARTS: readonly Part[] = [
     height: 1,
     kind: 'tile',
     ldrawRotation: 90,
-    connections: { topStuds: [], bottomReceivers: rectangularConnections(1, 2).bottomReceivers },
+    connections: {
+      topStuds: [],
+      bottomReceivers: rectangularConnections(1, 2).bottomReceivers,
+    },
   },
   {
     id: '63864',
@@ -490,7 +565,10 @@ export const PARTS: readonly Part[] = [
     height: 1,
     kind: 'tile',
     ldrawRotation: 90,
-    connections: { topStuds: [], bottomReceivers: rectangularConnections(1, 3).bottomReceivers },
+    connections: {
+      topStuds: [],
+      bottomReceivers: rectangularConnections(1, 3).bottomReceivers,
+    },
   },
   {
     id: '2431',
@@ -500,7 +578,10 @@ export const PARTS: readonly Part[] = [
     height: 1,
     kind: 'tile',
     ldrawRotation: 90,
-    connections: { topStuds: [], bottomReceivers: rectangularConnections(1, 4).bottomReceivers },
+    connections: {
+      topStuds: [],
+      bottomReceivers: rectangularConnections(1, 4).bottomReceivers,
+    },
   },
   {
     id: '3068b',
@@ -510,7 +591,10 @@ export const PARTS: readonly Part[] = [
     height: 1,
     kind: 'tile',
     ldrawRotation: 0,
-    connections: { topStuds: [], bottomReceivers: rectangularConnections(2, 2).bottomReceivers },
+    connections: {
+      topStuds: [],
+      bottomReceivers: rectangularConnections(2, 2).bottomReceivers,
+    },
   },
   {
     id: '87079',
@@ -520,7 +604,10 @@ export const PARTS: readonly Part[] = [
     height: 1,
     kind: 'tile',
     ldrawRotation: 90,
-    connections: { topStuds: [], bottomReceivers: rectangularConnections(2, 4).bottomReceivers },
+    connections: {
+      topStuds: [],
+      bottomReceivers: rectangularConnections(2, 4).bottomReceivers,
+    },
   },
   basicPart('6112', 'Brick 1 x 12', 1, 12, 3),
   basicPart('2465', 'Brick 1 x 16', 1, 16, 3),
@@ -664,15 +751,24 @@ export const PARTS: readonly Part[] = [
   roofPart('3747b', 'Inverted slope 33 3 x 2', 2, 3, 3, true),
   sculptedPart('54200', 'Cheese slope 1 x 1', 1, 1, 2, 'slope', {
     ldrawBaseY: 0,
-    connections: { topStuds: [], bottomReceivers: rectangularConnections(1, 1).bottomReceivers },
+    connections: {
+      topStuds: [],
+      bottomReceivers: rectangularConnections(1, 1).bottomReceivers,
+    },
   }),
   sculptedPart('85984', 'Cheese slope 1 x 2', 2, 1, 2, 'slope', {
     ldrawBaseY: 0,
-    connections: { topStuds: [], bottomReceivers: rectangularConnections(2, 1).bottomReceivers },
+    connections: {
+      topStuds: [],
+      bottomReceivers: rectangularConnections(2, 1).bottomReceivers,
+    },
   }),
   sculptedPart('35464', 'Roof ridge slope 1 x 1 double', 1, 1, 2, 'slope', {
     ldrawBaseY: 0,
-    connections: { topStuds: [], bottomReceivers: rectangularConnections(1, 1).bottomReceivers },
+    connections: {
+      topStuds: [],
+      bottomReceivers: rectangularConnections(1, 1).bottomReceivers,
+    },
   }),
   sculptedPart('11477', 'Curved slope 2 x 1', 1, 2, 2, 'slope', {
     ldrawBaseY: 0,
@@ -770,14 +866,23 @@ export const PARTS: readonly Part[] = [
   sculptedPart('32607', 'Foliage: three-leaf sprig', 2, 2, 1, 'foliage', {
     kind: 'plate',
     ldrawCenter: { x: 10, z: -10 },
-    connections: { topStuds: [{ x: 0, z: 1 }], bottomReceivers: [{ x: 0, z: 1 }] },
+    connections: {
+      topStuds: [{ x: 0, z: 1 }],
+      bottomReceivers: [{ x: 0, z: 1 }],
+    },
   }),
   sculptedPart('24866', 'Foliage: five-petal flower', 2, 2, 1, 'foliage', {
     kind: 'plate',
-    connections: { topStuds: [{ x: 0.5, z: 0.5 }], bottomReceivers: [{ x: 0.5, z: 0.5 }] },
+    connections: {
+      topStuds: [{ x: 0.5, z: 0.5 }],
+      bottomReceivers: [{ x: 0.5, z: 0.5 }],
+    },
   }),
   sculptedPart('4727', 'Foliage: flower leaves 2 x 2', 2, 2, 3, 'foliage', {
-    connections: { topStuds: [{ x: 0.5, z: 0.5 }], bottomReceivers: [{ x: 0.5, z: 0.5 }] },
+    connections: {
+      topStuds: [{ x: 0.5, z: 0.5 }],
+      bottomReceivers: [{ x: 0.5, z: 0.5 }],
+    },
   }),
   sculptedPart('30176', 'Foliage: bamboo leaves', 4, 4, 3, 'foliage', {
     ldrawCenter: { x: 20, z: 0 },
@@ -798,7 +903,9 @@ export const PARTS: readonly Part[] = [
   architecturalPart('15254', 'Arch 1 x 6 x 2, thin top', 1, 6, 6, 'arch'),
   architecturalPart('3865', 'Baseplate 8 x 16', 8, 16, 0.5, 'baseplate'),
   architecturalPart('3867', 'Baseplate 16 x 16', 16, 16, 0.5, 'baseplate'),
-  architecturalPart('4589', 'Cone 1 x 1', 1, 1, 3, 'cone', { connections: coneConnections(1, 1) }),
+  architecturalPart('4589', 'Cone 1 x 1', 1, 1, 3, 'cone', {
+    connections: coneConnections(1, 1),
+  }),
   architecturalPart('3942c', 'Cone 2 x 2 x 2, open stud', 2, 2, 6, 'cone', {
     connections: coneConnections(2, 1),
   }),
@@ -811,17 +918,26 @@ export const PARTS: readonly Part[] = [
   architecturalPart('3193a', 'Door 1 x 3 x 4, left hinge', 1.5, 3, 12, 'door', {
     ldrawRotation: 0,
     ldrawCenter: { x: 5, z: 20 },
-    connections: { topStuds: [{ x: 0, z: 0 }], bottomReceivers: [{ x: 0, z: 0 }] },
+    connections: {
+      topStuds: [{ x: 0, z: 0 }],
+      bottomReceivers: [{ x: 0, z: 0 }],
+    },
   }),
   architecturalPart('3192a', 'Door 1 x 3 x 4, right hinge', 1.5, 3, 12, 'door', {
     ldrawRotation: 0,
     ldrawCenter: { x: -5, z: 20 },
-    connections: { topStuds: [{ x: 0.5, z: 0 }], bottomReceivers: [{ x: 0.5, z: 0 }] },
+    connections: {
+      topStuds: [{ x: 0.5, z: 0 }],
+      bottomReceivers: [{ x: 0.5, z: 0 }],
+    },
   }),
   architecturalPart('3861c', 'Door 1 x 4 x 5, reinforced hinge', 1.5, 4, 15, 'door', {
     ldrawRotation: 0,
     ldrawCenter: { x: -5, z: 30 },
-    connections: { topStuds: [{ x: 0.5, z: 0 }], bottomReceivers: [{ x: 0.5, z: 0 }] },
+    connections: {
+      topStuds: [{ x: 0.5, z: 0 }],
+      bottomReceivers: [{ x: 0.5, z: 0 }],
+    },
   }),
   architecturalPart('3579', 'Door frame 1 x 3 x 4', 1, 3, 12, 'door'),
   architecturalPart('60596', 'Door frame 1 x 4 x 6', 1, 4, 18, 'door', {
@@ -905,7 +1021,10 @@ export const PARTS: readonly Part[] = [
   // its curve, two studs round about the middle of the base, fills a 1 x 6 x 2 arch's opening.
   architecturalPart('20309', 'Window 1 x 4 x 1 2/3, half round', 1, 4, 5, 'window', {
     ldrawBaseY: 8,
-    connections: { topStuds: [], bottomReceivers: rectangularConnections(1, 4).bottomReceivers },
+    connections: {
+      topStuds: [],
+      bottomReceivers: rectangularConnections(1, 4).bottomReceivers,
+    },
   }),
   architecturalPart('30044', 'Window 1 x 2 x 2 2/3, rounded top', 1, 2, 8, 'window'),
   architecturalPart('2493b', 'Window frame 1 x 4 x 5, hollow studs', 1, 4, 15, 'window'),
@@ -921,6 +1040,511 @@ export const PARTS: readonly Part[] = [
       ],
       bottomReceivers: [0.5, 1.5, 2.5, 3.5].map((z) => ({ x: 0.5, z })),
     },
+  }),
+  // Finishing tiles. Connection cells are those whose stud the mesh fully covers.
+  basicPart('10202', 'Tile 6 x 6', 6, 6, 1, 'tile'),
+  contouredPart(
+    '14719',
+    'Corner tile 2 x 2',
+    2,
+    2,
+    1,
+    'tile',
+    'detail',
+    {
+      bottom: spans([0, 1], [0, 0]),
+    },
+    { ldrawCenter: { x: 10, z: 10 } },
+  ),
+  contouredPart('5091', 'Wedge tile 1 x 2, cut left', 2, 1, 1, 'tile', 'detail', {
+    bottom: spans([0, 0]),
+  }),
+  contouredPart('5092', 'Wedge tile 1 x 2, cut right', 2, 1, 1, 'tile', 'detail', {
+    bottom: spans([0, 0]),
+  }),
+  contouredPart('35787', 'Triangular tile 2 x 2', 2, 2, 1, 'tile', 'detail', {
+    bottom: spans([0, 0]),
+  }),
+  contouredPart('22385', 'Tile 2 x 3 with angled end', 2, 3, 1, 'tile', 'detail', {
+    bottom: spans(null, [0, 1], [0, 1]),
+  }),
+  contouredPart('1126', 'Tile 1 x 2 with rounded ends', 2, 1, 1, 'tile', 'round', {
+    bottom: spans([0, 1]),
+  }),
+  contouredPart('5520', 'Tile 2 x 2 with rounded end', 2, 2, 1, 'tile', 'round', {
+    bottom: spans(null, [0, 1]),
+  }),
+  contouredPart('66857', 'Tile 2 x 4 with rounded ends', 2, 4, 1, 'tile', 'round', {
+    bottom: spans(null, [0, 1], [0, 1], null),
+  }),
+  // Macaroni tiles are a quarter ring one stud wide, held only at their two ends (and the
+  // middle of the 4 x 4), with the inside corner left open.
+  contouredPart(
+    '27925',
+    'Macaroni tile 2 x 2',
+    2,
+    2,
+    1,
+    'tile',
+    'round',
+    {
+      bottom: spans([0, 0], [1, 1]),
+    },
+    { ldrawCenter: { x: 10, z: -10 } },
+  ),
+  contouredPart(
+    '79393',
+    'Macaroni tile 3 x 3',
+    3,
+    3,
+    1,
+    'tile',
+    'round',
+    {
+      bottom: spans([0, 0], null, [2, 2]),
+    },
+    { ldrawCenter: { x: 30, z: -30 } },
+  ),
+  contouredPart(
+    '27507',
+    'Macaroni tile 4 x 4',
+    4,
+    4,
+    1,
+    'tile',
+    'round',
+    {
+      bottom: spans([0, 0], [2, 2], null, [3, 3]),
+    },
+    { ldrawCenter: { x: 40, z: -40 } },
+  ),
+  contouredPart(
+    '67095',
+    'Round tile 3 x 3',
+    3,
+    3,
+    1,
+    'tile',
+    'round',
+    {
+      bottom: spans([1, 1], [0, 2], [1, 1]),
+    },
+    { shape: 'round' },
+  ),
+  contouredPart(
+    '7212',
+    'Round tile 6 x 6',
+    6,
+    6,
+    1,
+    'tile',
+    'round',
+    {
+      bottom: spans([2, 3], [1, 4], [0, 5], [0, 5], [1, 4], [2, 3]),
+    },
+    { shape: 'round' },
+  ),
+  // Rounded plates and bricks: circles, half circles, quarter circles and macaroni corners.
+  contouredPart('35480', 'Plate 1 x 2 with rounded ends', 2, 1, 1, 'plate', 'round', {
+    top: spans([0, 1]),
+    bottom: spans([0, 1]),
+  }),
+  contouredPart('77845', 'Plate 1 x 4 with rounded ends', 4, 1, 1, 'plate', 'round', {
+    top: spans([0, 3]),
+    bottom: spans([0, 3]),
+  }),
+  contouredPart('18980', 'Plate 2 x 6 with rounded corners', 6, 2, 1, 'plate', 'round', {
+    top: spans([1, 4], [0, 5]),
+    bottom: spans([1, 4], [0, 5]),
+  }),
+  contouredPart('7904', 'Quarter-circle plate 2 x 2', 2, 2, 1, 'plate', 'round', {
+    top: spans([0, 0], [0, 1]),
+    bottom: spans([0, 0], [0, 1]),
+  }),
+  contouredPart(
+    '30357',
+    'Round corner plate 3 x 3',
+    3,
+    3,
+    1,
+    'plate',
+    'round',
+    {
+      top: spans([0, 2], [0, 2], [0, 1]),
+      bottom: spans([0, 2], [0, 2], [0, 1]),
+    },
+    { ldrawCenter: { x: 20, z: 20 } },
+  ),
+  contouredPart('30565', 'Round corner plate 4 x 4', 4, 4, 1, 'plate', 'round', {
+    top: spans([0, 0], [0, 2], [0, 2], [0, 3]),
+    bottom: spans([0, 1], [0, 2], [0, 3], [0, 3]),
+  }),
+  contouredPart('6003', 'Round corner plate 6 x 6', 6, 6, 1, 'plate', 'round', {
+    top: spans([0, 2], [0, 4], [0, 4], [0, 5], [0, 5], [0, 5]),
+    bottom: spans([0, 3], [0, 4], [0, 5], [0, 5], [0, 5], [0, 5]),
+  }),
+  contouredPart('22888', 'Half-circle plate 4 x 8', 8, 4, 1, 'plate', 'round', {
+    top: spans([3, 4], [1, 6], [1, 6], [0, 7]),
+    bottom: spans([2, 5], [1, 6], [0, 7], [0, 7]),
+  }),
+  contouredPart(
+    '11213',
+    'Round plate 6 x 6',
+    6,
+    6,
+    1,
+    'plate',
+    'round',
+    {
+      top: spans([2, 3], [1, 4], [0, 5], [0, 5], [1, 4], [2, 3]),
+      bottom: spans([2, 3], [1, 4], [0, 5], [0, 5], [1, 4], [2, 3]),
+    },
+    { shape: 'round' },
+  ),
+  contouredPart(
+    '74611',
+    'Round plate 8 x 8',
+    8,
+    8,
+    1,
+    'plate',
+    'round',
+    {
+      top: spans([3, 4], [1, 6], [1, 6], [0, 7], [0, 7], [1, 6], [1, 6], [3, 4]),
+      bottom: spans([2, 5], [1, 6], [0, 7], [0, 7], [0, 7], [0, 7], [1, 6], [2, 5]),
+    },
+    { shape: 'round' },
+  ),
+  contouredPart(
+    '85080',
+    'Macaroni brick 2 x 2',
+    2,
+    2,
+    3,
+    'brick',
+    'round',
+    {
+      top: spans([0, 0], [1, 1]),
+      bottom: spans([0, 0], [1, 1]),
+    },
+    { ldrawCenter: { x: 10, z: -10 } },
+  ),
+  contouredPart(
+    '48092',
+    'Macaroni brick 4 x 4',
+    4,
+    4,
+    3,
+    'brick',
+    'round',
+    {
+      top: spans([0, 0], [2, 2], null, [3, 3]),
+      bottom: spans([0, 0], [2, 2], null, [3, 3]),
+    },
+    { ldrawCenter: { x: 40, z: -40 } },
+  ),
+  contouredPart(
+    '2577',
+    'Round corner brick 4 x 4',
+    4,
+    4,
+    3,
+    'brick',
+    'round',
+    {
+      top: spans([0, 0], [0, 2], [0, 2], [0, 3]),
+      bottom: spans([0, 1], [0, 2], [0, 3], [0, 3]),
+    },
+    { ldrawCenter: { x: 40, z: -40 } },
+  ),
+  contouredPart(
+    '47974',
+    'Half-circle brick 4 x 8',
+    8,
+    4,
+    3,
+    'brick',
+    'round',
+    {
+      top: spans([3, 4], [1, 6], [1, 6], [0, 7]),
+      bottom: spans([2, 5], [1, 6], [0, 7], [0, 7]),
+    },
+    { ldrawCenter: { x: 0, z: -40 } },
+  ),
+  contouredPart(
+    '87081',
+    'Round brick 4 x 4',
+    4,
+    4,
+    3,
+    'brick',
+    'round',
+    {
+      top: spans([1, 2], [0, 3], [0, 3], [1, 2]),
+      bottom: spans([1, 2], [0, 3], [0, 3], [1, 2]),
+    },
+    { shape: 'round' },
+  ),
+  contouredPart('37352', 'Curved-top brick 1 x 2', 2, 1, 3, 'brick', 'round', {
+    bottom: spans([0, 1]),
+  }),
+  contouredPart('6191', 'Curved-top brick 1 x 4 x 1 1/3', 4, 1, 4, 'brick', 'round', {
+    bottom: spans([0, 3]),
+  }),
+  curvedSlopePart('24309', 'Curved slope 3 x 2', 2, 3),
+  curvedSlopePart('61678', 'Curved slope 4 x 1', 1, 4),
+  curvedSlopePart('93606', 'Curved slope 4 x 2', 2, 4),
+  curvedSlopePart('42022', 'Curved slope 6 x 1', 1, 6, 2, { x: 0, z: -40 }),
+  curvedSlopePart('44126', 'Curved slope 6 x 2', 2, 6, 2, { x: 0, z: -40 }),
+  // Hipped roofs and towers: corner slopes, caps and steep spire roofs. Corner pieces have their
+  // native origin at the stud of the corner they turn round.
+  contouredPart(
+    '3045',
+    'Slope 45 2 x 2 outside corner',
+    2,
+    2,
+    3,
+    'brick',
+    'slope',
+    {
+      top: spans(null, [0, 0]),
+      bottom: spans([0, 1], [0, 1]),
+    },
+    { shape: 'slope', ldrawCenter: { x: 10, z: -10 } },
+  ),
+  contouredPart(
+    '3046',
+    'Slope 45 2 x 2 inside corner',
+    2,
+    2,
+    3,
+    'brick',
+    'slope',
+    {
+      top: spans([0, 0], [0, 1]),
+      bottom: spans([0, 1], [0, 1]),
+    },
+    { shape: 'slope', ldrawCenter: { x: 10, z: -10 } },
+  ),
+  contouredPart(
+    '3043',
+    'Slope 45 2 x 2 double ridge',
+    2,
+    2,
+    3,
+    'brick',
+    'slope',
+    {
+      bottom: spans([0, 1], [0, 1]),
+    },
+    { shape: 'slope' },
+  ),
+  contouredPart(
+    '3048b',
+    'Slope 45 1 x 2 triple ridge end',
+    2,
+    1,
+    3,
+    'brick',
+    'slope',
+    {
+      bottom: spans([0, 1]),
+    },
+    { shape: 'slope' },
+  ),
+  contouredPart(
+    '3675',
+    'Slope 33 3 x 3 outside corner',
+    3,
+    3,
+    3,
+    'brick',
+    'slope',
+    {
+      top: spans(null, null, [0, 0]),
+      bottom: spans([0, 2], [0, 2], [0, 2]),
+    },
+    { shape: 'slope', ldrawCenter: { x: 20, z: -20 } },
+  ),
+  contouredPart(
+    '99301',
+    'Slope 33 3 x 3 inside corner',
+    3,
+    3,
+    3,
+    'brick',
+    'slope',
+    {
+      top: spans([0, 0], [0, 0], [0, 2]),
+      bottom: spans([0, 2], [0, 2], [0, 2]),
+    },
+    { shape: 'slope', ldrawCenter: { x: 20, z: -20 } },
+  ),
+  // An inverted corner stands on the single cell under its corner stud.
+  contouredPart(
+    '3676',
+    'Inverted slope 45 2 x 2 outside corner',
+    2,
+    2,
+    3,
+    'brick',
+    'slope',
+    {
+      top: spans([0, 1], [0, 1]),
+      bottom: spans(null, [0, 0]),
+    },
+    { shape: 'inverted-slope', ldrawCenter: { x: 10, z: -10 } },
+  ),
+  contouredPart(
+    '3685',
+    'Slope 75 2 x 2 x 3 outside corner',
+    2,
+    2,
+    9,
+    'brick',
+    'slope',
+    {
+      top: spans(null, [0, 0]),
+      bottom: spans([0, 1], [0, 1]),
+    },
+    { shape: 'slope', ldrawCenter: { x: 10, z: -10 } },
+  ),
+  contouredPart(
+    '3688',
+    'Slope 75 2 x 2 x 2 pyramid',
+    2,
+    2,
+    6,
+    'brick',
+    'slope',
+    {
+      top: [{ x: 0.5, z: 0.5 }],
+      bottom: spans([0, 1], [0, 1]),
+    },
+    { shape: 'slope' },
+  ),
+  contouredPart(
+    '4740',
+    'Inverted dish 2 x 2',
+    2,
+    2,
+    1,
+    'plate',
+    'round',
+    {
+      top: [{ x: 0.5, z: 0.5 }],
+      bottom: spans([0, 1], [0, 1]),
+    },
+    { shape: 'round' },
+  ),
+  // A finial or spire needle: a 4-brick antenna on a one-plate round base.
+  contouredPart(
+    '3957a',
+    'Antenna 1 x 1 x 4',
+    1,
+    1,
+    12,
+    'brick',
+    'detail',
+    {
+      bottom: spans([0, 0]),
+    },
+    { ldrawBaseY: 8 },
+  ),
+  // Facade detail. Half-arch bricks stand on one centred stud, like a jumper, with the arches
+  // reaching half a stud out over the openings either side.
+  contouredPart(
+    '38583',
+    'Brick 1 x 1 with half arches on opposite sides',
+    2,
+    1,
+    3,
+    'brick',
+    'arch',
+    {
+      top: [{ x: 0.5, z: 0 }],
+      bottom: [{ x: 0.5, z: 0 }],
+    },
+  ),
+  contouredPart(
+    '38585',
+    'Brick 1 x 1 with half arches on adjacent sides',
+    1.5,
+    1.5,
+    3,
+    'brick',
+    'arch',
+    {
+      top: [{ x: 0, z: 0.5 }],
+      bottom: [{ x: 0, z: 0.5 }],
+    },
+    { ldrawCenter: { x: 5, z: -5 } },
+  ),
+  // Quarter arches stand on their one leg. The stud partway down the curve is not a mounting
+  // site: the engine only has studs on a part's top.
+  contouredPart(
+    '6005',
+    'Quarter arch 1 x 3 x 2, curved top',
+    1,
+    3,
+    6,
+    'brick',
+    'arch',
+    {
+      bottom: spans([0, 0]),
+    },
+    { ldrawCenter: { x: 0, z: -20 } },
+  ),
+  contouredPart(
+    '88292',
+    'Quarter arch 1 x 3 x 2, ogee',
+    1,
+    3,
+    6,
+    'brick',
+    'arch',
+    {
+      top: spans(null, [0, 0], [0, 0]),
+      bottom: spans([0, 0]),
+    },
+    { ldrawCenter: { x: 0, z: 20 } },
+  ),
+  contouredPart(
+    '43888',
+    'Round column 1 x 1 x 6',
+    1,
+    1,
+    18,
+    'brick',
+    'round',
+    {
+      top: spans([0, 0]),
+      bottom: spans([0, 0]),
+    },
+    { shape: 'round' },
+  ),
+  contouredPart('4865b', 'Panel 1 x 2 x 1', 2, 1, 3, 'brick', 'detail', {
+    bottom: spans([0, 1]),
+  }),
+  contouredPart('30413', 'Panel 1 x 4 x 1', 4, 1, 3, 'brick', 'detail', {
+    bottom: spans([0, 3]),
+  }),
+  // Wedge plates for angled walls and octagonal towers: studs on the full-width side only.
+  contouredPart('41769a', 'Wedge plate 2 x 4, right', 2, 4, 1, 'plate', 'detail', {
+    top: spans([1, 1], [1, 1], [1, 1], [1, 1]),
+    bottom: spans([1, 1], [1, 1], [1, 1], [0, 1]),
+  }),
+  contouredPart('41770a', 'Wedge plate 2 x 4, left', 2, 4, 1, 'plate', 'detail', {
+    top: spans([0, 0], [0, 0], [0, 0], [0, 0]),
+    bottom: spans([0, 0], [0, 0], [0, 0], [0, 1]),
+  }),
+  contouredPart('43722a', 'Wedge plate 2 x 3, right', 2, 3, 1, 'plate', 'detail', {
+    top: spans([1, 1], [1, 1], [1, 1]),
+    bottom: spans([1, 1], [1, 1], [0, 1]),
+  }),
+  contouredPart('43723a', 'Wedge plate 2 x 3, left', 2, 3, 1, 'plate', 'detail', {
+    top: spans([0, 0], [0, 0], [0, 0]),
+    bottom: spans([0, 0], [0, 0], [0, 1]),
   }),
 ];
 
@@ -1039,7 +1663,11 @@ export function resizeBuildArea(assembly: Assembly, size: number): Assembly | nu
   return {
     ...rest,
     ...(size === BUILD_AREA ? {} : { buildArea: size }),
-    bricks: assembly.bricks.map((brick) => ({ ...brick, x: brick.x + dx, z: brick.z + dz })),
+    bricks: assembly.bricks.map((brick) => ({
+      ...brick,
+      x: brick.x + dx,
+      z: brick.z + dz,
+    })),
   };
 }
 
@@ -1492,7 +2120,11 @@ function computeValidation(assembly: Assembly): Validation {
   const valid: Brick[] = [];
   for (const brick of assembly.bricks) {
     if (!isValid(brick, buildArea) || seen.has(brick.id)) {
-      issues.push({ brickId: brick.id, code: 'invalid', message: INVALID_MESSAGE });
+      issues.push({
+        brickId: brick.id,
+        code: 'invalid',
+        message: INVALID_MESSAGE,
+      });
     } else {
       valid.push(brick);
     }
@@ -1533,7 +2165,11 @@ function computeValidation(assembly: Assembly): Validation {
       groundedAtHeight.push(brick);
       groundedByTopHeight.set(topHeight, groundedAtHeight);
     } else {
-      issues.push({ brickId: brick.id, code: 'unsupported', message: UNSUPPORTED_MESSAGE });
+      issues.push({
+        brickId: brick.id,
+        code: 'unsupported',
+        message: UNSUPPORTED_MESSAGE,
+      });
     }
   }
   // Mounted pieces hang off grounded side studs, or off the faces of pieces mounted before them.
@@ -1556,7 +2192,11 @@ function computeValidation(assembly: Assembly): Validation {
     });
   }
   for (const brick of pending)
-    issues.push({ brickId: brick.id, code: 'unsupported', message: UNMOUNTED_MESSAGE });
+    issues.push({
+      brickId: brick.id,
+      code: 'unsupported',
+      message: UNMOUNTED_MESSAGE,
+    });
   // A mounted piece reaches into the recess or stud space of the pieces that hold it, down to
   // the upright brick the whole chain hangs from.
   const bounds = valid.map((brick) => footprint(brick));
@@ -1664,7 +2304,11 @@ export function validateAddition(
   const issues: Issue[] = [];
   let derive: (() => ValidationIndex) | null = null;
   if (!isValid(brick, getBuildArea(assembly)) || index.ids.has(brick.id)) {
-    issues.push({ brickId: brick.id, code: 'invalid', message: INVALID_MESSAGE });
+    issues.push({
+      brickId: brick.id,
+      code: 'invalid',
+      message: INVALID_MESSAGE,
+    });
   } else {
     const offered = getSideStuds(brick);
     if (offered.some((key) => index.mountedReceivers.has(key))) return null;
@@ -1685,7 +2329,11 @@ export function validateAddition(
               (runtime || isRuntimePart(support.partId)) && hasEnvelopeContact(brick, support),
           ));
       if (!supported)
-        issues.push({ brickId: brick.id, code: 'unsupported', message: UNSUPPORTED_MESSAGE });
+        issues.push({
+          brickId: brick.id,
+          code: 'unsupported',
+          message: UNSUPPORTED_MESSAGE,
+        });
     } else {
       receivers = getSideReceivers(brick);
       const providers = receivers.flatMap((key) => index.sideStuds.get(key) ?? []);
@@ -1694,7 +2342,12 @@ export function validateAddition(
         // pieces already hung that round: it comes last.
         round = Math.max(1, Math.min(...providers.map((id) => index.rounds.get(id)!)));
         hosts = new Set(providers.filter((id) => index.rounds.get(id)! <= round));
-      } else issues.push({ brickId: brick.id, code: 'unsupported', message: UNMOUNTED_MESSAGE });
+      } else
+        issues.push({
+          brickId: brick.id,
+          code: 'unsupported',
+          message: UNMOUNTED_MESSAGE,
+        });
     }
     let chain: Set<string> | null = null;
     if (hosts) {
@@ -1774,16 +2427,25 @@ export function validateAddition(
 
 export function placeBrick(assembly: Assembly, brick: Brick): PlacementResult {
   const added = validateAddition(assembly, brick);
-  const next = added?.assembly ?? { ...assembly, bricks: [...assembly.bricks, brick] };
+  const next = added?.assembly ?? {
+    ...assembly,
+    bricks: [...assembly.bricks, brick],
+  };
   const issues = added?.issues ?? validateAssembly(next);
   return issues.length ? { ok: false, issues } : { ok: true, assembly: next };
 }
 
 export function removeBrick(assembly: Assembly, brickId: string): PlacementResult {
   if (!assembly.bricks.some((brick) => brick.id === brickId)) {
-    return { ok: false, issues: [{ brickId, code: 'invalid', message: 'Piece not found.' }] };
+    return {
+      ok: false,
+      issues: [{ brickId, code: 'invalid', message: 'Piece not found.' }],
+    };
   }
-  const next = { ...assembly, bricks: assembly.bricks.filter((brick) => brick.id !== brickId) };
+  const next = {
+    ...assembly,
+    bricks: assembly.bricks.filter((brick) => brick.id !== brickId),
+  };
   const issues = validateAssembly(next);
   return issues.length ? { ok: false, issues } : { ok: true, assembly: next };
 }
@@ -1794,7 +2456,12 @@ export function getBillOfMaterials(assembly: Assembly) {
     const key = `${brick.partId}:${brick.color}`;
     const entry = entries.get(key);
     if (entry) entry.quantity += 1;
-    else entries.set(key, { partId: brick.partId, color: brick.color, quantity: 1 });
+    else
+      entries.set(key, {
+        partId: brick.partId,
+        color: brick.color,
+        quantity: 1,
+      });
   }
   return [...entries.values()];
 }

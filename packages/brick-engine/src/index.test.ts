@@ -121,6 +121,67 @@ const architecturalExpansionIds = [
   '30044',
   '57895',
 ];
+/** Finishing tiles, rounded shapes, roof corners and facade details: no reviewed weight yet. */
+const finishingAndRoundIds = [
+  '10202',
+  '14719',
+  '5091',
+  '5092',
+  '35787',
+  '22385',
+  '1126',
+  '5520',
+  '66857',
+  '27925',
+  '79393',
+  '27507',
+  '67095',
+  '7212',
+  '35480',
+  '77845',
+  '18980',
+  '7904',
+  '30357',
+  '30565',
+  '6003',
+  '22888',
+  '11213',
+  '74611',
+  '85080',
+  '48092',
+  '2577',
+  '47974',
+  '87081',
+  '37352',
+  '6191',
+  '24309',
+  '61678',
+  '93606',
+  '42022',
+  '44126',
+  '3045',
+  '3046',
+  '3043',
+  '3048b',
+  '3675',
+  '99301',
+  '3676',
+  '3685',
+  '3688',
+  '4740',
+  '3957a',
+  '38583',
+  '38585',
+  '6005',
+  '88292',
+  '43888',
+  '4865b',
+  '30413',
+  '41769a',
+  '41770a',
+  '43722a',
+  '43723a',
+];
 
 describe('connection-aware placement planning', () => {
   it('reports engine-owned insert rules and honest physics coverage', () => {
@@ -260,7 +321,7 @@ describe('catalogue-reported weights', () => {
     expect(Object.keys(CATALOG_PART_MASSES)).toHaveLength(105);
     expect(
       new Set(PARTS.filter((part) => !CATALOG_PART_MASSES[part.id]).map((part) => part.id)),
-    ).toEqual(new Set(['39266', ...architecturalExpansionIds]));
+    ).toEqual(new Set(['39266', ...architecturalExpansionIds, ...finishingAndRoundIds]));
     expect(
       Object.keys(CATALOG_PART_MASSES).every((id) => PARTS.some((part) => part.id === id)),
     ).toBe(true);
@@ -873,7 +934,7 @@ describe('architectural part families', () => {
     const included = assembly.bricks.filter((brick) =>
       architecturalParts.some((part) => part.id === brick.partId),
     );
-    expect(included).toHaveLength(88);
+    expect(included).toHaveLength(145);
     expect(new Set(included.map((brick) => brick.partId))).toEqual(
       new Set(architecturalParts.map((part) => part.id)),
     );
@@ -1371,7 +1432,10 @@ describe('tile connections', () => {
         const assembly = { ...empty, bricks: [support, tile] };
         expect(validateAssembly(assembly)).toEqual([]);
         expect(getConnectionSites(tile, 'top')).toEqual([]);
-        expect(getConnectionSites(tile, 'bottom')).toHaveLength(size.width * size.depth);
+        // Plain tiles hold on every cell; shaped ones only where their mesh covers a stud.
+        expect(getConnectionSites(tile, 'bottom')).toHaveLength(
+          part.shape ? part.connections.bottomReceivers.length : size.width * size.depth,
+        );
         expect(hasStudConnection(support, tile)).toBe(true);
         const upper = { ...base, id: 'upper', partId: '3024', y: 4 };
         expect(hasStudConnection(tile, upper)).toBe(false);
@@ -1449,19 +1513,19 @@ describe('upright brick engine', () => {
       ).toEqual(expected);
     }
   });
-  it('contains 177 unique building and foliage parts with explicit connection sites', () => {
-    expect(PARTS).toHaveLength(177);
-    expect(new Set(PARTS.map((part) => part.id)).size).toBe(177);
+  it('contains 235 unique building and foliage parts with explicit connection sites', () => {
+    expect(PARTS).toHaveLength(235);
+    expect(new Set(PARTS.map((part) => part.id)).size).toBe(235);
     expect(PARTS.filter((part) => part.family === 'tall')).toHaveLength(10);
-    expect(PARTS.filter((part) => part.family === 'slope')).toHaveLength(21);
-    expect(PARTS.filter((part) => part.family === 'round')).toHaveLength(8);
+    expect(PARTS.filter((part) => part.family === 'slope')).toHaveLength(35);
+    expect(PARTS.filter((part) => part.family === 'round')).toHaveLength(35);
     for (const [family, count] of [
-      ['arch', 7],
+      ['arch', 11],
       ['baseplate', 2],
       ['cone', 4],
       ['door', 7],
       ['window', 16],
-      ['detail', 24],
+      ['detail', 36],
       ['foliage', 10],
     ] as const)
       expect(PARTS.filter((part) => part.family === family)).toHaveLength(count);
@@ -1852,9 +1916,9 @@ describe('upright brick engine', () => {
 
 describe('mixed-part engine builds', () => {
   it('lays complete catalogue and tile displays on one larger board without stacking', () => {
-    for (const [id, count] of [['catalog-sampler', 177]] as const) {
+    for (const [id, count] of [['catalog-sampler', 235]] as const) {
       const assembly = createExampleAssembly(id);
-      expect(assembly.buildArea).toBe(64);
+      expect(assembly.buildArea).toBe(80);
       expect(assembly.bricks).toHaveLength(count);
       expect(new Set(assembly.bricks.map((brick) => brick.y))).toEqual(new Set([0]));
       expect(validateAssembly(assembly)).toEqual([]);

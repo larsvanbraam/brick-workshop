@@ -2,12 +2,12 @@ import { PARTS } from '../core.ts';
 import { createShowcase } from './showcase.ts';
 import type { ExampleDefinition } from './types.ts';
 
-const showcase = createShowcase(PARTS, 64, 0.5);
+const showcase = createShowcase(PARTS, 80, 1);
 
 export const catalogSampler: ExampleDefinition = {
   id: 'catalog-sampler',
   name: 'Catalog sampler',
-  buildArea: 64,
+  buildArea: 80,
   tags: ['catalog-coverage', 'rotations', 'flat-display', 'all-supported-parts', 'foliage'],
   expectedPieceCount: showcase.length,
   build(add) {
