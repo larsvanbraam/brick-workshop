@@ -1,8 +1,25 @@
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { RefObject } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { CameraControls, CameraControlsImpl, Edges, Environment, Grid } from '@react-three/drei';
-import { Box3, Group, Line, LineSegments, Matrix4, Mesh, PerspectiveCamera, Vector3 } from 'three';
+import {
+  CameraControls,
+  CameraControlsImpl,
+  Edges,
+  Environment,
+  Grid,
+  Line as FatLine,
+} from '@react-three/drei';
+import {
+  Box3,
+  DoubleSide,
+  Group,
+  Line,
+  LineSegments,
+  Matrix4,
+  Mesh,
+  PerspectiveCamera,
+  Vector3,
+} from 'three';
 import type { Object3D } from 'three';
 import { FallbackBatch } from './fallback-batch';
 import { createFallbackBrickGeometry, fallbackShapeKey } from './fallback-geometry';
@@ -28,7 +45,7 @@ import {
   getBuildArea,
   getLDrawTransform,
 } from '@brick-workshop/engine';
-import type { Assembly, Brick } from '@brick-workshop/engine';
+import type { Assembly, Brick, PhysicalAssessment } from '@brick-workshop/engine';
 import { DebugHelpers, DebugOverlay, DebugProbe, DebugStore, useDebugOptions } from './scene-debug';
 
 /** Where the pointer rests on the board, in stud and plate units. */
@@ -39,6 +56,12 @@ export interface PointerTarget {
   z: number;
 }
 export type SceneMode = 'select' | 'place' | 'erase';
+
+/** What the balance overlay draws: each standing group, and the joints pulling apart. */
+export interface SceneStability {
+  groups: PhysicalAssessment['groundedGroups'];
+  overloaded: readonly { lowerId: string; upperId: string }[];
+}
 
 interface SceneProps {
   assembly: Assembly;
@@ -65,6 +88,8 @@ interface SceneProps {
   pendingParts?: readonly string[];
   /** Hears how far a big rebuild has come, and `null` once the model is complete. */
   onBuildProgress?: (progress: BuildProgress | null) => void;
+  /** Draws where the build's weight sits over its floor contact, and joints pulling apart. */
+  stability?: SceneStability | null;
 }
 
 export type BuildProgress = { done: number; total: number };
@@ -623,6 +648,125 @@ function Outline({
   );
 }
 
+const STABLE = '#30d158';
+const FAILING = '#ff453a';
+const BACKING = '#1c1c1e';
+const noRaycast = () => null;
+
+type Vec3 = [number, number, number];
+
+/** A line drawn over the bricks, with a dark edge so it reads on any brick or board color. */
+function Stroke({ points, color, dashed }: { points: Vec3[]; color: string; dashed?: boolean }) {
+  const shared = { points, depthTest: false, raycast: noRaycast } as const;
+  const dashes = dashed ? { dashed: true, dashSize: 0.3, gapSize: 0.2 } : {};
+  return (
+    <>
+      <FatLine {...shared} {...dashes} color={BACKING} lineWidth={6} renderOrder={10} />
+      <FatLine {...shared} {...dashes} color={color} lineWidth={3} renderOrder={11} />
+    </>
+  );
+}
+
+/**
+ * Each standing group's floor contact as an outline on the floor, and its center of mass as a
+ * dot with a dashed line dropped to the floor: green while the dot lands inside the outline,
+ * red when it falls outside and the group tips. Joints whose studs would pull apart show as a
+ * red patch where the two pieces meet. All of it is drawn over the bricks, so a center inside
+ * a building still shows.
+ */
+function StabilityOverlay({
+  stability,
+  visible,
+  buildArea,
+}: {
+  stability: SceneStability;
+  visible: ReadonlyMap<string, Brick>;
+  buildArea: number;
+}) {
+  const at = (x: number, z: number, y: number): Vec3 => [x - buildArea / 2, y, z - buildArea / 2];
+  const floor = 0.02;
+  return (
+    <group>
+      {stability.groups.map((group, index) => {
+        const color = group.tips ? FAILING : STABLE;
+        const center = group.centerOfMass;
+        const height = center.y * PLATE_HEIGHT;
+        const outline =
+          group.support.length > 2 ? [...group.support, group.support[0]] : group.support;
+        return (
+          <group key={index}>
+            {outline.length > 1 && (
+              <Stroke points={outline.map((point) => at(point.x, point.z, floor))} color={color} />
+            )}
+            <Stroke
+              points={[at(center.x, center.z, height), at(center.x, center.z, floor)]}
+              color={color}
+              dashed
+            />
+            <mesh position={at(center.x, center.z, height)} renderOrder={12} raycast={noRaycast}>
+              <sphereGeometry args={[0.3, 20, 12]} />
+              <meshBasicMaterial color={color} depthTest={false} transparent />
+            </mesh>
+            <mesh position={at(center.x, center.z, height)} renderOrder={11} raycast={noRaycast}>
+              <sphereGeometry args={[0.4, 20, 12]} />
+              <meshBasicMaterial color={BACKING} depthTest={false} transparent />
+            </mesh>
+            <mesh
+              position={at(center.x, center.z, floor)}
+              rotation={[-Math.PI / 2, 0, 0]}
+              renderOrder={12}
+              raycast={noRaycast}
+            >
+              <ringGeometry args={[0.25, 0.45, 32]} />
+              <meshBasicMaterial color={color} depthTest={false} transparent side={DoubleSide} />
+            </mesh>
+          </group>
+        );
+      })}
+      {stability.overloaded.map(({ lowerId, upperId }) => {
+        const lower = visible.get(lowerId);
+        const upper = visible.get(upperId);
+        if (!lower || !upper) return null;
+        const below = footprint(lower);
+        const above = footprint(upper);
+        const left = Math.max(lower.x, upper.x);
+        const right = Math.min(lower.x + below.width, upper.x + above.width);
+        const near = Math.max(lower.z, upper.z);
+        const far = Math.min(lower.z + below.depth, upper.z + above.depth);
+        if (left >= right || near >= far) return null;
+        const y = upper.y * PLATE_HEIGHT;
+        const corners = [
+          at(left, near, y),
+          at(right, near, y),
+          at(right, far, y),
+          at(left, far, y),
+          at(left, near, y),
+        ];
+        return (
+          <group key={`${lowerId}:${upperId}`}>
+            <mesh
+              position={at((left + right) / 2, (near + far) / 2, y)}
+              rotation={[-Math.PI / 2, 0, 0]}
+              renderOrder={10}
+              raycast={noRaycast}
+            >
+              <planeGeometry args={[right - left + 0.3, far - near + 0.3]} />
+              <meshBasicMaterial
+                color={FAILING}
+                opacity={0.7}
+                depthTest={false}
+                transparent
+                side={DoubleSide}
+              />
+            </mesh>
+            <Stroke points={corners} color={FAILING} />
+          </group>
+        );
+      })}
+    </group>
+  );
+}
+
 /** Finds the brick an intersection belongs to: batched instances or a separate brick group. */
 function hitBrickId(object: Object3D, instanceId: number | undefined) {
   if (instanceId !== undefined && Array.isArray(object.userData.brickIds))
@@ -922,6 +1066,9 @@ export const Scene = memo(function Scene(props: SceneProps) {
             color="#b0000f"
             fill="#ffffff"
           />
+        )}
+        {props.stability && !props.explode && !cinematic && (
+          <StabilityOverlay stability={props.stability} visible={visible} buildArea={buildArea} />
         )}
         {props.ghost && (
           <group raycast={() => null}>

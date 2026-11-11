@@ -70,6 +70,25 @@ export interface PhysicalAssessment {
   connectionBasis: 'none' | 'supplied' | 'default';
   /** The per-stud tension allowed after the safety factor, when a limit applies. */
   studTensionLimitNewtons: number | null;
+  /**
+   * Each group of connected pieces standing on the floor: its center of mass (x and z in studs,
+   * y in plates), the outline of its floor contact, and whether that center falls outside it.
+   * Stud joints can resist any turning with enough tension, so without a stud limit a group
+   * tipping over its floor outline is the only way a build fails to balance.
+   */
+  groundedGroups: {
+    pieceCount: number;
+    centerOfMass: { x: number; y: number; z: number };
+    support: { x: number; z: number }[];
+    tips: boolean;
+  }[];
+  /** With the stud limit exceeded, the joints that pull apart, worst first. */
+  overloadedConnections: {
+    lowerId: string;
+    upperId: string;
+    studCount: number;
+    tensionNewtons: number;
+  }[];
   massBasis: 'missing' | 'measured' | 'estimated' | 'catalog' | 'mixed';
   totalMassGrams: number | null;
   centerOfMassStuds: { x: number; z: number } | null;
@@ -417,6 +436,31 @@ function bearingRectangles(brick: Brick, surface: 'top' | 'bottom'): Rectangle[]
   return merged;
 }
 
+type Point = { x: number; z: number };
+
+/**
+ * Whether a point lies within a convex hull from convexHull, edges included. A hull of one or
+ * two points is a single spot or edge, which only points on it are within.
+ */
+function inside(hull: readonly Point[], point: Point) {
+  const cross = (origin: Point, first: Point, second: Point) =>
+    (first.x - origin.x) * (second.z - origin.z) - (first.z - origin.z) * (second.x - origin.x);
+  if (hull.length === 1) return Math.hypot(hull[0].x - point.x, hull[0].z - point.z) < 1e-6;
+  if (hull.length === 2) {
+    const [start, end] = hull;
+    const length = Math.hypot(end.x - start.x, end.z - start.z);
+    const along =
+      ((point.x - start.x) * (end.x - start.x) + (point.z - start.z) * (end.z - start.z)) /
+      length ** 2;
+    return (
+      Math.abs(cross(start, end, point)) / length < 1e-6 && along >= -1e-6 && along <= 1 + 1e-6
+    );
+  }
+  return hull.every(
+    (corner, index) => cross(corner, hull[(index + 1) % hull.length], point) >= -1e-6,
+  );
+}
+
 /** The corners of the convex hull of some points, without points along its edges. */
 function convexHull(points: readonly { x: number; z: number }[]) {
   const sorted = [
@@ -509,6 +553,8 @@ function computePhysicalAssessment(
     connectionStrength: 'unknown',
     connectionBasis: 'none',
     studTensionLimitNewtons: null,
+    groundedGroups: [],
+    overloadedConnections: [],
     massBasis: 'missing',
     totalMassGrams: null,
     centerOfMassStuds: null,
@@ -679,6 +725,49 @@ function computePhysicalAssessment(
   // Unlimited forces anywhere in a contact add up to the same totals and moments as forces at
   // the corners of its convex hull, so only those corners need a variable. A per-stud limit
   // caps each stud separately, so then every stud keeps its own.
+  // Pieces joined through studs, or carried by a host, stand or fall together.
+  const parent = solids.map((_, index) => index);
+  const find = (index: number): number =>
+    parent[index] === index ? index : (parent[index] = find(parent[index]));
+  for (const contact of contacts)
+    if (contact.lower !== null) parent[find(contact.upper)] = find(contact.lower);
+  const groups = new Map<
+    number,
+    { pieces: number; weight: number; x: number; y: number; z: number; floor: Point[] }
+  >();
+  const group = (root: number) => {
+    let entry = groups.get(root);
+    if (!entry) groups.set(root, (entry = { pieces: 0, weight: 0, x: 0, y: 0, z: 0, floor: [] }));
+    return entry;
+  };
+  for (const body of bodies) {
+    const index = solidIndex.get(body.brick.id) ?? [...carryingSolids(body.brick.id).keys()][0];
+    const entry = group(find(index));
+    const height = body.brick.y + footprint(body.brick).height / 2;
+    entry.pieces += 1;
+    entry.weight += body.weight;
+    entry.x += body.weight * body.center.x;
+    entry.y += body.weight * height;
+    entry.z += body.weight * body.center.z;
+  }
+  for (const contact of contacts)
+    if (contact.lower === null) group(find(contact.upper)).floor.push(...contact.corners);
+  report.groundedGroups = [...groups.values()]
+    .filter((entry) => entry.floor.length)
+    .map((entry) => {
+      const center = {
+        x: entry.x / entry.weight,
+        y: entry.y / entry.weight,
+        z: entry.z / entry.weight,
+      };
+      const support = convexHull(entry.floor);
+      return {
+        pieceCount: entry.pieces,
+        centerOfMass: center,
+        support,
+        tips: !inside(support, center),
+      };
+    });
   const studConnection =
     data.studConnection ??
     (options.useDefaultStudConnection !== false ? DEFAULT_STUD_CONNECTION : undefined);
@@ -834,6 +923,34 @@ function computePhysicalAssessment(
         : 'exceeds-supplied-limit';
       if (limited.feasible) selected = { model: capped, solution: limited };
       else {
+        // The joints whose share of the least-tension balance is more than their studs can
+        // hold, or failing that, those pulling hardest on any one stud.
+        const pulls = contacts.map((contact, index) => {
+          const forces = unlimited.forces.filter(
+            (force) => force.tension && force.contact === index,
+          );
+          const values = forces.map((force) => Math.max(0, Number(solution[force.name] ?? 0)));
+          return {
+            contact,
+            total: values.reduce((sum, value) => sum + value, 0),
+            peak: Math.max(0, ...values),
+          };
+        });
+        const tolerance = limit * 1e-9;
+        const beyond = pulls.filter(
+          ({ contact, total }) => total > limit * contact.studs.length + tolerance,
+        );
+        report.overloadedConnections = (
+          beyond.length ? beyond : pulls.filter(({ peak }) => peak > limit + tolerance)
+        )
+          .filter(({ contact }) => contact.lower !== null)
+          .sort((first, second) => second.total - first.total)
+          .map(({ contact, total }) => ({
+            lowerId: solids[contact.lower!].brick.id,
+            upperId: solids[contact.upper].brick.id,
+            studCount: contact.studs.length,
+            tensionNewtons: total,
+          }));
         report.status = 'infeasible';
         report.reasons.push(
           report.connectionBasis === 'default'

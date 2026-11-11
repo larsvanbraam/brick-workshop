@@ -166,7 +166,11 @@ export function evaluateAssemblyPolicy(assembly: Assembly, policy: EditPolicy = 
   try {
     if (policy.physical !== undefined && !object(policy.physical))
       throw new Error('Invalid physical options');
-    for (const name of ['useCatalogMasses', 'estimateMissingMasses'] as const)
+    for (const name of [
+      'useCatalogMasses',
+      'estimateMissingMasses',
+      'useDefaultStudConnection',
+    ] as const)
       if (policy.physical?.[name] !== undefined && typeof policy.physical[name] !== 'boolean')
         throw new Error('Invalid physical option');
     importPhysicalData(policy.physical?.data ?? { version: 1, parts: {} });

@@ -589,6 +589,18 @@ under the selected model or supplied limits. Otherwise physical feasibility
 remains `unknown`, even for measured masses and apparently balanced builds.
 Empty and geometrically invalid assemblies have separate statuses.
 
+`groundedGroups` lists each group of connected pieces standing on the floor:
+its piece count, its center of mass (x and z in studs, y in plates), the convex
+outline of its floor contact, and whether that center falls outside the outline
+(`tips`). Stud joints can resist any turning given enough tension, so without a
+stud limit a tipping group is the only way a build fails to balance. When the
+stud limit is exceeded, `overloadedConnections` names the joints that pull
+apart, worst first. The workshop's **Balance** switch (in the layers panel)
+draws both in the viewport: each group's floor outline and center of mass, green
+when it stands and red when it tips, and a red patch on every joint pulling
+apart. A placement the physical check refuses shows the same overlay on its own
+while the pointer rests on it.
+
 Shaped parts are approximated by where they can bear load. Slopes, round and
 conical parts, and organic detail or foliage bear on their tops only where they
 have studs, so a slope carries load only along its rear stud row. Inverted

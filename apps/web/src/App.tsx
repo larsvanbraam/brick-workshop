@@ -71,7 +71,13 @@ import type {
 import { Scene, captureScene } from './Scene';
 import { MOODS } from './cinematic';
 import type { CinematicMood } from './cinematic';
-import type { BuildProgress, PointerDevice, PointerTarget, SceneMode } from './Scene';
+import type {
+  BuildProgress,
+  PointerDevice,
+  PointerTarget,
+  SceneMode,
+  SceneStability,
+} from './Scene';
 import { ViewportLoader } from './ViewportLoader';
 import { useLDrawLibrary } from './ldraw';
 import { displayHex } from './ldraw-materials';
@@ -300,7 +306,9 @@ function refusal(result: Extract<PatchResult, { ok: false }>) {
   if (code === 'collision') return 'That spot is already taken.';
   if (code === 'unsupported') return 'Nothing underneath to hold it.';
   if (result.error.code === 'physical_rejected')
-    return 'It would not stay up: the physical check rejects it.';
+    return result.assessment?.physical?.connectionStrength === 'exceeds-supplied-limit'
+      ? 'Too much would hang off its studs: they would pull apart.'
+      : 'It would tip over: its weight falls outside what it stands on.';
   return result.error.message;
 }
 
@@ -375,6 +383,7 @@ export default function App() {
   const [moreColors, setMoreColors] = useState(false);
   const [selectionColorsOpen, setSelectionColorsOpen] = useState(false);
   const [explode, setExplode] = useState(false);
+  const [showBalance, setShowBalance] = useState(false);
   const [layer, setLayer] = useState(MAX_HEIGHT);
   const [layersOpen, setLayersOpen] = useState(false);
   const [scrollSetting, setScrollSetting] = useState<'auto' | PointerDevice>(() =>
@@ -545,6 +554,20 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [preview, assembly, ghost, editPolicy]);
   const candidate = preview === 'pending' ? null : preview;
+  // A placement the physical check refuses shows why on its own; otherwise on request.
+  const rejectedPhysical =
+    candidate && !candidate.ok && candidate.error.code === 'physical_rejected'
+      ? (candidate.assessment?.physical ?? null)
+      : null;
+  const balanceShown = rejectedPhysical ?? (showBalance ? physical : null);
+  const stability = useMemo<SceneStability | null>(
+    () =>
+      balanceShown && {
+        groups: balanceShown.groundedGroups,
+        overloaded: balanceShown.overloadedConnections,
+      },
+    [balanceShown],
+  );
   // With a piece selected, the color controls recolor that piece instead of the brush.
   const editingSelection = tool === 'select' && selected !== undefined;
   const activeColor = editingSelection ? selected.color : color;
@@ -1250,6 +1273,7 @@ export default function App() {
               cinematic={cinematicStage}
               pendingParts={library.pending}
               onBuildProgress={setBuildProgress}
+              stability={cinematic ? null : stability}
             />
           )}
           <ViewportLoader
@@ -1371,6 +1395,18 @@ export default function App() {
                           setExplode(event.target.checked);
                           if (event.target.checked) setTool('select');
                         }}
+                      />
+                    </label>
+                    <label
+                      className="switch"
+                      title="Where the build's weight sits over what it stands on"
+                    >
+                      <span>Balance</span>
+                      <input
+                        type="checkbox"
+                        role="switch"
+                        checked={showBalance}
+                        onChange={(event) => setShowBalance(event.target.checked)}
                       />
                     </label>
                     <button className="quiet" onClick={() => setLayer(MAX_HEIGHT)}>

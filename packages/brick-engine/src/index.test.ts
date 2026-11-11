@@ -1243,6 +1243,44 @@ describe('shaped and carried pieces in the static solver', () => {
   });
 });
 
+describe('grounded groups', () => {
+  const pedestal: Brick = { ...base, id: 'pedestal', partId: '3005' };
+  const arm: Brick = { ...base, id: 'arm', partId: '3010', y: 3 };
+  it('outlines the floor contact and centre of mass of each standing group', () => {
+    const report = assessPhysicalFeasibility(
+      {
+        ...empty,
+        bricks: [base, { ...base, id: 'top', y: 3 }, { ...base, id: 'apart', x: 6 }],
+      },
+      { estimateMissingMasses: true },
+    );
+    expect(report.groundedGroups).toHaveLength(2);
+    const stack = report.groundedGroups.find((group) => group.pieceCount === 2)!;
+    expect(stack.tips).toBe(false);
+    expect(stack.centerOfMass.x).toBeCloseTo(1, 9);
+    expect(stack.centerOfMass.y).toBeCloseTo(3, 9);
+    expect(stack.centerOfMass.z).toBeCloseTo(2, 9);
+    expect(stack.support).toHaveLength(4);
+    expect(stack.support).toEqual(
+      expect.arrayContaining([
+        { x: 0, z: 0 },
+        { x: 2, z: 0 },
+        { x: 2, z: 4 },
+        { x: 0, z: 4 },
+      ]),
+    );
+  });
+  it('flags the group whose centre of mass falls outside its floor contact', () => {
+    const report = assessPhysicalFeasibility(
+      { ...empty, bricks: [pedestal, arm] },
+      { estimateMissingMasses: true },
+    );
+    expect(report.gravity).toBe('unstable');
+    expect(report.groundedGroups).toEqual([expect.objectContaining({ pieceCount: 2, tips: true })]);
+    expect(report.groundedGroups[0].centerOfMass.z).toBeGreaterThan(1);
+  });
+});
+
 describe('default stud strength', () => {
   // A long stack of 1 x 8 bricks cantilevered from a 2 x 2 post on a baseplate: the baseplate
   // keeps the whole build from tipping, so only the post's two studs can give way.
@@ -1278,6 +1316,15 @@ describe('default stud strength', () => {
       connectionStrength: 'exceeds-supplied-limit',
     });
     expect(heavy.reasons[0]).toContain('default per-stud tension limit');
+    expect(heavy.overloadedConnections[0]).toMatchObject({
+      lowerId: 'post',
+      upperId: 'arm-0',
+      studCount: 2,
+    });
+    expect(heavy.overloadedConnections[0].tensionNewtons).toBeGreaterThan(0.5);
+    expect(heavy.groundedGroups).toEqual([
+      expect.objectContaining({ pieceCount: 18, tips: false }),
+    ]);
     expect(
       getBuildabilityReport(heavy).checks.find((check) => check.id === 'connections')?.status,
     ).toBe('failed');
