@@ -181,6 +181,9 @@ const finishingAndRoundIds = [
   '41770a',
   '43722a',
   '43723a',
+  '2039',
+  '15332',
+  '2423',
 ];
 
 describe('connection-aware placement planning', () => {
@@ -863,8 +866,8 @@ describe('LDraw color definitions', () => {
       expect(placeBrick({ name: 'Contextual color', bricks: [] }, { ...base, color }).ok).toBe(
         false,
       );
-    expect(DEFAULT_PART_COLOR_EVIDENCE.observations).toHaveLength(2595);
-    expect(Object.keys(DEFAULT_PART_COLOR_EVIDENCE.mappings.parts)).toHaveLength(106);
+    expect(DEFAULT_PART_COLOR_EVIDENCE.observations).toHaveLength(3791);
+    expect(Object.keys(DEFAULT_PART_COLOR_EVIDENCE.mappings.parts)).toHaveLength(165);
     for (const part of PARTS)
       for (const color of [0, 1, 2, 4, 14, 15])
         expect(getPartColorStatus(part.id, color, DEFAULT_PART_COLOR_EVIDENCE).manufactured).toBe(
@@ -934,7 +937,7 @@ describe('architectural part families', () => {
     const included = assembly.bricks.filter((brick) =>
       architecturalParts.some((part) => part.id === brick.partId),
     );
-    expect(included).toHaveLength(145);
+    expect(included).toHaveLength(148);
     expect(new Set(included.map((brick) => brick.partId))).toEqual(
       new Set(architecturalParts.map((part) => part.id)),
     );
@@ -1513,9 +1516,9 @@ describe('upright brick engine', () => {
       ).toEqual(expected);
     }
   });
-  it('contains 235 unique building and foliage parts with explicit connection sites', () => {
-    expect(PARTS).toHaveLength(235);
-    expect(new Set(PARTS.map((part) => part.id)).size).toBe(235);
+  it('contains 238 unique building and foliage parts with explicit connection sites', () => {
+    expect(PARTS).toHaveLength(238);
+    expect(new Set(PARTS.map((part) => part.id)).size).toBe(238);
     expect(PARTS.filter((part) => part.family === 'tall')).toHaveLength(10);
     expect(PARTS.filter((part) => part.family === 'slope')).toHaveLength(35);
     expect(PARTS.filter((part) => part.family === 'round')).toHaveLength(35);
@@ -1525,8 +1528,8 @@ describe('upright brick engine', () => {
       ['cone', 4],
       ['door', 7],
       ['window', 16],
-      ['detail', 36],
-      ['foliage', 10],
+      ['detail', 38],
+      ['foliage', 11],
     ] as const)
       expect(PARTS.filter((part) => part.family === family)).toHaveLength(count);
     for (const part of PARTS) {
@@ -1916,7 +1919,7 @@ describe('upright brick engine', () => {
 
 describe('mixed-part engine builds', () => {
   it('lays complete catalogue and tile displays on one larger board without stacking', () => {
-    for (const [id, count] of [['catalog-sampler', 235]] as const) {
+    for (const [id, count] of [['catalog-sampler', 238]] as const) {
       const assembly = createExampleAssembly(id);
       expect(assembly.buildArea).toBe(80);
       expect(assembly.bricks).toHaveLength(count);
@@ -2165,7 +2168,7 @@ describe('mixed-part engine builds', () => {
     );
     expect(
       sampler.bricks.filter((brick) => getPart(brick.partId).family === 'foliage'),
-    ).toHaveLength(10);
+    ).toHaveLength(11);
     for (const [index, first] of sampler.bricks.entries()) {
       const firstSize = footprint(first);
       for (const second of sampler.bricks.slice(index + 1)) {

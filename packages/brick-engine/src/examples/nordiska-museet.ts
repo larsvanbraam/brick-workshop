@@ -626,14 +626,18 @@ const STEP_ROWS = 7;
 const CHEEKS = [STEPS[0] - 2, STEPS[1] + 1];
 const PATH = [58, 69] as const;
 const PLAQUE = [56, 71] as const;
-/** Lamps along the quay's front edge, with railing between them and down both sides. */
-const QUAY_LAMPS = [5, 30, 55, 72, 97, 122];
+/**
+ * Two-stud lampposts along the quay's front edge, by their western stud and mirrored about the
+ * middle, with a spindled iron fence centred in each gap between them and down both sides.
+ */
+const QUAY_LAMPS = [5, 30, 55, 71, 96, 121];
 const RAILINGS = [
-  ...QUAY_LAMPS.slice(1).flatMap((lamp, index) =>
-    range(QUAY_LAMPS[index] + 1, lamp - 1)
-      .filter((x) => (x - QUAY_LAMPS[index]) % 4 === 1)
-      .map((x) => [x, ISLAND[3], 90] as const),
-  ),
+  ...QUAY_LAMPS.slice(1).flatMap((lamp, index) => {
+    const from = QUAY_LAMPS[index] + 2;
+    const runs = Math.floor((lamp - from) / 4);
+    const start = from + Math.floor((lamp - from - runs * 4) / 2);
+    return range(0, runs - 1).map((run) => [start + run * 4, ISLAND[3], 90] as const);
+  }),
   ...range(0, 20).flatMap((index) =>
     [ISLAND[0], ISLAND[2]].map((x) => [x, 16 + index * 4, 0] as const),
   ),
@@ -807,11 +811,15 @@ function addApseRoof(
   }
 }
 
-/** A small finial: jumper plate along x, a round brick on its centre stud and a cone. */
+/**
+ * A small finial: jumper plate along x, a round brick on its centre stud and a cone, and on a
+ * dark cone a gilded knob, like the spirelets on the box.
+ */
 function addFinial(add: ExampleBrickAdder, x: number, y: number, z: number, tip = COPPER) {
   add('3794b', TRIM, x, y, z, 90);
   add('3062b', TRIM, x + 0.5, y + 1, z);
   add('4589', tip, x + 0.5, y + 4, z);
+  if (tip === ROOFING) add('98138', GOLD, x + 0.5, y + 7, z);
 }
 
 /**
@@ -984,8 +992,31 @@ function addTree(
     for (const cell of placed) tops.set(cell, y + 3);
     below = placed;
   }
-  // Leaf sprigs on the studs left bare on top, where nothing higher would cover them.
+  // A couple of leaf sprays lie across the crown's highest courses, held by their stem stud,
+  // each wholly over the crown and nothing of it higher, so the top reads as layered leaves.
   const sprigged = new Set<string>();
+  let sprays = 0;
+  for (const [cell, top] of [...tops].sort(([, first], [, second]) => second - first)) {
+    if (sprays === 2) break;
+    if (next() > 0.5) continue;
+    const [u, v] = cell.split(',').map(Number);
+    const rotation = ([0, 90, 180, 270] as const)[Math.floor(next() * 4)];
+    const probe = { id: '', partId: '2423', color: 0, x: 0, y: 0, z: 0, rotation };
+    const receiver = getConnectionSites(probe, 'bottom')[0];
+    const [u0, v0] = [u - (receiver.x - 0.5), v - (receiver.z - 0.5)];
+    const [width, depth] = rotation % 180 ? [4, 3] : [3, 4];
+    const footprint = range(0, width - 1).flatMap((du) =>
+      range(0, depth - 1).map((dv) => key(u0 + du, v0 + dv)),
+    );
+    if (
+      footprint.some((other) => sprigged.has(other) || !tops.has(other) || tops.get(other)! > top)
+    )
+      continue;
+    for (const other of footprint) sprigged.add(other);
+    add('2423', next() < 0.5 ? light : body, x + u0, top, z + v0, rotation);
+    sprays++;
+  }
+  // Leaf sprigs on the studs left bare on top, where nothing higher would cover them.
   for (const [cell, top] of tops) {
     if (next() > 0.4) continue;
     const [u, v] = cell.split(',').map(Number);
@@ -1003,21 +1034,13 @@ function addTree(
 }
 
 /**
- * A candelabra lamp: a slim black post about a storey high, with a crossbar carrying three
- * white globes, each under a black cap, the middle one raised on a short stem.
+ * A street lamp on a 2 x 2 footing: a fluted black lamppost with a white globe under a black
+ * cap on the open stud of its lantern.
  */
 function addLampPost(add: ExampleBrickAdder, x: number, z: number, y = LAWN_TOP) {
-  add('2453b', BLACK, x, y, z);
-  add('3623', BLACK, x - 1, y + 15, z, 90);
-  for (const [dx, stem] of [
-    [-1, 0],
-    [0, 3],
-    [1, 0],
-  ]) {
-    if (stem) add('3062b', BLACK, x + dx, y + 16, z);
-    add('3062b', WHITE, x + dx, y + 16 + stem, z);
-    add('98138', BLACK, x + dx, y + 19 + stem, z);
-  }
+  add('2039', BLACK, x, y, z);
+  add('3062b', WHITE, x + 0.5, y + 21, z + 0.5);
+  add('98138', BLACK, x + 0.5, y + 24, z + 0.5);
 }
 
 /**
@@ -1057,7 +1080,7 @@ export const nordiskaMuseet: ExampleDefinition = {
     'park',
     'waterfront',
   ],
-  expectedPieceCount: 11568,
+  expectedPieceCount: 11506,
   buildArea: SIZE,
   brickIdPrefix: 'museet',
   build(drawnAdd) {
@@ -1182,7 +1205,7 @@ export const nordiskaMuseet: ExampleDefinition = {
       add('3021', TRIM, x, QUAY + 3, z + 4);
       add('3001', GRANITE, x, QUAY + 3, z);
       add('3020', TRIM, x, QUAY + 6, z);
-      addLampPost(add, x < SIZE / 2 ? x + 1 : x, z + 1, BASE);
+      addLampPost(add, x, z + 1, BASE);
     }
 
     // Walls and turrets, a course at a time: the main walls stop at the cornice, the turrets
@@ -1640,6 +1663,7 @@ export const nordiskaMuseet: ExampleDefinition = {
           if (gableStep(course) % 2) {
             add('3062b', TRIM, outer, y, PAVILION_FRONT);
             add('4589', ROOFING, outer, y + 3, PAVILION_FRONT);
+            add('98138', GOLD, outer, y + 6, PAVILION_FRONT);
             add('3070b', TRIM, inner, y, PAVILION_FRONT);
           } else add('3069b', TRIM, Math.min(outer, inner), y, PAVILION_FRONT, 90);
     }
@@ -1798,8 +1822,8 @@ export const nordiskaMuseet: ExampleDefinition = {
 
     // Grounds: a black railing round the quay with lamps between its runs, leafy trees on the
     // front lawn and behind the museum, and a sailing boat moored off the front.
-    for (const [x, z, rotation] of RAILINGS) add('3633', BLACK, x, LAWN_TOP, z, rotation);
-    for (const x of QUAY_LAMPS) addLampPost(add, x, ISLAND[3]);
+    for (const [x, z, rotation] of RAILINGS) add('15332', BLACK, x, LAWN_TOP, z, rotation);
+    for (const x of QUAY_LAMPS) addLampPost(add, x, ISLAND[3] - 1);
     for (const [index, [x, z, crown, trunk]] of TREES.entries())
       addTree(add, x, z, crown, trunk, index);
     addSailboat(add, 86, 110);

@@ -133,8 +133,9 @@ order and real clutch strength are not checked, and
 `COLORS` is a snapshot of LDraw's `LDConfig.ldr`. Whether a part was ever made
 in a colour comes from a reviewed snapshot of Rebrickable inventories
 ([part-color-evidence.ts](packages/brick-engine/src/part-color-evidence.ts));
-missing combinations are unknown, not impossible. Newer parts have no mapping
-yet. Refresh with:
+missing combinations are unknown, not impossible. Nearly every supported part is
+mapped; the 45° cut tiles `5091`/`5092` are not, because Rebrickable uses those
+numbers for other tiles. Refresh with:
 
 ```sh
 pnpm colors:import
@@ -143,8 +144,10 @@ pnpm colors:inventory data/inventory_parts.csv.gz
 pnpm fmt
 ```
 
-Map parts and colours explicitly in the importer configuration; never infer them
-from similar numbers, names or RGB values.
+A refresh keeps the snapshot's mappings and updates its observations. To map a new
+part, pass a configuration file with it added as the second argument. Map parts
+and colours explicitly, from matching names or LDraw's `Rebrickable` keywords;
+never infer them from similar numbers, names or RGB values.
 
 ## Examples
 
@@ -154,7 +157,7 @@ from similar numbers, names or RGB values.
 | Catalog sampler     | all    | Every supported part once, on an 80 x 80 board.                           |
 | Seaside Lighthouse  | 415    | Striped tower on a rocky island with keeper's cottage, jetty and rowboat. |
 | Flower Market Stall | 351    | Booth with striped awning, flower buckets, crates, tree and bench.        |
-| Nordiska Museet     | 11,568 | The Stockholm museum with its towers, gables, dormers and windows.        |
+| Nordiska Museet     | 11,506 | The Stockholm museum with its towers, gables, dormers and windows.        |
 
 Each example is a module in
 [packages/brick-engine/src/examples](packages/brick-engine/src/examples)

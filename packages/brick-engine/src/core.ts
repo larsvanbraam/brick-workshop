@@ -1451,6 +1451,28 @@ export const PARTS: readonly Part[] = [
     },
     { ldrawBaseY: 8 },
   ),
+  // Grounds: a one-piece lamppost with an open stud on its lantern, a spindled fence that
+  // can carry more on its studs, and a leaf spray held by one stud at its stem.
+  contouredPart('2039', 'Lamppost 2 x 2 x 7', 2, 2, 21, 'brick', 'detail', {
+    top: [{ x: 0.5, z: 0.5 }],
+    bottom: spans([0, 1], [0, 1]),
+  }),
+  detailPart('15332', 'Spindled fence 1 x 4 x 2 with studs', 1, 4, 6),
+  sculptedPart('2423', 'Foliage: leaves 4 x 3', 3, 4, 1, 'foliage', {
+    kind: 'plate',
+    ldrawCenter: { x: 0, z: -30 },
+    connections: {
+      topStuds: [
+        [1, 0],
+        [0, 1],
+        [2, 1],
+        [0, 2],
+        [2, 2],
+        [1, 3],
+      ].map(([x, z]) => ({ x, z })),
+      bottomReceivers: [{ x: 1, z: 3 }],
+    },
+  }),
   // Facade detail. Half-arch bricks stand on one centred stud, like a jumper, with the arches
   // reaching half a stud out over the openings either side.
   contouredPart(
