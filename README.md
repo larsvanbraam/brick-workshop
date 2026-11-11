@@ -106,6 +106,15 @@ hang in their matching frames (`INSERT_FRAME_PARTS`). With the LDraw library
 installed, tests check every part's real mesh against its declared envelope and
 centre in all four rotations.
 
+**Clips and bars.** Parts can declare `bars` (a segment along a bar's centre line)
+and `clips` (where a clip grips and the axis it holds). A clip holds a piece whose
+bar runs through it, anywhere along the bar, such as a flag (`2335`) up an antenna
+(`3957a`), or a loose bar (`30374`, `87994`) mounted level between clip plates
+(`4081b`, `60470a`, `63868`). Pieces held this way hang like side-mounted ones:
+validation hangs them a pass at a time from held pieces, a clip and the bar it grips
+may share space, physics carries them on their hosts and clamps several hosts of one
+piece together, and building instructions place them after their hosts.
+
 To add a part, define it in `PARTS` (see `basicPart`, `contouredPart`,
 `curvedSlopePart` and friends), read its size, native centre and stud positions
 from the `.dat` geometry, and run `pnpm test`. The catalogue sampler example

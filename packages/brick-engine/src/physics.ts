@@ -5,7 +5,7 @@ import {
   footprint,
   getConnectionSites,
   getPart,
-  getSideMountHosts,
+  getMountHosts,
   isMatchingInsertFrame,
   isRuntimePart,
   validateAssembly,
@@ -365,7 +365,7 @@ const ASSUMPTIONS = [
   'Upright rigid bodies under gravity on a flat, non-adhesive floor; no external loads.',
   'Overlapping flat faces transmit compression; matching studs alone transmit tension.',
   'Shaped parts bear only where they have studs or receivers (a slope on its rear row, an arch on its legs); door and window frames, baseplates and anything on the floor bear on their whole footprint.',
-  'Pieces mounted on side studs and panes or doors hung in frames are rigidly clamped to their hosts; sideways stud loads are not strength-checked.',
+  'Pieces mounted on side studs or held by clips, and panes or doors hung in frames, are rigidly clamped to their hosts; sideways stud and clip loads are not strength-checked.',
   'Compression, bending, shear, friction, wear and insertion forces are not strength-verified.',
   'Absent supplied centers of mass, slopes are taken as a rear block plus a wedge and other bodies as even across their footprint; color/material differences are not modeled.',
   'Bottom-up order has ideal vertical insertion clearance only; hand/tool access is not verified.',
@@ -741,7 +741,7 @@ function computePhysicalAssessment(
   // Upright pieces standing on studs are the solver's rigid bodies. A piece mounted on side
   // studs is clamped to its hosts, and a pane or door hangs inside its frame, so their weight
   // and leverage are carried by those hosts, shared equally between several.
-  const carriers = getSideMountHosts(assembly.bricks);
+  const carriers = getMountHosts(assembly.bricks);
   const framesByPart = new Map<string, Brick[]>();
   for (const brick of assembly.bricks) {
     const frames = framesByPart.get(brick.partId);
@@ -802,6 +802,8 @@ function computePhysicalAssessment(
     upper: number;
     corners: { x: number; z: number }[];
     studs: { x: number; z: number }[];
+    /** A rigid clamp between two hosts through a piece they both hold, not a stud joint. */
+    weld?: true;
   }[] = [];
   const bearings = solids.map(({ brick }) => ({
     top: bearingRectangles(brick, 'top'),
@@ -863,6 +865,28 @@ function computePhysicalAssessment(
             );
       if (!corners.length && !studs.length) continue;
       contacts.push({ lower, upper, corners, studs });
+    }
+  }
+  // A piece held by several hosts, like a bar between two clips, clamps them together: it can
+  // pass any push, pull or turn between them, without loading any stud.
+  const welded = new Set<string>();
+  for (const body of bodies) {
+    if (solidIndex.has(body.brick.id)) continue;
+    const [first, ...others] = [...carryingSolids(body.brick.id).keys()].sort((a, b) => a - b);
+    for (const other of others) {
+      const pair = `${first}:${other}`;
+      if (welded.has(pair)) continue;
+      welded.add(pair);
+      const corners = [first, other].flatMap((index) => {
+        const { left, right, near, far } = floorRectangle(solids[index].brick);
+        return [
+          { x: left, z: near },
+          { x: right, z: near },
+          { x: right, z: far },
+          { x: left, z: far },
+        ];
+      });
+      contacts.push({ lower: first, upper: other, corners, studs: [], weld: true });
     }
   }
   // Pieces joined through studs, or carried by a host, stand or fall together.
@@ -938,10 +962,15 @@ function computePhysicalAssessment(
   const pushes = contacts.map((contact) => convexHull(contact.corners));
   const count = (pulls: (typeof contacts)[number]['studs'][]) =>
     pulls.reduce((sum, pull, index) => sum + pushes[index].length + pull.length, 0);
-  const hullPulls = contacts.map((contact) => convexHull(contact.studs));
+  // A weld pulls anywhere across it; a stud joint only at its studs.
+  const hullPulls = contacts.map((contact) =>
+    convexHull(contact.weld ? contact.corners : contact.studs),
+  );
+  const studPulls = contacts.map((contact) =>
+    contact.weld ? convexHull(contact.corners) : contact.studs,
+  );
   if (
-    count(studConnection ? contacts.map((contact) => contact.studs) : hullPulls) >
-      MAX_PHYSICS_CONTACT_VARIABLES &&
+    count(studConnection ? studPulls : hullPulls) > MAX_PHYSICS_CONTACT_VARIABLES &&
     !options.fullCheck
   ) {
     report.reasons.push(
@@ -971,8 +1000,10 @@ function computePhysicalAssessment(
         for (const [siteIndex, site] of points.entries()) {
           const name = `${tension ? 'pull' : 'push'}${contactIndex}_${siteIndex}`;
           const sign = tension ? -1 : 1;
+          // A weld's pull is the clamp holding, not stud tension: free, and never capped.
+          const studTension = tension && !contact.weld;
           const coefficients: Record<string, number> = {
-            tension: tension ? 1 : 0,
+            tension: studTension ? 1 : 0,
             [`force${contact.upper}`]: sign,
             [`momentX${contact.upper}`]: sign * site.x,
             [`momentZ${contact.upper}`]: sign * site.z,
@@ -982,12 +1013,12 @@ function computePhysicalAssessment(
             coefficients[`momentX${contact.lower}`] = -sign * site.x;
             coefficients[`momentZ${contact.lower}`] = -sign * site.z;
           }
-          if (tension && limit !== undefined) {
+          if (studTension && limit !== undefined) {
             model.constraints[name] = { max: limit };
             coefficients[name] = 1;
           }
           model.variables[name] = coefficients;
-          model.forces.push({ name, contact: contactIndex, tension });
+          model.forces.push({ name, contact: contactIndex, tension: studTension });
         }
       }
     }
@@ -1060,10 +1091,7 @@ function computePhysicalAssessment(
     );
     if (withinLimit) report.connectionStrength = 'within-supplied-limit';
     else {
-      const capped = buildModel(
-        contacts.map((contact) => contact.studs),
-        limit,
-      );
+      const capped = buildModel(studPulls, limit);
       const limited = solve(capped);
       if (!limited) {
         report.reasons.push('The connection limits could not be assessed reliably.');
@@ -1112,7 +1140,7 @@ function computePhysicalAssessment(
     }
   }
   report.connections = contacts.flatMap((contact, index) => {
-    if (contact.lower === null) return [];
+    if (contact.lower === null || contact.weld) return [];
     const load = {
       lowerId: solids[contact.lower].brick.id,
       upperId: solids[contact.upper].brick.id,

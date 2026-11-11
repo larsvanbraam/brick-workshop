@@ -3,7 +3,7 @@ import {
   INSERT_FRAME_PARTS,
   PLATE_HEIGHT,
   footprint,
-  getSideMountHosts,
+  getMountHosts,
   isArchInfill,
   isMatchingInsertFrame,
   validateAssembly,
@@ -108,7 +108,7 @@ function buildNodes(bricks: readonly Brick[]): Node[] {
     else infills.set(archPartId, [node]);
   }
   const indexes = new Map(nodes.map((node) => [node.brick.id, node.index]));
-  const hosts = getSideMountHosts(bricks);
+  const hosts = getMountHosts(bricks);
   for (const node of nodes) {
     const below = new Set<number>();
     // A mounted piece goes on after the pieces whose side studs hold it.

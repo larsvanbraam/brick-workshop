@@ -23,6 +23,21 @@ export interface ConnectionSite {
   z: number;
 }
 
+/** A point in an upright part: studs from its min corner across, plates up from its bottom. */
+export type PartPoint = readonly [x: number, y: number, z: number];
+
+/** A 3.2 mm bar a clip can grip anywhere along: the centre line from one end to the other. */
+export interface Bar {
+  from: PartPoint;
+  to: PartPoint;
+}
+
+/** A clip: the middle of its grip and the axis of the bar it holds, before the part turns. */
+export interface Clip {
+  at: PartPoint;
+  axis: 'x' | 'y' | 'z';
+}
+
 export interface Part {
   id: string;
   name: string;
@@ -67,6 +82,10 @@ export interface Part {
   };
   /** Studs on the sides, which hold pieces mounted on their side (SNOT). */
   sideStuds?: readonly SideStud[];
+  /** Bars clips can grip, such as an antenna's shaft or a handle. */
+  bars?: readonly Bar[];
+  /** Clips that grip bars. */
+  clips?: readonly Clip[];
 }
 
 function rectangularConnections(width: number, depth: number): Part['connections'] {
@@ -179,7 +198,17 @@ function sculptedPart(
   height: number,
   family: 'detail' | 'foliage' | 'slope' | 'round' | 'arch',
   options: Partial<
-    Pick<Part, 'connections' | 'ldrawRotation' | 'ldrawCenter' | 'ldrawBaseY' | 'kind' | 'shape'>
+    Pick<
+      Part,
+      | 'connections'
+      | 'ldrawRotation'
+      | 'ldrawCenter'
+      | 'ldrawBaseY'
+      | 'kind'
+      | 'shape'
+      | 'bars'
+      | 'clips'
+    >
   > = {},
 ): Part {
   return {
@@ -225,7 +254,7 @@ function contouredPart(
   kind: Part['kind'],
   family: 'detail' | 'round' | 'arch' | 'slope',
   connections: { top?: ConnectionSite[]; bottom: ConnectionSite[] },
-  options: Partial<Pick<Part, 'ldrawCenter' | 'ldrawBaseY' | 'shape'>> = {},
+  options: Partial<Pick<Part, 'ldrawCenter' | 'ldrawBaseY' | 'shape' | 'bars' | 'clips'>> = {},
 ): Part {
   return sculptedPart(id, name, width, depth, height, family, {
     kind,
@@ -1437,7 +1466,8 @@ export const PARTS: readonly Part[] = [
     },
     { shape: 'round' },
   ),
-  // A finial or spire needle: a 4-brick antenna on a one-plate round base.
+  // A finial or spire needle: a 4-brick antenna on a one-plate round base. Its shaft is a bar
+  // from the base to just under the rounded tip, so a flag can clip on anywhere up it.
   contouredPart(
     '3957a',
     'Antenna 1 x 1 x 4',
@@ -1449,7 +1479,138 @@ export const PARTS: readonly Part[] = [
     {
       bottom: spans([0, 0]),
     },
-    { ldrawBaseY: 8 },
+    { ldrawBaseY: 8, bars: [{ from: [0.5, 1.5, 0.5], to: [0.5, 11.5, 0.5] }] },
+  ),
+  // Clips and bars, measured from the bar cylinders (4 LDU radius) in their meshes. Loose bars
+  // stand on nothing: clips hold them, upright or mounted on their side to lie level.
+  contouredPart(
+    '30374',
+    'Bar 4L',
+    1,
+    1,
+    10,
+    'brick',
+    'detail',
+    { bottom: [] },
+    {
+      ldrawBaseY: 80,
+      bars: [{ from: [0.5, 0, 0.5], to: [0.5, 10, 0.5] }],
+    },
+  ),
+  contouredPart(
+    '87994',
+    'Bar 3L',
+    1,
+    1,
+    7.5,
+    'brick',
+    'detail',
+    { bottom: [] },
+    {
+      ldrawBaseY: 60,
+      bars: [{ from: [0.5, 0, 0.5], to: [0.5, 7.5, 0.5] }],
+    },
+  ),
+  // A tile whose handle arches a brick high over it, the bar along its length.
+  contouredPart(
+    '2432',
+    'Tile 1 x 2 with handle',
+    2,
+    1,
+    4,
+    'brick',
+    'detail',
+    {
+      bottom: spans([0, 1]),
+    },
+    { ldrawBaseY: 32, bars: [{ from: [0.2, 3.5, 0.8], to: [1.8, 3.5, 0.8] }] },
+  ),
+  // A plate with a handle along its front edge, half a stud out.
+  contouredPart(
+    '2540',
+    'Plate 1 x 2 with handle on side',
+    2,
+    2,
+    1,
+    'plate',
+    'detail',
+    {
+      top: spans(null, [0, 1]),
+      bottom: spans(null, [0, 1]),
+    },
+    {
+      ldrawCenter: { x: 0, z: -10 },
+      bars: [{ from: [0.4, 0.75, 0.5], to: [1.6, 0.75, 0.5] }],
+    },
+  ),
+  // Clip plates: each clip half a stud out from the plate's front edge, its grip level with the
+  // plate, holding a bar that runs along the edge (or, on the end clip, straight out).
+  contouredPart(
+    '4081b',
+    'Plate 1 x 1 with clip',
+    1,
+    2,
+    1,
+    'plate',
+    'detail',
+    {
+      top: spans(null, [0, 0]),
+      bottom: spans(null, [0, 0]),
+    },
+    { ldrawCenter: { x: 0, z: -10 }, clips: [{ at: [0.5, 0.75, 0.5], axis: 'x' }] },
+  ),
+  contouredPart(
+    '60470a',
+    'Plate 1 x 2 with 2 clips',
+    2,
+    2,
+    1,
+    'plate',
+    'detail',
+    {
+      top: spans(null, [0, 1]),
+      bottom: spans(null, [0, 1]),
+    },
+    {
+      ldrawCenter: { x: 0, z: -10 },
+      clips: [
+        { at: [0.5, 0.75, 0.5], axis: 'x' },
+        { at: [1.5, 0.75, 0.5], axis: 'x' },
+      ],
+    },
+  ),
+  contouredPart(
+    '63868',
+    'Plate 1 x 2 with clip on end',
+    3,
+    1,
+    1,
+    'plate',
+    'detail',
+    {
+      top: spans([0, 1]),
+      bottom: spans([0, 1]),
+    },
+    { ldrawCenter: { x: 10, z: 0 }, clips: [{ at: [2.5, 0.75, 0.5], axis: 'z' }] },
+  ),
+  // A flag hung by two clips up its edge on a vertical bar, the cloth reaching two studs out.
+  contouredPart(
+    '2335',
+    'Flag 2 x 2',
+    1,
+    3,
+    5,
+    'brick',
+    'detail',
+    { bottom: [] },
+    {
+      ldrawBaseY: 40,
+      ldrawCenter: { x: 0, z: 20 },
+      clips: [
+        { at: [0.5, 0.5, 0.5], axis: 'y' },
+        { at: [0.5, 4.5, 0.5], axis: 'y' },
+      ],
+    },
   ),
   // Grounds: a one-piece lamppost with an open stud on its lantern, a spindled fence that
   // can carry more on its studs, and a leaf spray held by one stud at its stem.
@@ -1810,20 +1971,21 @@ function getSideReceivers(brick: Brick, part: Part = getPart(brick.partId)): str
   );
 }
 
-/** For each mounted piece, the pieces whose side studs it sits on. */
-export function getSideMountHosts(bricks: readonly Brick[]): Map<string, string[]> {
-  const studs = new Map<string, string[]>();
-  for (const brick of bricks)
-    for (const key of getSideStuds(brick)) studs.set(key, [...(studs.get(key) ?? []), brick.id]);
-  const hosts = new Map<string, string[]>();
-  for (const brick of bricks) {
-    if (!brick.facing) continue;
-    const ids = new Set(getSideReceivers(brick).flatMap((key) => studs.get(key) ?? []));
-    ids.delete(brick.id);
-    hosts.set(brick.id, [...ids]);
-  }
-  return hosts;
+/**
+ * For each piece that hangs rather than stands, the pieces holding it: those whose side studs a
+ * mounted piece sits on, whose clips or bars a piece grips, or under a piece standing on one
+ * of those. Mounted pieces nothing holds get an empty list. Pieces standing on the ground or on
+ * studs of standing pieces are left out.
+ */
+export function getMountHosts(bricks: readonly Brick[]): Map<string, string[]> {
+  const { hosts, unsupported } = hang(bricks);
+  const result = new Map<string, string[]>([...hosts].map(([id, ids]) => [id, [...ids]]));
+  for (const brick of unsupported) if (brick.facing) result.set(brick.id, []);
+  return result;
 }
+
+/** @deprecated Use getMountHosts, which also covers pieces held by clips. */
+export const getSideMountHosts = getMountHosts;
 
 export function getConnectionSites(
   brick: Brick,
@@ -1852,6 +2014,86 @@ export function getConnectionSites(
       z: brick.z + z + 0.5,
     };
   });
+}
+
+/** Where a point of a part lands, in LDraw units, upright or mounted on its side. */
+function placePoint(brick: Brick, part: Part, [x, y, z]: PartPoint): Point {
+  if (brick.facing) return mounting(brick, part).place(partPoint(x, y, z));
+  let [across, along] = [x, z];
+  if (brick.rotation === 90) [across, along] = [z, part.width - x];
+  else if (brick.rotation === 180) [across, along] = [part.width - x, part.depth - z];
+  else if (brick.rotation === 270) [across, along] = [part.depth - z, x];
+  return partPoint(brick.x + across, brick.y + y, brick.z + along);
+}
+
+const AXES: Readonly<Record<Clip['axis'], PartPoint>> = {
+  x: [1, 0, 0],
+  y: [0, 1, 0],
+  z: [0, 0, 1],
+};
+const minus = (first: Point, second: Point): Point => [
+  first[0] - second[0],
+  first[1] - second[1],
+  first[2] - second[2],
+];
+const dot = (first: Point, second: Point) =>
+  first[0] * second[0] + first[1] * second[1] + first[2] * second[2];
+const length = (vector: Point) => Math.sqrt(dot(vector, vector));
+
+function hasClipsOrBars(part: Part): boolean {
+  return !!(part.clips?.length || part.bars?.length);
+}
+
+/** A piece's bars as world segments in LDraw units. */
+function getBars(brick: Brick, part: Part = getPart(brick.partId)) {
+  return (part.bars ?? []).map((bar) => ({
+    from: placePoint(brick, part, bar.from),
+    to: placePoint(brick, part, bar.to),
+  }));
+}
+
+/** A piece's clips: where each grips, in LDraw units, and the way the bar it holds runs. */
+function getClips(brick: Brick, part: Part = getPart(brick.partId)) {
+  return (part.clips ?? []).map((clip) => {
+    const at = placePoint(brick, part, clip.at);
+    const step = AXES[clip.axis];
+    const ahead = placePoint(brick, part, [
+      clip.at[0] + step[0],
+      clip.at[1] + step[1],
+      clip.at[2] + step[2],
+    ]);
+    return { at, direction: minus(ahead, at) };
+  });
+}
+
+/** How far, in LDraw units, a clip may sit off a bar's centre line or past its ends. */
+const GRIP_SLACK = 0.5;
+
+/** Whether one of `holder`'s clips grips one of `bar`'s bars: on its line, along it, within it. */
+function grips(holder: Brick, bar: Brick): boolean {
+  const clips = getClips(holder);
+  if (!clips.length) return false;
+  const bars = getBars(bar);
+  return clips.some(({ at, direction }) =>
+    bars.some(({ from, to }) => {
+      const axis = minus(to, from);
+      const span = length(axis);
+      const unit: Point = [axis[0] / span, axis[1] / span, axis[2] / span];
+      const turn = dot(unit, direction) / length(direction);
+      if (Math.abs(Math.abs(turn) - 1) > 1e-6) return false;
+      const offset = minus(at, from);
+      const along = dot(offset, unit);
+      if (along < -GRIP_SLACK || along > span + GRIP_SLACK) return false;
+      return (
+        length(minus(offset, [unit[0] * along, unit[1] * along, unit[2] * along])) < GRIP_SLACK
+      );
+    }),
+  );
+}
+
+/** Whether a clip on either piece grips a bar on the other. */
+export function hasClipConnection(first: Brick, second: Brick): boolean {
+  return grips(first, second) || grips(second, first);
 }
 
 export function hasStudConnection(
@@ -2116,6 +2358,113 @@ function chainOf(index: ValidationIndex, id: string): Set<string> {
   return ids;
 }
 
+/** What holds every piece: the studs, side studs and clips each one is hung from. */
+interface Hanging {
+  /** Top studs of upright pieces, keyed `${y}:${x}:${z}`. */
+  groundedStuds: Set<string>;
+  groundedByTopHeight: Map<number, Brick[]>;
+  runtimeBricks: number;
+  sideStuds: Map<string, string[]>;
+  /** The pass that hung each piece: 0 for pieces standing on the ground or on studs. */
+  rounds: Map<string, number>;
+  /** For pieces hung in later passes, the pieces holding them. */
+  hosts: Map<string, Set<string>>;
+  mountedReceivers: Set<string>;
+  /** Upright pieces nothing holds, lowest first, then mounted ones. */
+  unsupported: Brick[];
+}
+
+/**
+ * Hangs valid pieces from the ground up. Upright pieces stand on the ground or on studs of the
+ * pieces under them, lowest first. Then, a pass at a time, the rest hang from pieces already
+ * held: mounted pieces from side studs, pieces with clips or bars from a clip or bar of a held
+ * piece, and upright pieces from the top studs of upright pieces hung that way.
+ */
+function hang(valid: readonly Brick[]): Hanging {
+  const groundedStuds = new Set<string>();
+  const studOwners = new Map<string, string[]>();
+  const runtimeBrickIds = new Set(
+    valid.filter((brick) => isRuntimePart(brick.partId)).map((brick) => brick.id),
+  );
+  const groundedByTopHeight = new Map<number, Brick[]>();
+  const sideStuds = new Map<string, string[]>();
+  const rounds = new Map<string, number>();
+  const hosts = new Map<string, Set<string>>();
+  const mountedReceivers = new Set<string>();
+  /** Held pieces with clips or bars, which can hold others. */
+  const gripping: Brick[] = [];
+  const hold = (brick: Brick, round: number) => {
+    rounds.set(brick.id, round);
+    if (!brick.facing) {
+      for (const site of getConnectionSites(brick, 'top')) {
+        const key = studKey(site);
+        groundedStuds.add(key);
+        studOwners.set(key, [...(studOwners.get(key) ?? []), brick.id]);
+      }
+      const topHeight = brick.y + footprint(brick).height;
+      const groundedAtHeight = groundedByTopHeight.get(topHeight) ?? [];
+      groundedAtHeight.push(brick);
+      groundedByTopHeight.set(topHeight, groundedAtHeight);
+    }
+    for (const key of getSideStuds(brick))
+      sideStuds.set(key, [...(sideStuds.get(key) ?? []), brick.id]);
+    if (hasClipsOrBars(getPart(brick.partId))) gripping.push(brick);
+  };
+  const unheld: Brick[] = [];
+  for (const brick of valid
+    .filter((brick) => !brick.facing)
+    .toSorted((first, second) => first.y - second.y)) {
+    const hasStudSupport = getConnectionSites(brick, 'bottom').some((site) =>
+      groundedStuds.has(studKey(site)),
+    );
+    const hasUnknownEnvelopeSupport =
+      (runtimeBrickIds.has(brick.id) || runtimeBrickIds.size > 0) &&
+      (groundedByTopHeight.get(brick.y) ?? []).some(
+        (support) =>
+          (runtimeBrickIds.has(brick.id) || runtimeBrickIds.has(support.id)) &&
+          hasEnvelopeContact(brick, support),
+      );
+    if (
+      brick.y === 0 ||
+      isSupportedInsert(brick, valid) ||
+      hasStudSupport ||
+      hasUnknownEnvelopeSupport
+    )
+      hold(brick, 0);
+    else unheld.push(brick);
+  }
+  let pending = [...unheld, ...valid.filter((brick) => brick.facing)];
+  for (let progress = true, round = 1; progress && pending.length; round += 1) {
+    progress = false;
+    pending = pending.filter((brick) => {
+      const ids = new Set<string>();
+      const receivers = getSideReceivers(brick);
+      for (const key of receivers) for (const id of sideStuds.get(key) ?? []) ids.add(id);
+      if (!brick.facing)
+        for (const site of getConnectionSites(brick, 'bottom'))
+          for (const id of studOwners.get(studKey(site)) ?? []) ids.add(id);
+      if (hasClipsOrBars(getPart(brick.partId)))
+        for (const other of gripping) if (hasClipConnection(brick, other)) ids.add(other.id);
+      if (!ids.size) return true;
+      hosts.set(brick.id, ids);
+      for (const key of receivers) mountedReceivers.add(key);
+      hold(brick, round);
+      progress = true;
+      return false;
+    });
+  }
+  return {
+    groundedStuds,
+    groundedByTopHeight,
+    runtimeBricks: runtimeBrickIds.size,
+    sideStuds,
+    rounds,
+    hosts,
+    mountedReceivers,
+    unsupported: pending,
+  };
+}
+
 function computeValidation(assembly: Assembly): Validation {
   const result = (issues: Issue[], index: ValidationIndex | null = null): Validation => ({
     buildArea: assembly.buildArea,
@@ -2152,73 +2501,14 @@ function computeValidation(assembly: Assembly): Validation {
     }
     seen.add(brick.id);
   }
-  const groundedStuds = new Set<string>();
-  const runtimeBrickIds = new Set(
-    valid.filter((brick) => isRuntimePart(brick.partId)).map((brick) => brick.id),
-  );
-  const groundedByTopHeight = new Map<number, Brick[]>();
-  const sideStuds = new Map<string, string[]>();
-  const rounds = new Map<string, number>();
-  for (const brick of valid
-    .filter((brick) => !brick.facing)
-    .toSorted((first, second) => first.y - second.y)) {
-    const hasStudSupport = getConnectionSites(brick, 'bottom').some((site) =>
-      groundedStuds.has(studKey(site)),
-    );
-    const hasUnknownEnvelopeSupport =
-      (runtimeBrickIds.has(brick.id) || runtimeBrickIds.size > 0) &&
-      (groundedByTopHeight.get(brick.y) ?? []).some(
-        (support) =>
-          (runtimeBrickIds.has(brick.id) || runtimeBrickIds.has(support.id)) &&
-          hasEnvelopeContact(brick, support),
-      );
-    if (
-      brick.y === 0 ||
-      isSupportedInsert(brick, valid) ||
-      hasStudSupport ||
-      hasUnknownEnvelopeSupport
-    ) {
-      for (const site of getConnectionSites(brick, 'top')) groundedStuds.add(studKey(site));
-      for (const key of getSideStuds(brick))
-        sideStuds.set(key, [...(sideStuds.get(key) ?? []), brick.id]);
-      rounds.set(brick.id, 0);
-      const topHeight = brick.y + footprint(brick).height;
-      const groundedAtHeight = groundedByTopHeight.get(topHeight) ?? [];
-      groundedAtHeight.push(brick);
-      groundedByTopHeight.set(topHeight, groundedAtHeight);
-    } else {
-      issues.push({
-        brickId: brick.id,
-        code: 'unsupported',
-        message: UNSUPPORTED_MESSAGE,
-      });
-    }
-  }
-  // Mounted pieces hang off grounded side studs, or off the faces of pieces mounted before them.
-  const hosts = new Map<string, Set<string>>();
-  const mountedReceivers = new Set<string>();
-  let pending = valid.filter((brick) => brick.facing);
-  for (let progress = true, round = 1; progress && pending.length; round += 1) {
-    progress = false;
-    pending = pending.filter((brick) => {
-      const receivers = getSideReceivers(brick);
-      const ids = receivers.flatMap((key) => sideStuds.get(key) ?? []);
-      if (!ids.length) return true;
-      hosts.set(brick.id, new Set(ids));
-      rounds.set(brick.id, round);
-      for (const key of receivers) mountedReceivers.add(key);
-      for (const key of getSideStuds(brick))
-        sideStuds.set(key, [...(sideStuds.get(key) ?? []), brick.id]);
-      progress = true;
-      return false;
-    });
-  }
-  for (const brick of pending)
+  const hung = hang(valid);
+  for (const brick of hung.unsupported)
     issues.push({
       brickId: brick.id,
       code: 'unsupported',
-      message: UNMOUNTED_MESSAGE,
+      message: brick.facing ? UNMOUNTED_MESSAGE : UNSUPPORTED_MESSAGE,
     });
+  const { groundedStuds, groundedByTopHeight, sideStuds, rounds, hosts, mountedReceivers } = hung;
   // A mounted piece reaches into the recess or stud space of the pieces that hold it, down to
   // the upright brick the whole chain hangs from.
   const bounds = valid.map((brick) => footprint(brick));
@@ -2237,7 +2527,7 @@ function computeValidation(assembly: Assembly): Validation {
     ids: seen,
     groundedStuds,
     groundedByTopHeight,
-    runtimeBricks: runtimeBrickIds.size,
+    runtimeBricks: hung.runtimeBricks,
     sideStuds,
     rounds,
     hosts,
@@ -2248,6 +2538,11 @@ function computeValidation(assembly: Assembly): Validation {
   };
   const holds = (piece: Brick, host: Brick) =>
     !!piece.facing && chainOf(index, piece.id).has(host.id);
+  // A clip closes round the bar it grips, so the two always share space.
+  const clipped = (first: Brick, second: Brick) =>
+    hasClipsOrBars(getPart(first.partId)) &&
+    hasClipsOrBars(getPart(second.partId)) &&
+    hasClipConnection(first, second);
   for (let brickIndex = 0; brickIndex < valid.length; brickIndex += 1) {
     const brick = valid[brickIndex];
     const size = bounds[brickIndex];
@@ -2264,7 +2559,8 @@ function computeValidation(assembly: Assembly): Validation {
         !isArchInfill(brick, other) &&
         !isArchInfill(other, brick) &&
         !holds(brick, other) &&
-        !holds(other, brick)
+        !holds(other, brick) &&
+        !clipped(brick, other)
       ) {
         issues.push({
           brickId: brick.id,
@@ -2321,6 +2617,9 @@ export function validateAddition(
   const base = getValidation(assembly);
   const index = base.issues.length ? null : resolveIndex(base);
   if (!index) return null;
+  // A clip or bar can hang the piece, or let it overlap what it grips: check those in full.
+  const part = PARTS_BY_ID.get(brick.partId) ?? RUNTIME_PARTS.get(brick.partId);
+  if (part && hasClipsOrBars(part)) return null;
   const bricks = [...assembly.bricks, brick];
   const next: Assembly = { ...assembly, bricks };
   const issues: Issue[] = [];

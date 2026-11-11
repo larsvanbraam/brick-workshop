@@ -48,6 +48,12 @@ import {
   parsePartHeader,
 } from './ldraw-library';
 
+/**
+ * How far, in LDU, each clip plate's clip reaches below the plate's underside and above its
+ * studs: the clip is taller than the plate, by less than the half-plate steps pieces sit in.
+ */
+const CLIP_DIPS: Readonly<Record<string, number>> = { '4081b': 2, '60470a': 2, '63868': 1.45 };
+
 describe('local LDraw assets', () => {
   it('loads only requested models and shares overlapping in-flight requests', async () => {
     const fetch = vi.fn().mockImplementation(
@@ -690,9 +696,12 @@ describe('local LDraw assets', () => {
               );
             }
             const baseY = part.ldrawBaseY ?? part.height * 8;
-            expect(bounds.max.y, `${part.id} native base`).toBeLessThanOrEqual(baseY + 0.01);
+            // Clips in front of a plate dip a little below its underside, less than the half-plate
+            // steps pieces are placed in, so the plate's own underside stays its base.
+            const dip = CLIP_DIPS[part.id] ?? 0;
+            expect(bounds.max.y, `${part.id} native base`).toBeLessThanOrEqual(baseY + dip + 0.01);
             expect(bounds.min.y, `${part.id} reserved height`).toBeGreaterThanOrEqual(
-              baseY - part.height * 8 - 4.01,
+              baseY - part.height * 8 - 4 - dip - 0.01,
             );
             model.traverse((object) => {
               if ('geometry' in object) (object.geometry as { dispose(): void }).dispose();

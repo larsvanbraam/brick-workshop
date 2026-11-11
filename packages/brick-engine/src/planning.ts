@@ -31,6 +31,9 @@ export function getPartCapabilities(partId: string) {
         : 'rectangular-model',
     connectorFit: isRuntimePart(partId) ? 'unknown' : 'curated',
     connections: structuredClone(part.connections),
+    // Bars and clips as [x studs, y plates up, z studs] from the min corner, before rotation.
+    ...(part.bars?.length ? { bars: structuredClone(part.bars) } : {}),
+    ...(part.clips?.length ? { clips: structuredClone(part.clips) } : {}),
     matchingInsertFrameId: INSERT_FRAME_PARTS[partId] ?? null,
     collisionModel: 'reserved-envelope-with-reviewed-insert-exceptions',
   };
@@ -43,7 +46,7 @@ export function getEngineCapabilities(assembly: Assembly) {
     maxHeight: MAX_HEIGHT,
     positionIncrement: 0.5,
     rotations: [0, 90, 180, 270],
-    connectionModel: 'upright-studs-and-reviewed-static-inserts',
+    connectionModel: 'upright-studs-side-studs-clips-and-reviewed-static-inserts',
     insertFrames: { ...INSERT_FRAME_PARTS },
     collisionModel: 'reserved-envelope-with-reviewed-insert-exceptions',
     runtimeConnectorFit: 'unknown',
