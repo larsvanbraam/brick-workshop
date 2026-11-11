@@ -283,10 +283,19 @@ export function ldrawLibraryPlugin(libraryPath: string): Plugin {
     configurePreviewServer: attach,
     async generateBundle() {
       const { assets, manifest } = await loadLibrary();
+      // A static deploy only carries the supported parts' geometry; listing the rest of the
+      // library would offer parts whose previews need the dev server's on-demand manifests.
+      const full = await loadCatalog();
+      const parts = full.parts.filter((part) => part.supported);
+      const catalog: LibraryCatalog = {
+        ...full,
+        parts,
+        categories: [...new Set(parts.map((part) => part.category))].sort(),
+      };
       this.emitFile({
         type: 'asset',
         fileName: 'ldraw/catalog.json',
-        source: JSON.stringify(await loadCatalog()),
+        source: JSON.stringify(catalog),
       });
       this.emitFile({
         type: 'asset',
