@@ -41,13 +41,35 @@ export interface PhysicalOptions {
   data?: PhysicalData;
   estimateMissingMasses?: boolean;
   useCatalogMasses?: boolean;
+  /**
+   * Check stud tension against DEFAULT_STUD_CONNECTION when the data supplies no limit of its
+   * own. On unless set to false.
+   */
+  useDefaultStudConnection?: boolean;
 }
+
+/**
+ * A rough per-stud pull-apart strength, used when no measured limit is supplied. Published
+ * figures are scarce: about 3-5 N to pull two bricks apart is commonly quoted, roughly 1 N a
+ * stud for a 2 x 2, halved again for worn bricks and sustained load.
+ */
+export const DEFAULT_STUD_CONNECTION: Readonly<NonNullable<PhysicalData['studConnection']>> =
+  Object.freeze({
+    maxTensionPerStudNewtons: 1,
+    safetyFactor: 2,
+    source:
+      'Unmeasured default: about 1 N a stud from commonly quoted 3-5 N brick pull-apart forces, halved for wear and sustained load.',
+  });
 
 export interface PhysicalAssessment {
   status: 'empty' | 'invalid-geometry' | 'infeasible' | 'unknown';
   connectionModel: 'curated' | 'unknown';
   gravity: 'not-assessed' | 'balanced' | 'requires-clutch' | 'unstable';
   connectionStrength: 'unknown' | 'within-supplied-limit' | 'exceeds-supplied-limit';
+  /** Where the per-stud limit came from: the physical data, the default, or nowhere. */
+  connectionBasis: 'none' | 'supplied' | 'default';
+  /** The per-stud tension allowed after the safety factor, when a limit applies. */
+  studTensionLimitNewtons: number | null;
   massBasis: 'missing' | 'measured' | 'estimated' | 'catalog' | 'mixed';
   totalMassGrams: number | null;
   centerOfMassStuds: { x: number; z: number } | null;
@@ -156,10 +178,14 @@ export function getBuildabilityReport(assessment: PhysicalAssessment): Buildabil
         assessment.connectionStrength === 'exceeds-supplied-limit'
           ? 'failed'
           : assessment.connectionStrength === 'within-supplied-limit'
-            ? 'passed'
+            ? assessment.connectionBasis === 'default'
+              ? 'estimated'
+              : 'passed'
             : 'unknown',
       detail:
-        'Only the supplied uniform tensile cap and safety factor are checked; shear, wear and real clutch behavior are not verified.',
+        assessment.connectionBasis === 'default'
+          ? 'Checked against an unmeasured default per-stud pull-apart limit; shear, wear and real clutch behavior are not verified.'
+          : 'Only the supplied uniform tensile cap and safety factor are checked; shear, wear and real clutch behavior are not verified.',
     },
     {
       id: 'body-strength',
@@ -426,6 +452,7 @@ const assessments = new WeakMap<
     data: PhysicalData | undefined;
     estimateMissingMasses: boolean | undefined;
     useCatalogMasses: boolean | undefined;
+    useDefaultStudConnection: boolean | undefined;
     report: PhysicalAssessment;
   }
 >();
@@ -451,7 +478,8 @@ export function sharedPhysicalAssessment(
     cached.buildArea === assembly.buildArea &&
     cached.data === options.data &&
     cached.estimateMissingMasses === options.estimateMissingMasses &&
-    cached.useCatalogMasses === options.useCatalogMasses
+    cached.useCatalogMasses === options.useCatalogMasses &&
+    cached.useDefaultStudConnection === options.useDefaultStudConnection
   )
     return cached.report;
   const report = computePhysicalAssessment(assembly, options);
@@ -462,6 +490,7 @@ export function sharedPhysicalAssessment(
       data: options.data,
       estimateMissingMasses: options.estimateMissingMasses,
       useCatalogMasses: options.useCatalogMasses,
+      useDefaultStudConnection: options.useDefaultStudConnection,
       report,
     });
   return report;
@@ -478,6 +507,8 @@ function computePhysicalAssessment(
     connectionModel: hasRuntimeParts ? 'unknown' : 'curated',
     gravity: 'not-assessed',
     connectionStrength: 'unknown',
+    connectionBasis: 'none',
+    studTensionLimitNewtons: null,
     massBasis: 'missing',
     totalMassGrams: null,
     centerOfMassStuds: null,
@@ -648,12 +679,22 @@ function computePhysicalAssessment(
   // Unlimited forces anywhere in a contact add up to the same totals and moments as forces at
   // the corners of its convex hull, so only those corners need a variable. A per-stud limit
   // caps each stud separately, so then every stud keeps its own.
-  const sites = contacts.map((contact) => ({
-    push: convexHull(contact.corners),
-    pull: data.studConnection ? contact.studs : convexHull(contact.studs),
-  }));
+  const studConnection =
+    data.studConnection ??
+    (options.useDefaultStudConnection !== false ? DEFAULT_STUD_CONNECTION : undefined);
+  report.connectionBasis = data.studConnection ? 'supplied' : studConnection ? 'default' : 'none';
+  report.studTensionLimitNewtons = studConnection
+    ? studConnection.maxTensionPerStudNewtons / studConnection.safetyFactor
+    : null;
+  // Unlimited forces anywhere in a contact add up to the same totals and moments as forces at
+  // the corners of its convex hull, so only those corners need a variable. A per-stud limit
+  // caps each stud separately, so that check gives every stud its own.
+  const pushes = contacts.map((contact) => convexHull(contact.corners));
+  const count = (pulls: (typeof contacts)[number]['studs'][]) =>
+    pulls.reduce((sum, pull, index) => sum + pushes[index].length + pull.length, 0);
+  const hullPulls = contacts.map((contact) => convexHull(contact.studs));
   if (
-    sites.reduce((sum, { push, pull }) => sum + push.length + pull.length, 0) >
+    count(studConnection ? contacts.map((contact) => contact.studs) : hullPulls) >
     MAX_PHYSICS_CONTACT_VARIABLES
   ) {
     report.reasons.push(
@@ -661,45 +702,61 @@ function computePhysicalAssessment(
     );
     return report;
   }
-  const model = {
-    optimize: 'tension',
-    opType: 'min' as const,
-    constraints: {} as Record<string, { equal?: number; max?: number }>,
-    variables: {} as Record<string, Record<string, number>>,
-  };
-  for (const [index, load] of loads.entries()) {
-    model.constraints[`force${index}`] = { equal: load.weight };
-    model.constraints[`momentX${index}`] = { equal: load.momentX };
-    model.constraints[`momentZ${index}`] = { equal: load.momentZ };
-  }
-  const variables: { name: string; contact: number; tension: boolean }[] = [];
-  for (const [contactIndex, contact] of contacts.entries()) {
-    for (const [tension, points] of [
-      [false, sites[contactIndex].push],
-      [true, sites[contactIndex].pull],
-    ] as const) {
-      for (const [siteIndex, site] of points.entries()) {
-        const name = `${tension ? 'pull' : 'push'}${contactIndex}_${siteIndex}`;
-        const sign = tension ? -1 : 1;
-        const coefficients: Record<string, number> = {
-          tension: tension ? 1 : 0,
-          [`force${contact.upper}`]: sign,
-          [`momentX${contact.upper}`]: sign * site.x,
-          [`momentZ${contact.upper}`]: sign * site.z,
-        };
-        if (contact.lower !== null) {
-          coefficients[`force${contact.lower}`] = -sign;
-          coefficients[`momentX${contact.lower}`] = -sign * site.x;
-          coefficients[`momentZ${contact.lower}`] = -sign * site.z;
+  type Model = ReturnType<typeof buildModel>;
+  const buildModel = (pulls: (typeof contacts)[number]['studs'][], limit?: number) => {
+    const model = {
+      optimize: 'tension',
+      opType: 'min' as const,
+      constraints: {} as Record<string, { equal?: number; max?: number }>,
+      variables: {} as Record<string, Record<string, number>>,
+      forces: [] as { name: string; contact: number; tension: boolean }[],
+    };
+    for (const [index, load] of loads.entries()) {
+      model.constraints[`force${index}`] = { equal: load.weight };
+      model.constraints[`momentX${index}`] = { equal: load.momentX };
+      model.constraints[`momentZ${index}`] = { equal: load.momentZ };
+    }
+    for (const [contactIndex, contact] of contacts.entries()) {
+      for (const [tension, points] of [
+        [false, pushes[contactIndex]],
+        [true, pulls[contactIndex]],
+      ] as const) {
+        for (const [siteIndex, site] of points.entries()) {
+          const name = `${tension ? 'pull' : 'push'}${contactIndex}_${siteIndex}`;
+          const sign = tension ? -1 : 1;
+          const coefficients: Record<string, number> = {
+            tension: tension ? 1 : 0,
+            [`force${contact.upper}`]: sign,
+            [`momentX${contact.upper}`]: sign * site.x,
+            [`momentZ${contact.upper}`]: sign * site.z,
+          };
+          if (contact.lower !== null) {
+            coefficients[`force${contact.lower}`] = -sign;
+            coefficients[`momentX${contact.lower}`] = -sign * site.x;
+            coefficients[`momentZ${contact.lower}`] = -sign * site.z;
+          }
+          if (tension && limit !== undefined) {
+            model.constraints[name] = { max: limit };
+            coefficients[name] = 1;
+          }
+          model.variables[name] = coefficients;
+          model.forces.push({ name, contact: contactIndex, tension });
         }
-        model.variables[name] = coefficients;
-        variables.push({ name, contact: contactIndex, tension });
       }
     }
-  }
-  const solve = () => {
+    return model;
+  };
+  const solve = (model: Model) => {
     try {
-      const result = (solver as unknown as SolverAPI).Solve(model, 1e-10) as {
+      const result = (solver as unknown as SolverAPI).Solve(
+        {
+          optimize: model.optimize,
+          opType: model.opType,
+          constraints: model.constraints,
+          variables: model.variables,
+        },
+        1e-10,
+      ) as {
         feasible: boolean;
         bounded: boolean;
         [name: string]: number | boolean;
@@ -735,7 +792,8 @@ function computePhysicalAssessment(
       return null;
     }
   };
-  const solution = solve();
+  const unlimited = buildModel(hullPulls);
+  const solution = solve(unlimited);
   if (!solution) {
     report.reasons.push(
       'The static solver did not return a numerically verified result. Physical feasibility remains unknown.',
@@ -750,29 +808,39 @@ function computePhysicalAssessment(
     );
     return report;
   }
-  let selectedSolution = solution;
+  let selected = { model: unlimited, solution };
   report.minimumStudTensionNewtons = Math.max(0, Number(solution.result));
   report.gravity = report.minimumStudTensionNewtons > TOLERANCE ? 'requires-clutch' : 'balanced';
-  if (data.studConnection) {
-    const limit = data.studConnection.maxTensionPerStudNewtons / data.studConnection.safetyFactor;
-    for (const variable of variables.filter((variable) => variable.tension)) {
-      model.constraints[variable.name] = { max: limit };
-      model.variables[variable.name][variable.name] = 1;
-    }
-    const limited = solve();
-    if (!limited) {
-      report.reasons.push('The supplied connection limits could not be assessed reliably.');
-      return report;
-    }
-    report.connectionStrength = limited.feasible
-      ? 'within-supplied-limit'
-      : 'exceeds-supplied-limit';
-    if (limited.feasible) selectedSolution = limited;
+  if (studConnection) {
+    // Hull corners are real studs, so when the unlimited solution already keeps every one of
+    // them within the limit it is a capped solution too; only otherwise is each stud solved.
+    const limit = report.studTensionLimitNewtons!;
+    const withinLimit = unlimited.forces.every(
+      (force) => !force.tension || Number(solution[force.name] ?? 0) <= limit * (1 + 1e-9),
+    );
+    if (withinLimit) report.connectionStrength = 'within-supplied-limit';
     else {
-      report.status = 'infeasible';
-      report.reasons.push(
-        'No equilibrium within the supplied per-stud tension limit and safety factor.',
+      const capped = buildModel(
+        contacts.map((contact) => contact.studs),
+        limit,
       );
+      const limited = solve(capped);
+      if (!limited) {
+        report.reasons.push('The connection limits could not be assessed reliably.');
+        return report;
+      }
+      report.connectionStrength = limited.feasible
+        ? 'within-supplied-limit'
+        : 'exceeds-supplied-limit';
+      if (limited.feasible) selected = { model: capped, solution: limited };
+      else {
+        report.status = 'infeasible';
+        report.reasons.push(
+          report.connectionBasis === 'default'
+            ? 'No equilibrium within the default per-stud tension limit: an overhang or hanging load would pull its studs apart.'
+            : 'No equilibrium within the supplied per-stud tension limit and safety factor.',
+        );
+      }
     }
   }
   report.connections = contacts.flatMap((contact, index) => {
@@ -784,10 +852,10 @@ function computePhysicalAssessment(
       compressionNewtons: 0,
       tensionNewtons: 0,
     };
-    for (const variable of variables.filter((variable) => variable.contact === index)) {
-      const force = Math.max(0, Number(selectedSolution[variable.name] ?? 0));
-      if (variable.tension) load.tensionNewtons += force;
-      else load.compressionNewtons += force;
+    for (const force of selected.model.forces.filter((force) => force.contact === index)) {
+      const value = Math.max(0, Number(selected.solution[force.name] ?? 0));
+      if (force.tension) load.tensionNewtons += value;
+      else load.compressionNewtons += value;
     }
     return [load];
   });
@@ -795,7 +863,11 @@ function computePhysicalAssessment(
     report.reasons.push(
       'Masses include estimates; stability conclusions depend on those estimates.',
     );
-  if (!data.studConnection)
+  if (report.connectionBasis === 'default')
+    report.reasons.push(
+      'Stud tensile strength uses an unmeasured default limit; supply measured connection data to replace it.',
+    );
+  if (report.connectionBasis === 'none')
     report.reasons.push(
       'Stud tensile strength is unknown; no measured connection limit was supplied.',
     );

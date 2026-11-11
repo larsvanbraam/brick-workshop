@@ -689,7 +689,7 @@ describe('headless Claude builder tools', () => {
               status: 'unknown',
               gravity: 'balanced',
               massBasis: 'catalog',
-              connectionStrength: 'unknown',
+              connectionStrength: 'within-supplied-limit',
               reasons: expect.any(Array),
               certified: false,
             },
@@ -942,7 +942,7 @@ describe('headless Claude builder tools', () => {
         status: 'unknown',
         gravity: 'balanced',
         massBasis: 'catalog',
-        connectionStrength: 'unknown',
+        connectionStrength: 'within-supplied-limit',
       },
     });
     expect(session.runTool('brick_physics', { massGrams: 0 })).toMatchObject({
@@ -977,7 +977,7 @@ describe('headless Claude builder tools', () => {
     expect(session.snapshot()).toEqual(initial);
     expect(session.document()).toMatchObject({
       physicalAssessment: { gravity: 'balanced', massBasis: 'measured', status: 'unknown' },
-      checks: { strength: 'unknown', physicalFeasibility: 'unknown' },
+      checks: { strength: 'within-supplied-limit', physicalFeasibility: 'unknown' },
     });
   });
   it('supports explicit host opt-out and missing-mass uncertainty without model overrides', () => {
@@ -1213,7 +1213,9 @@ describe('headless Claude builder tools', () => {
     });
     expect(session.runTool('brick_export', { format: 'json' })).toMatchObject({
       ok: true,
-      data: { checks: { geometry: 'validated', strength: 'unknown', stock: 'unknown' } },
+      data: {
+        checks: { geometry: 'validated', strength: 'within-supplied-limit', stock: 'unknown' },
+      },
     });
   });
 });

@@ -30,6 +30,7 @@ export const BOARD_SIZES = [BUILD_AREA, 32, 48, 64, 96, 128];
 export interface PhysicalSettings {
   useCatalogMasses: boolean;
   estimateMissingMasses: boolean;
+  useDefaultStudConnection: boolean;
   rejectInfeasible: boolean;
 }
 
@@ -86,6 +87,7 @@ export function DetailsPanel({
   const toggles = [
     ['useCatalogMasses', 'Use catalogue weights'],
     ['estimateMissingMasses', 'Estimate missing masses'],
+    ['useDefaultStudConnection', 'Default stud strength'],
     ['rejectInfeasible', 'Reject infeasible edits'],
   ] as const;
 
@@ -237,10 +239,14 @@ export function DetailsPanel({
                     {
                       {
                         unknown: 'Unknown',
-                        'within-supplied-limit': 'Within supplied limit',
+                        'within-supplied-limit': 'Within limit',
                         'exceeds-supplied-limit': 'Exceeded',
                       }[physical.connectionStrength]
                     }
+                    {physical.studTensionLimitNewtons !== null &&
+                      ` (${physical.studTensionLimitNewtons.toFixed(2)} N/stud, ${
+                        physical.connectionBasis === 'default' ? 'default' : 'supplied'
+                      })`}
                   </dd>
                 </div>
                 <div>

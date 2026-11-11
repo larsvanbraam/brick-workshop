@@ -570,6 +570,16 @@ This is a uniform host-supplied tensile cap, not a universal LEGO strength value
 The solver checks whether any equilibrium fits every per-stud cap after the
 safety factor, not merely whether average load is low enough.
 
+Without a supplied cap, the engine checks against `DEFAULT_STUD_CONNECTION`:
+1 N a stud with a safety factor of 2, so 0.5 N a stud. This is an unmeasured
+estimate from the commonly quoted 3-5 N needed to pull two bricks apart. It is
+there so a long overhang or a heavy hanging load can pull its studs apart even
+when the whole build does not tip. Results report `connectionBasis` (`supplied`,
+`default` or `none`) and `studTensionLimitNewtons`. A pass against the default
+counts as estimated, not passed. Set `useDefaultStudConnection: false` (or
+`--no-default-stud-limit`, or switch off "Default stud strength" in the
+workshop) to leave strength unknown instead.
+
 Results separate `gravity` (`balanced`, `requires-clutch`, `unstable`, or
 `not-assessed`), mass basis/provenance, joint compression/tension, and supplied
 tensile-limit status. `minimumStudTensionNewtons` is the minimum **total** across
@@ -821,6 +831,8 @@ infeasible under that model. Solid-envelope estimates apply only to missing
 masses. `--physical-data` loads host-chosen overrides/limits; `--no-mass-estimates`
 disables estimates but retains catalogue weights. `--no-catalog-masses` disables
 the catalogue fallback; use both flags to leave unsupplied masses unknown.
+`--no-default-stud-limit` stops checking stud tension against the unmeasured
+default when the physical data supplies no limit.
 Workshop exports do not implicitly override host physics settings: supply the
 physical data separately. Programmatic hosts can set `physical` options and
 `rejectInfeasible: false` to inspect/repair infeasible input; this policy and

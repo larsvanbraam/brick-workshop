@@ -17,6 +17,7 @@ const { values, positionals } = parseArgs({
     'physical-data': { type: 'string' },
     'no-mass-estimates': { type: 'boolean' },
     'no-catalog-masses': { type: 'boolean' },
+    'no-default-stud-limit': { type: 'boolean' },
     'claude-code': { type: 'boolean' },
   },
 });
@@ -24,7 +25,7 @@ const useClaudeCode = values['claude-code'] || !process.env.ANTHROPIC_API_KEY;
 
 if (values.help) {
   console.log(
-    'Usage: pnpm claude:build "Build a small bridge" [--out output/bridge] [--input assembly.json] [--model MODEL_ID] [--max-turns 12] [--allow-unverified-colors] [--physical-data measurements.json] [--no-mass-estimates] [--no-catalog-masses] [--claude-code]\nUses ANTHROPIC_API_KEY from the local environment (API usage is billed). Without a key, or with --claude-code, runs through the Claude Agent SDK on your local Claude Code login and subscription limits. Sends prompt, assembly and tool-returned physical data to Anthropic. By default uses catalogue-reported nominal weights, with explicit solid-envelope estimates only for missing masses, and rejects model-infeasible edits. Missing strength remains unknown. No browser secrets or model-controlled file paths.',
+    'Usage: pnpm claude:build "Build a small bridge" [--out output/bridge] [--input assembly.json] [--model MODEL_ID] [--max-turns 12] [--allow-unverified-colors] [--physical-data measurements.json] [--no-mass-estimates] [--no-catalog-masses] [--no-default-stud-limit] [--claude-code]\nUses ANTHROPIC_API_KEY from the local environment (API usage is billed). Without a key, or with --claude-code, runs through the Claude Agent SDK on your local Claude Code login and subscription limits. Sends prompt, assembly and tool-returned physical data to Anthropic. By default uses catalogue-reported nominal weights, with explicit solid-envelope estimates only for missing masses, and rejects model-infeasible edits. Without measured connection data, stud tension is checked against an unmeasured default limit. No browser secrets or model-controlled file paths.',
   );
 } else {
   const prompt = positionals.join(' ').trim();
@@ -51,6 +52,7 @@ if (values.help) {
       data: physicalData,
       estimateMissingMasses: !values['no-mass-estimates'],
       useCatalogMasses: !values['no-catalog-masses'],
+      useDefaultStudConnection: !values['no-default-stud-limit'],
     },
   });
   const buildOptions = { model: values.model ?? process.env.CLAUDE_MODEL, maxTurns };

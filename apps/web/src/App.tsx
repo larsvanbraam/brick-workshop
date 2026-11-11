@@ -345,6 +345,7 @@ export default function App() {
   });
   const [estimateMissingMasses, setEstimateMissingMasses] = useState(true);
   const [useCatalogMasses, setUseCatalogMasses] = useState(true);
+  const [useDefaultStudConnection, setUseDefaultStudConnection] = useState(true);
   const [rejectInfeasible, setRejectInfeasible] = useState(true);
   const [evidence, setEvidence] = useState<PartColorEvidence>(() => {
     try {
@@ -443,8 +444,9 @@ export default function App() {
         data: physicalData,
         estimateMissingMasses,
         useCatalogMasses,
+        useDefaultStudConnection,
       }),
-    [assembly, physicalData, estimateMissingMasses, useCatalogMasses],
+    [assembly, physicalData, estimateMissingMasses, useCatalogMasses, useDefaultStudConnection],
   );
   const selected = assembly.bricks.find((brick) => brick.id === selectedId);
   useEffect(() => setSelectionColorsOpen(false), [selectedId, tool]);
@@ -484,9 +486,21 @@ export default function App() {
       evidence,
       requireObservedColors: false,
       rejectInfeasible,
-      physical: { data: physicalData, estimateMissingMasses, useCatalogMasses },
+      physical: {
+        data: physicalData,
+        estimateMissingMasses,
+        useCatalogMasses,
+        useDefaultStudConnection,
+      },
     }),
-    [evidence, rejectInfeasible, physicalData, estimateMissingMasses, useCatalogMasses],
+    [
+      evidence,
+      rejectInfeasible,
+      physicalData,
+      estimateMissingMasses,
+      useCatalogMasses,
+      useDefaultStudConnection,
+    ],
   );
   const policyRef = useRef(editPolicy);
   useLayoutEffect(() => {
@@ -704,6 +718,7 @@ export default function App() {
         rejectInfeasible,
         estimateMissingMasses,
         useCatalogMasses,
+        useDefaultStudConnection,
       },
       partColorEvidence: evidence,
       partColorStatuses: bill.map((entry) => ({
@@ -1655,9 +1670,15 @@ export default function App() {
             buildArea={buildArea}
             evidence={evidence}
             physicalData={physicalData}
-            settings={{ useCatalogMasses, estimateMissingMasses, rejectInfeasible }}
+            settings={{
+              useCatalogMasses,
+              estimateMissingMasses,
+              useDefaultStudConnection,
+              rejectInfeasible,
+            }}
             onSettings={(next) => {
               setUseCatalogMasses(next.useCatalogMasses);
+              setUseDefaultStudConnection(next.useDefaultStudConnection);
               setEstimateMissingMasses(next.estimateMissingMasses);
               setRejectInfeasible(next.rejectInfeasible);
             }}

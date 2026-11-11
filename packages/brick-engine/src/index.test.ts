@@ -508,7 +508,8 @@ describe('physical feasibility', () => {
       totalMassGrams: 20,
       centerOfMassStuds: { x: 1, z: 2 },
       assemblyOrder: ['base', 'top'],
-      connectionStrength: 'unknown',
+      connectionStrength: 'within-supplied-limit',
+      connectionBasis: 'default',
       minimumStudTensionNewtons: 0,
     });
     expect(report.connections[0].compressionNewtons).toBeCloseTo(0.0980665, 6);
@@ -519,9 +520,13 @@ describe('physical feasibility', () => {
     expect(report).toMatchObject({
       status: 'unknown',
       gravity: 'requires-clutch',
-      connectionStrength: 'unknown',
+      connectionStrength: 'within-supplied-limit',
+      connectionBasis: 'default',
     });
     expect(report.minimumStudTensionNewtons).toBeCloseTo(0.02941995, 6);
+    expect(
+      assessPhysicalFeasibility(cantilever, { data, useDefaultStudConnection: false }),
+    ).toMatchObject({ connectionStrength: 'unknown', connectionBasis: 'none' });
     expect(
       report.connections.find((contact) => contact.upperId === 'arm')!.tensionNewtons,
     ).toBeCloseTo(0.0196133, 6);
@@ -1173,7 +1178,7 @@ describe('basic part families', () => {
       expect(assessment).toMatchObject({
         status: 'unknown',
         gravity: 'balanced',
-        connectionStrength: 'unknown',
+        connectionStrength: 'within-supplied-limit',
         minimumStudTensionNewtons: 0,
       });
       expect(assessment.totalMassGrams).toBeGreaterThan(0);
@@ -1235,6 +1240,72 @@ describe('shaped and carried pieces in the static solver', () => {
       estimateMissingMasses: true,
     });
     expect(['balanced', 'requires-clutch']).toContain(report.gravity);
+  });
+});
+
+describe('default stud strength', () => {
+  // A long stack of 1 x 8 bricks cantilevered from a 2 x 2 post on a baseplate: the baseplate
+  // keeps the whole build from tipping, so only the post's two studs can give way.
+  const reach = (arms: number): Assembly => ({
+    ...empty,
+    bricks: [
+      { ...base, id: 'plate', partId: '3867' },
+      { ...base, id: 'post', partId: '3003', x: 4, y: 0.5, z: 4 },
+      ...Array.from({ length: arms }, (_, index) => ({
+        ...base,
+        id: `arm-${index}`,
+        partId: '3008',
+        x: 4,
+        y: 3.5 + 3 * index,
+        z: 4,
+        rotation: 90 as const,
+      })),
+    ],
+  });
+  it('holds a modest overhang and pulls apart a heavy one', () => {
+    for (const arms of [1, 8]) expect(validateAssembly(reach(arms))).toEqual([]);
+    expect(assessPhysicalFeasibility(reach(8), { estimateMissingMasses: true })).toMatchObject({
+      status: 'unknown',
+      gravity: 'requires-clutch',
+      connectionStrength: 'within-supplied-limit',
+      connectionBasis: 'default',
+      studTensionLimitNewtons: 0.5,
+    });
+    const heavy = assessPhysicalFeasibility(reach(16), { estimateMissingMasses: true });
+    expect(heavy).toMatchObject({
+      status: 'infeasible',
+      gravity: 'requires-clutch',
+      connectionStrength: 'exceeds-supplied-limit',
+    });
+    expect(heavy.reasons[0]).toContain('default per-stud tension limit');
+    expect(
+      getBuildabilityReport(heavy).checks.find((check) => check.id === 'connections')?.status,
+    ).toBe('failed');
+  });
+  it('marks a default-limit pass as estimated and yields to supplied limits', () => {
+    const report = assessPhysicalFeasibility(reach(1), { estimateMissingMasses: true });
+    expect(
+      getBuildabilityReport(report).checks.find((check) => check.id === 'connections')?.status,
+    ).toBe('estimated');
+    const strong = assessPhysicalFeasibility(reach(16), {
+      estimateMissingMasses: true,
+      data: {
+        version: 1,
+        parts: {},
+        studConnection: { maxTensionPerStudNewtons: 10, safetyFactor: 1, source: 'Fixture.' },
+      },
+    });
+    expect(strong).toMatchObject({
+      connectionStrength: 'within-supplied-limit',
+      connectionBasis: 'supplied',
+      studTensionLimitNewtons: 10,
+    });
+    expect(
+      assessPhysicalFeasibility(reach(16), {
+        estimateMissingMasses: true,
+        useDefaultStudConnection: false,
+      }),
+    ).toMatchObject({ status: 'unknown', connectionStrength: 'unknown', connectionBasis: 'none' });
   });
 });
 

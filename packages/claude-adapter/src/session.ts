@@ -398,7 +398,7 @@ export const BUILDER_TOOLS: readonly Anthropic.Tool[] = [
   {
     name: 'brick_physics',
     description:
-      'Read the deterministic static-gravity assessment, mass basis/provenance, center of mass, load paths, minimum stud tension, supplied connection limits, and ideal bottom-up assembly order. Default weights are catalogue-reported nominal values, not independently measured exact-piece masses. Missing masses may use solid-envelope estimates, NOT real part weights. Unknown remains unknown; balanced gravity does not certify bending, shear, compression strength, hand access or resistance to disturbance. Physical data and rejection policy are host-controlled and cannot be changed through tools.',
+      'Read the deterministic static-gravity assessment, mass basis/provenance, center of mass, load paths, minimum stud tension, the per-stud connection limit (host-supplied, or an unmeasured default of 0.5 N a stud that a long overhang or hanging load can exceed), and ideal bottom-up assembly order. Default weights are catalogue-reported nominal values, not independently measured exact-piece masses. Missing masses may use solid-envelope estimates, NOT real part weights. Unknown remains unknown; balanced gravity does not certify bending, shear, compression strength, hand access or resistance to disturbance. Physical data and rejection policy are host-controlled and cannot be changed through tools.',
     input_schema: objectSchema(),
   },
   {
@@ -536,6 +536,7 @@ export function createBuilderSession(
     data: importPhysicalData(options.physical?.data ?? { version: 1, parts: {} }),
     estimateMissingMasses: options.physical?.estimateMissingMasses ?? true,
     useCatalogMasses: options.physical?.useCatalogMasses ?? true,
+    useDefaultStudConnection: options.physical?.useDefaultStudConnection ?? true,
   };
   const rejectInfeasible = options.rejectInfeasible ?? true;
   const editPolicy: EditPolicy = {
@@ -581,6 +582,7 @@ export function createBuilderSession(
       rejectInfeasible,
       estimateMissingMasses: physicalOptions.estimateMissingMasses,
       useCatalogMasses: physicalOptions.useCatalogMasses,
+      useDefaultStudConnection: physicalOptions.useDefaultStudConnection,
     },
     inventoryPolicy: {
       requireInventory: editPolicy.requireInventory ?? false,

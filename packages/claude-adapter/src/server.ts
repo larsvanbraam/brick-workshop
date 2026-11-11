@@ -71,6 +71,7 @@ const schema = new Ajv({ allErrors: true }).compile({
             data: { type: 'object' },
             estimateMissingMasses: { type: 'boolean' },
             useCatalogMasses: { type: 'boolean' },
+            useDefaultStudConnection: { type: 'boolean' },
           },
         },
       },
