@@ -722,9 +722,6 @@ function computePhysicalAssessment(
       contacts.push({ lower, upper, corners, studs });
     }
   }
-  // Unlimited forces anywhere in a contact add up to the same totals and moments as forces at
-  // the corners of its convex hull, so only those corners need a variable. A per-stud limit
-  // caps each stud separately, so then every stud keeps its own.
   // Pieces joined through studs, or carried by a host, stand or fall together.
   const parent = solids.map((_, index) => index);
   const find = (index: number): number =>
@@ -775,6 +772,16 @@ function computePhysicalAssessment(
   report.studTensionLimitNewtons = studConnection
     ? studConnection.maxTensionPerStudNewtons / studConnection.safetyFactor
     : null;
+  // The floor can only push, so a group whose center of mass falls outside everything it
+  // stands on cannot balance, whatever holds it together; no solve is needed to say so.
+  if (report.groundedGroups.some((group) => group.tips)) {
+    report.gravity = 'unstable';
+    report.status = 'infeasible';
+    report.reasons.push(
+      'No static gravity equilibrium, even with unlimited internal stud tension. The build or a disconnected component tips under this mass model.',
+    );
+    return report;
+  }
   // Unlimited forces anywhere in a contact add up to the same totals and moments as forces at
   // the corners of its convex hull, so only those corners need a variable. A per-stud limit
   // caps each stud separately, so that check gives every stud its own.
