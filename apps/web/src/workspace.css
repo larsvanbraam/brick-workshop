@@ -384,17 +384,6 @@ kbd {
   gap: 6px;
   min-width: 0;
 }
-.brand-mark {
-  display: grid;
-  place-items: center;
-  width: 30px;
-  height: 30px;
-  margin-right: 4px;
-  flex-shrink: 0;
-  color: white;
-  background: linear-gradient(145deg, #2a9a67, var(--green));
-  border-radius: 8px;
-}
 .brand-logo {
   display: block;
   width: 30px;
@@ -1339,7 +1328,6 @@ kbd {
     gap: 8px;
     padding: 0 8px;
   }
-  .brand-mark,
   .brand-logo,
   .button-group {
     display: none;

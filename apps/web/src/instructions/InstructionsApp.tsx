@@ -11,6 +11,7 @@ import { listSavedBuilds, loadSavedBuild, openBuildDocument, readAutosave } from
 import type { SavedBuildSummary } from '../saved-builds';
 import { PAGE_SIZES, STEP_SIZES, countPages, deriveManualTheme, rgbCss } from './layout';
 import type { Orientation, PageSize, StepSize } from './layout';
+import brickLogo from '../assets/brick-logo.svg';
 import { MOODS } from '../cinematic-look';
 import type { CinematicMood } from '../cinematic-look';
 import { createBoxArt, setNumberFor } from './box';
@@ -228,9 +229,7 @@ export function InstructionsApp() {
     <div className="instructions-shell">
       <header className="app-header">
         <div className="brand">
-          <span className="brand-mark" aria-hidden="true">
-            <BookOpen size={18} />
-          </span>
+          <img className="brand-logo" src={brickLogo} alt="" width={30} height={30} />
           <h1>Building instructions</h1>
         </div>
         <a className="secondary compact back-link" href="/">
