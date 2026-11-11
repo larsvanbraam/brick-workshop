@@ -255,8 +255,27 @@ function seatInFrame(
 }
 
 /**
+ * Where along one axis a piece of `length` studs starts so that it covers the stud under the
+ * pointer. A fresh piece centers on the pointer; once it is showing, it stays put while the
+ * pointer moves over it and slides only as far as it must when the pointer leaves an end, so
+ * sweeping toward a wall's end leaves a long brick flush with it instead of hanging past.
+ */
+function spanStart(pointer: number, length: number, offset: number, previous?: number) {
+  const centered = Math.round(pointer - length / 2 - offset) + offset;
+  // A ghost from a brick on another half-stud grid can't keep its place on this one.
+  const shift = previous === undefined ? NaN : previous - offset;
+  if (!(Math.abs(shift - Math.round(shift)) < 1e-6)) return centered;
+  previous = previous!;
+  const stud = Math.floor(pointer - offset) + offset;
+  if (stud < previous) return stud;
+  if (stud + 1 > previous + length) return stud + 1 - length;
+  return previous;
+}
+
+/**
  * Where a piece lands for the face under the pointer: on top of a brick, against one of its
  * sides at the same level, below it, or on the board. Studs line up with the brick that was hit.
+ * `previous` is the ghost showing now, which the piece keeps its place from as the pointer moves.
  */
 function placementFor(
   target: PointerTarget,
@@ -264,6 +283,7 @@ function placementFor(
   color: number,
   rotation: Rotation,
   area: number,
+  previous?: Brick | null,
 ): Brick | null {
   const brick: Brick = { id: 'placement-preview', partId, color, x: 0, y: 0, z: 0, rotation };
   const size = footprint(brick);
@@ -273,8 +293,10 @@ function placementFor(
   const offsetX = hit ? hit.x % 1 : 0;
   const offsetZ = hit ? hit.z % 1 : 0;
   const clamp = (value: number, max: number) => Math.min(Math.max(value, 0), max);
-  let x = clamp(Math.round(target.x - size.width / 2 - offsetX) + offsetX, area - size.width);
-  let z = clamp(Math.round(target.z - size.depth / 2 - offsetZ) + offsetZ, area - size.depth);
+  const anchor =
+    previous && previous.partId === partId && previous.rotation === rotation ? previous : null;
+  let x = clamp(spanStart(target.x, size.width, offsetX, anchor?.x), area - size.width);
+  let z = clamp(spanStart(target.z, size.depth, offsetZ, anchor?.z), area - size.depth);
   let y = 0;
   if (hit) {
     const hitSize = footprint(hit);
@@ -568,7 +590,7 @@ export default function App() {
   const ghost = useMemo(() => {
     const brick =
       tool === 'place' && !shiftHeld && target
-        ? placementFor(target, partId, color, rotation, buildArea)
+        ? placementFor(target, partId, color, rotation, buildArea, ghostRef.current.ghost)
         : null;
     const previous = ghostRef.current;
     if (
@@ -812,7 +834,7 @@ export default function App() {
       if (hit.brick) pickUp(hit.brick);
       return;
     }
-    const brick = placementFor(hit, partId, color, rotation, buildArea);
+    const brick = placementFor(hit, partId, color, rotation, buildArea, ghost);
     const previewed =
       ghost !== null &&
       brick !== null &&
