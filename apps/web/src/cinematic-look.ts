@@ -142,7 +142,7 @@ export function getCinematicDpr(width: number, height: number, deviceRatio: numb
 }
 
 /**
- * Directions relative to the default 3D view, which looks at the board from +x, -z: the key light
+ * Directions relative to the default 3D view, which looks at the board from +x, +z: the key light
  * comes from the camera's front left and high, the rim light from behind the model on its right.
  * The rim light stands steep: any lower and the flat tops of plates and studs mirror it straight
  * into a camera looking down at the model, glazing them white.
@@ -154,13 +154,13 @@ function lightDirection(base: Vector3, view: number) {
     .applyAxisAngle(new Vector3(0, 1, 0), (-view * Math.PI) / 2)
     .normalize();
 }
-const KEY_DIRECTION = new Vector3(1.1, 1.5, -0.35);
+const KEY_DIRECTION = new Vector3(1.1, 1.5, 0.35);
 /** Outdoors the sun stands high over the camera's left shoulder, so the side in view is lit. */
-const SUN_DIRECTION = new Vector3(0.1, 1.3, -1);
+const SUN_DIRECTION = new Vector3(0.1, 1.3, 1);
 
 /** Outdoors the rim softens and the vignette fades to a hint; see `Mood.daylight` for the rest. */
 export const DAYLIGHT = { rim: 0.4, vignette: 0.35 };
-const RIM_DIRECTION = new Vector3(-0.8, 2.2, 0.65);
+const RIM_DIRECTION = new Vector3(-0.8, 2.2, -0.65);
 
 export function stageSphere(bounds: Box3 | null) {
   const sphere = (
@@ -295,8 +295,8 @@ export function createStudioEnvironment(renderer: WebGLRenderer, mood: Cinematic
   const materials: MeshBasicMaterial[] = [];
   const boxes: [string, number, [number, number, number], [number, number]][] = [
     ['#ffffff', 3, [0, 6, 0], [8, 8]],
-    [settings.key, 4, [7, 3, -2], [3, 7]],
-    [settings.rim, 5, [-7, 2, 6], [2, 8]],
+    [settings.key, 4, [7, 3, 2], [3, 7]],
+    [settings.rim, 5, [-7, 2, -6], [2, 8]],
   ];
   for (const [color, intensity, position, [width, height]] of boxes) {
     const material = new MeshBasicMaterial({

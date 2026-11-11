@@ -123,6 +123,33 @@ export async function loadModelTriangles(file: File): Promise<ModelTriangles> {
     triangles = objectTriangles(name, gltf.scene);
   }
   if (!triangles.colors.length) throw new Error('The model contains no surfaces.');
+  return toGridDepth(triangles);
+}
+
+/**
+ * Flips a model's z into the build grid's, which runs against the scene's (see `worldZ`), so
+ * the bricks come out facing the way the model does rather than mirrored. Each triangle's last
+ * two corners swap to keep it wound outward.
+ */
+function toGridDepth(triangles: ModelTriangles): ModelTriangles {
+  const { positions, uvs } = triangles;
+  for (let triangle = 0; triangle < positions.length / 9; triangle += 1) {
+    const base = triangle * 9;
+    for (let item = 0; item < 3; item += 1) {
+      const second = positions[base + 3 + item];
+      positions[base + 3 + item] = positions[base + 6 + item];
+      positions[base + 6 + item] = second;
+    }
+    for (let corner = 0; corner < 3; corner += 1) positions[base + corner * 3 + 2] *= -1;
+    if (uvs && uvs.length >= triangle * 6 + 6) {
+      const at = triangle * 6;
+      for (let item = 0; item < 2; item += 1) {
+        const second = uvs[at + 2 + item];
+        uvs[at + 2 + item] = uvs[at + 4 + item];
+        uvs[at + 4 + item] = second;
+      }
+    }
+  }
   return triangles;
 }
 

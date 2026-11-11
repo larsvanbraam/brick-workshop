@@ -25,7 +25,13 @@ import {
 import type { Material, ShaderMaterial } from 'three';
 import { LDrawBatch, canBatchLDrawModel } from '../src/ldraw-batches';
 import { createFallbackGeometry } from '../src/fallback-geometry';
-import { getLDrawModelOffset, getMaxZoomDistance, getSceneFrame } from '../src/scene-frame';
+import {
+  LDRAW_SCALE,
+  getLDrawModelOffset,
+  getMaxZoomDistance,
+  getSceneFrame,
+  worldZ,
+} from '../src/scene-frame';
 import { LDrawLoader } from 'three/addons/loaders/LDrawLoader.js';
 import { LDrawConditionalLineMaterial } from 'three/addons/materials/LDrawConditionalLineMaterial.js';
 import { PARTS, footprint, getLDrawTransform } from '@brick-workshop/engine';
@@ -120,7 +126,7 @@ describe('local LDraw assets', () => {
     const [instances] = batch.meshes;
     expect(instances.instanceCount).toBe(2);
     const hitAt = (x: number) =>
-      new Raycaster(new Vector3(x + 0.5 - 8, 4, -7.5), new Vector3(0, -1, 0)).intersectObject(
+      new Raycaster(new Vector3(x + 0.5 - 8, 4, 7.5), new Vector3(0, -1, 0)).intersectObject(
         batch.object,
       )[0];
     for (const [index, brick] of bricks.entries()) {
@@ -382,7 +388,7 @@ describe('local LDraw assets', () => {
     expect(color.itemSize).toBe(4);
     expect(color.getW(0)).toBeCloseTo(0.5);
     const hit = new Raycaster(
-      new Vector3(bricks[1].x + 0.5 - 8, 4, -7.5),
+      new Vector3(bricks[1].x + 0.5 - 8, 4, 7.5),
       new Vector3(0, -1, 0),
     ).intersectObject(batch.object)[0];
     expect(hit.object).toBe(layer);
@@ -538,10 +544,11 @@ describe('local LDraw assets', () => {
     const offsets = ([0, 90, 180, 270] as const).map((rotation) =>
       getLDrawModelOffset({ ...brick, rotation }),
     );
+    // Scene depth runs against the grid's, so a slope reaching to grid +z sits toward scene -z.
     expect(offsets.map(([horizontal, , depth]) => [horizontal, depth])).toEqual([
-      [0, 0.5],
-      [0.5, 0],
       [0, -0.5],
+      [0.5, 0],
+      [0, 0.5],
       [-0.5, 0],
     ]);
     for (const offset of offsets) expect(offset[1]).toBeCloseTo(1.2, 8);
@@ -589,7 +596,11 @@ describe('local LDraw assets', () => {
             for (const brick of bricks) {
               const size = footprint(brick);
               const root = new Group();
-              root.position.set(brick.x + size.width / 2 - 32, 0, brick.z + size.depth / 2 - 32);
+              root.position.set(
+                brick.x + size.width / 2 - 32,
+                0,
+                worldZ(brick.z + size.depth / 2, 64),
+              );
               const origin = new Group();
               origin.position.fromArray(getLDrawModelOffset(brick));
               const native = model.clone(true);
@@ -598,7 +609,7 @@ describe('local LDraw assets', () => {
               native.matrixAutoUpdate = false;
               native.matrix
                 .set(a, b, c, 0, d, e, f, 0, g, h, i, 0, 0, 0, 0, 1)
-                .premultiply(new Matrix4().makeScale(0.05, -0.05, 0.05));
+                .premultiply(new Matrix4().makeScale(...LDRAW_SCALE));
               native.traverse((object) => {
                 object.userData.brickId = brick.id;
                 if (object instanceof LineSegments) object.raycast = () => {};
@@ -625,7 +636,7 @@ describe('local LDraw assets', () => {
                 new Vector3(
                   brick.x + size.width / 2 - 32 + 0.123,
                   part.height * 0.4 + 4,
-                  size.depth / 2 - 32 + 0.217,
+                  worldZ(size.depth / 2, 64) + 0.217,
                 ),
                 new Vector3(0, -1, 0),
               );

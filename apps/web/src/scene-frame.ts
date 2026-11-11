@@ -2,6 +2,22 @@ import { Box3, Sphere, Vector3 } from 'three';
 import { BUILD_AREA, PLATE_HEIGHT, footprint, getLDrawTransform } from '@brick-workshop/engine';
 import type { Assembly, Brick } from '@brick-workshop/engine';
 
+/**
+ * LDraw to scene units, 20 LDU a stud. LDraw's y points down, so it is turned half round its x
+ * axis to stand upright: flipping y alone would mirror every part (printed text reads backwards
+ * and left-handed parts come out right-handed). Its depth flips with it, so the scene's z runs
+ * against the build grid's: see `worldZ`.
+ */
+export const LDRAW_SCALE = [0.05, -0.05, -0.05] as const;
+
+/**
+ * The scene z of a build grid z, with the board centred on the origin. The grid's z matches
+ * LDraw's, which the scene shows turned half round, so it runs the other way.
+ */
+export function worldZ(z: number, buildArea: number) {
+  return buildArea / 2 - z;
+}
+
 export function getSceneHeight(assembly: Assembly, explode = false) {
   return Math.max(
     4,
@@ -49,10 +65,10 @@ export function getSceneFrame(
   const distance = fitDistance(height, aspect, fov, buildArea) * FRAME_MARGIN;
   const direction =
     view === 'top'
-      ? new Vector3(0, 1, 0.001)
+      ? new Vector3(0, 1, -0.001)
       : view === 'front'
-        ? new Vector3(0, 0.08, -1)
-        : new Vector3(0.65, 0.5, -0.8);
+        ? new Vector3(0, 0.08, 1)
+        : new Vector3(0.65, 0.5, 0.8);
   return {
     target: sphere.center.toArray(),
     position: direction.normalize().multiplyScalar(distance).add(sphere.center).toArray(),
@@ -65,19 +81,20 @@ export function getCinematicFrame(bounds: Box3, aspect: number, fov = 38) {
   const vertical = (fov * Math.PI) / 360;
   const horizontal = Math.atan(Math.tan(vertical) * aspect);
   const distance = (Math.max(sphere.radius, 2) / Math.sin(Math.min(vertical, horizontal))) * 1.02;
-  const direction = new Vector3(0.72, 0.3, -0.78);
+  const direction = new Vector3(0.72, 0.3, 0.78);
   return {
     target: sphere.center.toArray(),
     position: direction.normalize().multiplyScalar(distance).add(sphere.center).toArray(),
   };
 }
 
+/** Where a part's LDraw origin sits from the centre of its footprint, in scene units. */
 export function getLDrawModelOffset(brick: Brick): [number, number, number] {
   const size = footprint(brick);
   const transform = getLDrawTransform(brick);
   return [
     transform.x / 20 - brick.x - size.width / 2,
     -transform.y / 20 - brick.y * PLATE_HEIGHT,
-    transform.z / 20 - brick.z - size.depth / 2,
+    brick.z + size.depth / 2 - transform.z / 20,
   ];
 }

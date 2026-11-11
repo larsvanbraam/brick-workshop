@@ -144,6 +144,32 @@ export function createFallbackGeometry(brick: Brick) {
     geometry = new BoxGeometry(part.width - 0.035, height - 0.025, part.depth - 0.035);
   }
   geometry.rotateY((brick.rotation * Math.PI) / 180);
+  return mirrorDepth(geometry);
+}
+
+/**
+ * Turns a shape laid out on the build grid into scene space, whose z runs the other way (see
+ * `worldZ`), keeping its faces wound outward.
+ */
+function mirrorDepth(geometry: BufferGeometry) {
+  geometry.scale(1, 1, -1);
+  if (geometry.index) {
+    const index = geometry.index;
+    for (let corner = 0; corner + 2 < index.count; corner += 3) {
+      const second = index.getX(corner + 1);
+      index.setX(corner + 1, index.getX(corner + 2));
+      index.setX(corner + 2, second);
+    }
+  } else {
+    for (const attribute of Object.values(geometry.attributes)) {
+      for (let corner = 0; corner + 2 < attribute.count; corner += 3)
+        for (let item = 0; item < attribute.itemSize; item++) {
+          const second = attribute.getComponent(corner + 1, item);
+          attribute.setComponent(corner + 1, item, attribute.getComponent(corner + 2, item));
+          attribute.setComponent(corner + 2, item, second);
+        }
+    }
+  }
   return geometry;
 }
 
@@ -183,7 +209,7 @@ export function createFallbackBrickGeometry(brick: Brick) {
   const bodyHeight = footprint(brick).height * PLATE_HEIGHT;
   const sources = [createFallbackGeometry(brick).translate(0, bodyHeight / 2, 0)];
   for (const [x, z] of studOffsets(brick))
-    sources.push(new CylinderGeometry(0.3, 0.3, 0.17, 24).translate(x, bodyHeight + 0.07, z));
+    sources.push(new CylinderGeometry(0.3, 0.3, 0.17, 24).translate(x, bodyHeight + 0.07, -z));
   const parts = sources.map(plain);
   const geometry = mergeGeometries(parts)!;
   for (const part of [...sources, ...parts]) part.dispose();

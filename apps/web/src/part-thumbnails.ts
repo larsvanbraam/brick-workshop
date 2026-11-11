@@ -54,9 +54,9 @@ function getStage(): Stage {
 function render(model: Group): string {
   const { renderer, scene, camera } = getStage();
   const instance = coloredLDrawModel(model, THUMBNAIL_COLOR);
-  // LDraw's y axis points down.
+  // LDraw's y axis points down; turned half round x so the part isn't mirrored.
   const root = new Group();
-  root.scale.set(1, -1, 1);
+  root.scale.set(1, -1, -1);
   root.add(instance);
   scene.add(root);
   try {

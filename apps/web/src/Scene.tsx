@@ -34,6 +34,8 @@ import {
   getMaxZoomDistance,
   getSceneFrame,
   getSceneHeight,
+  LDRAW_SCALE,
+  worldZ,
 } from './scene-frame';
 import { CinematicStage } from './cinematic';
 import type { CinematicMood } from './cinematic';
@@ -437,7 +439,7 @@ export function LDrawMesh({
     const [a, b, c, d, e, f, g, h, i] = key.split(' ').map(Number);
     return new Matrix4()
       .set(a, b, c, 0, d, e, f, 0, g, h, i, 0, 0, 0, 0, 1)
-      .premultiply(new Matrix4().makeScale(0.05, -0.05, 0.05));
+      .premultiply(new Matrix4().makeScale(...LDRAW_SCALE));
   }, [key]);
   const [instance] = useState(() => coloredLDrawModel(model, color));
   useEffect(
@@ -458,7 +460,8 @@ export function LDrawMesh({
       <primitive object={instance} />
     </group>
   ) : (
-    <group rotation={[0, (rotation * Math.PI) / 180, 0]} scale={[0.05, -0.05, 0.05]} dispose={null}>
+    // Turning LDraw upright flips its depth too, which turns its quarter turns the other way.
+    <group rotation={[0, (-rotation * Math.PI) / 180, 0]} scale={LDRAW_SCALE} dispose={null}>
       <primitive object={instance} />
     </group>
   );
@@ -500,7 +503,7 @@ const BrickMesh = memo(function BrickMesh({
       position={[
         brick.x + size.width / 2 - buildArea / 2,
         elevation,
-        brick.z + size.depth / 2 - buildArea / 2,
+        worldZ(brick.z + size.depth / 2, buildArea),
       ]}
       userData={{ brickId: brick.id }}
     >
@@ -636,7 +639,7 @@ function Outline({
       position={[
         brick.x + size.width / 2 - buildArea / 2,
         (brick.y + size.height / 2) * PLATE_HEIGHT + (explode ? brick.y * 0.18 : 0),
-        brick.z + size.depth / 2 - buildArea / 2,
+        worldZ(brick.z + size.depth / 2, buildArea),
       ]}
     >
       <boxGeometry
@@ -683,7 +686,11 @@ function StabilityOverlay({
   visible: ReadonlyMap<string, Brick>;
   buildArea: number;
 }) {
-  const at = (x: number, z: number, y: number): Vec3 => [x - buildArea / 2, y, z - buildArea / 2];
+  const at = (x: number, z: number, y: number): Vec3 => [
+    x - buildArea / 2,
+    y,
+    worldZ(z, buildArea),
+  ];
   const floor = 0.02;
   return (
     <group>
@@ -787,7 +794,7 @@ function pointerTarget(
 ): PointerTarget | null | undefined {
   if (event.object instanceof Line) return undefined;
   const x = event.point.x + buildArea / 2;
-  const z = event.point.z + buildArea / 2;
+  const z = worldZ(event.point.z, buildArea);
   if (event.object.userData.ground) return { face: 'ground', x, z };
   const id = hitBrickId(event.object, event.batchId ?? event.instanceId);
   const brick = id === undefined ? undefined : bricks.get(id);
@@ -836,7 +843,7 @@ function WorkshopStage({ buildArea, scenery }: { buildArea: number; scenery: obj
       <ambientLight intensity={1.1} />
       <hemisphereLight args={['#ffffff', '#a0ad9e', 1.2]} />
       <directionalLight
-        position={[-8, 20, 12]}
+        position={[-8, 20, -12]}
         intensity={2.8}
         castShadow
         shadow-mapSize={[2048, 2048]}
@@ -846,7 +853,7 @@ function WorkshopStage({ buildArea, scenery }: { buildArea: number; scenery: obj
         shadow-camera-bottom={-buildArea / 2 - 6}
         shadow-normalBias={0.04}
       />
-      <directionalLight position={[12, 8, -8]} intensity={0.7} />
+      <directionalLight position={[12, 8, 8]} intensity={0.7} />
       <mesh position={[0, -0.16, 0]} receiveShadow>
         <boxGeometry args={[buildArea + 0.35, 0.3, buildArea + 0.35]} />
         <meshStandardMaterial color="#b6bfb6" roughness={0.8} />
@@ -930,14 +937,14 @@ export const Scene = memo(function Scene(props: SceneProps) {
         new Vector3(
           brick.x - buildArea / 2,
           brick.y * PLATE_HEIGHT + lift,
-          brick.z - buildArea / 2,
+          worldZ(brick.z + size.depth, buildArea),
         ),
       );
       box.expandByPoint(
         new Vector3(
           brick.x + size.width - buildArea / 2,
           (brick.y + size.height) * PLATE_HEIGHT + lift,
-          brick.z + size.depth - buildArea / 2,
+          worldZ(brick.z, buildArea),
         ),
       );
     }
@@ -956,12 +963,12 @@ export const Scene = memo(function Scene(props: SceneProps) {
         new Vector3(
           brick.x - buildArea / 2,
           brick.y * PLATE_HEIGHT + lift,
-          brick.z - buildArea / 2,
+          worldZ(brick.z + size.depth, buildArea),
         ),
         new Vector3(
           brick.x + size.width - buildArea / 2,
           (brick.y + size.height) * PLATE_HEIGHT + lift,
-          brick.z + size.depth - buildArea / 2,
+          worldZ(brick.z, buildArea),
         ),
       );
     });

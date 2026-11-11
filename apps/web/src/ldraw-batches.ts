@@ -19,6 +19,7 @@ import { LDrawConditionalLineMaterial } from 'three/addons/materials/LDrawCondit
 import { COLORS, getConnectionSites, getLDrawTransform, getPart } from '@brick-workshop/engine';
 import type { Brick } from '@brick-workshop/engine';
 import { coloredLDrawModel } from './ldraw';
+import { LDRAW_SCALE } from './scene-frame';
 
 Mesh.prototype.raycast = acceleratedRaycast;
 
@@ -828,7 +829,7 @@ export class LDrawBatch {
     this.solidGround = solidGround;
     const viewport = { value: 1 };
     this.object.name = 'Native brick batch';
-    this.object.scale.set(0.05, -0.05, 0.05);
+    this.object.scale.set(...LDRAW_SCALE);
     const lineMaterial = (kind: LineKind) => {
       const glass = kind.startsWith('glass');
       const conditional = kind.endsWith('onditional');

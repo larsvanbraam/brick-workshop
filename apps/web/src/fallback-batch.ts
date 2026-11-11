@@ -4,6 +4,7 @@ import { COLORS, PLATE_HEIGHT, footprint } from '@brick-workshop/engine';
 import type { Brick, LDrawColor } from '@brick-workshop/engine';
 import { createFallbackBrickGeometry, fallbackShapeKey } from './fallback-geometry';
 import { colorMaterialProperties } from './ldraw-materials';
+import { worldZ } from './scene-frame';
 
 /** Bricks of colors that share a finish share one batched mesh, and so one draw call. */
 type Layer = {
@@ -177,7 +178,7 @@ export class FallbackBatch {
       instanceMatrix.makeTranslation(
         brick.x + size.width / 2 - buildArea / 2,
         brick.y * PLATE_HEIGHT + (explode ? brick.y * 0.18 : 0),
-        brick.z + size.depth / 2 - buildArea / 2,
+        worldZ(brick.z + size.depth / 2, buildArea),
       ),
     );
     layer.mesh.setColorAt(id, instanceColor.set(colorMaterialProperties(color).color));

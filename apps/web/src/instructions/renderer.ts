@@ -47,18 +47,19 @@ import {
   paintSky,
 } from '../cinematic-look';
 import type { CinematicMood } from '../cinematic-look';
+import { LDRAW_SCALE, worldZ } from '../scene-frame';
 import { rgbCss } from './layout';
 import type { Rgb } from './layout';
 
 /**
- * The four sides the model is shown from, a quarter turn apart, all looking down at the same
- * angle. The first matches the workshop's opening view.
+ * The four sides the model is shown from, a quarter turn apart clockwise seen from above, all
+ * looking down at the same angle. The first matches the workshop's opening view.
  */
 const VIEWS = [
-  new Vector3(0.65, 0.55, -0.8),
-  new Vector3(0.8, 0.55, 0.65),
-  new Vector3(-0.65, 0.55, 0.8),
-  new Vector3(-0.8, 0.55, -0.65),
+  new Vector3(0.65, 0.55, 0.8),
+  new Vector3(-0.8, 0.55, 0.65),
+  new Vector3(-0.65, 0.55, -0.8),
+  new Vector3(0.8, 0.55, -0.65),
 ].map((view) => view.normalize());
 
 /** Edges live on their own layer so visibility checks count faces only. */
@@ -100,14 +101,15 @@ export interface StepImage {
 /** Share of the step image's width and height an overview inset takes. */
 export const OVERVIEW_SCALE = 0.38;
 
+/** A brick's box in scene space, which runs z against the build grid (see `worldZ`). */
 function brickBounds(brick: Brick) {
   const size = footprint(brick);
   return new Box3(
-    new Vector3(brick.x, brick.y * PLATE_HEIGHT, brick.z),
+    new Vector3(brick.x, brick.y * PLATE_HEIGHT, worldZ(brick.z + size.depth, 0)),
     new Vector3(
       brick.x + size.width,
       (brick.y + size.height) * PLATE_HEIGHT + 0.17,
-      brick.z + size.depth,
+      worldZ(brick.z, 0),
     ),
   );
 }
@@ -184,9 +186,9 @@ export class ManualRenderer {
     environment.dispose();
     pmrem.dispose();
     const key = new DirectionalLight(0xffffff, 1.8);
-    key.position.set(8, 14, -10);
+    key.position.set(8, 14, 10);
     const fill = new DirectionalLight(0xffffff, 0.6);
-    fill.position.set(-10, 4, 8);
+    fill.position.set(-10, 4, -8);
     this.lights.add(new AmbientLight(0xffffff, 0.6), key, fill);
     this.scene.add(this.lights, this.placed, this.fresh);
     this.camera.layers.enable(EDGE_LAYER);
@@ -226,8 +228,7 @@ export class ManualRenderer {
         .set(a, b, c, 0, d, e, f, 0, g, h, i, 0, 0, 0, 0, 1)
         .setPosition(transform.x, transform.y, transform.z);
       piece = new Group();
-      // LDraw's y axis points down and its units are 20 to a stud.
-      piece.scale.set(0.05, -0.05, 0.05);
+      piece.scale.set(...LDRAW_SCALE);
       piece.add(instance);
     } else {
       const size = footprint(brick);
@@ -240,7 +241,7 @@ export class ManualRenderer {
       piece.position.set(
         brick.x + size.width / 2,
         (brick.y + size.height / 2) * PLATE_HEIGHT,
-        brick.z + size.depth / 2,
+        worldZ(brick.z + size.depth / 2, 0),
       );
     }
     piece.traverse((object) => {
