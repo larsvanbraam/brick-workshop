@@ -256,21 +256,26 @@ function seatInFrame(
 
 /**
  * Where along one axis a piece of `length` studs starts so that it covers the stud under the
- * pointer. It centers on the pointer, then `grab` steps which of its studs sits there, wrapping
- * past either end so every stud is a few presses away whichever way the piece faces.
+ * pointer and stays on the board. It centers on the pointer, then `grab` steps through the other
+ * starts that still cover that stud, wrapping past either end so every one is a few presses away
+ * whichever way the piece faces.
  */
-function spanStart(pointer: number, length: number, offset: number, grab = 0) {
-  const centered = Math.round(pointer - length / 2 - offset) + offset;
-  if (!grab) return centered;
+function spanStart(pointer: number, length: number, offset: number, area: number, grab = 0) {
   const stud = Math.floor(pointer - offset) + offset;
-  const index = stud - centered;
-  return stud - ((((index + grab) % length) + length) % length);
+  const first = Math.max(stud + 1 - length, Math.ceil(-offset) + offset);
+  const last = Math.min(stud, Math.floor(area - length - offset) + offset);
+  const centered = Math.round(pointer - length / 2 - offset) + offset;
+  if (last < first) return centered;
+  const count = last - first + 1;
+  const index = Math.min(Math.max(centered, first), last) - first;
+  return first + ((((index + grab) % count) + count) % count);
 }
 
 /**
  * Where a piece lands for the face under the pointer: on top of a brick, against one of its
  * sides at the same level, below it, or on the board. Studs line up with the brick that was hit.
- * `grab` steps which stud along the piece's long side sits under the pointer.
+ * `grab` steps which stud along the piece's long side (or along the side it is set against)
+ * sits under the pointer.
  */
 function placementFor(
   target: PointerTarget,
@@ -288,9 +293,21 @@ function placementFor(
   const offsetX = hit ? hit.x % 1 : 0;
   const offsetZ = hit ? hit.z % 1 : 0;
   const clamp = (value: number, max: number) => Math.min(Math.max(value, 0), max);
-  const alongX = size.width >= size.depth;
-  let x = clamp(spanStart(target.x, size.width, offsetX, alongX ? grab : 0), area - size.width);
-  let z = clamp(spanStart(target.z, size.depth, offsetZ, alongX ? 0 : grab), area - size.depth);
+  // Against a side the piece's place across that side is fixed, so the grip steps along it.
+  const alongX =
+    target.face === 'x-' || target.face === 'x+'
+      ? false
+      : target.face === 'z-' || target.face === 'z+'
+        ? true
+        : size.width >= size.depth;
+  let x = clamp(
+    spanStart(target.x, size.width, offsetX, area, alongX ? grab : 0),
+    area - size.width,
+  );
+  let z = clamp(
+    spanStart(target.z, size.depth, offsetZ, area, alongX ? 0 : grab),
+    area - size.depth,
+  );
   let y = 0;
   if (hit) {
     const hitSize = footprint(hit);
