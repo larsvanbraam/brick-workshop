@@ -255,9 +255,56 @@ function seatInFrame(
 }
 
 /**
+ * How a piece of `size` sits around the pointer before any nudge: centered on it and kept on the
+ * board, with studs lined up with the brick that was hit. `along` is the axis [ and ] slide it
+ * on (its long side, or the side it is set against), and `min`/`max` how far it can slide there
+ * before it would leave the board.
+ */
+function centeredAround(
+  target: PointerTarget,
+  size: { width: number; depth: number },
+  area: number,
+) {
+  const hit = target.brick;
+  const offsetX = hit ? hit.x % 1 : 0;
+  const offsetZ = hit ? hit.z % 1 : 0;
+  const clamp = (value: number, max: number) => Math.min(Math.max(value, 0), max);
+  const start = (pointer: number, length: number, offset: number) =>
+    clamp(Math.round(pointer - length / 2 - offset) + offset, area - length);
+  const x = start(target.x, size.width, offsetX);
+  const z = start(target.z, size.depth, offsetZ);
+  // Against a side the piece's place across that side is fixed, so it slides along it.
+  const along =
+    target.face === 'x-' || target.face === 'x+'
+      ? 'z'
+      : target.face === 'z-' || target.face === 'z+'
+        ? 'x'
+        : size.width >= size.depth
+          ? 'x'
+          : 'z';
+  const [from, length] = along === 'x' ? [x, size.width] : [z, size.depth];
+  return { x, z, along, min: -from, max: area - length - from } as const;
+}
+
+/** The nudge [ or ] leads to from `nudge`, held to what keeps the piece on the board. */
+function nextNudge(
+  target: PointerTarget,
+  partId: string,
+  rotation: Rotation,
+  area: number,
+  nudge: number,
+  step: number,
+) {
+  const size = footprint({ id: '', partId, color: 0, x: 0, y: 0, z: 0, rotation });
+  const { min, max } = centeredAround(target, size, area);
+  const clamp = (value: number) => Math.min(Math.max(value, min), max);
+  return clamp(clamp(nudge) + step);
+}
+
+/**
  * Where a piece lands for the face under the pointer: on top of a brick, against one of its
  * sides at the same level, below it, or on the board. Studs line up with the brick that was hit.
- * `nudge` moves it that many studs along its long side (or along the side it is set against),
+ * `nudge` slides it that many studs along its long side (or along the side it is set against),
  * so it can sit anywhere along a wall, not only centered on the pointer.
  */
 function placementFor(
@@ -273,24 +320,10 @@ function placementFor(
   const hit = target.brick;
   if (hit && INSERT_FRAME_PARTS[partId] === hit.partId) return seatInFrame(hit, brick, target);
   if (!hit && (target.x < 0 || target.z < 0 || target.x > area || target.z > area)) return null;
-  const offsetX = hit ? hit.x % 1 : 0;
-  const offsetZ = hit ? hit.z % 1 : 0;
-  const clamp = (value: number, max: number) => Math.min(Math.max(value, 0), max);
-  // Against a side the piece's place across that side is fixed, so the nudge moves it along it.
-  const alongX =
-    target.face === 'x-' || target.face === 'x+'
-      ? false
-      : target.face === 'z-' || target.face === 'z+'
-        ? true
-        : size.width >= size.depth;
-  // Kept on the board before the nudge too, so the first press away from an edge moves it.
-  const start = (pointer: number, length: number, offset: number, shift: number) =>
-    clamp(
-      clamp(Math.round(pointer - length / 2 - offset) + offset, area - length) + shift,
-      area - length,
-    );
-  let x = start(target.x, size.width, offsetX, alongX ? nudge : 0);
-  let z = start(target.z, size.depth, offsetZ, alongX ? 0 : nudge);
+  const centered = centeredAround(target, size, area);
+  const shift = Math.min(Math.max(nudge, centered.min), centered.max);
+  let x = centered.x + (centered.along === 'x' ? shift : 0);
+  let z = centered.z + (centered.along === 'z' ? shift : 0);
   let y = 0;
   if (hit) {
     const hitSize = footprint(hit);
@@ -1135,12 +1168,12 @@ export default function App() {
         if (tool === 'select' && selected) rotateSelected(direction);
         else setRotation(((rotation + 360 + direction * 90) % 360) as Rotation);
       } else if ((key === '[' || key === ']') && tool === 'place') {
-        // Past the board's edge the piece stops, and so does the count, so stepping back is
-        // seen at once.
-        const steps = nudge + (key === ']' ? 1 : -1);
-        const moved = target && placementFor(target, partId, color, rotation, buildArea, steps);
-        if (!target || (moved && (moved.x !== ghost?.x || moved.z !== ghost?.z)))
-          setNudged({ partId, steps });
+        // Held to the board, so a press past its edge is not counted and stepping back shows.
+        const step = key === ']' ? 1 : -1;
+        const steps = target
+          ? nextNudge(target, partId, rotation, buildArea, nudge, step)
+          : nudge + step;
+        setNudged({ partId, steps });
       } else if ((key === 'delete' || key === 'backspace') && selected) {
         event.preventDefault();
         removeBrick(selected.id);
