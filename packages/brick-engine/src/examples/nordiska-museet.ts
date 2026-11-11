@@ -786,33 +786,42 @@ function addFinial(add: ExampleBrickAdder, x: number, y: number, z: number, tip 
 }
 
 /**
- * A skirt of roof slopes a brick high on a 6 x 6 base, leaving a 4 x 4 field of studs on top:
- * rows of slopes front and back, a pair at each side, and a brick in the middle.
+ * One tier of a hipped roof a brick high on a square base `size` studs across, leaving a field
+ * of studs two smaller on top: an outside corner slope at each corner, turned so its stud is on
+ * the inside, straight slopes along the sides between them and bricks in the middle.
  */
-function addSkirtRoof(add: ExampleBrickAdder, x: number, y: number, z: number) {
-  addSlopeRun(add, x, x + 5, y, z, 0);
-  addSlopeRun(add, x, x + 5, y, z + 4, 180);
+function addHippedTier(add: ExampleBrickAdder, x: number, y: number, z: number, size: 4 | 6) {
+  const far = size - 2;
+  for (const [dx, dz, rotation] of [
+    [0, 0, 90],
+    [far, 0, 0],
+    [0, far, 180],
+    [far, far, 270],
+  ] as const)
+    add('3045', ROOFING, x + dx, y, z + dz, rotation);
+  if (size === 4) return;
+  add('3039', ROOFING, x + 2, y, z, 0);
+  add('3039', ROOFING, x + 2, y, z + 4, 180);
   add('3039', ROOFING, x, y, z + 2, 90);
   add('3039', ROOFING, x + 4, y, z + 2, 270);
   add('3003', ROOFING, x + 2, y, z + 2);
 }
 
 /**
- * A steeple on a 6 x 6 base: a copper band, a dark skirt and bell, a two-stage copper lantern
- * with gold and copper rings, a tall dark spire and a gilded point.
+ * A steeple on a 6 x 6 base, like the corner towers' on the box: a copper band, a dark hipped
+ * roof in two tiers, a copper lantern between gold and copper rings, a steep dark pyramid and a
+ * gilded needle.
  */
 function addSteeple(add: ExampleBrickAdder, x: number, y: number, z: number) {
   add('3958', COPPER, x, y, z);
-  addSkirtRoof(add, x, y + 1, z);
-  add('3943b', ROOFING, x + 1, y + 4, z + 1);
-  add('3941', COPPER, x + 2, y + 10, z + 2);
-  add('4032a', GOLD, x + 2, y + 13, z + 2);
-  add('3941', COPPER, x + 2, y + 14, z + 2);
-  add('4032a', COPPER, x + 2, y + 17, z + 2);
-  add('3942c', ROOFING, x + 2, y + 18, z + 2);
-  add('3062b', ROOFING, x + 2.5, y + 24, z + 2.5);
-  add('3062b', COPPER, x + 2.5, y + 27, z + 2.5);
-  add('4589', GOLD, x + 2.5, y + 30, z + 2.5);
+  addHippedTier(add, x, y + 1, z, 6);
+  addHippedTier(add, x + 1, y + 4, z + 1, 4);
+  add('3941', COPPER, x + 2, y + 7, z + 2);
+  add('4032a', GOLD, x + 2, y + 10, z + 2);
+  add('3941', COPPER, x + 2, y + 11, z + 2);
+  add('4032a', COPPER, x + 2, y + 14, z + 2);
+  add('3688', ROOFING, x + 2, y + 15, z + 2);
+  add('3957a', GOLD, x + 2.5, y + 21, z + 2.5);
 }
 
 /** Small seeded random numbers, so every tree grows the same way each time. */
@@ -1019,7 +1028,7 @@ export const nordiskaMuseet: ExampleDefinition = {
     'park',
     'waterfront',
   ],
-  expectedPieceCount: 11557,
+  expectedPieceCount: 11571,
   buildArea: SIZE,
   brickIdPrefix: 'museet',
   build(drawnAdd) {
@@ -1609,6 +1618,7 @@ export const nordiskaMuseet: ExampleDefinition = {
     addRun(add, 'brick', TRIM, 'x', 62, gableTop, PAVILION_FRONT, 4);
     for (const x of [62, 65]) add('3070b', TRIM, x, gableTop + 3, PAVILION_FRONT);
     addFinial(add, 63, gableTop + 3, PAVILION_FRONT, GOLD);
+    add('3957a', GOLD, 63.5, gableTop + 10, PAVILION_FRONT);
 
     // The tower tapers in tiers like the one on the box: a plain shaft up through the roof to a
     // slab at the ridge, a tall dark slate octagon with an arched window in each face under a
@@ -1738,6 +1748,7 @@ export const nordiskaMuseet: ExampleDefinition = {
     add('3062b', COPPER, 63.5, spire + 17, 47.5);
     add('3062b', COPPER, 63.5, spire + 20, 47.5);
     add('4589', GOLD, 63.5, spire + 23, 47.5);
+    add('3957a', GOLD, 63.5, spire + 26, 47.5);
 
     // The towers end in an octagonal tan slab under their steeples.
     const towerTop = BASE + TURRET_COURSES * 3;
