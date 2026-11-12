@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vite-plus/test';
 import { smoothAssembly, validateAssembly, voxelizeShapes, fillVoxelModel } from './index.ts';
+import { createExampleRegistry } from './examples/registry.ts';
 import type { Assembly, Brick } from './index.ts';
 
 const brick = (id: string, partId: string, x: number, y: number, z: number, color = 72): Brick => ({
@@ -164,6 +165,32 @@ describe('smoothAssembly', () => {
     expect(
       result.added.filter((piece) => piece.y === 0.5).every((piece) => piece.partId === '6141'),
     ).toBe(true);
+  });
+
+  it('runs the smoothing passes of an example on the parts they select', () => {
+    const build = (add: (...args: [string, number, number, number, number]) => void) => {
+      add('3003', 72, 0, 0, 0);
+      add('3003', 72, 0, 0, 2);
+      add('3003', 72, 0, 3, 2);
+      add('3003', 4, 6, 0, 0);
+    };
+    const definition = {
+      id: 'rocks',
+      name: 'Rocks',
+      tags: [],
+      expectedPieceCount: 4 + 2 + 4,
+      smooth: [{ only: (piece: Brick) => piece.color === 72 }],
+      build,
+    };
+    const rocks = createExampleRegistry([definition]).createAssembly('rocks');
+    expect(validateAssembly(rocks)).toEqual([]);
+    // Grey rock gets two curves and four corner tiles; the red brick keeps its studs.
+    expect(rocks.bricks.filter((piece) => piece.y === 3 && piece.x >= 6)).toEqual([]);
+    expect(new Set(rocks.bricks.map((piece) => piece.id)).size).toBe(rocks.bricks.length);
+    expect(rocks.bricks.at(-1)!.id).toBe('Rocks-10');
+    expect(() =>
+      createExampleRegistry([{ ...definition, expectedPieceCount: 4 }]).createAssembly('rocks'),
+    ).toThrow('expected 4 pieces, got 10');
   });
 
   it('returns invalid assemblies unchanged', () => {

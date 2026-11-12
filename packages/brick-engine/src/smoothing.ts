@@ -17,6 +17,8 @@ export interface SmoothOptions {
   region?: SmoothRegion;
   /** Only these pieces are smoothed or built on (combined with `region`). */
   ids?: ReadonlySet<string>;
+  /** Only pieces this accepts are smoothed or built on, e.g. by color (combined with the rest). */
+  only?: (brick: Brick) => boolean;
   /** Swap plain 1 x 1 and 2 x 2 pieces on outside corners for round ones. Default true. */
   corners?: boolean;
   /** Slopes and curved slopes against steps that rise two plates or more. Default true. */
@@ -163,6 +165,7 @@ export function smoothAssembly(assembly: Assembly, options: SmoothOptions = {}):
   const region = options.region ?? {};
   const inScope = (brick: Brick) =>
     (!options.ids || options.ids.has(brick.id)) &&
+    (!options.only || options.only(brick)) &&
     brick.x >= (region.minX ?? -Infinity) &&
     brick.x <= (region.maxX ?? Infinity) &&
     brick.z >= (region.minZ ?? -Infinity) &&

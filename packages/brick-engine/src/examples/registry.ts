@@ -1,5 +1,6 @@
 import { BUILD_AREA, MAX_BUILD_AREA, placeBrick, validateAssembly } from '../core.ts';
 import type { Assembly, Brick } from '../core.ts';
+import { smoothAssembly } from '../smoothing.ts';
 import type { ExampleDefinition, ExampleMetadata } from './types.ts';
 import { courtyardHouse } from './courtyard-house.ts';
 import { catalogSampler } from './catalog-sampler.ts';
@@ -75,6 +76,13 @@ export function createExampleRegistry(definitions: readonly ExampleDefinition[])
           assembly = result.assembly;
         }
       assembly = { ...assembly, bricks };
+      for (const pass of definition.smooth ?? []) {
+        let serial = assembly.bricks.length;
+        assembly = smoothAssembly(assembly, {
+          ...pass,
+          nextId: () => `${definition.brickIdPrefix ?? definition.name}-${++serial}`,
+        }).assembly;
+      }
       if (assembly.bricks.length !== definition.expectedPieceCount)
         throw new Error(
           `${definition.id}: expected ${definition.expectedPieceCount} pieces, got ${assembly.bricks.length}.`,
