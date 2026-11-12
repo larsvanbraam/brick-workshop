@@ -208,6 +208,7 @@ function sculptedPart(
       | 'shape'
       | 'bars'
       | 'clips'
+      | 'sideStuds'
     >
   > = {},
 ): Part {
@@ -1729,6 +1730,115 @@ export const PARTS: readonly Part[] = [
     top: spans([0, 0], [0, 0], [0, 0]),
     bottom: spans([0, 0], [0, 0], [0, 1]),
   }),
+  // Spires and onion domes: a dome-topped round brick with a hollow stud for a finial, inverted
+  // dishes that flare out under a lantern (the 3 x 3 sits on one centred stud, the 4 x 4 on the
+  // middle 2 x 2), and a cone with a groove round its stud for gilded tips.
+  contouredPart(
+    '30367c',
+    'Round brick 2 x 2 with dome top',
+    2,
+    2,
+    3,
+    'brick',
+    'round',
+    {
+      top: [{ x: 0.5, z: 0.5 }],
+      bottom: spans([0, 1], [0, 1]),
+    },
+    { shape: 'round' },
+  ),
+  contouredPart(
+    '43898',
+    'Inverted dish 3 x 3',
+    3,
+    3,
+    2,
+    'brick',
+    'round',
+    {
+      top: spans(null, [1, 1]),
+      bottom: spans(null, [1, 1]),
+    },
+    { shape: 'round' },
+  ),
+  contouredPart(
+    '3960',
+    'Inverted dish 4 x 4',
+    4,
+    4,
+    2,
+    'brick',
+    'round',
+    {
+      top: [{ x: 1.5, z: 1.5 }],
+      bottom: spans(null, [1, 2], [1, 2]),
+    },
+    { shape: 'round' },
+  ),
+  architecturalPart('59900', 'Cone 1 x 1 with top groove', 1, 1, 3, 'cone', {
+    connections: coneConnections(1, 1),
+  }),
+  // Studs out of more than one side. The reserved half stud round the body takes the side studs,
+  // which stand 14 LDU up on its faces, so nothing butts up against them.
+  sculptedPart('4733', 'Brick 1 x 1 with studs on four sides', 2, 2, 3, 'detail', {
+    connections: { topStuds: [{ x: 0.5, z: 0.5 }], bottomReceivers: [{ x: 0.5, z: 0.5 }] },
+    sideStuds: [
+      { x: 1, y: 1.75, z: 0.5, facing: '-z' },
+      { x: 0.5, y: 1.75, z: 1, facing: '-x' },
+      { x: 1, y: 1.75, z: 1.5, facing: '+z' },
+      { x: 1.5, y: 1.75, z: 1, facing: '+x' },
+    ],
+  }),
+  sculptedPart('47905', 'Brick 1 x 1 with studs on two opposite sides', 1, 2, 3, 'detail', {
+    connections: { topStuds: [{ x: 0, z: 0.5 }], bottomReceivers: [{ x: 0, z: 0.5 }] },
+    sideStuds: [
+      { x: 0.5, y: 1.75, z: 0.5, facing: '-z' },
+      { x: 0.5, y: 1.75, z: 1.5, facing: '+z' },
+    ],
+  }),
+  // A 1 x 2 plate with a 1 x 2 plate standing up off its front edge, studs out, for signs and
+  // trim. Its envelope reaches up to the top of the standing plate, so the lying plate's own
+  // studs are covered: it takes pieces only on the two studs out front.
+  sculptedPart('99780', 'Bracket 1 x 2 - 1 x 2 up', 2, 1.5, 2.5, 'detail', {
+    kind: 'plate',
+    ldrawCenter: { x: 0, z: -5 },
+    ldrawBaseY: 8,
+    connections: {
+      topStuds: [],
+      bottomReceivers: [
+        { x: 0, z: 0.5 },
+        { x: 1, z: 0.5 },
+      ],
+    },
+    sideStuds: [
+      { x: 0.5, y: 1.25, z: 0.3, facing: '-z' },
+      { x: 1.5, y: 1.25, z: 0.3, facing: '-z' },
+    ],
+  }),
+  // A 2 x 2 brick cut along one diagonal for octagonal towers: studs on the two whole corners.
+  contouredPart('87620', 'Facet brick 2 x 2', 2, 2, 3, 'brick', 'detail', {
+    top: spans([0, 0], [1, 1]),
+    bottom: spans([0, 0], [1, 1]),
+  }),
+  // A pennant or a boat's sail: the 2 x 2 flag's two clips, with the cloth tapering away.
+  contouredPart(
+    '44676a',
+    'Flag 2 x 2 trapezoid',
+    1,
+    3,
+    5,
+    'brick',
+    'detail',
+    { bottom: [] },
+    {
+      ldrawBaseY: 40,
+      ldrawCenter: { x: 0, z: 20 },
+      clips: [
+        { at: [0.5, 0.5, 0.5], axis: 'y' },
+        { at: [0.5, 4.5, 0.5], axis: 'y' },
+      ],
+    },
+  ),
 ];
 
 const PARTS_BY_ID = new Map(PARTS.map((part) => [part.id, part]));

@@ -91,11 +91,15 @@ rendering and export. Families:
   slopes, and curved slopes up to 6 x 2.
 - Round: round bricks, plates and tiles from 1 x 1 to 8 x 8, half circles,
   quarter circles, round-corner bricks and plates, macaroni bricks and tiles,
-  rounded-end plates and tiles, and curved-top bricks.
-- Detail: masonry, log, grille and headlight bricks, side-stud bricks, jumper
-  plates, wedge plates, panels, antenna finials, corner, wedge, triangular and
-  angled-end tiles, fences and railings.
-- Architecture: arches, quarter arches, half-arch bricks, columns, cones, doors
+  rounded-end plates and tiles, curved-top bricks, a dome-topped round brick and
+  inverted dishes for onion domes.
+- Detail: masonry, log, grille and headlight bricks, side-stud bricks (studs on
+  one, two or four sides), a 1 x 2 - 1 x 2 bracket, facet bricks, jumper plates,
+  wedge plates, panels, antenna finials, corner, wedge, triangular and
+  angled-end tiles, flags, fences and railings. The bracket's standing plate
+  covers its own top studs, so it takes pieces only on its front studs.
+- Architecture: arches, quarter arches, half-arch bricks, columns, cones (plain and with a
+  top groove), doors
   and frames, windows, glass and casements.
 - Foliage: trees, bushes, grass, leaves and flowers.
 

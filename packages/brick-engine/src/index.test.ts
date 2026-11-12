@@ -26,6 +26,8 @@ import {
   getLDrawTransform,
   getSideMountHosts,
   getPart,
+  FACINGS,
+  seatOnSideStuds,
   hasStudConnection,
   explainConnection,
   findPlacementCandidates,
@@ -192,6 +194,15 @@ const finishingAndRoundIds = [
   '60470a',
   '63868',
   '2335',
+  '30367c',
+  '43898',
+  '3960',
+  '59900',
+  '4733',
+  '47905',
+  '99780',
+  '87620',
+  '44676a',
 ];
 
 describe('connection-aware placement planning', () => {
@@ -874,8 +885,8 @@ describe('LDraw color definitions', () => {
       expect(placeBrick({ name: 'Contextual color', bricks: [] }, { ...base, color }).ok).toBe(
         false,
       );
-    expect(DEFAULT_PART_COLOR_EVIDENCE.observations).toHaveLength(3791);
-    expect(Object.keys(DEFAULT_PART_COLOR_EVIDENCE.mappings.parts)).toHaveLength(165);
+    expect(DEFAULT_PART_COLOR_EVIDENCE.observations).toHaveLength(3989);
+    expect(Object.keys(DEFAULT_PART_COLOR_EVIDENCE.mappings.parts)).toHaveLength(174);
     for (const part of PARTS)
       for (const color of [0, 1, 2, 4, 14, 15])
         expect(getPartColorStatus(part.id, color, DEFAULT_PART_COLOR_EVIDENCE).manufactured).toBe(
@@ -945,7 +956,7 @@ describe('architectural part families', () => {
     const included = assembly.bricks.filter((brick) =>
       architecturalParts.some((part) => part.id === brick.partId),
     );
-    expect(included).toHaveLength(156);
+    expect(included).toHaveLength(165);
     expect(new Set(included.map((brick) => brick.partId))).toEqual(
       new Set(architecturalParts.map((part) => part.id)),
     );
@@ -1524,19 +1535,19 @@ describe('upright brick engine', () => {
       ).toEqual(expected);
     }
   });
-  it('contains 246 unique building and foliage parts with explicit connection sites', () => {
-    expect(PARTS).toHaveLength(246);
-    expect(new Set(PARTS.map((part) => part.id)).size).toBe(246);
+  it('contains 255 unique building and foliage parts with explicit connection sites', () => {
+    expect(PARTS).toHaveLength(255);
+    expect(new Set(PARTS.map((part) => part.id)).size).toBe(255);
     expect(PARTS.filter((part) => part.family === 'tall')).toHaveLength(10);
     expect(PARTS.filter((part) => part.family === 'slope')).toHaveLength(35);
-    expect(PARTS.filter((part) => part.family === 'round')).toHaveLength(35);
+    expect(PARTS.filter((part) => part.family === 'round')).toHaveLength(38);
     for (const [family, count] of [
       ['arch', 11],
       ['baseplate', 2],
-      ['cone', 4],
+      ['cone', 5],
       ['door', 7],
       ['window', 16],
-      ['detail', 46],
+      ['detail', 51],
       ['foliage', 11],
     ] as const)
       expect(PARTS.filter((part) => part.family === family)).toHaveLength(count);
@@ -1927,7 +1938,7 @@ describe('upright brick engine', () => {
 
 describe('mixed-part engine builds', () => {
   it('lays complete catalogue and tile displays on one larger board without stacking', () => {
-    for (const [id, count] of [['catalog-sampler', 246]] as const) {
+    for (const [id, count] of [['catalog-sampler', 255]] as const) {
       const assembly = createExampleAssembly(id);
       expect(assembly.buildArea).toBe(80);
       expect(assembly.bricks).toHaveLength(count);
@@ -2676,6 +2687,40 @@ describe('pieces mounted on side studs', () => {
         (issue) => issue.code,
       ),
     ).toEqual(['collision', 'collision']);
+  });
+
+  it('seats tiles on every side of multi-sided stud bricks and on a bracket front', () => {
+    for (const [partId, facings] of [
+      ['4733', ['-z', '-x', '+z', '+x']],
+      ['47905', ['-z', '+z']],
+      ['99780', ['-z']],
+    ] as const)
+      for (const rotation of [0, 90, 180, 270] as const) {
+        const host = piece('host', partId, 4, 0, 4, rotation);
+        const seated = FACINGS.filter((facing) =>
+          [0, 1].some((index) => {
+            const tile = seatOnSideStuds(piece(`tile-${index}`, '3070b', 6, 0, 6, 0, facing), host);
+            return tile !== null && check(host, tile).length === 0;
+          }),
+        );
+        const turned = facings.map(
+          (facing) => FACINGS[(FACINGS.indexOf(facing) + rotation / 90) % 4],
+        );
+        expect(new Set(seated), `${partId} at ${rotation}`).toEqual(new Set(turned));
+      }
+    // The bracket's standing plate covers its own top studs, and its studs face out front.
+    expect(getPart('99780').connections.topStuds).toEqual([]);
+    const bracket = piece('host', '99780', 4, 3, 4);
+    const tiles = [4, 5].map((x, index) =>
+      seatOnSideStuds(piece(`t${index}`, '3070b', x, 3, 3, 0, '-z'), bracket)!,
+    );
+    expect(tiles.map(({ x, y, z }) => [x, y, z])).toEqual([
+      [4, 3, 3.9],
+      [5, 3, 3.9],
+    ]);
+    expect(
+      check(piece('wall', '3004', 4, 0, 4.5, 90), bracket, ...tiles).map((issue) => issue.code),
+    ).toEqual([]);
   });
 
   it('exports, imports and orders mounted pieces', () => {
