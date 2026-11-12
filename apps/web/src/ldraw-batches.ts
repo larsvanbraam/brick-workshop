@@ -1012,9 +1012,12 @@ export class LDrawBatch {
     this.trackedFor = { entries, buildArea, explode };
     const changed: BatchEntry[] = [];
     const seen = new Set<string>();
+    // How many tracked bricks are still there: a bigger build can still have left some out.
+    let kept = 0;
     for (const entry of entries) {
       seen.add(entry.brick.id);
       const current = tracked.get(entry.brick.id);
+      if (current) kept++;
       if (!current || current.model !== entry.model || !samePlacement(current.brick, entry.brick))
         changed.push(entry);
     }
@@ -1034,7 +1037,7 @@ export class LDrawBatch {
       if (current.closable)
         for (const key of current.receivers) removeFrom(this.underOwners, key, id);
     };
-    if (seen.size < tracked.size)
+    if (kept < tracked.size)
       for (const [id, current] of tracked)
         if (!seen.has(id)) {
           forget(id, current);

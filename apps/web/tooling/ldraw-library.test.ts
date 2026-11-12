@@ -356,6 +356,34 @@ describe('local LDraw assets', () => {
     once.dispose();
     geometry.dispose();
   });
+  it('drops every old brick when a bigger build with other bricks takes its place', () => {
+    const geometry = new BoxGeometry(20, 24, 20).translate(0, 12, 0);
+    const model = new Group().add(new Mesh(geometry, new MeshStandardMaterial()));
+    const build = (prefix: string, count: number) =>
+      Array.from({ length: count }, (_, index) => ({
+        brick: {
+          id: `${prefix}-${index}`,
+          partId: '3005',
+          color: 4,
+          x: index % 16,
+          y: Math.floor(index / 16) * 3,
+          z: 0,
+          rotation: 0 as const,
+        },
+        model,
+      }));
+    const batch = new LDrawBatch((part) => part);
+    batch.update(build('cottage', 10), 16);
+    // Shares a few ids with the old build, but not all of them, and has more bricks.
+    const museum = [...build('cottage', 5), ...build('museum', 30)];
+    batch.update(museum, 16);
+    expect(batch.stats().bricks).toBe(35);
+    const [mesh] = batch.meshes;
+    expect(mesh.userData.brickIds.filter(Boolean)).toHaveLength(35);
+    batch.dispose();
+    geometry.dispose();
+  });
+
   it('batches see-through and mirrored faces into a sorted glass layer that faces outward', () => {
     const geometry = new BoxGeometry(20, 24, 20).translate(0, 12, 0);
     const opaque = new Mesh(geometry, new MeshStandardMaterial());
