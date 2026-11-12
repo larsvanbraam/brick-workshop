@@ -18,7 +18,7 @@ export type Orientation = 'portrait' | 'landscape';
 export const STEP_SIZES = {
   small: { label: 'Small', maxPiecesPerStep: 4, maxKindsPerStep: 3 },
   standard: { label: 'Standard', maxPiecesPerStep: 6, maxKindsPerStep: 4 },
-  large: { label: 'Large', maxPiecesPerStep: 8, maxKindsPerStep: 4 },
+  large: { label: 'Large', maxPiecesPerStep: 12, maxKindsPerStep: 6, maxStepSpread: 8 },
 } as const;
 
 export type StepSize = keyof typeof STEP_SIZES;

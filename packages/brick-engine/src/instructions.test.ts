@@ -36,23 +36,23 @@ describe('planInstructionSteps', () => {
         expect(step.brickIds.length).toBeLessThanOrEqual(6);
         expect(step.parts.length).toBeLessThanOrEqual(4);
         expect(step.parts.reduce((sum, part) => sum + part.quantity, 0)).toBe(step.brickIds.length);
-        const added = step.brickIds.map((brickId) => byId.get(brickId)!);
-        // A step's pieces share one height, so none of them covers another.
-        expect(new Set(added.map((entry) => entry.y)).size).toBe(1);
-        placed.push(...added);
-        expect(validateAssembly({ ...assembly, bricks: placed })).toEqual([]);
+        // Each piece is valid in placing order, so a step's own pieces build up correctly too.
+        for (const brickId of step.brickIds) {
+          placed.push(byId.get(brickId)!);
+          expect(validateAssembly({ ...assembly, bricks: placed })).toEqual([]);
+        }
       }
     },
     20_000,
   );
 
-  it('places a piece only after everything it rests on', () => {
+  it('places a piece only after everything it rests on, on top of its own step only squarely', () => {
     const assembly = createExampleAssembly(EXAMPLES[0].id);
+    const steps = planInstructionSteps(assembly);
     const stepOf = new Map(
-      planInstructionSteps(assembly).flatMap((step) =>
-        step.brickIds.map((brickId) => [brickId, step.number] as const),
-      ),
+      steps.flatMap((step) => step.brickIds.map((brickId) => [brickId, step.number] as const)),
     );
+    const orderOf = new Map(steps.flatMap((step) => step.brickIds).map((id, index) => [id, index]));
     for (const upper of assembly.bricks)
       for (const lower of assembly.bricks) {
         const upperSize = footprint(upper);
@@ -63,8 +63,16 @@ describe('planInstructionSteps', () => {
           lower.x < upper.x + upperSize.width &&
           upper.z < lower.z + lowerSize.depth &&
           lower.z < upper.z + upperSize.depth
-        )
-          expect(stepOf.get(lower.id)!).toBeLessThan(stepOf.get(upper.id)!);
+        ) {
+          expect(orderOf.get(lower.id)!).toBeLessThan(orderOf.get(upper.id)!);
+          // Within one step a piece may only sit squarely on another, hiding none of it.
+          if (stepOf.get(lower.id) === stepOf.get(upper.id)) {
+            expect(upper.x).toBeGreaterThanOrEqual(lower.x);
+            expect(upper.z).toBeGreaterThanOrEqual(lower.z);
+            expect(upper.x + upperSize.width).toBeLessThanOrEqual(lower.x + lowerSize.width);
+            expect(upper.z + upperSize.depth).toBeLessThanOrEqual(lower.z + lowerSize.depth);
+          }
+        }
       }
   });
 
@@ -85,7 +93,7 @@ describe('planInstructionSteps', () => {
     expect(steps[0].parts).toEqual([{ partId: '3003', color: 4, quantity: 4 }]);
   });
 
-  it('finishes a freestanding stack before moving away', () => {
+  it('builds a column in one step and finishes it before moving away', () => {
     const assembly: Assembly = {
       name: 'Stack',
       bricks: [
@@ -96,11 +104,32 @@ describe('planInstructionSteps', () => {
       ],
     };
     expect(planInstructionSteps(assembly).map((step) => step.brickIds)).toEqual([
-      ['base'],
-      ['middle'],
-      ['top'],
+      ['base', 'middle', 'top'],
       ['away'],
     ]);
+  });
+
+  it('keeps a wider piece on top of a step piece for the next step', () => {
+    const assembly: Assembly = {
+      name: 'Cap',
+      bricks: [brick('post', '3005', 0, 0, 0), brick('cap', '3003', 0, 3, 0)],
+    };
+    expect(planInstructionSteps(assembly).map((step) => step.brickIds)).toEqual([
+      ['post'],
+      ['cap'],
+    ]);
+  });
+
+  it('avoids single-piece steps in the example builds', () => {
+    for (const { id } of SMALL_EXAMPLES) {
+      const steps = planInstructionSteps(createExampleAssembly(id), {
+        maxPiecesPerStep: 12,
+        maxKindsPerStep: 6,
+        maxStepSpread: 8,
+      });
+      const singles = steps.filter((step) => step.brickIds.length === 1).length;
+      expect(singles / steps.length, id).toBeLessThan(0.15);
+    }
   });
 
   it('refuses invalid assemblies and limits', () => {

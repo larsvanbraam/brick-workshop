@@ -17,6 +17,11 @@ export interface InstructionOptions {
   maxKindsPerStep?: number;
   /** Farthest, in studs, a piece may sit from the rest of its step. */
   maxStepSpread?: number;
+  /**
+   * Most plates a piece may sit above or below the step's first piece, when it rests on
+   * earlier steps. Pieces stacked on top of the step's own pieces are not limited by this.
+   */
+  maxStepRise?: number;
 }
 
 export interface InstructionPart {
@@ -38,6 +43,7 @@ export const DEFAULT_INSTRUCTION_OPTIONS: Readonly<Required<InstructionOptions>>
   maxPiecesPerStep: 6,
   maxKindsPerStep: 4,
   maxStepSpread: 4,
+  maxStepRise: 3,
 });
 
 interface Node {
@@ -49,6 +55,8 @@ interface Node {
   depth: number;
   /** Pieces that must be in place first: everything this piece rests on, and its frame. */
   blockers: number;
+  /** The pieces counted in `blockers`. */
+  below: number[];
   dependants: number[];
 }
 
@@ -68,6 +76,7 @@ function buildNodes(bricks: readonly Brick[]): Node[] {
       width: size.width,
       depth: size.depth,
       blockers: 0,
+      below: [],
       dependants: [],
     };
   });
@@ -138,6 +147,7 @@ function buildNodes(bricks: readonly Brick[]): Node[] {
     }
     below.delete(node.index);
     node.blockers = below.size;
+    node.below = [...below];
     for (const other of below) nodes[other].dependants.push(node.index);
   }
   return nodes;
@@ -153,10 +163,33 @@ function gap(first: Node, second: Node) {
 }
 
 /**
- * Splits a valid assembly into small building steps. Pieces go bottom-up with each one placed
- * after everything it rests on, the next step starts close to where the last one ended, and
- * a step only gathers nearby pieces at the same height, so freestanding sections (a tree, a
- * lamp post) are finished before the build moves on.
+ * Whether `upper` can go on in the same step as the step pieces it rests on without hiding
+ * them: it sits squarely on top of each one and no wider, like the next brick of a column.
+ */
+function isStackable(upper: Node, inStep: ReadonlySet<number>, nodes: readonly Node[]) {
+  if (upper.brick.facing) return false;
+  for (const index of upper.below) {
+    if (!inStep.has(index)) continue;
+    const lower = nodes[index];
+    if (
+      lower.brick.facing ||
+      lower.brick.y + footprint(lower.brick).height !== upper.brick.y ||
+      upper.brick.x < lower.brick.x ||
+      upper.brick.z < lower.brick.z ||
+      upper.brick.x + upper.width > lower.brick.x + lower.width ||
+      upper.brick.z + upper.depth > lower.brick.z + lower.depth
+    )
+      return false;
+  }
+  return true;
+}
+
+/**
+ * Splits a valid assembly into building steps. Pieces go bottom-up with each one placed after
+ * everything it rests on, the next step starts close to where the last one ended, and a step
+ * gathers nearby pieces at about the same height, plus pieces stacked squarely on its own
+ * pieces (the bricks of a column), so freestanding sections (a tree, a lamp post) are finished
+ * before the build moves on.
  */
 export function planInstructionSteps(
   assembly: Assembly,
@@ -164,12 +197,14 @@ export function planInstructionSteps(
 ): InstructionStep[] {
   if (validateAssembly(assembly).length)
     throw new Error('Building instructions need a valid assembly.');
-  const { maxPiecesPerStep, maxKindsPerStep, maxStepSpread } = {
+  const { maxPiecesPerStep, maxKindsPerStep, maxStepSpread, maxStepRise } = {
     ...DEFAULT_INSTRUCTION_OPTIONS,
     ...options,
   };
   if (![maxPiecesPerStep, maxKindsPerStep].every((value) => Number.isInteger(value) && value > 0))
     throw new Error('Step limits must be positive whole numbers.');
+  if (!Number.isInteger(maxStepRise) || maxStepRise < 0)
+    throw new Error('The step rise must be a whole number of plates.');
   const nodes = buildNodes(assembly.bricks);
   const ready = new Set(nodes.filter((node) => node.blockers === 0).map((node) => node.index));
   const steps: InstructionStep[] = [];
@@ -191,11 +226,27 @@ export function planInstructionSteps(
         seed = index;
       }
     }
-    const members = [nodes[seed]];
-    const kinds = new Set([kindOf(nodes[seed].brick)]);
+    const members: Node[] = [];
+    const inStep = new Set<number>();
+    const kinds = new Set<string>();
+    /** Pieces this step's pieces unlocked that cannot join it; they are ready next step. */
+    const unlocked: number[] = [];
     const candidates = [...ready].filter(
-      (index) => index !== seed && nodes[index].brick.y === nodes[seed].brick.y,
+      (index) =>
+        index !== seed && Math.abs(nodes[index].brick.y - nodes[seed].brick.y) <= maxStepRise,
     );
+    const add = (node: Node) => {
+      members.push(node);
+      inStep.add(node.index);
+      kinds.add(kindOf(node.brick));
+      ready.delete(node.index);
+      for (const dependant of node.dependants) {
+        if (--nodes[dependant].blockers) continue;
+        if (isStackable(nodes[dependant], inStep, nodes)) candidates.push(dependant);
+        else unlocked.push(dependant);
+      }
+    };
+    add(nodes[seed]);
     while (members.length < maxPiecesPerStep) {
       let pick = -1;
       let pickScore = Infinity;
@@ -205,30 +256,30 @@ export function planInstructionSteps(
         if (!known && kinds.size >= maxKindsPerStep) continue;
         const distance = Math.min(...members.map((member) => gap(member, node)));
         if (distance > maxStepSpread) continue;
-        // Repeating a part already in the callout costs less than introducing a new one.
-        const score = distance + (known ? 0 : 1.5);
-        if (score < pickScore) {
+        // Repeating a part already in the callout costs less than introducing a new one, and
+        // finishing the layer comes before building upwards.
+        const score =
+          distance + (known ? 0 : 1.5) + Math.abs(node.brick.y - nodes[seed].brick.y) * 0.5;
+        if (score < pickScore || (score === pickScore && index < pick)) {
           pickScore = score;
           pick = index;
         }
       }
       if (pick === -1) break;
-      members.push(nodes[pick]);
-      kinds.add(kindOf(nodes[pick].brick));
       candidates.splice(candidates.indexOf(pick), 1);
+      add(nodes[pick]);
     }
+    // Stacked pieces that did not fit are ready for the next step.
+    for (const index of candidates)
+      if (!inStep.has(index) && !nodes[index].blockers) ready.add(index);
+    for (const index of unlocked) ready.add(index);
     const parts = new Map<string, InstructionPart>();
-    for (const { brick, index } of members) {
-      ready.delete(index);
+    for (const { brick } of members) {
       const key = kindOf(brick);
       const entry = parts.get(key);
       if (entry) entry.quantity += 1;
       else parts.set(key, { partId: brick.partId, color: brick.color, quantity: 1 });
     }
-    // Unlock what rests on this step only afterwards, so a step never hides its own pieces.
-    for (const member of members)
-      for (const dependant of member.dependants)
-        if (--nodes[dependant].blockers === 0) ready.add(dependant);
     anchor = {
       x: members.reduce((sum, node) => sum + node.cx, 0) / members.length,
       y: members[0].brick.y,
