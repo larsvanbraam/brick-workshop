@@ -1,6 +1,6 @@
 import { BatchedMesh, Color, Group, Matrix4, MeshStandardMaterial } from 'three';
 import type { BufferGeometry, Material } from 'three';
-import { COLORS, PLATE_HEIGHT, footprint } from '@brick-workshop/engine';
+import { COLORS, PLATE_HEIGHT, footprint, getTiltTurn } from '@brick-workshop/engine';
 import type { Brick, LDrawColor } from '@brick-workshop/engine';
 import { createFallbackBrickGeometry, fallbackShapeKey } from './fallback-geometry';
 import { colorMaterialProperties } from './ldraw-materials';
@@ -37,10 +37,28 @@ const PLACEMENT_KEYS = [
   'rotation',
   'facing',
   'upsideDown',
+  'tilt',
 ] as const;
 
 const instanceColor = new Color();
 const instanceMatrix = new Matrix4();
+const lift = new Matrix4();
+
+/**
+ * A tilt as a scene transform: the turn about the hinge line. The scene's z runs against the
+ * grid's, so the turn is mirrored in z.
+ */
+function tiltMatrix(tilt: NonNullable<Brick['tilt']>, buildArea: number) {
+  const [a, b, c, d, e, f, g, h, i] = getTiltTurn(tilt);
+  const pivot = tilt.toward.endsWith('z')
+    ? [0, tilt.y * PLATE_HEIGHT, worldZ(tilt.at, buildArea)]
+    : [tilt.at - buildArea / 2, tilt.y * PLATE_HEIGHT, 0];
+  const turn = new Matrix4().set(a, b, -c, 0, d, e, -f, 0, -g, -h, i, 0, 0, 0, 0, 1);
+  return new Matrix4()
+    .makeTranslation(pivot[0], pivot[1], pivot[2])
+    .multiply(turn)
+    .multiply(new Matrix4().makeTranslation(-pivot[0], -pivot[1], -pivot[2]));
+}
 
 /**
  * Bricks without an LDraw model, drawn from procedural shapes in a few batched meshes: one per
@@ -69,7 +87,10 @@ export class FallbackBatch {
     let changed = false;
     for (const brick of bricks) {
       seen.add(brick.id);
-      const key = `${PLACEMENT_KEYS.map((name) => String(brick[name] ?? '')).join(':')}:${buildArea}:${explode}`;
+      const key = `${PLACEMENT_KEYS.map((name) => {
+        const value = brick[name];
+        return typeof value === 'object' ? JSON.stringify(value) : String(value ?? '');
+      }).join(':')}:${buildArea}:${explode}`;
       const current = this.placements.get(brick.id);
       if (current?.key === key) continue;
       if (current) this.release(current);
@@ -173,14 +194,14 @@ export class FallbackBatch {
       layer.mesh.setVisibleAt(id, true);
     }
     const size = footprint(brick);
-    layer.mesh.setMatrixAt(
-      id,
-      instanceMatrix.makeTranslation(
-        brick.x + size.width / 2 - buildArea / 2,
-        brick.y * PLATE_HEIGHT + (explode ? brick.y * 0.18 : 0),
-        worldZ(brick.z + size.depth / 2, buildArea),
-      ),
+    instanceMatrix.makeTranslation(
+      brick.x + size.width / 2 - buildArea / 2,
+      brick.y * PLATE_HEIGHT,
+      worldZ(brick.z + size.depth / 2, buildArea),
     );
+    if (brick.tilt) instanceMatrix.premultiply(tiltMatrix(brick.tilt, buildArea));
+    if (explode) instanceMatrix.premultiply(lift.makeTranslation(0, brick.y * 0.18, 0));
+    layer.mesh.setMatrixAt(id, instanceMatrix);
     layer.mesh.setColorAt(id, instanceColor.set(colorMaterialProperties(color).color));
     layer.brickIds[id] = brick.id;
     return { key, layer, id };

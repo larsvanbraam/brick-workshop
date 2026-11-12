@@ -160,8 +160,27 @@ const DOORS = new Set(['3193a', '60616a', '60623']);
  * turn and doors stay half a stud in front of them, as the engine's insert rule expects.
  */
 export function turnAround(add: ExampleBrickAdder, buildArea = BUILD_AREA): ExampleBrickAdder {
-  return (partId, color, x, y, z, rotation = 0, facing, upsideDown) => {
+  return (partId, color, x, y, z, rotation = 0, facing, upsideDown, tilt) => {
     const { width, depth } = footprint({ id: '', partId, color, x, y, z, rotation, facing });
+    if (tilt) {
+      // The hinge line turns with the build: it leans the other way, from the other side.
+      add(
+        partId,
+        color,
+        buildArea - x - width,
+        y,
+        buildArea - z - depth,
+        ((rotation + 180) % 360) as Rotation,
+        undefined,
+        undefined,
+        {
+          ...tilt,
+          toward: FACINGS[(FACINGS.indexOf(tilt.toward) + 2) % 4],
+          at: buildArea - tilt.at,
+        },
+      );
+      return;
+    }
     if (facing) {
       // Turning the build about the vertical points a mounted piece the other way; its spin
       // about that direction stays.
@@ -215,8 +234,8 @@ const TRANS_CLEAR = 47;
 
 /** Puts glass, trans-clear unless told otherwise, in every window frame the build adds. */
 export function glazeWindows(add: ExampleBrickAdder, glassColor = TRANS_CLEAR): ExampleBrickAdder {
-  return (partId, color, x, y, z, rotation = 0, facing, upsideDown) => {
-    add(partId, color, x, y, z, rotation, facing, upsideDown);
+  return (partId, color, x, y, z, rotation = 0, facing, upsideDown, tilt) => {
+    add(partId, color, x, y, z, rotation, facing, upsideDown, tilt);
     const glass = WINDOW_GLASS[partId];
     if (glass) add(glass, glassColor, x, y, z, rotation);
   };
@@ -428,7 +447,7 @@ function siteKey(piece: Omit<Brick, 'id'>, reflectDepth?: number) {
  * Side-mounted pieces facing along z face the other way; check them in a render.
  */
 export function reflectToFront(add: ExampleBrickAdder, buildArea = BUILD_AREA): ExampleBrickAdder {
-  return (partId, color, x, y, z, rotation = 0, facing, upsideDown) => {
+  return (partId, color, x, y, z, rotation = 0, facing, upsideDown, tilt) => {
     const piece = { partId, color, x, y, z, rotation, ...(facing ? { facing } : {}) };
     const { depth } = footprint({ id: '', ...piece });
     const round = (value: number) => Math.round(value * 10) / 10;
@@ -443,7 +462,18 @@ export function reflectToFront(add: ExampleBrickAdder, buildArea = BUILD_AREA): 
     const turned =
       turns.find((turn) => siteKey({ ...piece, z: reflected, rotation: turn }) === want) ??
       turns[0];
-    add(partId, color, x, y, reflected, turned, undefined, upsideDown);
+    // A hinge line across z mirrors to the other side and leans the other way; one along z
+    // stays where it is.
+    const mirrored = tilt && {
+      ...tilt,
+      ...(tilt.toward.endsWith('z')
+        ? {
+            toward: tilt.toward === '+z' ? ('-z' as const) : ('+z' as const),
+            at: buildArea - tilt.at,
+          }
+        : {}),
+    };
+    add(partId, color, x, y, reflected, turned, undefined, upsideDown, mirrored);
   };
 }
 
@@ -460,11 +490,10 @@ export function bottomUp(add: ExampleBrickAdder): { add: ExampleBrickAdder; flus
     },
     flush: () => {
       const order = pending.map((piece, index) => ({ piece, index }));
+      // Upright pieces first, then tilted frames on their hinges, then side-mounted pieces.
+      const stage = (piece: Parameters<ExampleBrickAdder>) => (piece[6] ? 2 : piece[8] ? 1 : 0);
       order.sort(
-        (a, b) =>
-          Number(!!a.piece[6]) - Number(!!b.piece[6]) ||
-          a.piece[3] - b.piece[3] ||
-          a.index - b.index,
+        (a, b) => stage(a.piece) - stage(b.piece) || a.piece[3] - b.piece[3] || a.index - b.index,
       );
       pending.length = 0;
       for (const { piece } of order) add(...piece);

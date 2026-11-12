@@ -644,6 +644,7 @@ const PLACEMENT_KEYS = [
   'rotation',
   'facing',
   'upsideDown',
+  'tilt',
 ] as const;
 
 /** Everything a brick's placement depends on; the same key means nothing to redo. */
@@ -654,7 +655,10 @@ function placementKey(
   explode: boolean,
   covered = '',
 ) {
-  return `${PLACEMENT_KEYS.map((name) => String(brick[name] ?? '')).join(':')}:${model.uuid}:${buildArea}:${explode}|${covered}`;
+  return `${PLACEMENT_KEYS.map((name) => {
+    const value = brick[name];
+    return typeof value === 'object' ? JSON.stringify(value) : String(value ?? '');
+  }).join(':')}:${model.uuid}:${buildArea}:${explode}|${covered}`;
 }
 /** What the batch knows of a brick since the last update. */
 type Tracked = {

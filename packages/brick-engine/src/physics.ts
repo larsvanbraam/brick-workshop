@@ -6,6 +6,7 @@ import {
   getConnectionSites,
   getPart,
   getMountHosts,
+  getWorldBounds,
   isMatchingInsertFrame,
   isRuntimePart,
   validateAssembly,
@@ -480,6 +481,11 @@ function localCenter(partId: string) {
 }
 
 function worldCenter(brick: Brick, mass: PartMass) {
+  if (brick.tilt) {
+    // A tilted piece's weight acts at the middle of its turned body.
+    const bounds = getWorldBounds(brick);
+    return { x: (bounds.minX + bounds.maxX) / 2, z: (bounds.minZ + bounds.maxZ) / 2 };
+  }
   const part = getPart(brick.partId);
   const center = mass.centerOfMassStuds ?? localCenter(brick.partId);
   let { x, z } = center;

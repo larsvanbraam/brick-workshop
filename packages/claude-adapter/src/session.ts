@@ -5,6 +5,7 @@ import {
   MAX_PIECES,
   COLORS,
   FACINGS,
+  TILT_ANGLES,
   DEFAULT_PART_COLOR_EVIDENCE,
   MAX_HEIGHT,
   PARTS,
@@ -76,6 +77,19 @@ const placementProperties = {
     description:
       'Omit unless needed. Only for flippable parts: latticed casement 60607 hangs in a 60594 frame turned like the frame, upright in the frame half its own hinge end shows, and upside down in the other half, both at the frame y. It keeps its cells.',
   },
+  tilt: {
+    type: 'object',
+    description:
+      "Omit for upright pieces. Tips the piece about a hinge line, for angled roofs and panels: place it as if upright (x, y, z, rotation), then it turns `angle` degrees about the level line at height `y` (plates) crossing `toward`'s axis at `at` (studs), its top leaning toward `toward` (the low side faces that way). A hinge brick base 3937 holds a hinge top 3938 one plate up at the same x/z and rotation; the top takes the tilt of the base's pivot line, which runs along the pair's 2-stud length 1.75 plates above the base's bottom and through the middle of its width (for a base at rotation 0 and z: toward +z or -z, y = base y + 1.75, at = base z + 0.5). Pieces stacked on the top with the very same tilt stand in its frame and connect by studs as if upright, so a plate on the top can carry tiles, cheese slopes or more plates at that angle. Pieces in other frames, upright ones included, must not intersect the turned bodies.",
+    properties: {
+      toward: { type: 'string', enum: FACINGS },
+      angle: { type: 'number', enum: TILT_ANGLES },
+      y: { type: 'number', multipleOf: 0.25, minimum: 0 },
+      at: { type: 'number', multipleOf: 0.5, minimum: 0 },
+    },
+    required: ['toward', 'angle', 'y', 'at'],
+    additionalProperties: false,
+  },
 };
 function objectSchema(
   properties: Record<string, unknown> = {},
@@ -94,6 +108,7 @@ const BRICK_COLUMNS = [
   'rotation',
   'facing',
   'upsideDown',
+  'tilt',
 ] as const;
 /**
  * Catalogue overview columns; one row per part instead of repeated keys. connectorFit is left
@@ -130,7 +145,14 @@ function changedBricks(before: Assembly, after: Assembly) {
   const added = after.bricks.filter((brick) => !previous.has(brick.id));
   const updated = after.bricks.filter((brick) => {
     const old = previous.get(brick.id);
-    return old && BRICK_COLUMNS.some((column) => old[column] !== brick[column]);
+    return (
+      old &&
+      BRICK_COLUMNS.some((column) =>
+        column === 'tilt'
+          ? JSON.stringify(old.tilt) !== JSON.stringify(brick.tilt)
+          : old[column] !== brick[column],
+      )
+    );
   });
   return {
     pieceCount: after.bricks.length,

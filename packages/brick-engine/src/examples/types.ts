@@ -1,4 +1,4 @@
-import type { Facing, Rotation } from '../core.ts';
+import type { Facing, Rotation, Tilt } from '../core.ts';
 import type { SmoothOptions } from '../smoothing.ts';
 
 export type ExampleBrickAdder = (
@@ -12,6 +12,8 @@ export type ExampleBrickAdder = (
   facing?: Facing,
   /** Fits a flippable piece, such as the far casement of a frame, upside down. */
   upsideDown?: boolean,
+  /** Tips the piece about a hinge line (see `getHingeTilt`), as for a hinged roof panel. */
+  tilt?: Tilt,
 ) => void;
 
 export interface ExampleMetadata {

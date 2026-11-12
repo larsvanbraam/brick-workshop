@@ -66,7 +66,10 @@ export function layPlateFloor(
 /** A plate of a floor laid by `layPlateFloor`: the ground a model stands on. */
 export function isFloorPlate(brick: Brick) {
   return (
-    !brick.facing && brick.y < 2 && (FLOOR_PART_IDS as readonly string[]).includes(brick.partId)
+    !brick.facing &&
+    !brick.tilt &&
+    brick.y < 2 &&
+    (FLOOR_PART_IDS as readonly string[]).includes(brick.partId)
   );
 }
 
@@ -93,7 +96,7 @@ export interface BaseplateJoins {
 }
 
 const isBaseplate = (brick: Brick) =>
-  !brick.facing && brick.y === 0 && getPart(brick.partId).family === 'baseplate';
+  !brick.facing && !brick.tilt && brick.y === 0 && getPart(brick.partId).family === 'baseplate';
 
 /**
  * Finds where baseplates lie edge to edge and which seams are tied: baseplates have nothing
@@ -105,6 +108,7 @@ export function getBaseplateJoins(assembly: Assembly): BaseplateJoins {
   const resting = assembly.bricks.filter(
     (brick) =>
       !brick.facing &&
+      !brick.tilt &&
       !isBaseplate(brick) &&
       plates.some((plate) => brick.y === getPart(plate.partId).height),
   );

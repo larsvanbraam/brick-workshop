@@ -64,9 +64,12 @@ plain is not finished.
   shutters or a window box planted with flowers and sprigs.
 - Half-timbering: dark beams (`308` or `70`) in a light infill (`15`, `19` or `78`), with
   diagonal braces where the catalogue allows.
-- Roofs follow their pitch: the surface is real slope pieces, never flat tiles on steps.
-  Every piece here stands upright, so flat tiles laid on a stepped roof read as horizontal
-  shelves from the side, however they overlap. Use 45° slopes (`3040b`, `3039`, `3038`,
+- Roofs follow their pitch: the surface is real slope pieces or tiles on hinged panels,
+  never flat tiles on steps. Upright tiles laid on a stepped roof read as horizontal shelves
+  from the side, however they overlap. For a tiled roof, hinge plates up to the pitch: hinge
+  bases (`3937`) along the eaves, tops (`3938`) tilted with `getHingeTilt`, plates on them
+  and tiles on the plates, all with the same `tilt` (README, "Hinges and tilted frames").
+  Otherwise use 45° slopes (`3040b`, `3039`, `3038`,
   `3037`; 3 plates up per stud) or 33° slopes (`4286`, `3298`, `4161`, `3297`; 3 plates up per
   3 studs), low side downhill. Turn a slope by its low side: it faces -z at rotation 0, -x at
   90, +z at 180 and +x at 270.

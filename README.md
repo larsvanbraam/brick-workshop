@@ -126,6 +126,19 @@ validation hangs them a pass at a time from held pieces, a clip and the bar it g
 may share space, physics carries them on their hosts and clamps several hosts of one
 piece together, and building instructions place them after their hosts.
 
+**Hinges and tilted frames.** A hinge brick base (`3937`) holds a hinge top (`3938`)
+one plate up at the same position and turn; the top turns about the pair's long axis.
+A piece's optional `tilt` (`toward`, `angle` in 22.5° steps up to 90°, and the hinge
+line's height `y` in plates and position `at` in studs) places it as if upright and
+then turns it about that line, its top leaning toward `toward`. `getHingeTilt(base,
+toward, angle)` gives the line for a base. Pieces with the same tilt share one frame:
+they stack on each other's studs as if upright, so a plate on a tilted hinge top can
+carry tiles at that angle, as on a hinged roof panel. A tilted top hangs from its base
+and the rest of the frame from it, like side-mounted pieces. Pieces in different frames
+collide as turned boxes (allowing 2 LDU), and a frame may lean over its own hinge base.
+Tilted pieces have no side studs, and the workshop shows them but places pieces only
+upright or on side studs.
+
 To add a part, define it in `PARTS` (see `basicPart`, `contouredPart`,
 `curvedSlopePart` and friends), read its size, native centre and stud positions
 from the `.dat` geometry, and run `pnpm test`. The catalogue sampler example

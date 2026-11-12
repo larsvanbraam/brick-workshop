@@ -38,6 +38,37 @@ export interface Clip {
   axis: 'x' | 'y' | 'z';
 }
 
+/**
+ * One half of a hinge: the base stands on studs, and the top that turns on it pivots about a
+ * level axis through `pivot`. A top fitted on a base shares its pivot and can tilt (`Brick.tilt`)
+ * about that axis, taking the pieces stacked on it along.
+ */
+export interface Hinge {
+  role: 'base' | 'top';
+  pivot: PartPoint;
+  axis: 'x' | 'z';
+}
+
+/** Angles a tilted piece can take, in degrees from upright: the hinges' click positions. */
+export const TILT_ANGLES: readonly number[] = Object.freeze([22.5, 45, 67.5, 90]);
+
+/**
+ * Tipped about a level hinge line, so the piece's top leans toward one side, as a roof panel
+ * does. The piece is placed upright as usual (x, y, z and rotation), then the whole of it turns
+ * about the line by `angle` degrees, its top going `toward` that side. Pieces with the same tilt
+ * share one tilted frame: they stack on each other's studs exactly as they would upright.
+ */
+export interface Tilt {
+  /** The side the top leans to: the tilted plane's low side faces this way. */
+  toward: Facing;
+  /** Degrees from upright, one of TILT_ANGLES. */
+  angle: number;
+  /** The hinge line's height, in plates (on 0.25 steps). */
+  y: number;
+  /** Where the hinge line crosses the axis `toward` runs along, in studs (on 0.5 steps). */
+  at: number;
+}
+
 export interface Part {
   id: string;
   name: string;
@@ -86,6 +117,8 @@ export interface Part {
   bars?: readonly Bar[];
   /** Clips that grip bars. */
   clips?: readonly Clip[];
+  /** Half of a hinge, which lets the pieces on its top tilt. */
+  hinge?: Hinge;
 }
 
 function rectangularConnections(width: number, depth: number): Part['connections'] {
@@ -209,6 +242,7 @@ function sculptedPart(
       | 'bars'
       | 'clips'
       | 'sideStuds'
+      | 'hinge'
     >
   > = {},
 ): Part {
@@ -1815,6 +1849,18 @@ export const PARTS: readonly Part[] = [
       { x: 1.5, y: 1.25, z: 0.3, facing: '-z' },
     ],
   }),
+  // A hinge brick in two halves: the base is a 1 x 2 brick with a cradle on top, the top a
+  // 1 x 2 plate whose knuckle drops into the cradle. Together they stand a brick tall, and the
+  // top turns about the pair's long axis, 10 LDU under its studs, to tilt what it carries.
+  sculptedPart('3937', 'Hinge brick 1 x 2 base', 2, 1, 3, 'detail', {
+    connections: { topStuds: [], bottomReceivers: spans([0, 1]) },
+    hinge: { role: 'base', pivot: [1, 1.75, 0.5], axis: 'x' },
+  }),
+  sculptedPart('3938', 'Hinge brick 1 x 2 top', 2, 1, 2, 'detail', {
+    kind: 'plate',
+    connections: { topStuds: spans([0, 1]), bottomReceivers: [] },
+    hinge: { role: 'top', pivot: [1, 0.75, 0.5], axis: 'x' },
+  }),
   // A 2 x 2 brick cut along one diagonal for octagonal towers: studs on the two whole corners.
   contouredPart('87620', 'Facet brick 2 x 2', 2, 2, 3, 'brick', 'detail', {
     top: spans([0, 0], [1, 1]),
@@ -1854,6 +1900,8 @@ export function registerPart(part: Part): void {
     !part.name.trim() ||
     ![part.width, part.depth, part.height].every((value) => Number.isFinite(value) && value > 0) ||
     ![0, 90, 180, 270].includes(part.ldrawRotation) ||
+    // Hinges need measured pivots, so only catalogue parts have them.
+    part.hinge !== undefined ||
     !part.connections ||
     ![...part.connections.topStuds, ...part.connections.bottomReceivers].every(
       (site) =>
@@ -1895,6 +1943,11 @@ export interface Brick {
    * is in 0.1 stud (2 LDU) steps.
    */
   facing?: Facing;
+  /**
+   * Tipped about a hinge line, carried by a hinge top (`3938`) or by pieces stacked on one with
+   * the same tilt. x, y, z and rotation place it as if upright; the tilt then turns it.
+   */
+  tilt?: Tilt;
   /**
    * Fitted upside down, turned half round about its width through the middle of its cells, so
    * it keeps its cells. Only parts that declare `flippable` can be, such as a casement pane,
@@ -1943,11 +1996,11 @@ export function resizeBuildArea(assembly: Assembly, size: number): Assembly | nu
   };
   let [minX, maxX, minZ, maxZ] = [Infinity, -Infinity, Infinity, -Infinity];
   for (const brick of assembly.bricks) {
-    const { width, depth } = footprint(brick);
-    minX = Math.min(minX, brick.x);
-    maxX = Math.max(maxX, brick.x + width);
-    minZ = Math.min(minZ, brick.z);
-    maxZ = Math.max(maxZ, brick.z + depth);
+    const bounds = getWorldBounds(brick);
+    minX = Math.min(minX, bounds.minX);
+    maxX = Math.max(maxX, bounds.maxX);
+    minZ = Math.min(minZ, bounds.minZ);
+    maxZ = Math.max(maxZ, bounds.maxZ);
   }
   const dx = assembly.bricks.length ? shift(minX, maxX) : 0;
   const dz = assembly.bricks.length ? shift(minZ, maxZ) : 0;
@@ -1960,6 +2013,14 @@ export function resizeBuildArea(assembly: Assembly, size: number): Assembly | nu
       ...brick,
       x: brick.x + dx,
       z: brick.z + dz,
+      ...(brick.tilt
+        ? {
+            tilt: {
+              ...brick.tilt,
+              at: brick.tilt.at + (brick.tilt.toward.endsWith('z') ? dz : dx),
+            },
+          }
+        : {}),
     })),
   };
 }
@@ -2019,6 +2080,197 @@ function apply(matrix: Matrix, [x, y, z]: Point): Point {
   ];
 }
 
+// ---------------------------------------------------------------------------------------------
+// Tilted frames. Worked in "level" LDU: x and z as in LDraw, y up (LDraw's -y).
+
+/** Pieces with equal keys share a tilted frame. */
+const tiltKey = (tilt: Tilt) => `${tilt.toward}:${tilt.angle}:${tilt.y}:${tilt.at}`;
+
+/** Whether two pieces stand in the same frame: both untilted, or tilted alike. */
+function sameFrame(first: Brick, second: Brick): boolean {
+  if (!first.tilt || !second.tilt) return !first.tilt && !second.tilt;
+  return tiltKey(first.tilt) === tiltKey(second.tilt);
+}
+
+/**
+ * The tilt's turn, row-major, with x and z along the grid and y up: straight up ends up leaning
+ * toward the tilt's side.
+ */
+export function getTiltTurn(tilt: Tilt): Matrix {
+  return tiltTurn(tilt);
+}
+
+function tiltTurn({ toward, angle }: Tilt): Matrix {
+  const radians = (angle * Math.PI) / 180;
+  const [c, s] = [Math.cos(radians), Math.sin(radians)];
+  if (toward === '+z') return [1, 0, 0, 0, c, -s, 0, s, c];
+  if (toward === '-z') return [1, 0, 0, 0, c, s, 0, -s, c];
+  if (toward === '+x') return [c, s, 0, -s, c, 0, 0, 0, 1];
+  return [c, -s, 0, s, c, 0, 0, 0, 1];
+}
+
+/** A point on the tilt's hinge line, in level LDU. */
+function tiltPivot({ toward, y, at }: Tilt): Point {
+  return toward.endsWith('z') ? [0, y * 8, at * 20] : [at * 20, y * 8, 0];
+}
+
+/** Turns a point in level LDU about the tilt's hinge line. */
+function tiltPoint(tilt: Tilt, point: Point): Point {
+  const pivot = tiltPivot(tilt);
+  const [x, y, z] = apply(tiltTurn(tilt), [
+    point[0] - pivot[0],
+    point[1] - pivot[1],
+    point[2] - pivot[2],
+  ]);
+  return [x + pivot[0], y + pivot[1], z + pivot[2]];
+}
+
+/** A piece's body as an oriented box in level LDU: centre, unit axes and half extents. */
+interface Box {
+  center: Point;
+  axes: readonly [Point, Point, Point];
+  half: Point;
+}
+
+function bodyBox(brick: Brick): Box {
+  const size = footprint(brick);
+  const center: Point = [
+    (brick.x + size.width / 2) * 20,
+    (brick.y + size.height / 2) * 8,
+    (brick.z + size.depth / 2) * 20,
+  ];
+  const half: Point = [size.width * 10, size.height * 4, size.depth * 10];
+  if (!brick.tilt)
+    return {
+      center,
+      half,
+      axes: [
+        [1, 0, 0],
+        [0, 1, 0],
+        [0, 0, 1],
+      ],
+    };
+  const turn = tiltTurn(brick.tilt);
+  const column = (index: number): Point => [turn[index], turn[index + 3], turn[index + 6]];
+  return { center: tiltPoint(brick.tilt, center), half, axes: [column(0), column(1), column(2)] };
+}
+
+/**
+ * The level box a piece fills in the world: studs across, plates up. A tilted piece's box holds
+ * its whole turned body.
+ */
+export function getWorldBounds(brick: Brick) {
+  if (!brick.tilt) {
+    const size = footprint(brick);
+    return {
+      minX: brick.x,
+      maxX: brick.x + size.width,
+      minY: brick.y,
+      maxY: brick.y + size.height,
+      minZ: brick.z,
+      maxZ: brick.z + size.depth,
+    };
+  }
+  const { center, axes, half } = bodyBox(brick);
+  const reach = [0, 1, 2].map((axis) =>
+    axes.reduce((sum, direction, index) => sum + Math.abs(direction[axis]) * half[index], 0),
+  );
+  return {
+    minX: (center[0] - reach[0]) / 20,
+    maxX: (center[0] + reach[0]) / 20,
+    minY: (center[1] - reach[1]) / 8,
+    maxY: (center[1] + reach[1]) / 8,
+    minZ: (center[2] - reach[2]) / 20,
+    maxZ: (center[2] + reach[2]) / 20,
+  };
+}
+
+const cross = (first: Point, second: Point): Point => [
+  first[1] * second[2] - first[2] * second[1],
+  first[2] * second[0] - first[0] * second[2],
+  first[0] * second[1] - first[1] * second[0],
+];
+
+/**
+ * How far, in LDU, pieces in different frames may press into each other: a tilted panel's
+ * edge rounds over its neighbours where real plates flex or leave a sliver of air.
+ */
+const TILT_SLACK = 2;
+
+/** Whether two oriented boxes overlap by more than the slack, by separating axes. */
+function boxesOverlap(first: Box, second: Box): boolean {
+  const offset: Point = [
+    second.center[0] - first.center[0],
+    second.center[1] - first.center[1],
+    second.center[2] - first.center[2],
+  ];
+  const candidates: Point[] = [...first.axes, ...second.axes];
+  for (const a of first.axes) for (const b of second.axes) candidates.push(cross(a, b));
+  for (const candidate of candidates) {
+    const size = Math.hypot(...candidate);
+    if (size < 1e-6) continue;
+    const axis: Point = [candidate[0] / size, candidate[1] / size, candidate[2] / size];
+    const reach = (box: Box) =>
+      box.axes.reduce(
+        (sum, direction, index) => sum + Math.abs(dot(direction, axis)) * box.half[index],
+        0,
+      );
+    if (Math.abs(dot(offset, axis)) >= reach(first) + reach(second) - TILT_SLACK) return false;
+  }
+  return true;
+}
+
+/** A part's hinge pivot and axis where an upright piece puts them, in level LDU. */
+function hingeLine(brick: Brick, part: Part) {
+  const hinge = part.hinge!;
+  const [x, y, z] = uprightPoint(brick, part, hinge.pivot);
+  const along = (hinge.axis === 'x') === (brick.rotation % 180 === 0) ? 'x' : 'z';
+  return { pivot: [x, -y, z] as Point, along };
+}
+
+/**
+ * Whether a hinge top sits on a hinge base: their pivots meet, along the same axis, and a tilted
+ * top turns about that very line.
+ */
+export function isHingePair(top: Brick, base: Brick): boolean {
+  const topPart = getPart(top.partId);
+  const basePart = getPart(base.partId);
+  if (topPart.hinge?.role !== 'top' || basePart.hinge?.role !== 'base') return false;
+  if (top.facing || base.facing || base.tilt || base.upsideDown || top.upsideDown) return false;
+  const upper = hingeLine(top, topPart);
+  const lower = hingeLine(base, basePart);
+  if (
+    upper.along !== lower.along ||
+    upper.pivot.some((value, axis) => Math.abs(value - lower.pivot[axis]) > EPSILON)
+  )
+    return false;
+  if (!top.tilt) return true;
+  // The tilt turns about a line level across the way it leans, through the pivot.
+  if (top.tilt.toward.endsWith(upper.along)) return false;
+  const [pivotX, pivotY, pivotZ] = tiltPivot(top.tilt);
+  return (
+    Math.abs(pivotY - upper.pivot[1]) < EPSILON &&
+    Math.abs(upper.along === 'x' ? pivotZ - upper.pivot[2] : pivotX - upper.pivot[0]) < EPSILON
+  );
+}
+
+/**
+ * The tilt that turns pieces on this hinge base's top by `angle` degrees toward `toward`, or
+ * null when the base isn't a hinge or can't lean that way.
+ */
+export function getHingeTilt(base: Brick, toward: Facing, angle: number): Tilt | null {
+  const part = getPart(base.partId);
+  if (part.hinge?.role !== 'base' || base.facing || base.tilt) return null;
+  const { pivot, along } = hingeLine(base, part);
+  if (toward.endsWith(along)) return null;
+  return {
+    toward,
+    angle,
+    y: pivot[1] / 8,
+    at: (along === 'x' ? pivot[2] : pivot[0]) / 20,
+  };
+}
+
 /**
  * Where a mounted piece puts each point of the upright part, in LDraw units: the part's box,
  * spun by its rotation, tipped over and turned to its facing, lands centred on its footprint.
@@ -2056,6 +2308,8 @@ const partPoint = (x: number, y: number, z: number): Point => [x * 20, -y * 8, z
  * studs, turned with it, or the top studs of a piece mounted on its side.
  */
 export function getSideStuds(brick: Brick, part: Part = getPart(brick.partId)): string[] {
+  // Tilted frames have no side-stud grid of their own.
+  if (brick.tilt) return [];
   if (brick.facing) {
     const { place } = mounting(brick, part);
     return part.connections.topStuds.map((site) =>
@@ -2125,7 +2379,7 @@ export function seatOnSideStuds(brick: Brick, host: Brick): Brick | null {
 export function getMountHosts(bricks: readonly Brick[]): Map<string, string[]> {
   const { hosts, unsupported } = hang(bricks);
   const result = new Map<string, string[]>([...hosts].map(([id, ids]) => [id, [...ids]]));
-  for (const brick of unsupported) if (brick.facing) result.set(brick.id, []);
+  for (const brick of unsupported) if (brick.facing || brick.tilt) result.set(brick.id, []);
   return result;
 }
 
@@ -2137,8 +2391,13 @@ export function getConnectionSites(
   surface: 'top' | 'bottom',
   part: Part = getPart(brick.partId),
 ) {
-  // Mounted pieces connect through side studs only.
-  if (brick.facing) return [];
+  // Mounted pieces connect through side studs only, tilted ones only within their frame.
+  if (brick.facing || brick.tilt) return [];
+  return frameSites(brick, surface, part);
+}
+
+/** Stud and receiver centres as if the piece stood upright: within its frame, if tilted. */
+function frameSites(brick: Brick, surface: 'top' | 'bottom', part: Part = getPart(brick.partId)) {
   const sites = surface === 'top' ? part.connections.topStuds : part.connections.bottomReceivers;
   return sites.map((site) => {
     let x = site.x;
@@ -2161,9 +2420,17 @@ export function getConnectionSites(
   });
 }
 
-/** Where a point of a part lands, in LDraw units, upright or mounted on its side. */
-function placePoint(brick: Brick, part: Part, [x, y, z]: PartPoint): Point {
-  if (brick.facing) return mounting(brick, part).place(partPoint(x, y, z));
+/** Where a point of a part lands, in LDraw units, upright, mounted on its side or tilted. */
+function placePoint(brick: Brick, part: Part, point: PartPoint): Point {
+  if (brick.facing) return mounting(brick, part).place(partPoint(...point));
+  const upright = uprightPoint(brick, part, point);
+  if (!brick.tilt) return upright;
+  const [x, y, z] = tiltPoint(brick.tilt, [upright[0], -upright[1], upright[2]]);
+  return [x, -y, z];
+}
+
+/** Where a point of a part lands, in LDraw units, before any tilt. */
+function uprightPoint(brick: Brick, part: Part, [x, y, z]: PartPoint): Point {
   let [across, along] = [x, z];
   if (brick.rotation === 90) [across, along] = [z, part.width - x];
   else if (brick.rotation === 180) [across, along] = [part.width - x, part.depth - z];
@@ -2295,16 +2562,30 @@ export function hasStudConnection(
   part: Part = getPart(brick.partId),
 ): boolean {
   if (support.y + supportPart.height !== brick.y) return false;
+  if (support.facing || brick.facing || !sameFrame(support, brick)) return false;
   const studs = new Set(
-    getConnectionSites(support, 'top', supportPart).map((site) => `${site.x}:${site.z}`),
+    frameSites(support, 'top', supportPart).map((site) => `${site.x}:${site.z}`),
   );
-  return getConnectionSites(brick, 'bottom', part).some((site) => studs.has(`${site.x}:${site.z}`));
+  return frameSites(brick, 'bottom', part).some((site) => studs.has(`${site.x}:${site.z}`));
 }
 
 /** Slack for mounted pieces, whose 0.4 stud thickness doesn't add up exactly in floating point. */
 const EPSILON = 1e-6;
 const onGrid = (value: number, step: number) =>
   Math.abs(Math.round(value / step) * step - value) < EPSILON;
+
+function isValidTilt(tilt: Tilt): boolean {
+  return (
+    typeof tilt === 'object' &&
+    tilt !== null &&
+    FACINGS.includes(tilt.toward) &&
+    TILT_ANGLES.includes(tilt.angle) &&
+    [tilt.y, tilt.at].every((value) => Number.isFinite(value) && value >= 0) &&
+    onGrid(tilt.y, 0.25) &&
+    onGrid(tilt.at, 0.5) &&
+    Object.keys(tilt).length === 4
+  );
+}
 
 function isValid(brick: Brick, buildArea: number): boolean {
   // Upright pieces sit on the half-stud grid; recessed studs and 0.4 stud plates put a mounted
@@ -2316,14 +2597,29 @@ function isValid(brick: Brick, buildArea: number): boolean {
     !COLOR_IDS.has(brick.color) ||
     ![0, 90, 180, 270].includes(brick.rotation) ||
     (brick.facing !== undefined && !FACINGS.includes(brick.facing)) ||
+    (brick.tilt !== undefined && (!!brick.facing || !isValidTilt(brick.tilt))) ||
     (brick.upsideDown !== undefined &&
-      (brick.upsideDown !== true || !!brick.facing || !getPart(brick.partId).flippable)) ||
+      (brick.upsideDown !== true ||
+        !!brick.facing ||
+        !!brick.tilt ||
+        !getPart(brick.partId).flippable)) ||
     ![brick.x, brick.y, brick.z].every((value) => Number.isFinite(value) && value >= 0) ||
     !onGrid(brick.x, step('x')) ||
     !onGrid(brick.y, 0.5) ||
     !onGrid(brick.z, step('z'))
   )
     return false;
+  if (brick.tilt) {
+    const bounds = getWorldBounds(brick);
+    return (
+      bounds.minX >= -EPSILON &&
+      bounds.minZ >= -EPSILON &&
+      bounds.minY >= -EPSILON &&
+      bounds.maxX <= buildArea + EPSILON &&
+      bounds.maxZ <= buildArea + EPSILON &&
+      bounds.maxY <= MAX_HEIGHT
+    );
+  }
   const size = footprint(brick);
   return (
     brick.x + size.width <= buildArea + EPSILON &&
@@ -2483,6 +2779,8 @@ interface ValidationIndex {
   buckets: ReadonlyMap<string, readonly number[]>;
   /** Each mounted piece's hosts, down to the upright piece the chain hangs from. */
   chains: Map<string, Set<string>>;
+  /** How many pieces are tilted; with any, additions are validated in full. */
+  tilted: number;
 }
 
 interface Validation {
@@ -2504,6 +2802,8 @@ const INVALID_MESSAGE =
 const UNSUPPORTED_MESSAGE = 'No stud connection to a grounded brick below this piece.';
 const UNMOUNTED_MESSAGE =
   'No side stud on a grounded piece pointing the way this mounted piece faces.';
+const UNTILTED_MESSAGE =
+  'Nothing holds this tilted piece: it needs a hinge base under a hinge top, or a stud of a held piece with the same tilt.';
 
 const studKey = (site: { x: number; y: number; z: number }) => `${site.y}:${site.x}:${site.z}`;
 
@@ -2526,6 +2826,41 @@ function bucketKeys(brick: Brick, size: Size): string[] {
       )
         keys.push(`${horizontal}:${vertical}:${depth}`);
   return keys;
+}
+
+/** The buckets a piece reaches into: its whole turned body, if tilted. */
+function cellsOf(brick: Brick, size: Size): string[] {
+  if (!brick.tilt) return bucketKeys(brick, size);
+  const bounds = getWorldBounds(brick);
+  return bucketKeys(
+    { ...brick, x: bounds.minX, y: bounds.minY, z: bounds.minZ },
+    {
+      width: bounds.maxX - bounds.minX,
+      height: bounds.maxY - bounds.minY,
+      depth: bounds.maxZ - bounds.minZ,
+    },
+  );
+}
+
+/**
+ * Whether a tilted piece turns about this hinge base's line. The base's cradle is cut away for
+ * the top to swing in, so what the top carries may lean over it.
+ */
+function swingsOn(brick: Brick, base: Brick): boolean {
+  if (!brick.tilt) return false;
+  const line = getHingeTilt(base, brick.tilt.toward, brick.tilt.angle);
+  return !!line && tiltKey(line) === tiltKey(brick.tilt);
+}
+
+/**
+ * Whether two pieces' bodies overlap: on the grid when they share a frame, else as turned boxes.
+ * A hinge's halves share the space round their pivot.
+ */
+function collides(brick: Brick, size: Size, other: Brick, otherSize: Size): boolean {
+  if (isHingePair(brick, other) || isHingePair(other, brick)) return false;
+  if (swingsOn(brick, other) || swingsOn(other, brick)) return false;
+  if (sameFrame(brick, other)) return overlaps(brick, size, other, otherSize);
+  return boxesOverlap(bodyBox(brick), bodyBox(other));
 }
 
 function overlaps(brick: Brick, size: Size, other: Brick, otherSize: Size): boolean {
@@ -2585,9 +2920,26 @@ function hang(valid: readonly Brick[]): Hanging {
   const mountedReceivers = new Set<string>();
   /** Held pieces with clips or bars, which can hold others. */
   const gripping: Brick[] = [];
+  /** Top studs of held tilted pieces, keyed by frame and stud. */
+  const frameStudOwners = new Map<string, string[]>();
+  /** Held upright hinge bases, which can carry a hinge top. */
+  const hingeBases: Brick[] = [];
+  const hingeHosts = (brick: Brick) =>
+    getPart(brick.partId).hinge?.role === 'top'
+      ? hingeBases.filter((base) => isHingePair(brick, base))
+      : [];
+  // A hinge top hangs from its base in a later pass, even level, so that what it carries is
+  // carried by the base.
   const hold = (brick: Brick, round: number) => {
     rounds.set(brick.id, round);
-    if (!brick.facing) {
+    if (brick.tilt) {
+      const frame = tiltKey(brick.tilt);
+      for (const site of frameSites(brick, 'top')) {
+        const key = `${frame}|${studKey(site)}`;
+        frameStudOwners.set(key, [...(frameStudOwners.get(key) ?? []), brick.id]);
+      }
+    } else if (!brick.facing) {
+      if (getPart(brick.partId).hinge?.role === 'base') hingeBases.push(brick);
       for (const site of getConnectionSites(brick, 'top')) {
         const key = studKey(site);
         groundedStuds.add(key);
@@ -2604,7 +2956,7 @@ function hang(valid: readonly Brick[]): Hanging {
   };
   const unheld: Brick[] = [];
   for (const brick of valid
-    .filter((brick) => !brick.facing)
+    .filter((brick) => !brick.facing && !brick.tilt)
     .toSorted((first, second) => first.y - second.y)) {
     const hasStudSupport = getConnectionSites(brick, 'bottom').some((site) =>
       groundedStuds.has(studKey(site)),
@@ -2625,7 +2977,7 @@ function hang(valid: readonly Brick[]): Hanging {
       hold(brick, 0);
     else unheld.push(brick);
   }
-  let pending = [...unheld, ...valid.filter((brick) => brick.facing)];
+  let pending = [...unheld, ...valid.filter((brick) => brick.facing || brick.tilt)];
   for (let progress = true, round = 1; progress && pending.length; round += 1) {
     progress = false;
     pending = pending.filter((brick) => {
@@ -2635,6 +2987,12 @@ function hang(valid: readonly Brick[]): Hanging {
       if (!brick.facing)
         for (const site of getConnectionSites(brick, 'bottom'))
           for (const id of studOwners.get(studKey(site)) ?? []) ids.add(id);
+      if (brick.tilt) {
+        const frame = tiltKey(brick.tilt);
+        for (const site of frameSites(brick, 'bottom'))
+          for (const id of frameStudOwners.get(`${frame}|${studKey(site)}`) ?? []) ids.add(id);
+      }
+      for (const base of hingeHosts(brick)) ids.add(base.id);
       if (hasClipsOrBars(getPart(brick.partId)))
         for (const other of gripping) if (hasClipConnection(brick, other)) ids.add(other.id);
       if (!ids.size) return true;
@@ -2698,7 +3056,11 @@ function computeValidation(assembly: Assembly): Validation {
     issues.push({
       brickId: brick.id,
       code: 'unsupported',
-      message: brick.facing ? UNMOUNTED_MESSAGE : UNSUPPORTED_MESSAGE,
+      message: brick.facing
+        ? UNMOUNTED_MESSAGE
+        : brick.tilt
+          ? UNTILTED_MESSAGE
+          : UNSUPPORTED_MESSAGE,
     });
   const { groundedStuds, groundedByTopHeight, sideStuds, rounds, hosts, mountedReceivers } = hung;
   // A mounted piece reaches into the recess or stud space of the pieces that hold it, down to
@@ -2706,7 +3068,7 @@ function computeValidation(assembly: Assembly): Validation {
   const bounds = valid.map((brick) => footprint(brick));
   const buckets = new Map<string, number[]>();
   const cells = valid.map((brick, index) => {
-    const keys = bucketKeys(brick, bounds[index]);
+    const keys = cellsOf(brick, bounds[index]);
     for (const key of keys) {
       const occupants = buckets.get(key);
       if (occupants) occupants.push(index);
@@ -2727,6 +3089,7 @@ function computeValidation(assembly: Assembly): Validation {
     bounds,
     buckets,
     chains: new Map(),
+    tilted: valid.filter((brick) => brick.tilt).length,
   };
   const holds = (piece: Brick, host: Brick) =>
     !!piece.facing && chainOf(index, piece.id).has(host.id);
@@ -2745,7 +3108,7 @@ function computeValidation(assembly: Assembly): Validation {
     for (const otherIndex of [...candidates].sort((first, second) => first - second)) {
       const other = valid[otherIndex];
       if (
-        overlaps(brick, size, other, bounds[otherIndex]) &&
+        collides(brick, size, other, bounds[otherIndex]) &&
         !isMatchingInsertFrame(brick, other) &&
         !isMatchingInsertFrame(other, brick) &&
         !isArchInfill(brick, other) &&
@@ -2812,6 +3175,8 @@ export function validateAddition(
   // A clip or bar can hang the piece, or let it overlap what it grips: check those in full.
   const part = PARTS_BY_ID.get(brick.partId) ?? RUNTIME_PARTS.get(brick.partId);
   if (part && hasClipsOrBars(part)) return null;
+  // Tilted frames and hinges are checked in full, as is anything added among tilted pieces.
+  if (brick.tilt || part?.hinge || index.tilted) return null;
   const bricks = [...assembly.bricks, brick];
   const next: Assembly = { ...assembly, bricks };
   const issues: Issue[] = [];
@@ -2926,6 +3291,7 @@ export function validateAddition(
           bounds: [...index.bounds, size],
           buckets,
           chains: new Map(),
+          tilted: 0,
         };
       };
   }
@@ -2991,6 +3357,22 @@ export function getLDrawTransform(brick: Brick): {
   matrix: Matrix;
 } {
   const part = getPart(brick.partId);
+  if (brick.tilt) {
+    // Placed upright, then turned about the hinge line; LDraw's y points down.
+    const { tilt, ...rest } = brick;
+    const upright = getLDrawTransform(rest);
+    const flip: Matrix = [1, 0, 0, 0, -1, 0, 0, 0, 1];
+    const turn = multiply(multiply(flip, tiltTurn(tilt)), flip);
+    const round = (value: number) => Math.round(value * 10000) / 10000 + 0;
+    const [x, y, z] = tiltPoint(tilt, [upright.x, -upright.y, upright.z]);
+    return {
+      x: round(x),
+      y: round(-y),
+      z: round(z),
+      rotation: upright.rotation,
+      matrix: multiply(turn, upright.matrix).map(round) as unknown as Matrix,
+    };
+  }
   if (brick.facing) {
     const upright = getLDrawTransform({
       ...brick,

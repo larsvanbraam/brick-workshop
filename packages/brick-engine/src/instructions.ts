@@ -90,8 +90,9 @@ function buildNodes(bricks: readonly Brick[]): Node[] {
     return keys;
   };
   for (const node of nodes) {
-    // Nothing rests on a mounted piece, so it is never under anything.
-    if (node.brick.facing) continue;
+    // Nothing rests on a mounted piece, so it is never under anything; what rests on a tilted
+    // piece is among its mount hosts.
+    if (node.brick.facing || node.brick.tilt) continue;
     const top = node.brick.y + footprint(node.brick).height;
     for (const cell of cellsOf(node)) {
       const key = `${top}:${cell}`;
@@ -122,7 +123,7 @@ function buildNodes(bricks: readonly Brick[]): Node[] {
     const below = new Set<number>();
     // A mounted piece goes on after the pieces whose side studs hold it.
     for (const id of hosts.get(node.brick.id) ?? []) below.add(indexes.get(id)!);
-    if (!node.brick.facing)
+    if (!node.brick.facing && !node.brick.tilt)
       for (const cell of cellsOf(node))
         for (const other of tops.get(`${node.brick.y}:${cell}`) ?? []) {
           const lower = nodes[other];
@@ -167,12 +168,13 @@ function gap(first: Node, second: Node) {
  * them: it sits squarely on top of each one and no wider, like the next brick of a column.
  */
 function isStackable(upper: Node, inStep: ReadonlySet<number>, nodes: readonly Node[]) {
-  if (upper.brick.facing) return false;
+  if (upper.brick.facing || upper.brick.tilt) return false;
   for (const index of upper.below) {
     if (!inStep.has(index)) continue;
     const lower = nodes[index];
     if (
       lower.brick.facing ||
+      lower.brick.tilt ||
       lower.brick.y + footprint(lower.brick).height !== upper.brick.y ||
       upper.brick.x < lower.brick.x ||
       upper.brick.z < lower.brick.z ||
