@@ -1990,25 +1990,43 @@ describe('mixed-part engine builds', () => {
   });
   const catalogSampler = () => createExampleAssembly('catalog-sampler');
 
-  it('builds a medieval courtyard with a jettied hall, watchtower, well and walled garden', () => {
+  it('builds a half-timbered cottage with a jettied upper floor, chimney, porch and tree', () => {
     const assembly = createExampleAssembly('courtyard-house');
-    expect(assembly.bricks).toHaveLength(383);
-    expect(new Set(assembly.bricks.map((brick) => brick.partId)).size).toBe(46);
+    expect(assembly.bricks).toHaveLength(410);
+    expect(new Set(assembly.bricks.map((brick) => brick.partId)).size).toBe(43);
     expect(assembly.bricks[0]).toMatchObject({ partId: '91405', x: 0, y: 0, z: 0 });
     expect(Math.max(...assembly.bricks.map((brick) => brick.y + footprint(brick).height))).toBe(48);
     expect(validateAssembly(assembly)).toEqual([]);
-    // Corbels under the jettied upper floor and the tower's fighting platform.
-    expect(assembly.bricks.filter((brick) => brick.partId === '3665a')).toHaveLength(11);
-    const doors = assembly.bricks.filter((brick) => brick.partId === '3193a');
-    expect(doors).toHaveLength(2);
-    for (const door of doors)
-      expect(
-        assembly.bricks.some(
-          (frame) => frame.partId === '3579' && frame.x === door.x && frame.z === door.z + 0.5,
-        ),
-      ).toBe(true);
-    for (const partId of ['3307', '3470', '33303', '3068b', '14716', '30137', '2453b'])
-      expect(assembly.bricks.some((brick) => brick.partId === partId)).toBe(true);
+    const of = (partId: string) => assembly.bricks.filter((brick) => brick.partId === partId);
+    // Timber brackets under the jetty, black corbels under the two wall lanterns.
+    expect(
+      of('3665a')
+        .map((brick) => brick.color)
+        .sort(),
+    ).toEqual([0, 0, 70, 70, 70, 70, 70, 70]);
+    expect(of('3062b').filter((brick) => brick.color === 46)).toHaveLength(2);
+    // The round-headed door: a timber fanlight inside the stone arch.
+    const [arch] = of('15254');
+    expect(of('15254')).toHaveLength(1);
+    expect(of('20309')).toEqual([
+      expect.objectContaining({ color: 70, y: arch.y, z: arch.z, rotation: arch.rotation }),
+    ]);
+    // Latticed gable windows front and back, a pair of casements in each.
+    expect(of('60594')).toHaveLength(2);
+    expect(of('60607')).toHaveLength(4);
+    // The porch awning falls to the front in red and white stripes.
+    const awning = of('4286');
+    expect(awning).toHaveLength(6);
+    expect(new Set(awning.map((brick) => brick.color))).toEqual(new Set([4, 15]));
+    // The chimney rises past the ridge and puffs white smoke.
+    const ridge = Math.max(...of('3043').map((brick) => brick.y + footprint(brick).height));
+    const stack = Math.max(...of('98283').map((brick) => brick.y + footprint(brick).height));
+    expect(stack).toBeGreaterThan(ridge);
+    expect(assembly.bricks.filter((brick) => brick.color === 15 && brick.y >= stack)).toHaveLength(
+      3,
+    );
+    for (const partId of ['14716', '2423', '30055', '30137', '3941', '4070', '4216', '24866'])
+      expect(of(partId).length).toBeGreaterThan(0);
   });
 
   it("builds a striped lighthouse, keeper's cottage, jetty and rowboat on a rocky island", () => {
@@ -2089,19 +2107,20 @@ describe('mixed-part engine builds', () => {
     expect(assembly.bricks.filter((brick) => brick.y === 1 && brick.z === 0)).toHaveLength(2);
   });
 
-  it('gives the courtyard house a stepped slate roof with overhanging eaves', () => {
+  it('gives the courtyard house a steep dark red roof stepping up to a ridge', () => {
     const assembly = createExampleAssembly('courtyard-house');
-    const roofHeights = Array.from({ length: 8 }, (_, index) => {
-      const z = index + 7;
+    const z = 4;
+    const roofHeights = Array.from({ length: 12 }, (_, index) => {
+      const x = index + 2;
       return Math.max(
         ...assembly.bricks
           .filter((brick) => {
             const size = footprint(brick);
             return (
-              brick.color === 72 &&
-              brick.y >= 24 &&
-              brick.x <= 10 &&
-              10 < brick.x + size.width &&
+              (brick.color === 320 || brick.color === 4) &&
+              brick.y >= 20 &&
+              brick.x <= x &&
+              x < brick.x + size.width &&
               brick.z <= z &&
               z < brick.z + size.depth
             );
@@ -2109,7 +2128,7 @@ describe('mixed-part engine builds', () => {
           .map((brick) => brick.y + footprint(brick).height),
       );
     });
-    expect(roofHeights).toEqual([27, 30, 33, 34, 34, 33, 30, 27]);
+    expect(roofHeights).toEqual([23, 26, 29, 32, 35, 38, 38, 35, 32, 29, 26, 23]);
   });
 
   it('provides named, valid examples with independent assembly instances', () => {
@@ -2645,7 +2664,7 @@ describe('example registry', () => {
     expect(first.bricks[0]).not.toBe(second.bricks[0]);
     expect(() => registry.createAssembly('unknown')).toThrow('Unknown example');
     expect(createDemoAssembly().bricks.map((brick) => brick.id)).toEqual(
-      Array.from({ length: 383 }, (_, index) => `demo-${index + 1}`),
+      Array.from({ length: 410 }, (_, index) => `demo-${index + 1}`),
     );
   });
 });

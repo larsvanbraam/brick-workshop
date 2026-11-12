@@ -245,5 +245,5 @@ describe('physical assessment cache', () => {
         },
       ),
     );
-  });
+  }, 15_000);
 });
