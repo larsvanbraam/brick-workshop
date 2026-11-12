@@ -77,6 +77,13 @@ const MIN_EDGE_DETAIL = 10;
 const MIN_CINEMATIC_EDGE_DETAIL = 28;
 /** Joint, in LDraw units (a stud is 20, a plate 8), between bricks in cinematic shots. */
 const PHOTO_GAP = 0.6;
+/**
+ * Cinematic shots render at this multiple of their size and are scaled down. Postprocessing
+ * draws into its own buffers, which skip the canvas's multisampling, so this is their
+ * antialiasing: brick joints and stud edges a pixel or less wide stay smooth lines instead of
+ * breaking into dashes.
+ */
+const CINEMATIC_SUPERSAMPLE = 2;
 /** Smallest stretch of the model, in studs across, a close-up step shows. */
 const FOCUS_SIZE = 16;
 /** Room left around a step's new pieces when its close-up moves. */
@@ -151,6 +158,8 @@ export class ManualRenderer {
   private readonly target = new WebGLRenderTarget(VISIBILITY_SIZE, VISIBILITY_SIZE);
   private readonly highlightTarget = new WebGLRenderTarget(1, 1);
   private readonly canvas = document.createElement('canvas');
+  /** Cinematic shots, scaled down from the supersampled render. */
+  private readonly cinematicCanvas = document.createElement('canvas');
   private readonly colored = new Map<string, Group>();
   private readonly owned: { dispose(): void }[] = [];
   private readonly bricks: Map<string, Brick>;
@@ -549,7 +558,7 @@ export class ManualRenderer {
    * The whole model so far on the workshop's cinematic stage, for covers: a perspective shot a
    * little lower than the steps' views, the model filling `hero` (in pixels) and standing on its
    * bottom edge, with the dark backdrop running across the rest of the `width` × `height` image.
-   * Returns the renderer's own canvas, valid until the next render.
+   * Returns a canvas valid until the next cinematic render.
    */
   renderCinematic(
     view: number,
@@ -669,7 +678,14 @@ export class ManualRenderer {
           .filter((point) => point.y === whole.min.y)
           .map((point) => ((1 - point.project(camera).y) / 2) * height),
       );
-      sky = new CanvasTexture(paintSky(mood, width, height, back));
+      sky = new CanvasTexture(
+        paintSky(
+          mood,
+          width * CINEMATIC_SUPERSAMPLE,
+          height * CINEMATIC_SUPERSAMPLE,
+          back * CINEMATIC_SUPERSAMPLE,
+        ),
+      );
       sky.colorSpace = SRGBColorSpace;
       scene.background = sky;
       scene.fog = null;
@@ -679,12 +695,27 @@ export class ManualRenderer {
     }
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = PCFSoftShadowMap;
-    renderer.setSize(width, height, false);
+    const [renderWidth, renderHeight] = [width, height].map((size) => size * CINEMATIC_SUPERSAMPLE);
+    renderer.setSize(renderWidth, renderHeight, false);
     renderer.setClearColor(0x000000, 1);
-    const composer = createCinematicComposer(renderer, scene, camera, mood, width, height, outdoor);
+    const composer = createCinematicComposer(
+      renderer,
+      scene,
+      camera,
+      mood,
+      renderWidth,
+      renderHeight,
+      outdoor,
+    );
     try {
       composer.render();
-      return renderer.domElement;
+      const output = this.cinematicCanvas;
+      output.width = width;
+      output.height = height;
+      const context = output.getContext('2d')!;
+      context.imageSmoothingQuality = 'high';
+      context.drawImage(renderer.domElement, 0, 0, width, height);
+      return output;
     } finally {
       composer.dispose();
       sky?.dispose();
