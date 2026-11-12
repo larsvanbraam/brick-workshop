@@ -64,16 +64,20 @@ plain is not finished.
   shutters or a window box planted with flowers and sprigs.
 - Half-timbering: dark beams (`308` or `70`) in a light infill (`15`, `19` or `78`), with
   diagonal braces where the catalogue allows.
-- Roofs are textured and broken up. Lay shingles as a stepped plate roof covered in staggered
-  tiles with angled ends (`22385`) or slopes, in two shades of the roof colour with a few
-  accent tiles. The roof in `courtyard-house.ts` is a worked recipe to reuse: a height field
-  gives each cell its course, each course is a brick shell two studs deep set 3 plates up and
-  1 stud in (about 50°), and its exposed row carries `22385` tiles staggered course by course
-  with their points overhanging the course below; a cross gable is the higher of two height
-  fields, so the valleys come out on their own. Every shingle's point faces downhill, towards the eaves and away from the
-  ridge. `22385` has its point at -z at rotation 0, and turns like a slope's low side: 90
-  points it at -x, 180 at +z, 270 at +x. Add dormers, chimneys with pots, a ridge, eaves that overhang the wall, and
-  gutters.
+- Roofs follow their pitch: the surface is real slope pieces, never flat tiles on steps.
+  Every piece here stands upright, so flat tiles laid on a stepped roof read as horizontal
+  shelves from the side, however they overlap. Use 45° slopes (`3040b`, `3039`, `3038`,
+  `3037`; 3 plates up per stud) or 33° slopes (`4286`, `3298`, `4161`, `3297`; 3 plates up per
+  3 studs), low side downhill. Turn a slope by its low side: it faces -z at rotation 0, -x at
+  90, +z at 180 and +x at 270.
+- Texture the roof with the slopes themselves: staggered lengths from course to course and
+  two shades of the roof colour (about a third in the lighter one), never in a pattern.
+- The roof in `courtyard-house.ts` is a worked recipe to reuse. A height field gives each cell
+  its course. Each course is a shell two studs deep, set 3 plates up and 1 stud in, made of
+  45° slopes whose high row carries the next course. A cross gable is the higher of two height
+  fields, so the valleys come out on their own. Barge boards are slopes in the timber colour,
+  and ridge caps (`3043`) close the top.
+- Add dormers, chimneys with pots, a ridge, eaves that overhang the wall, and gutters.
 - The roofline never ends flat: finials and cones (`4589`, `59900`), a dome or spire, flags on
   antennas, railings or crenellations along the top.
 - A monochrome landmark (Notre-Dame) works only through depth: recesses, columns, rows of

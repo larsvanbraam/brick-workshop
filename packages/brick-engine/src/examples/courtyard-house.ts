@@ -8,7 +8,7 @@ import type { ExampleBrickAdder, ExampleDefinition } from './types.ts';
 
 // A medieval cottage on a landscaped island, after a fan-built cottage: a stone ground floor
 // with pale quoins and a round-arched porch, a jettied half-timbered upper floor, and a steep
-// roof of overlapping shingles (angled tiles on a stepped shell) with a cross-gabled dormer,
+// roof of 45 degree slopes in two reds and staggered lengths with a cross-gabled dormer,
 // brown barge boards and a chimney. An outside stair with a balustrade climbs the right gable;
 // a big broadleaf tree stands before the porch, a well by the left corner, a pond on the right.
 //
@@ -167,7 +167,7 @@ const house = (x: number, z: number) =>
 // ---------------------------------------------------------------------------------------------
 // The roof as a height field: how many courses stand over each cell, counting the eave row as
 // one. Each course is a shell two studs deep (the course's exposed row and the row the next
-// course stands on), so the roof is hollow, and its exposed row carries the shingles.
+// course stands on), so the roof is hollow; on the slopes the course is a 45 degree slope brick.
 
 type Dir = '+x' | '-x' | '+z' | '-z';
 const STEP: Readonly<Record<Dir, readonly [number, number]>> = {
@@ -350,6 +350,13 @@ const shingle = (...at: number[]) => {
   return roll < 0.3 ? ROOF_LIGHT : ROOF;
 };
 const BRICK_OF: Readonly<Record<number, string>> = { 1: '3004', 2: '3003', 3: '3002', 4: '3001' };
+/** 45 degree slopes two studs deep, one to four wide, for the roof's face. */
+const SLOPE_OF: Readonly<Record<number, string>> = {
+  1: '3040b',
+  2: '3039',
+  3: '3038',
+  4: '3037',
+};
 
 /** Splits [from, to] into lengths of one to four, staggered by `seed`. */
 function split(from: number, to: number, seed: number) {
@@ -382,7 +389,7 @@ export const courtyardHouse: ExampleDefinition = {
     'tree',
     'landscape',
   ],
-  expectedPieceCount: 2069,
+  expectedPieceCount: 1912,
   buildArea: SIZE,
   brickIdPrefix: 'demo',
   smooth: [{ only: (brick) => NATURAL.has(naturalKey(brick)) }],
@@ -887,6 +894,19 @@ export const courtyardHouse: ExampleDefinition = {
               for (const [cx, cz] of cells) shell.add(cellKey(cx, cz, c));
               continue;
             }
+            if (!isBarge && !ridge) {
+              // The roof's face: 45 degree slopes, low side downhill, so the courses read as
+              // one plane following the pitch; staggered lengths and two reds give it shingles.
+              const dir = stretch[0].dir as Dir;
+              place(SLOPE_OF[size], shingle(px, pz, c), px, pz, SLOPE_TURN[dir], cells);
+              continue;
+            }
+            if (ridge) {
+              // Both ridges take their caps straight on the top slopes' studs, so the pitch
+              // runs on into the caps without a vertical course between them.
+              for (const [cx, cz] of cells) shell.add(cellKey(cx, cz, c));
+              continue;
+            }
             const partId = BRICK_OF[size];
             const rotation: Rotation =
               size === 1 ? (alongX ? 0 : 90) : size === 2 ? 0 : alongX ? 90 : 0;
@@ -903,59 +923,14 @@ export const courtyardHouse: ExampleDefinition = {
         '3043',
         x === RX0 || x + 1 === RX1 ? TIMBER : ROOF,
         x,
-        EAVES + (RIDGE_COURSE + 1) * 3,
-        F - 1 - RIDGE_COURSE,
+        EAVES + RIDGE_COURSE * 3,
+        F - 2 - RIDGE_COURSE,
         0,
       );
     const dormerRidge = DX0 + DORMER_RIDGE_COURSE;
     for (let z = F - 2; z >= 0; z -= 2) {
       if (!isDormer(dormerRidge, z) || roofT(dormerRidge, z) !== DORMER_RIDGE_COURSE + 1) break;
-      add('3043', ROOF, dormerRidge, EAVES + (DORMER_RIDGE_COURSE + 1) * 3, z, 90);
-    }
-
-    // Shingles: on each course's exposed row, angled tiles two studs wide hang their points
-    // over the course below, staggered course by course; single studs take a shorter tile.
-    // An angled tile's point turns like a slope's low side (0 points -z, 90 -x, 180 +z,
-    // 270 +x), so each shingle points downhill, towards its eaves.
-    const shingleTurn = (dir: Dir) => SLOPE_TURN[dir];
-    for (let c = 0; c <= RIDGE_COURSE; c++) {
-      const y = EAVES + c * 3 + 3;
-      const open = (x: number, z: number) =>
-        roofT(x, z) === c + 1 &&
-        !barge(x, z) &&
-        roofT(x - STEP[downhill(x, z)][0], z - STEP[downhill(x, z)][1]) === c + 2;
-      const done = new Set<string>();
-      for (let z = 0; z < SIZE; z++)
-        for (let x = 0; x < SIZE; x++) {
-          if (!open(x, z) || done.has(`${x},${z}`)) continue;
-          const dir = downhill(x, z);
-          const [sx, sz] = STEP[dir];
-          // The neighbour across the slope, for a two-wide tile, staggered by course.
-          const [ax, az] = sx ? [0, 1] : [1, 0];
-          const along = sx ? z : x;
-          const pairUp = (along + c + (isDormer(x, z) ? 1 : 0)) % 2 === 0;
-          const [nx, nz] = [x + ax, z + az];
-          const color = shingle(x, z, c);
-          if (pairUp && open(nx, nz) && downhill(nx, nz) === dir && !done.has(`${nx},${nz}`)) {
-            const x0 = sx > 0 ? x : sx < 0 ? x - 2 : x;
-            const z0 = sz > 0 ? z : sz < 0 ? z - 2 : z;
-            if (tryAdd('22385', color, x0, y, z0, shingleTurn(dir))) {
-              done.add(`${x},${z}`);
-              done.add(`${nx},${nz}`);
-              continue;
-            }
-          }
-          if (done.has(`${x},${z}`)) continue;
-          const x1 = sx < 0 ? x - 1 : x;
-          const z1 = sz < 0 ? z - 1 : z;
-          if (tryAdd('3069b', color, x1, y, z1, sx ? 90 : 0)) {
-            done.add(`${x},${z}`);
-            continue;
-          }
-          if (tryAdd('54200', color, x, y, z, SLOPE_TURN[dir])) done.add(`${x},${z}`);
-          else tryAdd('3070b', color, x, y, z);
-          done.add(`${x},${z}`);
-        }
+      add('3043', ROOF, dormerRidge, EAVES + DORMER_RIDGE_COURSE * 3, z, 90);
     }
 
     // Outside stair up the right gable: stone steps two studs deep, a landing at the upper

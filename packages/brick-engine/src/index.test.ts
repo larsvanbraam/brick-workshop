@@ -2005,7 +2005,7 @@ describe('mixed-part engine builds', () => {
 
   it('builds a half-timbered cottage with a dormer, outside stair, tree, well and pond', () => {
     const assembly = createExampleAssembly('courtyard-house');
-    expect(assembly.bricks).toHaveLength(2069);
+    expect(assembly.bricks).toHaveLength(1912);
     expect(assembly.buildArea).toBe(40);
     expect(validateAssembly(assembly)).toEqual([]);
     const of = (partId: string) => assembly.bricks.filter((brick) => brick.partId === partId);
@@ -2039,7 +2039,8 @@ describe('mixed-part engine builds', () => {
     for (const color of [1, 73, 272])
       expect(assembly.bricks.some((brick) => brick.y === 4 && brick.color === color)).toBe(true);
     for (const partId of [
-      '22385',
+      '3039',
+      '3037',
       '54200',
       '25269',
       '3045',
@@ -2130,7 +2131,7 @@ describe('mixed-part engine builds', () => {
     expect(assembly.bricks.filter((brick) => brick.y === 1 && brick.z === 0)).toHaveLength(2);
   });
 
-  it('gives the courtyard house a steep shingled roof stepping up to a ridge', () => {
+  it('gives the courtyard house a 45 degree roof of slopes rising to a ridge', () => {
     const assembly = createExampleAssembly('courtyard-house');
     const x = 12;
     const roofHeights = Array.from({ length: 18 }, (_, index) => {
@@ -2151,9 +2152,27 @@ describe('mixed-part engine builds', () => {
           .map((brick) => brick.y + footprint(brick).height),
       );
     });
-    // Three plates a course from each eave, the ridge cap on top, shingles overlapping.
+    // A 45 degree slope a course, three plates up and a stud in from each eave, with the
+    // ridge caps straight on the top slopes, so both sides mirror each other.
     expect(roofHeights).toEqual([
-      42, 45, 48, 51, 54, 57, 57, 62, 62, 59, 57, 57, 54, 54, 48, 48, 45, 42,
+      -Infinity,
+      38,
+      41,
+      44,
+      47,
+      50,
+      53,
+      56,
+      59,
+      59,
+      56,
+      53,
+      50,
+      47,
+      44,
+      41,
+      38,
+      -Infinity,
     ]);
   });
 
@@ -2690,7 +2709,7 @@ describe('example registry', () => {
     expect(first.bricks[0]).not.toBe(second.bricks[0]);
     expect(() => registry.createAssembly('unknown')).toThrow('Unknown example');
     expect(createDemoAssembly().bricks.map((brick) => brick.id)).toEqual(
-      Array.from({ length: 2069 }, (_, index) => `demo-${index + 1}`),
+      Array.from({ length: 1912 }, (_, index) => `demo-${index + 1}`),
     );
   });
 });
