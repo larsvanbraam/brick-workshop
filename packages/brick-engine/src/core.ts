@@ -1972,6 +1972,41 @@ function getSideReceivers(brick: Brick, part: Part = getPart(brick.partId)): str
 }
 
 /**
+ * A mounted piece slid the least way that sets its underside on one of `host`'s side studs
+ * pointing the way it faces, or null when the host has none it can reach on the grid. The
+ * piece keeps its facing and rotation; only its position moves.
+ */
+export function seatOnSideStuds(brick: Brick, host: Brick): Brick | null {
+  if (!brick.facing) return null;
+  const parse = (key: string) => {
+    const [facing, ...point] = key.split(':');
+    return { facing, point: point.map(Number) };
+  };
+  const studs = getSideStuds(host)
+    .map(parse)
+    .filter(({ facing }) => facing === brick.facing);
+  if (!studs.length) return null;
+  let best: Brick | null = null;
+  let bestDistance = Infinity;
+  for (const receiver of getSideReceivers(brick).map(parse))
+    for (const stud of studs) {
+      const [dx, dy, dz] = stud.point.map((value, axis) => value - receiver.point[axis]);
+      const seated: Brick = {
+        ...brick,
+        x: Math.round((brick.x + dx / 20) * 10) / 10,
+        y: Math.round((brick.y - dy / 8) * 10) / 10,
+        z: Math.round((brick.z + dz / 20) * 10) / 10,
+      };
+      const distance = Math.hypot(dx / 20, dy / 20, dz / 20);
+      if (distance < bestDistance && isValid(seated, MAX_BUILD_AREA)) {
+        best = seated;
+        bestDistance = distance;
+      }
+    }
+  return best;
+}
+
+/**
  * For each piece that hangs rather than stands, the pieces holding it: those whose side studs a
  * mounted piece sits on, whose clips or bars a piece grips, or under a piece standing on one
  * of those. Mounted pieces nothing holds get an empty list. Pieces standing on the ground or on

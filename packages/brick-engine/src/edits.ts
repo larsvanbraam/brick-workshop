@@ -21,7 +21,12 @@ export const MAX_PATCH_OPERATIONS = 100;
 export type PatchOperation =
   | { type: 'add'; brick: Brick }
   | { type: 'remove'; id: string }
-  | { type: 'update'; id: string; changes: Partial<Omit<Brick, 'id'>> };
+  | {
+      type: 'update';
+      id: string;
+      /** `facing: null` stands a piece mounted on its side back upright. */
+      changes: Partial<Omit<Brick, 'id' | 'facing'>> & { facing?: Brick['facing'] | null };
+    };
 
 export interface AssemblyPatch {
   operations: readonly PatchOperation[];
@@ -239,7 +244,9 @@ function validChanges(value: unknown, complete: boolean): boolean {
   for (const field of brickFields) {
     if (!(field in value) && (!complete || optionalFields.includes(field))) continue;
     if (field === 'facing') {
-      if (!FACINGS.includes(value[field] as never)) return false;
+      // An update may clear the facing to stand the piece back upright.
+      if (!(value[field] === null && !complete) && !FACINGS.includes(value[field] as never))
+        return false;
     } else if (field === 'upsideDown') {
       if (value[field] !== true) return false;
     } else if (field === 'partId') {
@@ -431,7 +438,12 @@ function applyOperations(
       const brick = bricks.get(id);
       if (!brick) return fail('piece_not_found', `Piece ${id} not found.`);
       if (operation.type === 'remove') bricks.delete(id);
-      else bricks.set(id, { ...brick, ...operation.changes });
+      else {
+        const { facing, ...changes } = operation.changes;
+        const { facing: current, ...rest } = brick;
+        const side = facing === undefined ? current : (facing ?? undefined);
+        bricks.set(id, { ...rest, ...changes, ...(side ? { facing: side } : {}) });
+      }
     }
   }
   next.bricks = [...bricks.values()];

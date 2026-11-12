@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vite-plus/test';
 import {
+  applyPatch,
   assessPhysicalFeasibility,
   footprint,
   getMountHosts,
@@ -7,6 +8,7 @@ import {
   placeBrick,
   planInstructionSteps,
   removeBrick,
+  seatOnSideStuds,
   validateAddition,
   validateAssembly,
 } from './index.ts';
@@ -129,5 +131,54 @@ describe('clips and bars', () => {
     }
     expect(validateAddition(assembly, piece('extra', '2335', 4, 0, 4))).toBeNull();
     expect(validateAssembly({ ...assembly, bricks: [...assembly.bricks] })).toEqual([]);
+  });
+
+  it('slides a held flag up and down its pole half a plate at a time', () => {
+    let assembly: Assembly = { ...board, bricks: [...flagpole, flag(6)] };
+    for (const y of [6.5, 7, 7.5, 7, 6.5]) {
+      const moved = applyPatch(assembly, {
+        operations: [{ type: 'update', id: 'flag', changes: { y } }],
+      });
+      expect(moved.ok, `flag to ${y}`).toBe(true);
+      if (moved.ok) assembly = moved.assembly;
+    }
+    const tooHigh = applyPatch(assembly, {
+      operations: [{ type: 'update', id: 'flag', changes: { y: 18 } }],
+    });
+    expect(tooHigh.ok).toBe(false);
+  });
+
+  it('tips a held bar over, and reads a cleared facing as standing it upright', () => {
+    const held: Assembly = { ...board, bricks: [...clipRow, bar] };
+    const tipped = applyPatch(held, {
+      operations: [{ type: 'update', id: 'bar', changes: { facing: '-x' } }],
+    });
+    expect(tipped.ok && tipped.assembly.bricks.at(-1)?.facing).toBe('-x');
+    // Upright the clips miss the bar: refused for that, not as a malformed patch.
+    const upright = applyPatch(held, {
+      operations: [{ type: 'update', id: 'bar', changes: { facing: null } }],
+    });
+    expect(upright.ok).toBe(false);
+    if (!upright.ok) {
+      expect(upright.error.code).toBe('geometry_rejected');
+      expect(upright.error.issues).toContainEqual(
+        expect.objectContaining({ brickId: 'bar', code: 'unsupported' }),
+      );
+    }
+  });
+
+  it('seats a piece tipped against a wall onto the nearest side stud facing its way', () => {
+    for (const rotation of [0, 90, 180, 270] as Rotation[]) {
+      const host = piece('host', '87087', 8, 0, 8, { rotation });
+      const facing = (['-x', '+z', '+x', '-z'] as const)[rotation / 90];
+      // Flush against the host's footprint, a plate low: off the stud, until seated.
+      const near = piece('brick', '3004', 6, 0, 6, { facing });
+      const seated = seatOnSideStuds(near, host);
+      expect(seated, `rotation ${rotation}`).not.toBeNull();
+      expect(validateAssembly({ ...board, bricks: [host, seated!] })).toEqual([]);
+      // Facing another way, nothing on the host can take it.
+      const across = facing.endsWith('x') ? '-z' : '-x';
+      expect(seatOnSideStuds({ ...near, facing: across }, host)).toBeNull();
+    }
   });
 });

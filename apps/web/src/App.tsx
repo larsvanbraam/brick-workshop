@@ -4,6 +4,7 @@ import {
   Boxes,
   Camera,
   ChevronDown,
+  ChevronUp,
   Clapperboard,
   Copy,
   Download,
@@ -20,6 +21,7 @@ import {
   Redo2,
   RotateCcw,
   RotateCw,
+  Rotate3d,
   Save,
   Search,
   Sparkles,
@@ -42,6 +44,7 @@ import {
   createDemoAssembly,
   createExampleAssembly,
   exportLDraw,
+  FACINGS,
   footprint,
   getBillOfMaterials,
   getBuildArea,
@@ -55,6 +58,7 @@ import {
   isRuntimePart,
   registerPart,
   resizeBuildArea,
+  seatOnSideStuds,
   validateAddition,
   validateAssembly,
 } from '@brick-workshop/engine';
@@ -71,6 +75,7 @@ import type {
   PolicyAssessment,
   Rotation,
   EditPolicy,
+  Facing,
 } from '@brick-workshop/engine';
 import { PhysicsClient } from './physics-client';
 import { Scene, captureScene } from './Scene';
@@ -286,16 +291,36 @@ function centeredAround(
   return { x, z, along, min: -from, max: area - length - from } as const;
 }
 
+/** How the piece in hand is turned: spun about the vertical and, tipped over, on its side. */
+interface Pose {
+  rotation: Rotation;
+  facing?: Facing;
+}
+
+/** Upright, then tipped onto its side facing each level direction in turn. */
+const TIPS: readonly (Facing | undefined)[] = [undefined, ...FACINGS];
+const nextTip = (facing: Facing | undefined, direction: 1 | -1) =>
+  TIPS[(TIPS.indexOf(facing) + direction + TIPS.length) % TIPS.length];
+/** The way a piece's top points when it is mounted on the side of a brick facing out. */
+const SIDE_FACES: Partial<Record<PointerTarget['face'], Facing>> = {
+  'x-': '-x',
+  'x+': '+x',
+  'z-': '-z',
+  'z+': '+z',
+};
+/** Plates ↑ and ↓ lift a piece by: the finest height a clip can hold a bar at. */
+const LIFT_STEP = 0.5;
+
 /** The nudge [ or ] leads to from `nudge`, held to what keeps the piece on the board. */
 function nextNudge(
   target: PointerTarget,
   partId: string,
-  rotation: Rotation,
+  pose: Pose,
   area: number,
   nudge: number,
   step: number,
 ) {
-  const size = footprint({ id: '', partId, color: 0, x: 0, y: 0, z: 0, rotation });
+  const size = footprint({ id: '', partId, color: 0, x: 0, y: 0, z: 0, ...pose });
   const { min, max } = centeredAround(target, size, area);
   const clamp = (value: number) => Math.min(Math.max(value, min), max);
   return clamp(clamp(nudge) + step);
@@ -305,20 +330,31 @@ function nextNudge(
  * Where a piece lands for the face under the pointer: on top of a brick, against one of its
  * sides at the same level, below it, or on the board. Studs line up with the brick that was hit.
  * `nudge` slides it that many studs along its long side (or along the side it is set against),
- * so it can sit anywhere along a wall, not only centered on the pointer.
+ * so it can sit anywhere along a wall, not only centered on the pointer, and `lift` raises or
+ * lowers it that many plates, such as a bar slid up or down through a clip.
  */
 function placementFor(
   target: PointerTarget,
   partId: string,
   color: number,
-  rotation: Rotation,
+  pose: Pose,
   area: number,
   nudge = 0,
+  lift = 0,
 ): Brick | null {
-  const brick: Brick = { id: 'placement-preview', partId, color, x: 0, y: 0, z: 0, rotation };
-  const size = footprint(brick);
+  const upright: Brick = {
+    id: 'placement-preview',
+    partId,
+    color,
+    x: 0,
+    y: 0,
+    z: 0,
+    rotation: pose.rotation,
+  };
   const hit = target.brick;
-  if (hit && INSERT_FRAME_PARTS[partId] === hit.partId) return seatInFrame(hit, brick, target);
+  if (hit && INSERT_FRAME_PARTS[partId] === hit.partId) return seatInFrame(hit, upright, target);
+  const brick: Brick = pose.facing ? { ...upright, facing: pose.facing } : upright;
+  let size = footprint(brick);
   if (!hit && (target.x < 0 || target.z < 0 || target.x > area || target.z > area)) return null;
   const centered = centeredAround(target, size, area);
   const shift = Math.min(Math.max(nudge, centered.min), centered.max);
@@ -337,7 +373,23 @@ function placementFor(
     if (target.face === 'x+') x = hit.x + hitSize.width;
     if (target.face === 'z-') z = hit.z - size.depth;
     if (target.face === 'z+') z = hit.z + hitSize.depth;
+    // Tipped and pointed at a wall, it turns to face out from it and seats on its side studs:
+    // those on the face pointed at first, else on a side next to it (a recessed face, such as
+    // the one behind a side stud, reads as its neighbour).
+    const outward = SIDE_FACES[target.face];
+    if (pose.facing && outward) {
+      const turn = FACINGS.indexOf(outward);
+      for (const side of [outward, FACINGS[(turn + 1) % 4], FACINGS[(turn + 3) % 4]]) {
+        const seated = seatOnSideStuds({ ...brick, facing: side, x, y, z }, hit);
+        if (!seated) continue;
+        ({ x, y, z } = seated);
+        brick.facing = side;
+        size = footprint(brick);
+        break;
+      }
+    }
   }
+  y += lift;
   if (
     y < 0 ||
     y + size.height > MAX_HEIGHT ||
@@ -440,6 +492,15 @@ export default function App() {
   /** How many studs [ and ] have moved the piece along its long side, away from the pointer. */
   const [nudged, setNudged] = useState({ partId, steps: 0 });
   const nudge = nudged.partId === partId ? nudged.steps : 0;
+  /** Whether the piece is tipped onto its side, and which way its top then points. */
+  const [facing, setFacing] = useState<Facing | undefined>(undefined);
+  const pose = useMemo<Pose>(
+    () => (facing ? { rotation, facing } : { rotation }),
+    [rotation, facing],
+  );
+  /** How many plates ↑ and ↓ have raised (or lowered) the piece from where the pointer puts it. */
+  const [lifted, setLifted] = useState({ partId, plates: 0 });
+  const lift = lifted.partId === partId ? lifted.plates : 0;
   const [tool, setTool] = useState<SceneMode>('select');
   const [target, setTarget] = useState<PointerTarget | null>(null);
   const [shiftHeld, setShiftHeld] = useState(false);
@@ -620,7 +681,7 @@ export default function App() {
   const ghost = useMemo(() => {
     const brick =
       tool === 'place' && !shiftHeld && target
-        ? placementFor(target, partId, color, rotation, buildArea, nudge)
+        ? placementFor(target, partId, color, pose, buildArea, nudge, lift)
         : null;
     const previous = ghostRef.current;
     if (
@@ -631,7 +692,7 @@ export default function App() {
     )
       return previous.ghost;
     return brick && { ...brick, id: crypto.randomUUID() };
-  }, [assembly, tool, shiftHeld, target, partId, color, rotation, buildArea, nudge]);
+  }, [assembly, tool, shiftHeld, target, partId, color, pose, buildArea, nudge, lift]);
   useLayoutEffect(() => {
     ghostRef.current = { assembly, ghost };
   }, [assembly, ghost]);
@@ -838,6 +899,34 @@ export default function App() {
       },
     );
   }
+  function tipSelected(direction: 1 | -1 = 1) {
+    if (!selected) return;
+    void edit(
+      {
+        operations: [
+          {
+            type: 'update',
+            id: selected.id,
+            changes: { facing: nextTip(selected.facing, direction) ?? null },
+          },
+        ],
+      },
+      (result) => {
+        if (result.ok) commit(result.assembly);
+        else setMessage(`Can't tip it here. ${refusal(result)}`);
+      },
+    );
+  }
+  /** Raises or lowers the selected piece, such as a bar slid up or down through a clip. */
+  function liftSelected(plates: number) {
+    if (!selected) return;
+    const y = selected.y + plates;
+    if (y < 0) return;
+    void edit({ operations: [{ type: 'update', id: selected.id, changes: { y } }] }, (result) => {
+      if (result.ok) commit(result.assembly);
+      else setMessage(`Can't move it ${plates > 0 ? 'up' : 'down'} here. ${refusal(result)}`);
+    });
+  }
   function recolorSelected(id: number) {
     if (!selected || selected.color === id) return;
     void edit(
@@ -853,6 +942,7 @@ export default function App() {
     setPartId(brick.partId);
     setColor(brick.color);
     setRotation(brick.rotation);
+    setFacing(brick.facing);
     chooseTool('place');
   }
   function activate(hit: PointerTarget, modifiers: { alt: boolean; shift: boolean }) {
@@ -864,11 +954,11 @@ export default function App() {
       if (hit.brick) pickUp(hit.brick);
       return;
     }
-    const brick = placementFor(hit, partId, color, rotation, buildArea, nudge);
+    const brick = placementFor(hit, partId, color, pose, buildArea, nudge, lift);
     const previewed =
       ghost !== null &&
       brick !== null &&
-      (['x', 'y', 'z', 'rotation'] as const).every((key) => ghost[key] === brick[key]);
+      (['x', 'y', 'z', 'rotation', 'facing'] as const).every((key) => ghost[key] === brick[key]);
     // On the previewed spot the preview already holds the checked build, or the refusal that the
     // hint above the dock explains.
     if (previewed && candidate) {
@@ -1167,11 +1257,24 @@ export default function App() {
         const direction = event.shiftKey ? -1 : 1;
         if (tool === 'select' && selected) rotateSelected(direction);
         else setRotation(((rotation + 360 + direction * 90) % 360) as Rotation);
+      } else if (key === 't') {
+        const direction = event.shiftKey ? -1 : 1;
+        if (tool === 'select' && selected) tipSelected(direction);
+        else setFacing(nextTip(facing, direction));
+      } else if ((key === 'arrowup' || key === 'arrowdown') && (tool === 'place' || selected)) {
+        event.preventDefault();
+        const plates = (key === 'arrowup' ? 1 : -1) * LIFT_STEP * (event.shiftKey ? 6 : 1);
+        if (tool === 'select') liftSelected(plates);
+        else if (tool === 'place') {
+          // Held above the board, so a press below it is not counted and stepping back shows.
+          const base = target && placementFor(target, partId, color, pose, buildArea, nudge);
+          setLifted({ partId, plates: Math.max(lift + plates, base ? -base.y : -Infinity) });
+        }
       } else if ((key === '[' || key === ']') && tool === 'place') {
         // Held to the board, so a press past its edge is not counted and stepping back shows.
         const step = key === ']' ? 1 : -1;
         const steps = target
-          ? nextNudge(target, partId, rotation, buildArea, nudge, step)
+          ? nextNudge(target, partId, pose, buildArea, nudge, step)
           : nudge + step;
         setNudged({ partId, steps });
       } else if ((key === 'delete' || key === 'backspace') && selected) {
@@ -1800,6 +1903,30 @@ export default function App() {
                 </button>
                 <button
                   className="icon-button"
+                  title="Tip onto its side (T)"
+                  aria-label="Tip piece onto its side"
+                  onClick={() => tipSelected(1)}
+                >
+                  <Rotate3d size={16} />
+                </button>
+                <button
+                  className="icon-button"
+                  title="Move up half a plate (↑)"
+                  aria-label="Move piece up"
+                  onClick={() => liftSelected(LIFT_STEP)}
+                >
+                  <ChevronUp size={16} />
+                </button>
+                <button
+                  className="icon-button"
+                  title="Move down half a plate (↓)"
+                  aria-label="Move piece down"
+                  onClick={() => liftSelected(-LIFT_STEP)}
+                >
+                  <ChevronDown size={16} />
+                </button>
+                <button
+                  className="icon-button"
                   title="Build with this part and color"
                   aria-label="Build with this part and color"
                   onClick={() => pickUp(selected)}
@@ -1868,11 +1995,22 @@ export default function App() {
                 <RotateCw size={18} />
                 <span className="mono">{rotation}°</span>
               </button>
+              <button
+                className="dock-button"
+                title="Tip piece onto its side (T)"
+                aria-label={`Tip piece, currently ${facing ? `on its side, top facing ${facing}` : 'upright'}`}
+                aria-pressed={!!facing}
+                onClick={() => setFacing(nextTip(facing, 1))}
+              >
+                <Rotate3d size={18} />
+                <span className="mono">{facing ?? 'up'}</span>
+              </button>
             </div>
             {tool === 'place' && (
               <p className="shortcut-hint">
-                <kbd>Click</kbd> place · <kbd>R</kbd> rotate · <kbd>[</kbd> <kbd>]</kbd> slide ·{' '}
-                <kbd>⇧</kbd> remove · <kbd>⌥</kbd> pick · <kbd>Esc</kbd> done
+                <kbd>Click</kbd> place · <kbd>R</kbd> rotate · <kbd>T</kbd> tip · <kbd>[</kbd>{' '}
+                <kbd>]</kbd> slide · <kbd>↑</kbd> <kbd>↓</kbd> lift · <kbd>⇧</kbd> remove ·{' '}
+                <kbd>⌥</kbd> pick · <kbd>Esc</kbd> done
               </p>
             )}
             {tool === 'select' && !selected && !empty && (
