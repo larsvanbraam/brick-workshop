@@ -1,7 +1,12 @@
 import { addAreaMap, addBondedMap, addRun, glazeWindows, turnAround } from './layout.ts';
 import type { RunKind } from './layout.ts';
 import type { ExampleBrickAdder, ExampleDefinition } from './types.ts';
-import { getConnectionSites, getPart, isMatchingInsertFrame } from '../core.ts';
+import {
+  footprint as pieceSize,
+  getConnectionSites,
+  getPart,
+  isMatchingInsertFrame,
+} from '../core.ts';
 import type { Facing, Rotation } from '../core.ts';
 import { layPlateFloor } from '../board.ts';
 import { addTree } from './trees.ts';
@@ -964,7 +969,7 @@ export const nordiskaMuseet: ExampleDefinition = {
     'park',
     'waterfront',
   ],
-  expectedPieceCount: 10285,
+  expectedPieceCount: 11812,
   buildArea: SIZE,
   brickIdPrefix: 'museet',
   build(drawnAdd) {
@@ -1718,8 +1723,21 @@ export const nordiskaMuseet: ExampleDefinition = {
     // front lawn and behind the museum, and a sailing boat moored off the front.
     for (const [x, z, rotation] of RAILINGS) add('15332', BLACK, x, LAWN_TOP, z, rotation);
     for (const x of QUAY_LAMPS) addLampPost(add, x, ISLAND[3] - 1);
+    // The trees grow round each other and round the lamps and railings already standing. The
+    // pieces so far are recorded turned about, so turn them back to the trees' frame.
+    const around = pieces.map(([partId, , x, y, z, rotation = 0, facing]) => {
+      const size = pieceSize({ id: '', partId, color: 0, x, y, z, rotation, facing });
+      return {
+        u0: SIZE - x - size.width,
+        u1: SIZE - x,
+        v0: SIZE - z - size.depth,
+        v1: SIZE - z,
+        y0: y,
+        y1: y + size.height,
+      };
+    });
     for (const [index, [x, z, crown, trunk]] of TREES.entries())
-      addTree(add, x, z, LAWN_TOP, CROWNS[crown], BARK, trunk, index);
+      addTree(add, x, z, LAWN_TOP, CROWNS[crown], BARK, trunk, index, around);
     addSailboat(add, 86, 110);
     for (const piece of pieces.toSorted((first, second) => first[3] - second[3]))
       drawnAdd(...piece);

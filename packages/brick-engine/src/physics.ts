@@ -444,13 +444,23 @@ export function importPhysicalData(input: unknown): PhysicalData {
   return data;
 }
 
+/**
+ * How much of its envelope a flat leaf spray fills: its leaves cover about half the box it
+ * spans, and they are about half a plate thick.
+ */
+const FLAT_FOLIAGE_FILL = 0.25;
+
 function estimatedMass(brick: Brick): PartMass {
   const size = footprint(brick);
+  const part = getPart(brick.partId);
+  const leafy = part.family === 'foliage' && part.height === 1;
+  const solid = (size.width * 8 * size.depth * 8 * size.height * 3.2 * 1.05) / 1000;
   return {
-    massGrams: (size.width * 8 * size.depth * 8 * size.height * 3.2 * 1.05) / 1000,
+    massGrams: leafy ? solid * FLAT_FOLIAGE_FILL : solid,
     kind: 'estimated',
-    source:
-      'Solid rectangular ABS envelope proxy: 8 mm stud pitch, 3.2 mm plate height, assumed density 1.05 g/cm3. Ignores cavities and studs; NOT an actual part weight.',
+    source: leafy
+      ? 'Flat foliage proxy: a quarter of the rectangular ABS envelope (8 mm stud pitch, 3.2 mm plate height, assumed density 1.05 g/cm3), as its leaves cover about half the box and are about half a plate thick; NOT an actual part weight.'
+      : 'Solid rectangular ABS envelope proxy: 8 mm stud pitch, 3.2 mm plate height, assumed density 1.05 g/cm3. Ignores cavities and studs; NOT an actual part weight.',
   };
 }
 

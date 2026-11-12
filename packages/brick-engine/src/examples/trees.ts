@@ -1,9 +1,6 @@
-import { getConnectionSites, getPart } from '../core.ts';
+import { footprint, getConnectionSites } from '../core.ts';
 import type { Rotation } from '../core.ts';
 import type { ExampleBrickAdder } from './types.ts';
-
-const range = (from: number, to: number) =>
-  Array.from({ length: to - from + 1 }, (_, index) => from + index);
 
 /** Small seeded random numbers, so every tree grows the same way each time. */
 export function random(seed: number) {
@@ -15,22 +12,50 @@ export function random(seed: number) {
   };
 }
 
-/** Crown bricks, largest first, with the cells each covers at either quarter turn. */
-const CROWN_BRICKS = ['3001', '3002', '3003', '3010', '3622', '3004', '3005'].flatMap((partId) => {
-  const { width, depth } = getPart(partId);
-  return (width === depth ? [0] : [0, 90]).map((rotation) => ({
-    partId,
-    rotation: rotation as Rotation,
-    width: rotation ? depth : width,
-    depth: rotation ? width : depth,
-  }));
-});
+const range = (from: number, to: number) =>
+  Array.from({ length: to - from + 1 }, (_, index) => from + index);
+const TURNS = [0, 90, 180, 270] as const satisfies readonly Rotation[];
+/** Leaf pieces the crown is draped with, largest first. */
+const LEAVES = ['2417', '2423'] as const;
+/** How far the crown's sprays may reach from the trunk's axis, in studs. */
+const GRID = 10;
+
+/** A piece's box: x and z (or u and v round a tree's trunk) in studs, y in plates. */
+export interface Box {
+  readonly u0: number;
+  readonly u1: number;
+  readonly v0: number;
+  readonly v1: number;
+  readonly y0: number;
+  readonly y1: number;
+}
+
+const shapes = new Map<string, ReturnType<typeof measure>>();
+function measure(partId: string, rotation: Rotation) {
+  const probe = { id: '', partId, color: 0, x: 0, y: 0, z: 0, rotation };
+  const { width, depth, height } = footprint(probe);
+  const cells = (surface: 'top' | 'bottom') =>
+    getConnectionSites(probe, surface).map(({ x, z }) => [x - 0.5, z - 0.5] as const);
+  return { width, depth, height, studs: cells('top'), receivers: cells('bottom') };
+}
+
+/** A piece's box and its top studs and bottom receivers as cells, placed at the origin. */
+function shape(partId: string, rotation: Rotation) {
+  const id = `${partId}@${rotation}`;
+  let found = shapes.get(id);
+  if (!found) shapes.set(id, (found = measure(partId, rotation)));
+  return found;
+}
 
 /**
- * A broadleaf tree: a thick round trunk with branches reaching into a lumpy crown of bricks,
- * built up course by course as the union of a main mass and a few smaller clumps round it, so
- * no two trees match. Each brick holds onto the course below; the crown is darker underneath and
- * catches the light on top, where leaf sprigs break up its outline.
+ * A broadleaf tree like the ones in the castle sets. A tall round trunk stands on a green plate,
+ * flaring out into roots stepped down from it in plates and cheese slopes, with round bushes
+ * round the plate's edge. Its crown is layers of leaf sprays, each layer hung on its own
+ * branches, two plates crossed on the trunk, and two sheets thick. Each sheet's sprays are laid
+ * one at a time where they cover the most of its lumpy, roughly round outline still bare, held
+ * by studs of the branches, of the sprays below or of a short stalk on a firmly held spray, so
+ * they overlap like leaves. The lowest sprays are the darkest, the highest catch the light, and
+ * sprigs and buds dot the studs left bare on top. A seed varies the outline, lean and fill.
  */
 export function addTree(
   add: ExampleBrickAdder,
@@ -41,139 +66,264 @@ export function addTree(
   bark: number,
   trunk: number,
   seed: number,
+  /**
+   * What already stands round the tree, in world studs, so its leaves grow round it. The tree
+   * adds its own pieces, so trees grown in turn with one list leave room for each other.
+   */
+  around: Box[] = [],
 ) {
   const next = random(seed * 7919 + 17);
-  for (let course = 0; course <= trunk; course++)
-    add('3941', bark, x - 1, base + course * 3, z - 1);
-  // Clumps as [x, height, z, radius] in studs from the foot of the crown on the trunk's axis.
-  const courses = 6 + Math.round(next());
-  const clumps = [
-    [0, courses * 0.6, 0, 3.4 + next() * 0.5],
-    ...Array.from({ length: 4 }, (_, index) => {
-      const angle = (index / 4 + next() * 0.2) * Math.PI * 2;
-      const out = 1.6 + next() * 0.9;
-      return [
-        Math.cos(angle) * out,
-        courses * (0.45 + next() * 0.4),
-        Math.sin(angle) * out,
-        1.9 + next() * 0.8,
-      ];
-    }),
-  ];
-  const inCrown = (u: number, course: number, v: number) =>
-    Math.abs(u + 0.5) <= 4 &&
-    Math.abs(v + 0.5) <= 4 &&
-    clumps.some(
-      ([cx, cy, cz, radius]) =>
-        Math.hypot(u + 0.5 - cx, ((course + 0.5) * 1.2 - cy) * 1.1, v + 0.5 - cz) < radius,
-    );
-  const key = (u: number, v: number) => `${u},${v}`;
-  // The trunk carries the crown's first course, two branches reach out into it.
-  const stem = [key(-1, -1), key(0, -1), key(-1, 0), key(0, 0)];
-  let below = new Set(stem);
-  const tops = new Map<string, number>();
-  const branches = new Set(
-    [
-      [-3, -1],
-      [-2, -1],
-      [1, 0],
-      [2, 0],
-      [-1, 1],
-      [-1, 2],
-      [0, -2],
-      [0, -3],
-    ].map(([u, v]) => key(u, v)),
-  );
-  for (let course = 0; course < courses; course++) {
-    const y = base + (trunk + 1 + course) * 3;
-    const cells = new Map<string, readonly [number, number]>();
-    for (let u = -4; u < 4; u++)
-      for (let v = -4; v < 4; v++)
-        if (inCrown(u, course, v) || (course === 0 && below.has(key(u, v))))
-          cells.set(key(u, v), [u, v]);
-    const placed = new Set<string>();
-    // Outer cells first, so their bricks reach in to the course below rather than being cut off.
-    const order = [...cells.values()]
-      .map(([u, v]) => ({ u, v, reach: Math.hypot(u + 0.5, v + 0.5) + next() * 0.8 }))
-      .sort((first, second) => second.reach - first.reach);
-    for (const { u, v } of order) {
-      if (placed.has(key(u, v))) continue;
-      const candidates = CROWN_BRICKS.flatMap((brick) =>
-        Array.from({ length: brick.width * brick.depth }, (_, index) => {
-          const u0 = u - (index % brick.width);
-          const v0 = v - Math.floor(index / brick.width);
-          const covered = Array.from({ length: brick.width * brick.depth }, (_, cell) =>
-            key(u0 + (cell % brick.width), v0 + Math.floor(cell / brick.width)),
-          );
-          return { brick, u0, v0, covered };
-        }),
-      ).filter(
-        ({ covered }) =>
-          covered.every((cell) => cells.has(cell) && !placed.has(cell)) &&
-          covered.some((cell) => below.has(cell)),
-      );
-      if (!candidates.length) continue;
-      const best = Math.max(...candidates.map(({ covered }) => covered.length));
-      const choices = candidates.filter(({ covered }) => covered.length === best);
-      const { brick, u0, v0, covered } = choices[Math.floor(next() * choices.length)];
-      for (const cell of covered) placed.add(cell);
-      const underside = covered.filter((cell) => !below.has(cell)).length * 2 > covered.length;
-      const exposed = covered.some((cell) => {
-        const [cu, cv] = cells.get(cell)!;
-        return !inCrown(cu, course + 1, cv);
-      });
-      const color =
-        course === 0 && covered.every((cell) => stem.includes(cell) || branches.has(cell))
-          ? bark
-          : underside || course === 0
-            ? shade
-            : exposed && next() < 0.55
-              ? light
-              : next() < 0.2
-                ? shade
-                : body;
-      add(brick.partId, color, x + u0, y, z + v0, brick.rotation);
-    }
-    for (const cell of placed) tops.set(cell, y + 3);
-    below = placed;
-  }
-  // A couple of leaf sprays lie across the crown's highest courses, held by their stem stud,
-  // each wholly over the crown and nothing of it higher, so the top reads as layered leaves.
-  const sprigged = new Set<string>();
-  let sprays = 0;
-  for (const [cell, top] of [...tops].sort(([, first], [, second]) => second - first)) {
-    if (sprays === 2) break;
-    if (next() > 0.5) continue;
-    const [u, v] = cell.split(',').map(Number);
-    const rotation = ([0, 90, 180, 270] as const)[Math.floor(next() * 4)];
-    const probe = { id: '', partId: '2423', color: 0, x: 0, y: 0, z: 0, rotation };
-    const receiver = getConnectionSites(probe, 'bottom')[0];
-    const [u0, v0] = [u - (receiver.x - 0.5), v - (receiver.z - 0.5)];
-    const [width, depth] = rotation % 180 ? [4, 3] : [3, 4];
-    const footprint = range(0, width - 1).flatMap((du) =>
-      range(0, depth - 1).map((dv) => key(u0 + du, v0 + dv)),
-    );
-    if (
-      footprint.some((other) => sprigged.has(other) || !tops.has(other) || tops.get(other)! > top)
+  const boxes: Box[] = [];
+  const studs = new Set<string>();
+  // Studs of pieces held firmly, by the structure or by two or more studs, which may carry a
+  // stalk and the spray on it without one stud bearing a long chain.
+  const firm = new Set<string>();
+  const key = (y: number, u: number, v: number) => `${y}:${u}:${v}`;
+  const world = ({ u0, u1, v0, v1, y0, y1 }: Box): Box => ({
+    u0: x + u0,
+    u1: x + u1,
+    v0: z + v0,
+    v1: z + v1,
+    y0,
+    y1,
+  });
+  // What is taken, as world cells a stud by a stud by a plate, within the crown's reach: what
+  // stands round the tree, then its own pieces as they are laid. Pieces off the grid take every
+  // cell they touch.
+  const REACH = 12;
+  const taken = new Set<string>();
+  const cells = (box: Box, visit: (cell: string) => boolean | void) => {
+    for (
+      let u = Math.max(Math.floor(box.u0), x - REACH);
+      u < Math.min(Math.ceil(box.u1), x + REACH);
+      u++
     )
-      continue;
-    for (const other of footprint) sprigged.add(other);
-    add('2423', next() < 0.5 ? light : body, x + u0, top, z + v0, rotation);
-    sprays++;
+      for (
+        let v = Math.max(Math.floor(box.v0), z - REACH);
+        v < Math.min(Math.ceil(box.v1), z + REACH);
+        v++
+      )
+        for (let y = Math.floor(box.y0); y < Math.ceil(box.y1); y++)
+          if (visit(`${u},${v},${y}`) === false) return false;
+    return true;
+  };
+  for (const box of around) cells(box, (cell) => void taken.add(cell));
+  const fits = (box: Box) => cells(world(box), (cell) => !taken.has(cell));
+  const boxOf = (partId: string, rotation: Rotation, u: number, y: number, v: number): Box => {
+    const { width, depth, height } = shape(partId, rotation);
+    return { u0: u, u1: u + width, v0: v, v1: v + depth, y0: y, y1: y + height };
+  };
+  // Positions are in studs from the corner the trunk stands round, its four studs at -1 and 0.
+  const place = (
+    partId: string,
+    color: number,
+    u: number,
+    y: number,
+    v: number,
+    rotation: Rotation = 0,
+    carries = true,
+    steady = true,
+  ) => {
+    const box = boxOf(partId, rotation, u, y, v);
+    boxes.push(box);
+    cells(world(box), (cell) => void taken.add(cell));
+    around.push(world(box));
+    if (carries)
+      for (const [su, sv] of shape(partId, rotation).studs) {
+        studs.add(key(box.y1, u + su, v + sv));
+        if (steady) firm.add(key(box.y1, u + su, v + sv));
+      }
+    add(partId, color, x + u, y, z + v, rotation);
+    return box;
+  };
+
+  // The foot: a green plate with round bushes round its edge, and the trunk standing in the
+  // middle on a stepped flare of roots.
+  place('3958', shade, -3, base, -3);
+  const ground = base + 1;
+  // The trunk stands tall and bare below the crown.
+  const courses = trunk + 3;
+  for (let course = 0; course < courses; course++) place('3941', bark, -1, ground + course * 3, -1);
+  // Each side steps down from the trunk to the plate: a stack of plates capped with a cheese
+  // slope against the trunk, then a lower cheese slope outside it, so the foot flares out low
+  // and wide like roots. Positions are the side's outer row, its inner row, and the quarter
+  // turn that faces each slope's high end into the trunk.
+  for (const [outer, inner, rotation] of [
+    [[-1, -3], [-1, -2], 0],
+    [[-1, 2], [-1, 1], 180],
+    [[-3, -1], [-2, -1], 90],
+    [[2, -1], [1, -1], 270],
+  ] as const) {
+    const across = rotation % 180 === 0;
+    place('3022', bark, Math.min(outer[0], inner[0]), ground, Math.min(outer[1], inner[1]));
+    place('85984', bark, outer[0], ground + 1, outer[1], rotation);
+    for (const rise of [1, 2])
+      place('3023b', bark, inner[0], ground + rise, inner[1], across ? 90 : 0);
+    place('85984', bark, inner[0], ground + 3, inner[1], rotation);
   }
-  // Leaf sprigs on the studs left bare on top, where nothing higher would cover them.
-  for (const [cell, top] of tops) {
-    if (next() > 0.4) continue;
-    const [u, v] = cell.split(',').map(Number);
-    const rotation = ([0, 90, 180, 270] as const)[Math.floor(next() * 4)];
-    const receiver = getConnectionSites(
-      { id: '', partId: '32607', color: 0, x: 0, y: 0, z: 0, rotation },
-      'bottom',
-    )[0];
-    const [u0, v0] = [u - (receiver.x - 0.5), v - (receiver.z - 0.5)];
-    const footprint = [0, 1].flatMap((du) => [0, 1].map((dv) => key(u0 + du, v0 + dv)));
-    if (footprint.some((other) => sprigged.has(other) || (tops.get(other) ?? 0) > top)) continue;
-    for (const other of footprint) sprigged.add(other);
-    add('32607', next() < 0.6 ? light : body, x + u0, top, z + v0, rotation);
+  for (const u of range(-3, 2))
+    for (const v of range(-3, 2)) {
+      if (next() < 0.1) continue;
+      if (!fits({ u0: u, u1: u + 1, v0: v, v1: v + 1, y0: ground, y1: ground + 3 })) continue;
+      const roll = next();
+      place('3062b', roll < 0.35 ? shade : roll < 0.8 ? body : light, u, ground, v);
+      if (next() < 0.3) place('6141', next() < 0.5 ? light : body, u, ground + 3, v, 0, false);
+    }
+
+  // The crown: a layer every three plates, each hung on its own branches, two plates crossed
+  // on the trunk and turned against the layer below, with a round plate on top carrying the
+  // trunk on up to the next.
+  const crown = ground + courses * 3;
+  const layers = 6;
+  const sheets = 2;
+  // Sprays may also stand on short stalks, one round plate high, on the layer below.
+  const STALK = 1;
+  const spacing = sheets + STALK;
+  const first = crown + 1;
+  for (let layer = 0; layer < layers; layer++) {
+    const y = crown + layer * spacing;
+    const [arm, reach] = layer < layers - 2 ? (['3795', 3] as const) : (['3020', 2] as const);
+    const across = (layer + Math.floor(next() * 2)) % 2 === 0;
+    // Only the lowest branches show brown; higher up they sit in the leaves' shade, and the
+    // topmost, open to the sky, are leaf green.
+    const wood = layer === 0 ? bark : layer === layers - 1 ? body : shade;
+    place(arm, wood, across ? -reach : -1, y, across ? -1 : -reach, across ? 90 : 0);
+    place(arm, wood, across ? -1 : -reach, y + 1, across ? -reach : -1, across ? 0 : 90);
+    if (layer < layers - 1) place('4032a', layer < 2 ? bark : shade, -1, y + 2, -1);
+  }
+
+  // Each layer's outline: wide low down, narrowing to a dome, with lobes round it so the crown
+  // is lumpy rather than round or square, and leaning a little off the trunk.
+  const grow = 0.92 + next() * 0.16;
+  const [cu, cv] = [(next() - 0.5) * 0.4, (next() - 0.5) * 0.4];
+  const lobes = [next() * Math.PI * 2, next() * Math.PI * 2];
+  const distance = (u: number, v: number) => {
+    const [du, dv] = [u + 0.5 - cu, v + 0.5 - cv];
+    const angle = Math.atan2(dv, du);
+    const wobble =
+      1 + 0.07 * Math.sin(3 * angle + lobes[0]) + 0.05 * Math.sin(5 * angle + lobes[1]);
+    return Math.hypot(du, dv) / wobble;
+  };
+  const radii = [4, 4.5, 4.6, 4.1, 3.3, 2.2].map((radius) => radius * grow + next() * 0.3);
+
+  // Leaf sprays laid a layer at a time, each where it covers the most of the layer's outline
+  // still bare. A spray sits on the trunk or branches, or on a round plate standing on a
+  // firmly held spray of the layer below, like the stalks of a set's tree.
+  const laid = new Set<string>();
+  for (let sheet = 0; sheet < layers * sheets; sheet++) {
+    // Each layer is a few sheets thick, the later ones lying on the studs of the first.
+    const layer = Math.floor(sheet / sheets);
+    const level = first + layer * spacing + (sheet % sheets);
+    const radius = radii[layer] - (sheet % sheets) * 0.5;
+    // What the sheet should cover: its outline, branches included, so they end up under leaves.
+    // Cells are kept in flat grids round the trunk, as the search below visits them many times.
+    const SIDE = 2 * GRID;
+    const cell = (u: number, v: number) => (u + GRID) * SIDE + (v + GRID);
+    const bare = new Uint8Array(SIDE * SIDE);
+    const outside = new Uint8Array(SIDE * SIDE);
+    for (let u = -GRID; u < GRID; u++)
+      for (let v = -GRID; v < GRID; v++) {
+        const reach = distance(u, v);
+        if (reach <= radius) bare[cell(u, v)] = 1;
+        else if (reach > radius + 1.5) outside[cell(u, v)] = 1;
+      }
+    // Where a spray can be held: studs already at this height, or a stalk on a firm stud just
+    // below.
+    const stalk = (u: number, v: number) =>
+      firm.has(key(level - STALK, u, v)) &&
+      fits({ u0: u, u1: u + 1, v0: v, v1: v + 1, y0: level - STALK, y1: level });
+    const sites = new Map<string, readonly [number, number, boolean]>();
+    for (const site of studs) {
+      const [sy, su, sv] = site.split(':').map(Number);
+      if (sy === level) sites.set(`${su},${sv}`, [su, sv, false]);
+      else if (
+        sheet % sheets === 0 &&
+        sy === level - STALK &&
+        stalk(su, sv) &&
+        !sites.has(`${su},${sv}`)
+      )
+        sites.set(`${su},${sv}`, [su, sv, true]);
+    }
+    for (;;) {
+      let best:
+        | {
+            score: number;
+            partId: string;
+            rotation: Rotation;
+            u: number;
+            v: number;
+            stalk?: readonly [number, number];
+          }
+        | undefined;
+      for (const [su, sv, needsStalk] of sites.values()) {
+        if (needsStalk && !stalk(su, sv)) continue;
+        for (const partId of LEAVES)
+          for (const rotation of TURNS) {
+            const { width, depth, receivers } = shape(partId, rotation);
+            for (const [ru, rv] of receivers) {
+              const [u, v] = [su - ru, sv - rv];
+              if (u < -GRID || v < -GRID || u + width > GRID || v + depth > GRID) continue;
+              let gain = 0;
+              let spill = 0;
+              for (let du = 0; du < width; du++)
+                for (let dv = 0; dv < depth; dv++) {
+                  const at = cell(u + du, v + dv);
+                  gain += bare[at];
+                  spill += outside[at];
+                }
+              // Rather a spray on the branches than one needing a stalk of its own.
+              let score = gain - spill * 0.8 - (needsStalk ? 1 : 0) + next() * 0.8;
+              // Only a candidate that would win is worth checking for room.
+              if (best && score <= best.score) continue;
+              // A spray right on top of a matching one only builds a pillar of studs.
+              if (laid.has(`${level - 1}:${partId}:${rotation}:${u}:${v}`)) score -= 6;
+              if ((best && score <= best.score) || !fits(boxOf(partId, rotation, u, level, v)))
+                continue;
+              best = { score, partId, rotation, u, v, stalk: needsStalk ? [su, sv] : undefined };
+            }
+          }
+      }
+      if (!best || best.score < 1.5) break;
+      if (best.stalk) {
+        place('6141', shade, best.stalk[0], level - STALK, best.stalk[1], 0, true, false);
+        sites.set(`${best.stalk[0]},${best.stalk[1]}`, [best.stalk[0], best.stalk[1], false]);
+      }
+      // Darker leaves low down and underneath, lighter ones catching the light on top.
+      const h = sheet / (layers * sheets - 1);
+      const roll = next();
+      const color = roll < 0.45 - h * 0.45 ? shade : roll < 0.9 - h * 0.4 ? body : light;
+      // A spray carries the sheet lying on it, but only one held by two studs or more is firm
+      // enough for a stalk.
+      const held =
+        shape(best.partId, best.rotation).receivers.filter(([du, dv]) =>
+          studs.has(key(level, best.u + du, best.v + dv)),
+        ).length + (best.stalk ? 1 : 0);
+      const box = place(best.partId, color, best.u, level, best.v, best.rotation, true, held > 1);
+      laid.add(`${level}:${best.partId}:${best.rotation}:${best.u}:${best.v}`);
+      for (let u = box.u0; u < box.u1; u++)
+        for (let v = box.v0; v < box.v1; v++) bare[cell(u, v)] = 0;
+    }
+  }
+
+  // Sprigs and round buds on the studs left bare on top, where nothing higher would cover them.
+  const open = (u: number, v: number, y: number) =>
+    !boxes.some((box) => u >= box.u0 && u < box.u1 && v >= box.v0 && v < box.v1 && box.y1 > y);
+  // The crown's top layer is dotted more thickly, so its branches end up under leaves.
+  const top = crown + (layers - 1) * spacing;
+  for (const site of [...studs].sort()) {
+    const [sy, su, sv] = site.split(':').map(Number);
+    if (sy <= crown || !open(su, sv, sy)) continue;
+    const roll = next() * (sy >= top ? 0.45 : 1);
+    if (roll < 0.3) {
+      const rotation = TURNS[Math.floor(next() * 4)];
+      const [[ru, rv]] = shape('32607', rotation).receivers;
+      const box = boxOf('32607', rotation, su - ru, sy, sv - rv);
+      if (
+        fits(box) &&
+        [box.u0, box.u1 - 1].every((u) => [box.v0, box.v1 - 1].every((v) => open(u, v, sy)))
+      )
+        place('32607', next() < 0.6 ? light : body, box.u0, sy, box.v0, rotation, false);
+    } else if (roll < 0.42 && fits(boxOf('6141', 0, su, sy, sv)))
+      place('6141', next() < 0.5 ? light : body, su, sy, sv, 0, false);
   }
 }

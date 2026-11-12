@@ -233,7 +233,7 @@ const occupied = (x: number, z: number) =>
   within(x, z, HOUSE[0], HOUSE[2], HOUSE[1], HOUSE[3]) ||
   within(x, z, ARCADE[0], ARCADE[2], ARCADE[1], ARCADE[3]) ||
   within(x, z, WELL[0], WELL[1], WELL[0] + 3, WELL[1] + 3) ||
-  TREES.some(([tx, tz]) => within(x, z, tx - 1, tz - 1, tx, tz)) ||
+  TREES.some(([tx, tz]) => within(x, z, tx - 3, tz - 3, tx + 2, tz + 2)) ||
   TOWERS.some(([cx, cz]) => within(x, z, cx - 6, cz - 6, cx + 5, cz + 5)) ||
   within(x, z, BRIDGE[0], BRIDGE[2], BRIDGE[1], BRIDGE_RAIL[1] + 1) ||
   moat(x, z);
@@ -813,7 +813,7 @@ export const castle: ExampleDefinition = {
   id: 'castle',
   name: 'Castle',
   tags: ['castle', 'medieval', 'towers', 'gatehouse', 'keep', 'moat', 'drawbridge', 'banners'],
-  expectedPieceCount: 7951,
+  expectedPieceCount: 8073,
   buildArea: SIZE,
   brickIdPrefix: 'castle',
   build(drawnAdd) {
