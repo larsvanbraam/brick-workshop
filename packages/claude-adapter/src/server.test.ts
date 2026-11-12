@@ -91,7 +91,8 @@ describe('local workshop generation server', () => {
       type: 'result',
       result: {
         complete: true,
-        assembly: { bricks: [expect.objectContaining({ id: 'ai-1' })] },
+        assembly: { bricks: expect.arrayContaining([expect.objectContaining({ id: 'ai-1' })]) },
+        smoothing: expect.objectContaining({ corners: 4 }),
         document: { buildability: { certified: false } },
       },
     });

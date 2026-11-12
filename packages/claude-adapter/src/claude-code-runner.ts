@@ -2,7 +2,7 @@ import { query } from '@anthropic-ai/claude-agent-sdk';
 import type { SDKResultMessage, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
-import { BUILD_SYSTEM_PROMPT, prepareBuild } from './runner.ts';
+import { BUILD_SYSTEM_PROMPT, finishBuild, prepareBuild } from './runner.ts';
 import type { BuildOptions } from './runner.ts';
 import { BUILDER_TOOLS, MODEL_TOOLS } from './session.ts';
 import type { BuilderSession } from './session.ts';
@@ -22,21 +22,26 @@ export async function runClaudeCodeBuild(
 ) {
   const { maxTurns, model, content } = prepareBuild(prompt, session, options);
   const trace: { tool: string; ok: boolean; revision: number }[] = [];
+  const initialIds = new Set(session.snapshot().bricks.map((brick) => brick.id));
   let turns = 0;
   // New input (including cache writes) and cache reads, which cost about a tenth as much.
   let inputTokens = 0;
   let cachedInputTokens = 0;
   let outputTokens = 0;
-  const result = (complete: boolean, reason: string, text: string) => ({
-    complete,
-    reason,
-    text,
-    turns,
-    trace: [...trace],
-    assembly: session.snapshot(),
-    document: session.document(),
-    usage: { inputTokens, cachedInputTokens, outputTokens },
-  });
+  const result = (complete: boolean, reason: string, text: string) => {
+    const smoothing = finishBuild(session, initialIds, reason, turns, options.onProgress);
+    return {
+      complete,
+      reason,
+      text,
+      turns,
+      trace: [...trace],
+      assembly: session.snapshot(),
+      document: session.document(),
+      usage: { inputTokens, cachedInputTokens, outputTokens },
+      smoothing,
+    };
+  };
   if (options.signal?.aborted) return result(false, 'cancelled', 'Generation cancelled.');
   const controller = new AbortController();
 

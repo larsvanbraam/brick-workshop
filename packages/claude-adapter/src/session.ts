@@ -771,6 +771,79 @@ export function createBuilderSession(
     };
   }
 
+  /** Smooths the assembly (or only `ids`), as brick_smooth and the host's finishing pass do. */
+  function smooth(args: Record<string, unknown>, ids?: ReadonlySet<string>): BuilderToolResult {
+    const colorAllowed = (partId: string, color: number) =>
+      !requireObservedColors ||
+      getPartColorStatus(partId, color, evidence).manufactured === 'observed';
+    const firstId = nextId;
+    const smoothed = smoothAssembly(assembly, {
+      ids,
+      region: args.region as Record<string, number> | undefined,
+      corners: args.corners as boolean | undefined,
+      slopes: args.slopes as boolean | undefined,
+      tiles: args.tiles as boolean | undefined,
+      accents: args.accents as boolean | undefined,
+      maxPieces,
+      colorAllowed,
+      nextId: () => {
+        while (assembly.bricks.some((piece) => piece.id === `ai-${nextId}`)) nextId += 1;
+        return `ai-${nextId++}`;
+      },
+    });
+    const { added, swapped, counts } = smoothed;
+    if (!added.length && !swapped.length) {
+      nextId = firstId;
+      return {
+        ok: true,
+        revision,
+        data: {
+          changed: 0,
+          detail:
+            'Nothing to smooth: no exposed studs or outside corners of plain bricks and plates in the region.',
+        },
+      };
+    }
+    const evaluation = evaluateAssemblyPolicy(smoothed.assembly, editPolicy);
+    if (!evaluation.allowed) {
+      nextId = firstId;
+      const issue = evaluation.issues[0];
+      return fail(
+        issue.code,
+        issue.message,
+        Array.isArray(issue.details) ? issue.details.slice(0, 20) : issue.details,
+      );
+    }
+    if (args.preview === true) nextId = firstId;
+    else {
+      assembly = smoothed.assembly;
+      physicalAssessment = evaluation.physical!;
+      policyAssessment = evaluation;
+      revision += 1;
+    }
+    return {
+      ok: true,
+      revision,
+      data: {
+        ...(args.preview === true && { purpose: 'preview-only' }),
+        pieceCount: smoothed.assembly.bricks.length,
+        counts,
+        added: added.length
+          ? {
+              pieces: added.length,
+              ids: [added[0].id, added.at(-1)!.id],
+              billOfMaterials: getBillOfMaterials({ ...assembly, bricks: added }),
+            }
+          : { pieces: 0 },
+        swappedIds: swapped.slice(0, 40),
+        physical: {
+          status: evaluation.physical!.status,
+          gravity: evaluation.physical!.gravity,
+        },
+      },
+    };
+  }
+
   function runTool(name: string, input: unknown): BuilderToolResult {
     const validate = validators.get(name);
     if (!validate) return fail('unknown_tool', `Unknown builder tool: ${name}`);
@@ -1122,76 +1195,7 @@ export function createBuilderSession(
         },
       };
     }
-    if (name === 'brick_smooth') {
-      const colorAllowed = (partId: string, color: number) =>
-        !requireObservedColors ||
-        getPartColorStatus(partId, color, evidence).manufactured === 'observed';
-      const firstId = nextId;
-      const smoothed = smoothAssembly(assembly, {
-        region: args.region as Record<string, number> | undefined,
-        corners: args.corners as boolean | undefined,
-        slopes: args.slopes as boolean | undefined,
-        tiles: args.tiles as boolean | undefined,
-        accents: args.accents as boolean | undefined,
-        maxPieces,
-        colorAllowed,
-        nextId: () => {
-          while (assembly.bricks.some((piece) => piece.id === `ai-${nextId}`)) nextId += 1;
-          return `ai-${nextId++}`;
-        },
-      });
-      const { added, swapped, counts } = smoothed;
-      if (!added.length && !swapped.length) {
-        nextId = firstId;
-        return {
-          ok: true,
-          revision,
-          data: {
-            changed: 0,
-            detail:
-              'Nothing to smooth: no exposed studs or outside corners of plain bricks and plates in the region.',
-          },
-        };
-      }
-      const evaluation = evaluateAssemblyPolicy(smoothed.assembly, editPolicy);
-      if (!evaluation.allowed) {
-        nextId = firstId;
-        const issue = evaluation.issues[0];
-        return fail(
-          issue.code,
-          issue.message,
-          Array.isArray(issue.details) ? issue.details.slice(0, 20) : issue.details,
-        );
-      }
-      if (args.preview === true) nextId = firstId;
-      else {
-        assembly = smoothed.assembly;
-        physicalAssessment = evaluation.physical!;
-        policyAssessment = evaluation;
-        revision += 1;
-      }
-      return {
-        ok: true,
-        revision,
-        data: {
-          ...(args.preview === true && { purpose: 'preview-only' }),
-          pieceCount: smoothed.assembly.bricks.length,
-          counts,
-          added: added.length
-            ? {
-                pieces: added.length,
-                ids: [added[0].id, added.at(-1)!.id],
-                billOfMaterials: getBillOfMaterials({ ...assembly, bricks: added }),
-              }
-            : { pieces: 0 },
-          swappedIds: swapped.slice(0, 40),
-          physical: {
-            status: evaluation.physical!.status,
-            gravity: evaluation.physical!.gravity,
-          },
-        },
-      };
-    }
+    if (name === 'brick_smooth') return smooth(args);
     if (name === 'brick_board') {
       if (options.reference)
         return fail('reference_board', 'The board is fixed to the reference 3D model.');
@@ -1330,7 +1334,9 @@ export function createBuilderSession(
       },
     };
   }
-  return { snapshot, document, runTool };
+  /** The host's finishing pass: smooths only the given pieces, with no flowers. */
+  const smoothPieces = (ids: ReadonlySet<string>) => smooth({}, ids);
+  return { snapshot, document, runTool, smoothPieces };
 }
 
 export type BuilderSession = ReturnType<typeof createBuilderSession>;

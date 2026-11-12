@@ -126,6 +126,46 @@ describe('smoothAssembly', () => {
     expect(validateAssembly(limited.assembly)).toEqual([]);
   });
 
+  it('works on pieces standing half a plate up on a baseplate, with flowers on the lawn', () => {
+    // A 1-stud wall ring, three courses tall, on a green baseplate.
+    const walls: Brick[] = [];
+    for (let course = 0; course < 3; course += 1) {
+      const y = 0.5 + course * 3;
+      const shift = course % 2;
+      for (const z of [4, 11])
+        for (let x = 4 + shift; x + 4 <= 12 + shift; x += 4)
+          walls.push({ ...brick(`w${course}-${z}-${x}`, '3010', x, y, z, 70), rotation: 90 });
+      for (const x of [4, 11])
+        for (let z = 5; z < 11; z += 3)
+          walls.push(brick(`s${course}-${x}-${z}`, '3622', x, y, z, 70));
+    }
+    const house: Assembly = {
+      name: 'House',
+      buildArea: 16,
+      bricks: [brick('lawn', '3867', 0, 0, 0, 2), ...walls],
+    };
+    expect(validateAssembly(house)).toEqual([]);
+    const result = smoothAssembly(house, { accents: true, accentDensity: 1 });
+    expect(validateAssembly(result.assembly)).toEqual([]);
+    // Wall tops are tiled, the four outside corners quarter-round.
+    expect(result.counts.tiles + result.counts.corners).toBeGreaterThan(20);
+    expect(result.added.filter((piece) => piece.partId === '25269').length).toBeGreaterThanOrEqual(
+      4,
+    );
+    expect(result.added.filter((piece) => piece.y === 9.5).length).toBe(28);
+    // Flowers stand on the lawn only, never against a wall or on the board's rim.
+    const flowers = result.added.filter((piece) => piece.partId === '6141');
+    expect(flowers.length).toBeGreaterThan(50);
+    for (const flower of flowers) {
+      expect(flower.y).toBe(0.5);
+      expect(flower.x > 0 && flower.x < 15 && flower.z > 0 && flower.z < 15).toBe(true);
+    }
+    // No tiles or slopes on the baseplate itself.
+    expect(
+      result.added.filter((piece) => piece.y === 0.5).every((piece) => piece.partId === '6141'),
+    ).toBe(true);
+  });
+
   it('returns invalid assemblies unchanged', () => {
     const floating: Assembly = { name: 'Floating', bricks: [brick('up', '3003', 0, 3, 0)] };
     const result = smoothAssembly(floating);

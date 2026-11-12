@@ -102,10 +102,29 @@ function hash(...values: number[]) {
   return value;
 }
 
+/** Upright on whole studs, at a whole or half plate (pieces on a baseplate sit half a plate up). */
+function onGrid(brick: Brick) {
+  return (
+    !brick.facing &&
+    !brick.upsideDown &&
+    Number.isInteger(brick.x) &&
+    Number.isInteger(brick.z) &&
+    Number.isInteger(brick.y * 2)
+  );
+}
+
+/** Baseplates and plate floors: ground that takes flowers, but no tiles or slopes. */
+function isGround(brick: Brick) {
+  return (
+    onGrid(brick) &&
+    (getPart(brick.partId).family === 'baseplate' ||
+      (FLOOR_PART_IDS as readonly string[]).includes(brick.partId))
+  );
+}
+
 /** Plain bricks and plates: full rectangles with a stud on every cell, upright on the grid. */
 function isPlain(brick: Brick) {
-  if (brick.facing || brick.upsideDown) return false;
-  if (![brick.x, brick.y, brick.z].every(Number.isInteger)) return false;
+  if (!onGrid(brick)) return false;
   if ((FLOOR_PART_IDS as readonly string[]).includes(brick.partId)) return false;
   const part = getPart(brick.partId);
   if (part.kind === 'tile' || part.shape || (part.family && part.family !== 'tall')) return false;
@@ -117,8 +136,8 @@ function isPlain(brick: Brick) {
  * Finishes the surfaces of a build the way sets dress a sculpted shape: outside corners of
  * plain 1 x 1 and 2 x 2 pieces become round and quarter-circle pieces, steps get cheese slopes
  * or curved slopes leaning on the riser, plate steps get flush tiles, open edges get tiles and
- * corners quarter-round tiles, and green tops get a scatter of flowers. Only exposed studs of
- * plain pieces are built on, and only plain pieces lean on each other, so doors, windows,
+ * corners quarter-round tiles, and green tops (baseplates and floors too) can get a scatter of
+ * flowers. Only exposed studs of plain pieces are built on, besides flowers on the ground, and only plain pieces lean on each other, so doors, windows,
  * floors and detail parts are left alone. Every change is checked by the engine and dropped if
  * it does not fit, so the result is as valid as the input.
  */
@@ -151,27 +170,31 @@ export function smoothAssembly(assembly: Assembly, options: SmoothOptions = {}):
     brick.y >= (region.minY ?? -Infinity) &&
     brick.y <= (region.maxY ?? Infinity);
 
-  // Every plate-tall cell each piece's envelope reserves, and which plain pieces own which.
+  // Every half-plate cell each piece's envelope reserves, and which plain pieces own which.
+  // Half plates, because pieces on a baseplate stand half a plate up.
   const occupied = new Set<string>();
   const plainAt = new Map<string, Brick>();
   const key = (x: number, y: number, z: number) => `${x},${y},${z}`;
   const reserve = (brick: Brick, into = occupied) => {
     const size = footprint(brick);
-    for (let y = Math.floor(brick.y); y < Math.ceil(brick.y + size.height); y += 1)
+    for (let h = Math.floor(brick.y * 2); h < Math.ceil((brick.y + size.height) * 2); h += 1)
       for (let z = Math.floor(brick.z); z < Math.ceil(brick.z + size.depth); z += 1)
         for (let x = Math.floor(brick.x); x < Math.ceil(brick.x + size.width); x += 1)
-          into.add(key(x, y, z));
+          into.add(key(x, h, z));
   };
   const plain = assembly.bricks.filter(isPlain);
+  const ground = assembly.bricks.filter((brick) => isGround(brick) && inScope(brick));
   const scoped = new Set(plain.filter(inScope).map((brick) => brick.id));
   for (const brick of assembly.bricks) reserve(brick);
   for (const brick of plain) {
     const size = footprint(brick);
-    for (let y = brick.y; y < brick.y + size.height; y += 1)
+    for (let h = brick.y * 2; h < (brick.y + size.height) * 2; h += 1)
       for (let z = brick.z; z < brick.z + size.depth; z += 1)
-        for (let x = brick.x; x < brick.x + size.width; x += 1) plainAt.set(key(x, y, z), brick);
+        for (let x = brick.x; x < brick.x + size.width; x += 1) plainAt.set(key(x, h, z), brick);
   }
-  const free = (x: number, y: number, z: number) => !occupied.has(key(x, y, z));
+  /** Whether the plate-tall cell from `y` (in plates) up is empty. */
+  const free = (x: number, y: number, z: number) =>
+    !occupied.has(key(x, y * 2, z)) && !occupied.has(key(x, y * 2 + 1, z));
 
   // Corners: round off plain pieces on outside corners, where nothing stands on what changes.
   const swaps = new Map<string, Brick>();
@@ -231,23 +254,29 @@ export function smoothAssembly(assembly: Assembly, options: SmoothOptions = {}):
     }
 
   // Exposed studs of plain pieces in scope, low to high, front to back.
-  type Top = { x: number; y: number; z: number; color: number; owner: Brick };
+  // Ground studs only take flowers.
+  type Top = { x: number; y: number; z: number; color: number; owner: Brick; ground?: true };
   const tops: Top[] = [];
-  for (const brick of plain) {
-    if (!scoped.has(brick.id)) continue;
+  for (const brick of [...plain.filter((piece) => scoped.has(piece.id)), ...ground]) {
     const size = footprint(brick);
     const y = brick.y + size.height;
+    const flat = ground.includes(brick);
     for (let z = brick.z; z < brick.z + size.depth; z += 1)
       for (let x = brick.x; x < brick.x + size.width; x += 1)
         if (free(x, y, z) && !quarterCorner.has(key(x, y, z)))
-          tops.push({ x, y, z, color: brick.color, owner: brick });
+          tops.push({ x, y, z, color: brick.color, owner: brick, ...(flat && { ground: true }) });
   }
   tops.sort((a, b) => a.y - b.y || a.z - b.z || a.x - b.x);
   const topAt = new Map(tops.map((top) => [key(top.x, top.y, top.z), top]));
   /** Plain plate levels standing in a neighbouring column from `y` up, up to `limit`. */
   const rise = (x: number, y: number, z: number, limit: number) => {
     let count = 0;
-    while (count < limit && plainAt.has(key(x, y + count, z))) count += 1;
+    while (
+      count < limit &&
+      plainAt.has(key(x, (y + count) * 2, z)) &&
+      plainAt.has(key(x, (y + count) * 2 + 1, z))
+    )
+      count += 1;
     return count;
   };
 
@@ -294,12 +323,13 @@ export function smoothAssembly(assembly: Assembly, options: SmoothOptions = {}):
       if (claimed.has(here) || !free(top.x, top.y, top.z)) continue;
       const best = steps.get(top)!;
       if (pass === 'slopes') {
-        if (!best || best.height < 2 || !use.slopes) continue;
+        if (top.ground || !best || best.height < 2 || !use.slopes) continue;
         const [dx, dz] = best.direction;
         // A curved slope runs off the step over two studs when the stud in front is open too.
         const front = topAt.get(key(top.x - dx, top.y, top.z - dz));
         if (
           front &&
+          !front.ground &&
           !claimed.has(key(front.x, front.y, front.z)) &&
           front.color === top.color &&
           free(front.x, front.y, front.z) &&
@@ -340,13 +370,13 @@ export function smoothAssembly(assembly: Assembly, options: SmoothOptions = {}):
           !best && free(top.x + dx, top.y - 1, top.z + dz) && free(top.x + dx, top.y, top.z + dz),
       );
       const edgeCount = edges.filter(Boolean).length;
-      if (use.tiles && best?.height === 1) {
+      if (use.tiles && !top.ground && best?.height === 1) {
         // A plate step: a tile makes this stud flush with the step above.
         if (add({ partId: TILE, color: top.color, x: top.x, y: top.y, z: top.z, rotation: 0 }))
           counts.tiles += 1;
         continue;
       }
-      if (use.tiles && edgeCount) {
+      if (use.tiles && !top.ground && edgeCount) {
         if (roundedTops.has(top.owner.id) || edgeCount >= 3) {
           if (
             add({ partId: ROUND_TILE, color: top.color, x: top.x, y: top.y, z: top.z, rotation: 0 })

@@ -52,8 +52,9 @@ pnpm fmt     # format the workspace
   outside corners of plain 1 x 1 and 2 x 2 pieces turn round, cheese and curved
   slopes lean on steps, plate steps and open edges get tiles and corners
   quarter-round tiles; **…and add flowers** also scatters flowers on green tops.
-  `smoothAssembly` in the engine does the work, and Claude calls it as
-  `brick_smooth` once a sculpted shape or terrain is finished.
+  `smoothAssembly` in the engine does the work. Generate runs it on every draft
+  for the pieces that run added (without flowers), and Claude can call it as
+  `brick_smooth` mid-build or for flowers.
 - **Generate** drafts or revises a build with Claude, optionally from up to four
   reference photos, in a separate dialog; nothing changes until **Apply draft**.
 

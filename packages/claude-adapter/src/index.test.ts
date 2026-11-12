@@ -216,7 +216,7 @@ describe('Claude tool-use loop', () => {
       { model: 'test-model' },
     );
     expect(result.complete).toBe(true);
-    expect(result.assembly.bricks).toHaveLength(1);
+    expect(result.assembly.bricks.filter((brick) => brick.partId === '3001')).toHaveLength(1);
     expect(requests).toHaveLength(2);
     expect(requests[0]).toMatchObject({ model: 'test-model', max_tokens: 4096, stream: false });
   });
@@ -238,9 +238,12 @@ describe('Claude tool-use loop', () => {
     };
     const result = await runClaudeBuild('Build a stack', createBuilderSession(), transport);
     expect(result.complete).toBe(true);
-    expect(result.assembly.bricks).toHaveLength(2);
+    expect(result.assembly.bricks.filter((brick) => brick.partId === '3001')).toHaveLength(2);
     expect(validateAssembly(result.assembly)).toEqual([]);
     expect(result.trace.map((entry) => entry.revision)).toEqual([1, 2]);
+    // The host smooths the finished stack: its top's four corners round off, the rest tiled.
+    expect(result.smoothing).toMatchObject({ corners: 4, tiles: 4 });
+    expect(result.document.assembly).toEqual(result.assembly);
     expect(requests[1].messages.at(-1)).toMatchObject({
       role: 'user',
       content: [
@@ -277,7 +280,36 @@ describe('Claude tool-use loop', () => {
         },
       ],
     });
-    expect(result.assembly.bricks).toHaveLength(1);
+    expect(result.assembly.bricks.filter((brick) => brick.partId === '3001')).toHaveLength(1);
+  });
+  it('smooths only the pieces a run added, and nothing after a cancelled run', async () => {
+    const initial = { name: 'Draft', bricks: [{ ...placement, id: 'mine', x: 6 }] };
+    const responses = [
+      message([{ type: 'tool_use', id: 'new', name: 'brick_place', input: placement }], 'tool_use'),
+      message([{ type: 'text', text: 'Done.', citations: null }], 'end_turn'),
+    ];
+    const result = await runClaudeBuild('Build', createBuilderSession(initial), async () =>
+      responses.shift()!,
+    );
+    const onMine = result.assembly.bricks.filter((brick) => brick.x >= 6 && brick.y === 3);
+    expect(onMine).toEqual([]);
+    expect(result.assembly.bricks.some((brick) => brick.x < 2 && brick.y === 3)).toBe(true);
+
+    const controller = new AbortController();
+    const cancelled = await runClaudeBuild(
+      'Build',
+      createBuilderSession(),
+      async () => {
+        controller.abort();
+        return message(
+          [{ type: 'tool_use', id: 'late', name: 'brick_place', input: placement }],
+          'tool_use',
+        );
+      },
+      { signal: controller.signal },
+    );
+    expect(cancelled.reason).toBe('cancelled');
+    expect(cancelled.smoothing).toBeNull();
   });
   it('returns partial state at its iteration limit rather than declaring completion', async () => {
     const result = await runClaudeBuild(
