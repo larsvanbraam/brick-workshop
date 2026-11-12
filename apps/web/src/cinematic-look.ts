@@ -156,10 +156,11 @@ function lightDirection(base: Vector3, view: number) {
 }
 const KEY_DIRECTION = new Vector3(1.1, 1.5, 0.35);
 /**
- * Outdoors the key stands high and well off to the camera's left, like a studio softbox: the
- * faces turned to it are lit, the ones turned away fall a clear step darker, so the model has form.
+ * Outdoors the key stands high behind the camera and off to its left (the camera looks from
+ * 39° round in this frame, the sun from 5°), so the front of the model is lit while its sides
+ * turn a step darker for form, and shadows fall back and to the right, mostly out of sight.
  */
-const SUN_DIRECTION = new Vector3(-0.25, 1.2, 1);
+const SUN_DIRECTION = new Vector3(0.09, 1, 1);
 
 /** Outdoors the rim softens and the vignette fades to a hint; see `Mood.daylight` for the rest. */
 export const DAYLIGHT = { rim: 1, vignette: 0.35, bloom: 0.3 };

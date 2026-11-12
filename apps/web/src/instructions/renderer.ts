@@ -75,6 +75,8 @@ const MIN_EDGE_DETAIL = 10;
  * model, so only close-ups this sharp keep them.
  */
 const MIN_CINEMATIC_EDGE_DETAIL = 28;
+/** Joint, in LDraw units (a stud is 20, a plate 8), between bricks in cinematic shots. */
+const PHOTO_GAP = 0.6;
 /** Smallest stretch of the model, in studs across, a close-up step shows. */
 const FOCUS_SIZE = 16;
 /** Room left around a step's new pieces when its close-up moves. */
@@ -167,6 +169,12 @@ export class ManualRenderer {
   /** Every consolidated piece, drawn by one batched mesh. */
   private batch: LDrawBatch | null = null;
   private readonly batched: BatchEntry[] = [];
+  /**
+   * The same pieces for cinematic shots: every face kept and a hairline joint between bricks,
+   * so walls read as stacked bricks in a photo rather than one smooth painted surface. Built on
+   * the first cinematic shot and brought up to date on later ones.
+   */
+  private photo: LDrawBatch | null = null;
   private view = 0;
   private readonly models: Record<string, Group>;
 
@@ -648,6 +656,7 @@ export class ManualRenderer {
       height,
     );
     this.lights.visible = false;
+    const restoreBatch = this.showPhotoBatch();
     scene.add(rig.group);
     scene.environment = environment;
     scene.environmentIntensity = outdoor ? settings.daylight.environment : settings.environment;
@@ -688,7 +697,28 @@ export class ManualRenderer {
       scene.fog = previous.fog;
       renderer.shadowMap.enabled = false;
       this.lights.visible = true;
+      restoreBatch();
     }
+  }
+
+  /** Swaps the step batch for the photo batch; returns how to swap back. */
+  private showPhotoBatch() {
+    const batch = this.batch;
+    if (!batch?.object.parent) return () => {};
+    if (!this.photo) {
+      this.photo = new LDrawBatch(undefined, { hideCovered: false, gap: PHOTO_GAP });
+      for (const lines of this.photo.lines) lines.layers.set(EDGE_LAYER);
+      this.owned.push(this.photo);
+    }
+    const photo = this.photo;
+    photo.update(this.batched, 0);
+    const parent = batch.object.parent;
+    parent.remove(batch.object);
+    parent.add(photo.object);
+    return () => {
+      parent.remove(photo.object);
+      parent.add(batch.object);
+    };
   }
 
   /**

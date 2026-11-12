@@ -16,7 +16,13 @@ import {
 import type { Color, Intersection, Material, Raycaster } from 'three';
 import { MeshBVH, acceleratedRaycast } from 'three-mesh-bvh';
 import { LDrawConditionalLineMaterial } from 'three/addons/materials/LDrawConditionalLineMaterial.js';
-import { COLORS, getConnectionSites, getLDrawTransform, getPart } from '@brick-workshop/engine';
+import {
+  COLORS,
+  footprint,
+  getConnectionSites,
+  getLDrawTransform,
+  getPart,
+} from '@brick-workshop/engine';
 import type { Brick } from '@brick-workshop/engine';
 import { coloredLDrawModel } from './ldraw';
 import { LDRAW_SCALE } from './scene-frame';
@@ -585,11 +591,43 @@ const OPAQUE_COLORS = new Set(COLORS.filter((color) => color.alpha >= 255).map((
 const half = (value: number) => Math.round(value * 2) / 2 + 0;
 const siteKey = (x: number, y: number, z: number) => `${half(x)}:${half(y)}:${half(z)}`;
 
-function brickMatrix(brick: Brick, buildArea: number, explode: boolean) {
+/**
+ * Where a brick's part sits in the batch. With a `gap` (in LDraw units) an upright brick is
+ * narrowed about its centre and shortened from its bottom, so neighbours and courses meet at a
+ * hairline joint that wide, as real bricks do; its top and studs stay put.
+ */
+function brickMatrix(brick: Brick, buildArea: number, explode: boolean, gap = 0) {
   const transform = getLDrawTransform(brick);
   const [a, b, c, d, e, f, g, h, i] = transform.matrix;
+  let [kx, ky, kz] = [1, 1, 1];
+  if (gap > 0 && !brick.facing && !brick.upsideDown) {
+    // The part's own x and z run along the footprint's width and depth until it turns.
+    const { width, depth, height } = footprint(brick);
+    // Parts hang from their top, so this lifts the bottom and opens the course joint below.
+    if (height > 0) ky = 1 - gap / (8 * height);
+    const [across, along] = brick.rotation % 180 === 0 ? [width, depth] : [depth, width];
+    kx = 1 - gap / (20 * across);
+    kz = 1 - gap / (20 * along);
+  }
   return new Matrix4()
-    .set(a, b, c, 0, d, e, f, 0, g, h, i, 0, 0, 0, 0, 1)
+    .set(
+      a * kx,
+      b * ky,
+      c * kz,
+      0,
+      d * kx,
+      e * ky,
+      f * kz,
+      0,
+      g * kx,
+      h * ky,
+      i * kz,
+      0,
+      0,
+      0,
+      0,
+      1,
+    )
     .setPosition(
       transform.x - buildArea * 10,
       transform.y - (explode ? brick.y * 0.18 * 20 : 0),
@@ -808,13 +846,16 @@ export class LDrawBatch {
   private readonly colorize: Colorize;
   private readonly hideCovered: boolean;
   private readonly solidGround: boolean;
+  private readonly gap: number;
 
   /**
    * `fadeEdges` fades edges out as the camera pulls back, for the interactive view; renders at
    * a fixed scale, like the instructions, keep them as they are. `hideCovered` leaves out what
    * no camera can see: studs an opaque brick sits on, and the hollow undersides of opaque bricks
    * whose bottom is closed off. `solidGround` says the build stands on something opaque, so the
-   * undersides of bricks on the ground are closed off too.
+   * undersides of bricks on the ground are closed off too. `gap` opens a hairline joint of that
+   * many LDraw units between neighbouring bricks, for photo-like renders; it shows into what
+   * `hideCovered` would leave out, so the two are best not combined.
    */
   constructor(
     colorize: Colorize = coloredLDrawModel,
@@ -822,11 +863,13 @@ export class LDrawBatch {
       fadeEdges = false,
       hideCovered = true,
       solidGround = false,
-    }: { fadeEdges?: boolean; hideCovered?: boolean; solidGround?: boolean } = {},
+      gap = 0,
+    }: { fadeEdges?: boolean; hideCovered?: boolean; solidGround?: boolean; gap?: number } = {},
   ) {
     this.colorize = colorize;
     this.hideCovered = hideCovered;
     this.solidGround = solidGround;
+    this.gap = gap;
     const viewport = { value: 1 };
     this.object.name = 'Native brick batch';
     this.object.scale.set(...LDRAW_SCALE);
@@ -1382,7 +1425,7 @@ export class LDrawBatch {
     const look = this.look(brick, model, hidden);
     look.users++;
     this.idle.delete(look);
-    const matrix = brickMatrix(brick, buildArea, explode);
+    const matrix = brickMatrix(brick, buildArea, explode, this.gap);
     const slots: Placement['slots'] = [];
     for (const surface of look.surfaces) {
       const layer = this.layer(surface);
