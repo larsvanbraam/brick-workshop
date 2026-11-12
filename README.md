@@ -171,14 +171,14 @@ never infer them from similar numbers, names or RGB values.
 
 ## Examples
 
-| Example             | Pieces | Detail                                                                    |
-| ------------------- | ------ | ------------------------------------------------------------------------- |
-| Courtyard House     | 383    | Stone hall with half-timbered upper storey, watchtower, well and garden.  |
-| Catalog sampler     | all    | Every supported part once, on an 80 x 80 board.                           |
-| Seaside Lighthouse  | 415    | Striped tower on a rocky island with keeper's cottage, jetty and rowboat. |
-| Flower Market Stall | 351    | Booth with striped awning, flower buckets, crates, tree and bench.        |
-| Nordiska Museet     | 11,506 | The Stockholm museum with its towers, gables, dormers and windows.        |
-| Castle              | 7,951  | Walled castle: round towers, gatehouse, moat and drawbridge, keep, well.  |
+| Example             | Pieces | Detail                                                                                           |
+| ------------------- | ------ | ------------------------------------------------------------------------------------------------ |
+| Courtyard House     | 1,549  | Half-timbered cottage with dormer and outside stair on a landscaped island, tree, well and pond. |
+| Catalog sampler     | all    | Every supported part once, on an 80 x 80 board.                                                  |
+| Seaside Lighthouse  | 415    | Striped tower on a rocky island with keeper's cottage, jetty and rowboat.                        |
+| Flower Market Stall | 351    | Booth with striped awning, flower buckets, crates, tree and bench.                               |
+| Nordiska Museet     | 11,506 | The Stockholm museum with its towers, gables, dormers and windows.                               |
+| Castle              | 7,951  | Walled castle: round towers, gatehouse, moat and drawbridge, keep, well.                         |
 
 Each example is a module in
 [packages/brick-engine/src/examples](packages/brick-engine/src/examples)

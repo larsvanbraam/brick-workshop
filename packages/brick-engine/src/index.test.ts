@@ -1319,10 +1319,13 @@ describe('shaped and carried pieces in the static solver', () => {
     expect(report.masses.map(({ brickId }) => brickId)).toEqual(['bracket', 'plate']);
   });
   it.each(SMALL_EXAMPLES)('assesses gravity for the $name example', ({ id }) => {
-    const report = assessPhysicalFeasibility(createExampleAssembly(id), {
-      estimateMissingMasses: true,
-    });
-    expect(['balanced', 'requires-clutch']).toContain(report.gravity);
+    const assembly = createExampleAssembly(id);
+    const report = assessPhysicalFeasibility(assembly, { estimateMissingMasses: true });
+    // Past the solver's cap only tipping is decided; nothing may tip.
+    if (assembly.bricks.length > MAX_PHYSICS_PIECES) {
+      expect(report.gravity).toBe('not-assessed');
+      expect(report.groundedGroups.some((group) => group.tips)).toBe(false);
+    } else expect(['balanced', 'requires-clutch']).toContain(report.gravity);
   });
 });
 
@@ -1958,18 +1961,28 @@ describe('mixed-part engine builds', () => {
       expect(validateAssembly({ name: 'invalid board', bricks: [], buildArea })).toContainEqual(
         expect.objectContaining({ code: 'invalid' }),
       );
-    expect(createExampleAssembly('courtyard-house').buildArea).toBeUndefined();
+    expect(createExampleAssembly('flower-stall').buildArea).toBeUndefined();
+    expect(createExampleAssembly('courtyard-house').buildArea).toBe(32);
   });
 
   it('resizes the board around the build and refuses sizes the pieces do not fit', () => {
     const house = createExampleAssembly('courtyard-house');
-    const grown = resizeBuildArea(house, 32);
-    expect(grown?.buildArea).toBe(32);
-    expect(grown?.bricks.map((brick) => [brick.id, brick.x - 8, brick.y, brick.z - 8])).toEqual(
-      house.bricks.map((brick) => [brick.id, brick.x, brick.y, brick.z]),
-    );
+    const grown = resizeBuildArea(house, 64);
+    expect(grown?.buildArea).toBe(64);
+    // Side-mounted pieces sit at tenths of a stud, so compare positions to the tenth.
+    const at = (bricks: readonly Brick[], shift = 0) =>
+      bricks.map((brick) => [
+        brick.id,
+        Math.round((brick.x - shift) * 10) / 10,
+        brick.y,
+        Math.round((brick.z - shift) * 10) / 10,
+      ]);
+    expect(at(grown!.bricks, 16)).toEqual(at(house.bricks));
     expect(validateAssembly(grown!)).toEqual([]);
-    expect(resizeBuildArea(grown!, 16)).toEqual(house);
+    const back = resizeBuildArea(grown!, 32)!;
+    expect(back.buildArea).toBe(32);
+    expect(at(back.bricks)).toEqual(at(house.bricks));
+    expect(resizeBuildArea(house, 16)).toBeNull();
 
     const sampler = catalogSampler();
     expect(resizeBuildArea(sampler, 16)).toBeNull();
@@ -1990,42 +2003,42 @@ describe('mixed-part engine builds', () => {
   });
   const catalogSampler = () => createExampleAssembly('catalog-sampler');
 
-  it('builds a half-timbered cottage with a jettied upper floor, chimney, porch and tree', () => {
+  it('builds a half-timbered cottage with a dormer, outside stair, tree, well and pond', () => {
     const assembly = createExampleAssembly('courtyard-house');
-    expect(assembly.bricks).toHaveLength(410);
-    expect(new Set(assembly.bricks.map((brick) => brick.partId)).size).toBe(43);
-    expect(assembly.bricks[0]).toMatchObject({ partId: '91405', x: 0, y: 0, z: 0 });
-    expect(Math.max(...assembly.bricks.map((brick) => brick.y + footprint(brick).height))).toBe(48);
+    expect(assembly.bricks).toHaveLength(1549);
+    expect(assembly.buildArea).toBe(32);
     expect(validateAssembly(assembly)).toEqual([]);
     const of = (partId: string) => assembly.bricks.filter((brick) => brick.partId === partId);
-    // Timber brackets under the jetty, black corbels under the two wall lanterns.
-    expect(
-      of('3665a')
-        .map((brick) => brick.color)
-        .sort(),
-    ).toEqual([0, 0, 70, 70, 70, 70, 70, 70]);
-    expect(of('3062b').filter((brick) => brick.color === 46)).toHaveLength(2);
-    // The round-headed door: a timber fanlight inside the stone arch.
-    const [arch] = of('15254');
-    expect(of('15254')).toHaveLength(1);
-    expect(of('20309')).toEqual([
-      expect.objectContaining({ color: 70, y: arch.y, z: arch.z, rotation: arch.rotation }),
-    ]);
-    // Latticed gable windows front and back, a pair of casements in each.
-    expect(of('60594')).toHaveLength(2);
-    expect(of('60607')).toHaveLength(4);
-    // The porch awning falls to the front in red and white stripes.
-    const awning = of('4286');
-    expect(awning).toHaveLength(6);
-    expect(new Set(awning.map((brick) => brick.color))).toEqual(new Set([4, 15]));
-    // The chimney rises past the ridge and puffs white smoke.
+    // An island, not a board: the corners of the board stay bare.
+    for (const [x, z] of [
+      [0, 0],
+      [31, 0],
+      [0, 31],
+      [31, 31],
+    ])
+      expect(
+        assembly.bricks.some((brick) => {
+          const size = footprint(brick);
+          return (
+            brick.x <= x && x < brick.x + size.width && brick.z <= z && z < brick.z + size.depth
+          );
+        }),
+      ).toBe(false);
+    // White lattice windows, a pair of casements in each, and a round stone porch arch.
+    expect(of('60594')).toHaveLength(6);
+    expect(of('60607')).toHaveLength(12);
+    expect(of('3307')).toEqual([expect.objectContaining({ color: 151 })]);
+    // Plank doors at the porch and at the top of the outside stair.
+    expect(of('3193a')).toHaveLength(2);
+    // The chimney rises past the ridge; a cart wheel and a shield hang on side studs.
     const ridge = Math.max(...of('3043').map((brick) => brick.y + footprint(brick).height));
     const stack = Math.max(...of('98283').map((brick) => brick.y + footprint(brick).height));
     expect(stack).toBeGreaterThan(ridge);
-    expect(assembly.bricks.filter((brick) => brick.color === 15 && brick.y >= stack)).toHaveLength(
-      3,
-    );
-    for (const partId of ['14716', '2423', '30055', '30137', '3941', '4070', '4216', '24866'])
+    expect(of('60474')).toEqual([expect.objectContaining({ color: 70, facing: '-x' })]);
+    // A pond in three blues, and smoothing on the rocks, strata and lawn.
+    for (const color of [1, 73, 272])
+      expect(assembly.bricks.some((brick) => brick.y === 4 && brick.color === color)).toBe(true);
+    for (const partId of ['54200', '25269', '3045', '3688', '2039', '3471', '30137', '24866'])
       expect(of(partId).length).toBeGreaterThan(0);
   });
 
@@ -2109,16 +2122,16 @@ describe('mixed-part engine builds', () => {
 
   it('gives the courtyard house a steep dark red roof stepping up to a ridge', () => {
     const assembly = createExampleAssembly('courtyard-house');
-    const z = 4;
-    const roofHeights = Array.from({ length: 12 }, (_, index) => {
-      const x = index + 2;
+    const x = 12;
+    const roofHeights = Array.from({ length: 14 }, (_, index) => {
+      const z = index + 11;
       return Math.max(
         ...assembly.bricks
           .filter((brick) => {
             const size = footprint(brick);
             return (
               (brick.color === 320 || brick.color === 4) &&
-              brick.y >= 20 &&
+              brick.y >= 34 &&
               brick.x <= x &&
               x < brick.x + size.width &&
               brick.z <= z &&
@@ -2128,7 +2141,7 @@ describe('mixed-part engine builds', () => {
           .map((brick) => brick.y + footprint(brick).height),
       );
     });
-    expect(roofHeights).toEqual([23, 26, 29, 32, 35, 38, 38, 35, 32, 29, 26, 23]);
+    expect(roofHeights).toEqual([37, 40, 43, 46, 49, 52, 55, 55, 52, 49, 46, 43, 40, 37]);
   });
 
   it('provides named, valid examples with independent assembly instances', () => {
@@ -2664,7 +2677,7 @@ describe('example registry', () => {
     expect(first.bricks[0]).not.toBe(second.bricks[0]);
     expect(() => registry.createAssembly('unknown')).toThrow('Unknown example');
     expect(createDemoAssembly().bricks.map((brick) => brick.id)).toEqual(
-      Array.from({ length: 410 }, (_, index) => `demo-${index + 1}`),
+      Array.from({ length: 1549 }, (_, index) => `demo-${index + 1}`),
     );
   });
 });
