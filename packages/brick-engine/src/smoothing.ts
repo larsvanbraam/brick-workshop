@@ -27,7 +27,10 @@ export interface SmoothOptions {
   tiles?: boolean;
   /** Small flowers scattered on green tops. Default false: a green figure is not a lawn. */
   accents?: boolean;
-  /** Share of open green studs that get a flower, 0 to 1. Default 0.08. */
+  /**
+   * Roughly the share of open green studs that get a flower, 0 to 1. Flowers grow in small
+   * clusters of one colour; 1 fills every open stud. Default 0.08.
+   */
   accentDensity?: number;
   /** Most pieces the assembly may hold afterwards. */
   maxPieces?: number;
@@ -189,7 +192,9 @@ export function smoothAssembly(assembly: Assembly, options: SmoothOptions = {}):
   const ground = assembly.bricks.filter((brick) => isGround(brick) && inScope(brick));
   const scoped = new Set(plain.filter(inScope).map((brick) => brick.id));
   for (const brick of assembly.bricks) reserve(brick);
+  // Only pieces in scope count as steps to lean on, so a lawn pass leaves house walls alone.
   for (const brick of plain) {
+    if (!scoped.has(brick.id)) continue;
     const size = footprint(brick);
     for (let h = brick.y * 2; h < (brick.y + size.height) * 2; h += 1)
       for (let z = brick.z; z < brick.z + size.depth; z += 1)
@@ -308,6 +313,22 @@ export function smoothAssembly(assembly: Assembly, options: SmoothOptions = {}):
     return true;
   };
 
+  /**
+   * Flower clusters: the lawn is split into 4 x 4 cells and some cells grow one clump, a few
+   * studs round a point in the cell. Returns a positive colour pick for a flower, or 0.
+   */
+  const CELL = 4;
+  const flowerAt = ({ x, y, z }: { x: number; y: number; z: number }) => {
+    const [cx, cz] = [Math.floor(x / CELL), Math.floor(z / CELL)];
+    const pick = (hash(cx, cz, y, 11) % 997) + 1;
+    if (density >= 1) return pick;
+    if ((hash(cx, cz, y, 7) % 1000) / 1000 >= Math.min(1, density * 5)) return 0;
+    const centre = hash(cz, cx, y, 5);
+    const [mx, mz] = [cx * CELL + (centre % CELL), cz * CELL + ((centre >>> 8) % CELL)];
+    const near = (x - mx) ** 2 + (z - mz) ** 2 <= 2;
+    return near && hash(x, z, y, 3) % 10 < 8 ? pick : 0;
+  };
+
   // The tallest step beside each stud, and the way it rises.
   const steps = new Map(
     tops.map((top) => {
@@ -409,17 +430,12 @@ export function smoothAssembly(assembly: Assembly, options: SmoothOptions = {}):
           counts.tiles += 1;
         continue;
       }
-      // Open studs inside a green top: a few flowers.
-      if (
-        use.accents &&
-        !best &&
-        !edgeCount &&
-        GREENS.has(top.color) &&
-        (hash(top.x, top.y, top.z) % 1000) / 1000 < density
-      ) {
+      // Open studs inside a green top: flowers in small clusters of one colour.
+      const cluster = use.accents && !best && !edgeCount && GREENS.has(top.color) && flowerAt(top);
+      if (cluster) {
         const colors = FLOWER_COLORS.filter((color) => allowed(FLOWER, color));
         if (!colors.length) continue;
-        const color = colors[hash(top.z, top.x, top.y) % colors.length];
+        const color = colors[cluster % colors.length];
         if (add({ partId: FLOWER, color, x: top.x, y: top.y, z: top.z, rotation: 0 }))
           counts.accents += 1;
       }

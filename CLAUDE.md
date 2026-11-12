@@ -21,6 +21,29 @@ Most work here is making example builds: TypeScript files in
 for every piece. The registry validates the result and throws on the first unsupported or
 colliding piece, and on a piece count that differs from `expectedPieceCount`.
 
+Rules the registry and the tests enforce:
+
+- **Build order.** Every piece must come after whatever holds it up. The registry names the
+  first failing piece by replaying the list in order, the disassembly test removes pieces in
+  reverse, and the validation tests rebuild the list course by course. A plan drawn in any
+  other order reports bogus "unsupported" pieces. Wrap the adder in `bottomUp` (`layout.ts`)
+  and call `flush()` at the end of `build` to hand pieces on bottom-up, side-mounted pieces
+  last.
+- **The demo build.** `courtyard-house` is also `createDemoAssembly`, and the tests in
+  `index.test.ts` describe it in detail: piece count, board size, the resize shift, the
+  island's corners, window counts, the wheel's facing, the roof's height profile, the parts it
+  must use and its brick IDs. When you change it, update those tests to describe the new
+  model.
+- **Physics.** The full gravity solve runs up to `MAX_PHYSICS_PIECES` (1,000 pieces). Above
+  that only tipping is checked, so the example gravity test expects `not-assessed` there.
+- **Instructions.** Examples under 2,500 pieces also run through the building instructions
+  tests. Keep a single-subject scene (a house, a tower) under that, and spend no more pieces
+  on scenery than on the subject.
+- **Hidden supports.** Pieces only bond through studs, so a hollow shell (a roof, a dome) can
+  leave cells nothing holds. Hidden posts inside it are fine: dark colour (`308` or `72`),
+  never visible from any side, and counted (the courtyard house's roof needs about 100).
+  Design the shell to bond on its own first; posts are the fallback.
+
 ### What a good example looks like
 
 The bar is the reference builds this project was steered by: the Bookshop and Pub modular
@@ -43,7 +66,13 @@ plain is not finished.
   diagonal braces where the catalogue allows.
 - Roofs are textured and broken up. Lay shingles as a stepped plate roof covered in staggered
   tiles with angled ends (`22385`) or slopes, in two shades of the roof colour with a few
-  accent tiles. Add dormers, chimneys with pots, a ridge, eaves that overhang the wall, and
+  accent tiles. The roof in `courtyard-house.ts` is a worked recipe to reuse: a height field
+  gives each cell its course, each course is a brick shell two studs deep set 3 plates up and
+  1 stud in (about 50°), and its exposed row carries `22385` tiles staggered course by course
+  with their points overhanging the course below; a cross gable is the higher of two height
+  fields, so the valleys come out on their own. Every shingle's point faces downhill, towards the eaves and away from the
+  ridge. `22385` has its point at -z at rotation 0, and turns like a slope's low side: 90
+  points it at -x, 180 at +z, 270 at +x. Add dormers, chimneys with pots, a ridge, eaves that overhang the wall, and
   gutters.
 - The roofline never ends flat: finials and cones (`4589`, `59900`), a dome or spire, flags on
   antennas, railings or crenellations along the top.
@@ -71,8 +100,23 @@ plain is not finished.
   for falls and ripples, reeds and lily pads at the bank.
 - Plants come in clusters of several kinds and heights: conifers and broadleaf trees, bushes,
   ferns, tall grass and reeds, with small flowers in groups of one colour (yellow, red, white).
+  Trees are big: a broadleaf tree's crown reaches the eaves and spreads wider than a storey,
+  as in the cottage reference.
 - Green climbs buildings: ivy up walls, hanging baskets and window boxes, a tree against the
   façade.
+
+**Calm ground, not confetti.** The references read as a few large, quiet areas (a lawn, a
+path, a rocky bank, a pond) with detail gathered where they meet. Scattering single pieces in
+many colours over the whole base reads as noise.
+
+- Each ground area is one material with its own two or three shades, in patches of at least
+  about 3 x 3 studs. Keep to three or four materials across the base.
+- Gather detail along edges and transitions (the foot of a wall, a path's border, the bank of
+  the pond, round a tree) and leave the middle of a lawn mostly plain studs with a few tufts.
+- Dress at most about one stud in eight of a lawn; flowers in clumps of one colour.
+- From above the outline is clearly organic, with bays and promontories, not a square with
+  rounded corners: leave at least a quarter of the board bare, and give the outline three or
+  more bays at least 3 studs deep.
 
 **Stories and props.** Every scene has something going on: a well, a cart, a market stall, a
 lamppost and bench, a fountain, barrels and crates, a sign over the door, a flag on the tower.
@@ -101,10 +145,13 @@ lamppost and bench, a fountain, barrels and crates, a sign over the door, a flag
   `18674`) for half-stud offsets.
 - Build sideways (SNOT) for details off a wall: side-stud bricks (`87087`, `11211`, `30414`,
   `4733`, `47905`), headlight bricks (`4070`) and the bracket (`99780`) for sills, signs,
-  lamps, ivy and shutters.
+  lamps, ivy and shutters. A piece on a headlight brick sits in the wall's plane, so it
+  collides with its neighbours; use side-stud bricks where it should stand proud.
 - Plants: `addTree` in `trees.ts` for trees; bushes (`6064`), tall grass (`30093`), leaf
   sprays (`2423`, `2417`, `6255`, `30176`), sprigs (`32607`), flower leaves (`4727`) and
-  flowers (`24866`), plus 1 x 1 round plates in flower colours on grass.
+  flowers (`24866`), plus 1 x 1 round plates in flower colours on grass. Bushes, tall grass and
+  ferns (`6064`, `30093`, `6255`) have their receivers between studs, so they sit at half-stud
+  positions; check a part's `connections` in `core.ts` before placing it.
 - Props tell the story: lampposts (`2039`), fences and railings (`33303`, `3185`, `3633`,
   `30055`), flags on antennas (`2335` on `3957a`), barrels from round bricks (`3941`),
   crates, benches, buckets and pots (see `flower-stall.ts`).
@@ -147,7 +194,7 @@ Palettes the references use, as starting points:
   `320` roof with orange `25` accent tiles, earth and rock in `72`, `71` and `19`, dark green
   `288` water, yellow `14` flowers.
 - **Cottage**: dark red `320` and red `4` shingles, reddish brown `70` and dark brown `308`
-  timbers, light grey `71` stone ground floor with `72` quoins, white `15` lattice windows,
+  timbers, light grey `71` stone ground floor with `72` patches and lighter `151` quoins, white `15` lattice windows,
   green `2` lawn and dark green `288` tree.
 - **Landmark**: one colour family (tan `19` with dark tan `28` in the recesses) on a black `0`
   base, with one dark accent (a spire in `72`).
@@ -167,16 +214,28 @@ smooth: [
 ```
 
 Limit each pass with `only` or `region` to the natural parts, so walls, floors you still
-build on and studs meant to show stay as they are. Smoothing pieces count towards
-`expectedPieceCount`.
+build on and studs meant to show stay as they are. Only pieces in a pass's scope count as
+steps to lean slopes on, so a lawn pass leaves the house walls alone. When natural and built
+parts share colours (grey rock and grey walls), tag the natural pieces while building (a
+`Set` of positions, as `courtyard-house.ts` does) and test that set in `only`. With
+`accents: true`, flowers grow in small clumps of one colour; place showpiece flower beds by
+hand. Smoothing pieces count towards `expectedPieceCount`.
 
 ### How to build one
 
 1. **Reference.** Ask for reference images if there are none. List what makes the subject
    recognisable: silhouette, colours, roof, windows, towers, entrance, props, scenery.
 2. **Plan.** Draw top-down character maps per layer (see `SQUARE` in `flower-stall.ts` and
-   the castle's plans), with the front at high z, and wrap `add` in `turnAround` so the front
-   faces the default camera. Set `buildArea` (16 to 128) to fit the subject plus scenery.
+   the castle's plans), with the front at high z and x running left to right as seen from the
+   front. Wrap `add` in `reflectToFront` (`layout.ts`) so the front faces the default camera
+   the right way round; `turnAround` turns the plan instead and leaves it mirrored. Set
+   `buildArea` (16 to 128) to fit the subject plus scenery. Two kinds of piece need care
+   under the reflection (`courtyard-house.ts` shows both):
+   - Doors and casements are handed. Reflect the frame first, fit the door against the frame
+     where it lands on the board with `isMatchingInsertFrame`, and hand the door on
+     unreflected (`addDoor`).
+   - Side-mounted pieces: seat them in plan space with `seatOnSideStuds` on their host and add
+     them with their `facing`; the reflection flips ±z facings (`mount`, `sideStud`).
 3. **Bulk.** Lay floors with `layPlateFloor` (`board.ts`) and walls and slabs with the
    `layout.ts` helpers: `addRun`, `addRing`, `addBondedMap`, `addAreaMap`, `addRowMap`, and
    `glazeWindows` for glass. Keep joints staggered between courses.
@@ -188,22 +247,28 @@ build on and studs meant to show stay as they are. Smoothing pieces count toward
    scratch script and read the error. A wrong count throws in the app too, and the workshop
    then hangs on "Preparing build…".
 7. **Look.** Run `pnpm dev`, open the example from **File**, check the badge reads
-   "<n> pieces · Valid", and look at it from every side, including the back and from above,
-   in the normal and the cinematic view. To see the back of a `turnAround` build, temporarily
-   build it without `turnAround`. Restart the dev server after adding parts to the catalogue.
+   "<n> pieces · Valid", and look at it from every side, including the back and from above.
+   The workshop autosaves the build it shows, so after each change reopen the example from
+   **File**. Orbit by dragging (the angle per drag varies, so check where you ended up);
+   scroll zoom is coarse; the **Top** and **Front** camera buttons give fixed views. Judge colours in the cinematic view: the normal
+   view washes light colours out, so Light Bluish Grey `71` looks almost white there. To see
+   the back head-on, orbit round, or temporarily build without `reflectToFront` if the build
+   still validates that way. Restart the dev server after adding parts to the catalogue.
 8. **Compare.** Write a point-by-point diff of the render against the reference and the
    standard above, fix the biggest silhouette and colour gaps first, and render again. Rework
    the model itself (roof, windows, towers, steps), not just the scenery around it.
-9. **Verify.** `pnpm test` and `pnpm check`. Examples under 2,500 pieces also run through the
-   building instructions tests.
+9. **Verify.** `pnpm test` and `pnpm check`.
 
 ### Before calling an example done
 
 - Is the subject recognisable from the reference at a glance, from the front and the back?
+  Is the back as finished as the front?
 - Does every façade have storey bands, framed windows with sills and boxes, and a textured
   roof with a broken roofline?
-- Does it stand on a shaped landscape with height, layered edges, mixed ground, water or rock
-  where it fits, and plant clusters of several kinds?
+- Does it stand on a shaped landscape with height, layered edges, water or rock where it
+  fits, and plant clusters of several kinds?
+- Is the ground calm: a few large areas of one material each, detail gathered at the edges,
+  no confetti of single pieces in many colours?
 - Does anything natural still have a straight edge, a flat top or a hard corner?
 - Is there any bare stud field over about 4 x 4, or a blank wall over about 4 studs?
 - Does every material use two or three shades, with accents kept small?

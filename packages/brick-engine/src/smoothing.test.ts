@@ -193,6 +193,47 @@ describe('smoothAssembly', () => {
     ).toThrow('expected 4 pieces, got 10');
   });
 
+  it('leans only on pieces in scope and grows flowers in clusters of one colour', () => {
+    const lawn: Assembly = {
+      name: 'Garden',
+      buildArea: 32,
+      bricks: [brick('lawn', '3867', 0, 0, 0, 2), brick('wall', '3003', 6, 0.5, 6)],
+    };
+    // A lawn pass over a plate beside a grey brick: no green slope climbs the brick.
+    const plate: Assembly = {
+      name: 'Plate',
+      buildArea: 16,
+      bricks: [brick('green', '3033', 0, 0, 0, 2), brick('grey', '3003', 2, 1, 2)],
+    };
+    const leaned = smoothAssembly(plate, { only: (piece) => piece.color === 2 });
+    expect(leaned.counts.slopes + leaned.counts.curves).toBe(0);
+    expect(
+      smoothAssembly(plate).counts.slopes + smoothAssembly(plate).counts.curves,
+    ).toBeGreaterThan(0);
+
+    const garden = smoothAssembly(lawn, { accents: true, accentDensity: 0.15 });
+    expect(validateAssembly(garden.assembly)).toEqual([]);
+    const flowers = garden.added.filter((piece) => piece.partId === '6141');
+    expect(flowers.length).toBeGreaterThan(5);
+    const colours = new Map<string, Set<number>>();
+    for (const flower of flowers) {
+      const cell = `${Math.floor(flower.x / 4)},${Math.floor(flower.z / 4)}`;
+      colours.set(cell, (colours.get(cell) ?? new Set()).add(flower.color));
+    }
+    for (const set of colours.values()) expect(set.size).toBe(1);
+    // Clumps, not dots: most flowers have another flower next to them.
+    const at = new Set(flowers.map((flower) => `${flower.x},${flower.z}`));
+    const neighboured = flowers.filter((flower) =>
+      [
+        [1, 0],
+        [-1, 0],
+        [0, 1],
+        [0, -1],
+      ].some(([dx, dz]) => at.has(`${flower.x + dx},${flower.z + dz}`)),
+    );
+    expect(neighboured.length / flowers.length).toBeGreaterThan(0.6);
+  });
+
   it('returns invalid assemblies unchanged', () => {
     const floating: Assembly = { name: 'Floating', bricks: [brick('up', '3003', 0, 3, 0)] };
     const result = smoothAssembly(floating);

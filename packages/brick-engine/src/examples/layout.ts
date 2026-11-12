@@ -1,5 +1,5 @@
-import { BUILD_AREA, FACINGS, footprint, getPart } from '../core.ts';
-import type { Rotation } from '../core.ts';
+import { BUILD_AREA, FACINGS, footprint, getConnectionSites, getPart } from '../core.ts';
+import type { Brick, Facing, Rotation } from '../core.ts';
 import type { ExampleBrickAdder } from './types.ts';
 
 /** Run kinds: `short` lays bricks no longer than three studs, for finer stonework. */
@@ -404,4 +404,70 @@ export function addAreaMap(
       add(shape.partId, entry[1], x, y, z, shape.rotation);
       for (const [cellX, cellZ] of cells(shape)) used[cellZ][cellX] = true;
     }
+}
+
+/** A piece's studs and receivers relative to its corner, optionally reflected in z, as a key. */
+function siteKey(piece: Omit<Brick, 'id'>, reflectDepth?: number) {
+  return (['top', 'bottom'] as const)
+    .flatMap((surface) =>
+      getConnectionSites({ id: '', ...piece }, surface).map(
+        ({ x, z }) =>
+          `${surface}:${x - piece.x}:${reflectDepth === undefined ? z - piece.z : reflectDepth - (z - piece.z)}`,
+      ),
+    )
+    .sort()
+    .join(' ');
+}
+
+/**
+ * Reflects a plan drawn top-down with its front at high z and x running left to right as seen
+ * from the front, so the front faces the default camera (which looks at the low-z side) the
+ * right way round. `turnAround` turns a plan instead, which leaves it mirrored left to right.
+ * A reflected piece is the same piece turned, except for handed ones such as corner slopes and
+ * sprigs: each gets the turn that puts its studs and receivers where the reflection puts them.
+ * Side-mounted pieces facing along z face the other way; check them in a render.
+ */
+export function reflectToFront(add: ExampleBrickAdder, buildArea = BUILD_AREA): ExampleBrickAdder {
+  return (partId, color, x, y, z, rotation = 0, facing, upsideDown) => {
+    const piece = { partId, color, x, y, z, rotation, ...(facing ? { facing } : {}) };
+    const { depth } = footprint({ id: '', ...piece });
+    const round = (value: number) => Math.round(value * 10) / 10;
+    const reflected = round(buildArea - z - depth);
+    if (facing) {
+      const flipped: Facing = facing === '+z' ? '-z' : facing === '-z' ? '+z' : facing;
+      add(partId, color, x, y, reflected, rotation, flipped, upsideDown);
+      return;
+    }
+    const want = siteKey(piece, depth);
+    const turns = [180, 270, 0, 90].map((turn) => ((turn - rotation + 360) % 360) as Rotation);
+    const turned =
+      turns.find((turn) => siteKey({ ...piece, z: reflected, rotation: turn }) === want) ??
+      turns[0];
+    add(partId, color, x, y, reflected, turned, undefined, upsideDown);
+  };
+}
+
+/**
+ * Collects pieces and hands them on bottom-up, side-mounted pieces last, so each comes after
+ * what holds it, whatever order the plan draws them in. The registry, the building
+ * instructions and the disassembly tests rely on that order. Call `flush` once at the end.
+ */
+export function bottomUp(add: ExampleBrickAdder): { add: ExampleBrickAdder; flush: () => void } {
+  const pending: Parameters<ExampleBrickAdder>[] = [];
+  return {
+    add: (...piece) => {
+      pending.push(piece);
+    },
+    flush: () => {
+      const order = pending.map((piece, index) => ({ piece, index }));
+      order.sort(
+        (a, b) =>
+          Number(!!a.piece[6]) - Number(!!b.piece[6]) ||
+          a.piece[3] - b.piece[3] ||
+          a.index - b.index,
+      );
+      pending.length = 0;
+      for (const { piece } of order) add(...piece);
+    },
+  };
 }
