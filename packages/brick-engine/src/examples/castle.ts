@@ -63,11 +63,15 @@ function hash(x: number, z: number, salt = 0) {
   return ((value ^ (value >>> 16)) >>> 0) / 4294967296;
 }
 /** Light grey stone with the odd dark block. */
-const stone = (x: number, z: number, salt: number) => (hash(x, z, salt) < 0.22 ? 'd' : 'a');
+const stone = (x: number, z: number, salt: number) => {
+  const roll = hash(x, z, salt);
+  return roll < 0.2 ? 'd' : roll < 0.34 ? 'm' : 'a';
+};
 
 const LEGEND: Readonly<Record<string, readonly [RunKind, number]>> = {
-  a: ['brick', STONE],
-  d: ['brick', DARK_STONE],
+  a: ['short', STONE],
+  m: ['masonry', STONE],
+  d: ['short', DARK_STONE],
   k: ['brick', BLACK],
   w: ['brick', WHITE],
   b: ['brick', TIMBER],
@@ -83,27 +87,31 @@ const TILES: Readonly<Record<string, readonly [RunKind, number]>> = {
  * carry a walkway, the outer row a crenellated parapet with arrow slits below.
  */
 const WALLS = [
-  [16, 8, 47, 11, '-z'],
-  [16, 48, 22, 51, '+z'],
-  [41, 48, 47, 51, '+z'],
-  [8, 16, 11, 43, '-x'],
-  [52, 16, 55, 43, '+x'],
+  [15, 8, 48, 11, '-z'],
+  [15, 48, 22, 51, '+z'],
+  [41, 48, 48, 51, '+z'],
+  [8, 15, 11, 44, '-x'],
+  [52, 15, 55, 44, '+x'],
 ] as const;
 /** Where a wall cell is: how far in from the outside face (0 to 3) and how far along. */
 function wallAt(x: number, z: number) {
   for (const [x0, z0, x1, z1, out] of WALLS) {
     if (!within(x, z, x0, z0, x1, z1)) continue;
     const depth = { '-z': z - z0, '+z': z1 - z, '-x': x - x0, '+x': x1 - x }[out];
-    return { depth, along: out.endsWith('z') ? x : z };
+    const [start, end] = out.endsWith('z') ? [x0, x1] : [z0, z1];
+    return { depth, along: out.endsWith('z') ? x : z, start, end };
   }
   return undefined;
 }
 /** Merlons two studs wide with a one-stud embrasure between. */
 const merlon = (along: number) => along % 3 !== 2;
-/** Arrow slits every six studs, three courses tall. */
-const slit = (along: number, n: number) => n >= 3 && n <= 5 && along % 6 === 3;
+/** Arrow slits every six studs: two courses open, then a 1 x 3 arch rounding off the top. */
+const SLIT = [3, 4] as const;
+const SLIT_ARCH = 5;
+const slitAt = (along: number, start = -Infinity, end = Infinity) =>
+  along % 6 === 3 && along > start && along < end;
 
-/** Round corner towers, twelve studs across: their centres on the stud grid. */
+/** Round corner towers, ten studs across: their centres on the stud grid. */
 const TOWERS = [
   [10, 10],
   [54, 10],
@@ -137,21 +145,30 @@ const ROOF_FRONT = 21;
 const keepTower = (x: number, z: number) =>
   KEEP_TOWERS.some(([x0, x1]) => within(x, z, x0, KEEP_BACK, x1, KEEP_TOWER_FRONT));
 const hall = (x: number, z: number) => within(x, z, HALL[0], HALL[2], HALL[1], HALL[3]);
-/** Keep windows: [x, z, rotation, first course], each frame two studs wide and two courses tall. */
-const KEEP_WINDOWS: readonly (readonly [number, number, Rotation, number])[] = [
+/**
+ * Keep windows: [x, z, rotation, first course, [dx, dz] inwards], each a round-topped opening two
+ * studs wide under a plate, three courses tall, dark inside.
+ */
+const KEEP_WINDOWS: readonly (readonly [
+  number,
+  number,
+  Rotation,
+  number,
+  readonly [number, number],
+])[] = [
   ...KEEP_TOWERS.flatMap(([x0]) => [
-    [x0 + 3, KEEP_TOWER_FRONT, 90, 5] as const,
-    [x0 + 3, KEEP_TOWER_FRONT, 90, 11] as const,
+    [x0 + 3, KEEP_TOWER_FRONT, 90, 5, [0, -1]] as const,
+    [x0 + 3, KEEP_TOWER_FRONT, 90, 11, [0, -1]] as const,
   ]),
-  [20, 15, 0, 11],
-  [43, 15, 0, 11],
-] as const;
+  [20, 15, 0, 11, [1, 0]],
+  [43, 15, 0, 11, [-1, 0]],
+];
 
 /** The timbered house along the west wall and the hall with an arcade along the east wall. */
-const HOUSE = [12, 17, 16, 31] as const;
+const HOUSE = [12, 17, 17, 32] as const;
 const HOUSE_COURSES = 5;
-const HOUSE_DOOR = 22;
-const HOUSE_WINDOWS = [18, 27] as const;
+const HOUSE_DOOR = 23;
+const HOUSE_WINDOWS = [19, 28] as const;
 const ARCADE = [44, 51, 18, 29] as const;
 const ARCADE_COURSES = 6;
 const ARCHES = [20, 24] as const;
@@ -228,10 +245,17 @@ function courseCell(x: number, z: number, n: number): string {
   const mottled = () => (bridging ? 'a' : stone(x, z, n * 13));
   const wall = wallAt(x, z);
   if (wall) {
-    const { depth, along } = wall;
+    const { depth, along, start, end } = wall;
     if (n < WALL_COURSES) {
-      if (slit(along, n) && depth === 0) return ' ';
-      if (slit(along, n) && depth === 1) return 'k';
+      const inSlit = slitAt(along, start, end) && n >= SLIT[0] && n <= SLIT_ARCH;
+      if (inSlit && depth === 1) return 'k';
+      if (inSlit && depth === 0) return ' ';
+      if (
+        n === SLIT_ARCH &&
+        depth === 0 &&
+        (slitAt(along - 1, start, end) || slitAt(along + 1, start, end))
+      )
+        return ' ';
       return mottled();
     }
     if (n === WALL_COURSES) return depth === 0 || depth === 3 ? mottled() : ' ';
@@ -255,11 +279,14 @@ function courseCell(x: number, z: number, n: number): string {
     return ' ';
   }
   if (keepTower(x, z)) {
-    for (const [wx, wz, rotation, first] of KEEP_WINDOWS) {
-      const inWindow = rotation
-        ? x >= wx && x <= wx + 1 && z === wz
-        : z >= wz && z <= wz + 1 && x === wx;
-      if (inWindow && (n === first || n === first + 1)) return ' ';
+    for (const [wx, wz, rotation, first, [ix, iz]] of KEEP_WINDOWS) {
+      const at = (ox: number, oz: number) =>
+        rotation
+          ? x >= wx + ox && x <= wx + ox + 1 && z === wz + oz
+          : z >= wz + oz && z <= wz + oz + 1 && x === wx + ox;
+      if (n < first || n > first + 2) continue;
+      if (at(0, 0)) return ' ';
+      if (at(ix, iz)) return 'k';
     }
     return n < KEEP_TOWER_COURSES ? mottled() : ' ';
   }
@@ -416,30 +443,130 @@ function addPennant(add: ExampleBrickAdder, x: number, y: number, z: number) {
   add('2335', RED, x, y + 9, z, 90);
 }
 
-/** The rounded corners of a tower: [dx, dz] of each 4 x 4 corner from the centre, and its turn. */
-const TOWER_CORNERS = [
-  [2, -6, 0],
-  [-6, -6, 90],
-  [-6, 2, 180],
-  [2, 2, 270],
+/**
+ * The rounded corners of a squircle `half` studs from its centre to each side: [dx, dz] of each
+ * 4 x 4 corner piece from the centre, and its turn.
+ */
+const roundCorners = (half: number) =>
+  [
+    [half - 4, -half, 0],
+    [-half, -half, 90],
+    [-half, half - 4, 180],
+    [half - 4, half - 4, 270],
+  ] as const;
+/** The straight cross of a squircle: cells level with the flat stretch of one of its sides. */
+const inCross = (dx: number, dz: number, half: number) =>
+  dx >= -half &&
+  dx < half &&
+  dz >= -half &&
+  dz < half &&
+  ((dx >= 4 - half && dx < half - 4) || (dz >= 4 - half && dz < half - 4));
+/** The studs a round-cornered square `half` from its centre covers, as offsets from it. */
+function squircle(half: number) {
+  const cells = new Set<string>();
+  for (let dx = -half; dx < half; dx++)
+    for (let dz = -half; dz < half; dz++) if (inCross(dx, dz, half)) cells.add(key(dx, dz));
+  for (const [dx, dz, rotation] of roundCorners(half)) {
+    const corner = { id: 'corner', partId: '2577', color: 0, x: dx + 8, y: 0, z: dz + 8, rotation };
+    for (const site of getConnectionSites(corner as Brick, 'top'))
+      cells.add(key(Math.floor(site.x) - 8, Math.floor(site.z) - 8));
+  }
+  return cells;
+}
+/** Offsets along the flat stretch of a side of a squircle `half` from its centre. */
+const flat = (half: number) => Array.from({ length: 2 * half - 8 }, (_, index) => index + 4 - half);
+/** The base and battlements are twelve studs across, the shaft between them ten. */
+const [SHAFT, BASE_HALF] = [5, 6];
+const SHAFT_CELLS = squircle(SHAFT);
+const BASE_CELLS = squircle(BASE_HALF);
+const PLINTH_COURSES = 3;
+/**
+ * Loopholes: the first of the three courses each takes, a round-topped window opening across
+ * the two-stud flat of a face with a plate over it, dark inside.
+ */
+const LOOPHOLES = [4, 8] as const;
+const CORBEL_COURSE = TOWER_COURSES - 1;
+/** Ways out of a tower side: the facing and the inverted slope's turn to overhang that way. */
+const SIDES = [
+  ['-z', 0],
+  ['+z', 180],
+  ['-x', 90],
+  ['+x', 270],
 ] as const;
 
+/** Splits of a four or six stud run into short bricks, picked per course for staggered joints. */
+const SPLITS: Readonly<Record<number, readonly (readonly number[])[]>> = {
+  2: [[2], [1, 1], [2]],
+  4: [
+    [2, 2],
+    [1, 2, 1],
+    [3, 1],
+    [1, 3],
+    [2, 1, 1],
+  ],
+  6: [
+    [2, 2, 2],
+    [3, 3],
+    [1, 2, 3],
+    [2, 3, 1],
+    [3, 2, 1],
+  ],
+};
+
 /**
- * A round corner tower twelve studs across: rounded corner bricks joined by straight runs a stud
- * thick, with arrow slits in every face, capped with plates under a ring of merlons and a tall
- * dark cone.
+ * Lays a straight run of `cells` (all in one line, in order) in short bricks, the split and
+ * colours varying course by course; `skip` cells are left out and split the run.
+ */
+function addShortRun(
+  add: ExampleBrickAdder,
+  cells: readonly (readonly [number, number])[],
+  y: number,
+  salt: number,
+  skip: (x: number, z: number) => boolean = () => false,
+) {
+  const axis = cells.length > 1 && cells[1][0] !== cells[0][0] ? 'x' : 'z';
+  const splits = SPLITS[cells.length] ?? [[cells.length]];
+  const split = splits[Math.floor(hash(cells[0][0], cells[0][1], salt) * splits.length)];
+  let index = 0;
+  for (const size of split) {
+    const piece = cells.slice(index, index + size);
+    index += size;
+    let start = 0;
+    for (let end = 0; end <= piece.length; end++) {
+      if (end < piece.length && !skip(...piece[end])) continue;
+      if (end > start) {
+        const [x, z] = piece[start];
+        const roll = hash(x, z, salt + 1);
+        const kind = end - start === 2 && roll > 0.8 ? 'masonry' : 'short';
+        addRun(add, kind, roll < 0.22 ? DARK_STONE : STONE, axis, x, y, z, end - start);
+      }
+      start = end + 1;
+    }
+  }
+}
+
+/**
+ * A round corner tower: a wider battered base, a ten-stud shaft of rounded corner bricks joined
+ * by flat stretches of short bricks, round-topped loopholes in each free face, and corbels
+ * carrying a twelve-stud parapet of merlons round a dark cone.
  */
 function addRoundTower(add: ExampleBrickAdder, cx: number, cz: number) {
-  // Straight sides: [x, z] of the first of four cells and the axis they run along.
-  const sides = [
-    [cx - 2, cz - 6, 'x'],
-    [cx - 2, cz + 5, 'x'],
-    [cx - 6, cz - 2, 'z'],
-    [cx + 5, cz - 2, 'z'],
-  ] as const;
-  for (let n = 0; n < TOWER_COURSES; n++) {
+  const cell = (dx: number, dz: number) => [cx + dx, cz + dz] as const;
+  // The faces of the shaft: their four cells, the cell inside each, and whether a wall meets it.
+  const faces = SIDES.map(([facing, rotation]) => {
+    const [ox, oz] = { '-z': [0, -1], '+z': [0, 1], '-x': [-1, 0], '+x': [1, 0] }[facing];
+    const cells = flat(SHAFT).map((t) =>
+      ox === 0 ? cell(t, oz < 0 ? -SHAFT : SHAFT - 1) : cell(ox < 0 ? -SHAFT : SHAFT - 1, t),
+    );
+    const walled = cells.some(([x, z]) => wallAt(x + ox, z + oz) !== undefined);
+    return { facing, rotation, ox, oz, cells, walled };
+  });
+  const isWall = (x: number, z: number) => wallAt(x, z) !== undefined;
+
+  // The base: rounded corners and short-brick sides round a solid core.
+  for (let n = 0; n < PLINTH_COURSES; n++) {
     const y = course(n);
-    for (const [dx, dz, rotation] of TOWER_CORNERS)
+    for (const [dx, dz, rotation] of roundCorners(BASE_HALF))
       add(
         '2577',
         hash(cx + dx, cz + dz, n) < 0.25 ? DARK_STONE : STONE,
@@ -448,74 +575,131 @@ function addRoundTower(add: ExampleBrickAdder, cx: number, cz: number) {
         cz + dz,
         rotation,
       );
-    for (const [x, z, axis] of sides) {
-      const color = hash(x, z, n + 50) < 0.25 ? DARK_STONE : STONE;
-      const at = (offset: number): readonly [number, number] =>
-        axis === 'x' ? [x + offset, z] : [x, z + offset];
-      if ((n >= 3 && n <= 4) || (n >= 7 && n <= 8)) {
-        addRun(add, 'brick', color, axis, at(0)[0], y, at(0)[1], 1);
-        addRun(add, 'brick', color, axis, at(2)[0], y, at(2)[1], 2);
-      } else addRun(add, 'brick', color, axis, x, y, z, 4);
+    for (const { ox, oz } of faces) {
+      const cells = flat(BASE_HALF).map((t) =>
+        ox === 0
+          ? cell(t, oz < 0 ? -BASE_HALF : BASE_HALF - 1)
+          : cell(ox < 0 ? -BASE_HALF : BASE_HALF - 1, t),
+      );
+      addShortRun(add, cells, y, n * 7 + 3, isWall);
+    }
+    addAreaMap(
+      add,
+      plan((x, z) => {
+        const [dx, dz] = [x - cx, z - cz];
+        const inside = Math.max(dx, dz) < BASE_HALF - 1 && Math.min(dx, dz) > -BASE_HALF;
+        return inCross(dx, dz, BASE_HALF) && inside && !isWall(x, z) ? 'i' : ' ';
+      }),
+      y,
+      { i: ['brick', DARK_STONE] },
+    );
+  }
+  // The batter: cheese slopes round the ledge where the shaft steps in from the base.
+  const shaftBox = (dx: number, dz: number) =>
+    inCross(dx, dz, SHAFT) ||
+    roundCorners(SHAFT).some(([x0, z0]) => dx >= x0 && dx < x0 + 4 && dz >= z0 && dz < z0 + 4);
+  for (const offset of BASE_CELLS) {
+    const [dx, dz] = offset.split(':').map(Number);
+    const [x, z] = cell(dx, dz);
+    if (shaftBox(dx, dz) || isWall(x, z)) continue;
+    const [ux, uz] = [dx + 0.5, dz + 0.5];
+    const rotation = Math.abs(ux) > Math.abs(uz) ? (ux < 0 ? 90 : 270) : uz < 0 ? 0 : 180;
+    add('54200', STONE, x, course(PLINTH_COURSES), z, rotation);
+  }
+
+  // The shaft.
+  for (let n = PLINTH_COURSES; n < TOWER_COURSES; n++) {
+    const y = course(n);
+    for (const [dx, dz, rotation] of roundCorners(SHAFT))
+      add(
+        '2577',
+        hash(cx + dx, cz + dz, n) < 0.25 ? DARK_STONE : STONE,
+        cx + dx,
+        y,
+        cz + dz,
+        rotation,
+      );
+    for (const { cells, walled, rotation, ox, oz } of faces) {
+      if (n === CORBEL_COURSE && !walled) {
+        // Corbels: inverted slopes stepping out a stud under the parapet.
+        for (const [x, z] of cells)
+          add('3665a', STONE, Math.min(x, x + ox), y, Math.min(z, z + oz), rotation);
+        continue;
+      }
+      const loophole = walled ? undefined : LOOPHOLES.find((first) => n >= first && n <= first + 2);
+      if (loophole === undefined) addShortRun(add, cells, y, n * 11);
+      else if (n === loophole) {
+        const [x, z] = cells[0];
+        const rotation = oz === 0 ? 0 : 90;
+        add('30044', STONE, x, y, z, rotation);
+        add('3023b', STONE, x, y + 8, z, rotation);
+      }
     }
   }
-  const top = course(TOWER_COURSES);
-  // The cap: plates over every stud of the tower's top course.
-  const cells = new Set<string>();
-  for (const [x, z] of sides.flatMap(([x, z, axis]) =>
-    [0, 1, 2, 3].map((offset) => (axis === 'x' ? [x + offset, z] : [x, z + offset])),
-  ))
-    cells.add(key(x, z));
-  for (const [dx, dz, rotation] of TOWER_CORNERS) {
-    const corner = {
-      id: 'corner',
-      partId: '2577',
-      color: 0,
-      x: cx + dx,
-      y: 0,
-      z: cz + dz,
-      rotation,
-    } as Brick;
-    for (const site of getConnectionSites(corner, 'top'))
-      cells.add(key(Math.floor(site.x), Math.floor(site.z)));
+  // Dark backing behind each loophole, standing on the base's core.
+  for (const { cells, walled, ox, oz } of faces) {
+    if (walled) continue;
+    const [bx, bz] = [cells[0][0] - ox, cells[0][1] - oz];
+    for (let n = PLINTH_COURSES; n <= LOOPHOLES[1] + 2; n++)
+      add('3004', n < LOOPHOLES[0] ? DARK_STONE : BLACK, bx, course(n), bz, oz === 0 ? 0 : 90);
   }
-  for (let x = cx - 5; x <= cx + 4; x++)
-    for (let z = cz - 5; z <= cz + 4; z++)
-      if (Math.abs(x + 0.5 - cx) < 2 || Math.abs(z + 0.5 - cz) < 2 || cells.has(key(x, z)))
-        cells.add(key(x, z));
+
+  // The parapet floor: round corner plates and plates over the cross, a stud out from the shaft.
+  const top = course(TOWER_COURSES);
+  for (const [dx, dz, rotation] of roundCorners(BASE_HALF))
+    add('30565', STONE, cx + dx, top, cz + dz, rotation);
   addAreaMap(
     add,
-    plan((x, z) => (cells.has(key(x, z)) ? 'c' : ' ')),
+    plan((x, z) => (inCross(x - cx, z - cz, BASE_HALF) ? 'c' : ' ')),
     top,
     { c: ['plate', STONE] },
-    (x, z) =>
-      sides.some(([sx, sz, axis]) =>
-        axis === 'x' ? z === sz && x >= sx && x <= sx + 3 : x === sx && z >= sz && z <= sz + 3,
-      ) ||
-      TOWER_CORNERS.some(([dx, dz]) => within(x, z, cx + dx, cz + dz, cx + dx + 3, cz + dz + 3)),
+    (x, z) => SHAFT_CELLS.has(key(x - cx, z - cz)),
   );
-  // Merlons round the edge, alternate studs a brick taller, each capped with a pale round tile.
-  const edge = [...cells]
-    .map((cell) => cell.split(':').map(Number) as [number, number])
-    .filter(([x, z]) =>
+
+  // Battlements round the edge: a parapet course, then merlons two studs wide with gaps, all
+  // capped in pale tiles; round bricks where the edge curves.
+  const edge = [...BASE_CELLS]
+    .map((offset) => offset.split(':').map(Number) as [number, number])
+    .filter(([dx, dz]) =>
       [
         [1, 0],
         [-1, 0],
         [0, 1],
         [0, -1],
-      ].some(([dx, dz]) => !cells.has(key(x + dx, z + dz))),
+      ].some(([ex, ez]) => !BASE_CELLS.has(key(dx + ex, dz + ez))),
     )
-    .sort(
-      ([ax, az], [bx, bz]) =>
-        Math.atan2(az + 0.5 - cz, ax + 0.5 - cx) - Math.atan2(bz + 0.5 - cz, bx + 0.5 - cx),
+    .sort(([ax, az], [bx, bz]) => Math.atan2(az + 0.5, ax + 0.5) - Math.atan2(bz + 0.5, bx + 0.5));
+  const straight = (dx: number, dz: number) => inCross(dx, dz, BASE_HALF);
+  const merlons = new Set(
+    edge.filter((_, index) => index % 3 !== 2).map(([dx, dz]) => key(dx, dz)),
+  );
+  for (const [level, cells] of [
+    [top + 1, edge],
+    [top + 4, edge.filter(([dx, dz]) => merlons.has(key(dx, dz)))],
+  ] as const) {
+    addBondedMap(
+      add,
+      plan((x, z) => {
+        const [dx, dz] = [x - cx, z - cz];
+        return cells.some(([ex, ez]) => ex === dx && ez === dz) && straight(dx, dz)
+          ? stone(x, z, level)
+          : ' ';
+      }),
+      level,
+      LEGEND,
+      level,
     );
-  for (const [index, [x, z]] of edge.entries()) {
-    add('3062b', STONE, x, top + 1, z);
-    if (index % 2 === 0) {
-      add('3062b', STONE, x, top + 4, z);
-      add('98138', CAPS, x, top + 7, z);
-    } else add('98138', CAPS, x, top + 4, z);
+    for (const [dx, dz] of cells)
+      if (!straight(dx, dz))
+        add('3062b', hash(dx, dz, level) < 0.2 ? DARK_STONE : STONE, cx + dx, level, cz + dz);
   }
-  // The cone: round courses stepping in to a cone, then smaller cones to a gilded tip.
+  for (const [dx, dz] of edge) {
+    const y = merlons.has(key(dx, dz)) ? top + 7 : top + 4;
+    add(straight(dx, dz) ? '3070b' : '98138', CAPS, cx + dx, y, cz + dz);
+  }
+
+  // The cone: a round plate and two courses of half-circle bricks, then courses stepping in to
+  // cones and a gilded tip.
   add('74611', SPIRE, cx - 4, top + 1, cz - 4);
   for (const y of [top + 2, top + 5]) {
     add('47974', SPIRE, cx - 4, y, cz - 4, 0);
@@ -625,7 +809,7 @@ export const castle: ExampleDefinition = {
   id: 'castle',
   name: 'Castle',
   tags: ['castle', 'medieval', 'towers', 'gatehouse', 'keep', 'moat', 'drawbridge', 'banners'],
-  expectedPieceCount: 6021,
+  expectedPieceCount: 7959,
   buildArea: SIZE,
   brickIdPrefix: 'castle',
   build(drawnAdd) {
@@ -657,6 +841,26 @@ export const castle: ExampleDefinition = {
       );
 
     for (const [cx, cz] of TOWERS) addRoundTower(add, cx, cz);
+
+    // Arrow slits in the curtain walls: a sill at the foot, a little arch rounding the top.
+    for (const [x0, z0, x1, z1, out] of WALLS) {
+      const alongX = out.endsWith('z');
+      const row = { '-z': z0, '+z': z1, '-x': x0, '+x': x1 }[out];
+      const [from, to] = alongX ? [x0, x1] : [z0, z1];
+      for (let along = from + 1; along < to; along++) {
+        if (!slitAt(along, from, to)) continue;
+        const [x, z] = alongX ? [along, row] : [row, along];
+        add('3070b', STONE, x, course(SLIT[0]), z);
+        add(
+          '4490',
+          STONE,
+          alongX ? x - 1 : x,
+          course(SLIT_ARCH),
+          alongX ? z : z - 1,
+          alongX ? 90 : 0,
+        );
+      }
+    }
 
     // Wall walks, parapet copings and merlon caps.
     addRowMap(
@@ -737,8 +941,10 @@ export const castle: ExampleDefinition = {
     );
     add('3307', STONE, KEEP_DOOR - 1, course(7), HALL[3], 90);
     add('3009', STONE, KEEP_DOOR - 1, course(7), HALL[3] - 1, 90);
-    for (const [x, z, rotation, first] of KEEP_WINDOWS)
-      add('60592', DARK_STONE, x, course(first), z, rotation);
+    for (const [x, z, rotation, first] of KEEP_WINDOWS) {
+      add('30044', STONE, x, course(first), z, rotation);
+      add('3023b', STONE, x, course(first) + 8, z, rotation);
+    }
     add('3009', STONE, KEEP_DOOR - 1, G, HALL[3] + 1, 90);
     for (const y of [G, G + 1]) add('3666', DARK_STONE, KEEP_DOOR - 1, y, HALL[3] + 2, 90);
     add('3666', STONE, KEEP_DOOR - 1, G, HALL[3] + 3, 90);

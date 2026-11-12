@@ -2,7 +2,8 @@ import { BUILD_AREA, FACINGS, footprint, getPart } from '../core.ts';
 import type { Rotation } from '../core.ts';
 import type { ExampleBrickAdder } from './types.ts';
 
-export type RunKind = 'plate' | 'tile' | 'brick' | 'masonry';
+/** Run kinds: `short` lays bricks no longer than three studs, for finer stonework. */
+export type RunKind = 'plate' | 'tile' | 'brick' | 'short' | 'masonry';
 
 const RUN_PARTS: Readonly<Record<RunKind, readonly (readonly [number, string])[]>> = {
   plate: [
@@ -25,6 +26,11 @@ const RUN_PARTS: Readonly<Record<RunKind, readonly (readonly [number, string])[]
     [8, '3008'],
     [6, '3009'],
     [4, '3010'],
+    [3, '3622'],
+    [2, '3004'],
+    [1, '3005'],
+  ],
+  short: [
     [3, '3622'],
     [2, '3004'],
     [1, '3005'],
