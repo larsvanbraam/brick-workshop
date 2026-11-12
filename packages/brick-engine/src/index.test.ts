@@ -1649,10 +1649,13 @@ describe('upright brick engine', () => {
       }
     },
   );
-  it('connects supported part pairs only when the lower part provides an aligned stud', () => {
-    for (const lowerPart of PARTS)
-      for (const upperPart of PARTS) {
-        for (const lowerRotation of [0, 90, 180, 270] as const)
+  // Every part pair in every rotation is ~1M validations, so each lower rotation gets its own
+  // test (and timeout) instead of one test that grows past its budget as parts are added.
+  it.each([0, 90, 180, 270] as const)(
+    'connects supported part pairs only when the lower part (rotated %i) provides an aligned stud',
+    (lowerRotation) => {
+      for (const lowerPart of PARTS)
+        for (const upperPart of PARTS) {
           for (const upperRotation of [0, 90, 180, 270] as const) {
             const lower = { ...base, partId: lowerPart.id, rotation: lowerRotation };
             const size = footprint(lower);
@@ -1677,8 +1680,10 @@ describe('upright brick engine', () => {
                 expect.objectContaining({ brickId: 'upper', code: 'unsupported' }),
               ]);
           }
-      }
-  }, 30_000);
+        }
+    },
+    30_000,
+  );
   it('accepts a grounded brick without mutating its input', () => {
     const result = placeBrick(empty, base);
     expect(result.ok).toBe(true);
