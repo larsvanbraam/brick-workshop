@@ -2126,6 +2126,53 @@ function grips(holder: Brick, bar: Brick): boolean {
   );
 }
 
+/**
+ * A piece slid the least way that puts one of its bars through one of `host`'s clips, or one
+ * of its clips onto one of the host's bars, keeping its pose; null when no bar and clip of the
+ * two run the same way, or none lines up on the grid. The bar stays where it is along its
+ * length as far as its ends allow, so the pointer picks where along it the clip grips.
+ */
+export function seatOnClips(brick: Brick, host: Brick): Brick | null {
+  const pairs = [
+    { clips: getClips(host), bars: getBars(brick), sign: 1 },
+    { clips: getClips(brick), bars: getBars(host), sign: -1 },
+  ];
+  let best: Brick | null = null;
+  let bestDistance = Infinity;
+  for (const { clips, bars, sign } of pairs)
+    for (const { at, direction } of clips)
+      for (const { from, to } of bars) {
+        const axis = minus(to, from);
+        const span = length(axis);
+        const unit: Point = [axis[0] / span, axis[1] / span, axis[2] / span];
+        if (Math.abs(Math.abs(dot(unit, direction) / length(direction)) - 1) > 1e-6) continue;
+        const along = Math.min(Math.max(dot(minus(at, from), unit), 0), span);
+        const nearest: Point = [
+          from[0] + unit[0] * along,
+          from[1] + unit[1] * along,
+          from[2] + unit[2] * along,
+        ];
+        // Move the bar onto the clip, or the clip onto the bar.
+        const [dx, dy, dz] = minus(at, nearest).map((value) => value * sign);
+        const seated: Brick = {
+          ...brick,
+          x: Math.round((brick.x + dx / 20) * 10) / 10,
+          y: Math.round((brick.y - dy / 8) * 2) / 2,
+          z: Math.round((brick.z + dz / 20) * 10) / 10,
+        };
+        const distance = Math.hypot(dx, dy, dz);
+        if (
+          distance < bestDistance &&
+          isValid(seated, MAX_BUILD_AREA) &&
+          hasClipConnection(seated, host)
+        ) {
+          best = seated;
+          bestDistance = distance;
+        }
+      }
+  return best;
+}
+
 /** Whether a clip on either piece grips a bar on the other. */
 export function hasClipConnection(first: Brick, second: Brick): boolean {
   return grips(first, second) || grips(second, first);

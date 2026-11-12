@@ -8,6 +8,7 @@ import {
   placeBrick,
   planInstructionSteps,
   removeBrick,
+  seatOnClips,
   seatOnSideStuds,
   validateAddition,
   validateAssembly,
@@ -180,5 +181,22 @@ describe('clips and bars', () => {
       const across = facing.endsWith('x') ? '-z' : '-x';
       expect(seatOnSideStuds({ ...near, facing: across }, host)).toBeNull();
     }
+  });
+
+  it('slides a bar into a clip, or a clip onto a bar, the least way that grips', () => {
+    // A clip on the end of a plate, sticking out past the brick under it.
+    const base = piece('base', '3001', 4, 0, 6);
+    const clip = piece('clip', '63868', 4, 3, 6);
+    // Lying across the clip's axis, or standing, the antenna can't go in; along it, it does.
+    expect(seatOnClips(piece('antenna', '3957a', 4, 3, 6), clip)).toBeNull();
+    expect(seatOnClips(piece('antenna', '3957a', 4, 3, 6, { facing: '-x' }), clip)).toBeNull();
+    const seated = seatOnClips(piece('antenna', '3957a', 4, 3, 6, { facing: '-z' }), clip);
+    expect(seated).not.toBeNull();
+    expect(hasClipConnection(seated!, clip)).toBe(true);
+    expect(validateAssembly({ ...board, bricks: [base, clip, seated!] })).toEqual([]);
+    // A flag finds the pole the other way round: its clips onto the antenna's bar.
+    const flown = seatOnClips(flag(5, { x: 2, z: 2 }), flagpole[1]);
+    expect(flown && validateAssembly({ ...board, bricks: [...flagpole, flown] })).toEqual([]);
+    expect(flown?.y).toBe(5);
   });
 });

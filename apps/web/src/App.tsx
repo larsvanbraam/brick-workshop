@@ -49,6 +49,7 @@ import {
   getBillOfMaterials,
   getBuildArea,
   getBuildabilityReport,
+  getConnectionSites,
   getPart,
   getPartColorStatus,
   importPartColorEvidence,
@@ -58,6 +59,7 @@ import {
   isRuntimePart,
   registerPart,
   resizeBuildArea,
+  seatOnClips,
   seatOnSideStuds,
   validateAddition,
   validateAssembly,
@@ -390,6 +392,23 @@ function placementFor(
     }
   }
   y += lift;
+  // Pointed at a piece it can clip to, it turns as needed and slides into the clip, or takes
+  // the clip onto its bar, staying where it is along the bar so ↑ ↓ [ ] slide it there.
+  // Pointing at one of its studs from above still stacks on them.
+  const onStud =
+    hit &&
+    target.face === 'top' &&
+    getConnectionSites(hit, 'top').some(
+      (site) => Math.abs(site.x - target.x) < 0.5 && Math.abs(site.z - target.z) < 0.5,
+    );
+  const clipped = hit && !onStud && clipInto({ ...brick, x, y, z }, hit);
+  if (clipped) {
+    ({ x, y, z } = clipped);
+    brick.rotation = clipped.rotation;
+    if (clipped.facing) brick.facing = clipped.facing;
+    else delete brick.facing;
+    size = footprint(brick);
+  }
   if (
     y < 0 ||
     y + size.height > MAX_HEIGHT ||
@@ -400,6 +419,30 @@ function placementFor(
   )
     return null;
   return { ...brick, x, y, z };
+}
+
+/** Whether one piece has a clip and the other a bar it could hold. */
+function canClip(first: Part, second: Part) {
+  return !!(
+    (first.clips?.length && second.bars?.length) ||
+    (first.bars?.length && second.clips?.length)
+  );
+}
+
+/**
+ * `brick` clipped to `host` in the pose nearest the one it has: as it is, then tipped other
+ * ways, then turned, so a bar finds the way a clip runs without the user hunting for it.
+ */
+function clipInto(brick: Brick, host: Brick): Brick | null {
+  if (!canClip(getPart(brick.partId), getPart(host.partId))) return null;
+  const { facing: _, ...upright } = brick;
+  const turns = [0, 90, 180, 270].map((turn) => ((brick.rotation + turn) % 360) as Rotation);
+  for (const facing of [brick.facing, ...TIPS.filter((tip) => tip !== brick.facing)])
+    for (const rotation of turns) {
+      const seated = seatOnClips({ ...upright, rotation, ...(facing ? { facing } : {}) }, host);
+      if (seated) return seated;
+    }
+  return null;
 }
 
 /** A short, plain reason a placement or removal was refused. */
