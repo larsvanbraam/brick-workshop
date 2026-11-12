@@ -1,18 +1,15 @@
 import {
-  ACESFilmicToneMapping,
-  AmbientLight,
   Box3,
   BoxGeometry,
   CanvasTexture,
   DirectionalLight,
+  HemisphereLight,
   Mesh,
   MeshStandardMaterial,
-  PCFShadowMap,
+  NeutralToneMapping,
   PerspectiveCamera,
-  PlaneGeometry,
   PMREMGenerator,
   Scene,
-  ShadowMaterial,
   SRGBColorSpace,
   Sphere,
   Vector3,
@@ -33,8 +30,10 @@ export interface BoxDetails {
 }
 
 export interface BoxArt {
-  /** The box standing on a transparent background, as a PNG. */
+  /** The box standing on a studio sweep, as a PNG. */
   box: string;
+  /** The same box and its floor shadow on a transparent background, for compositing. */
+  cutout: string;
   /** The flat front panel, as a PNG. */
   front: string;
 }
@@ -210,11 +209,12 @@ function front(renderer: ManualRenderer, details: BoxDetails, pieces: number) {
     0,
     0,
   );
-  // A soft pool of black behind each block of text, so it reads over any sky or cloud.
+  // A faint wash of deep sky blue behind each block of text: just enough to lift it off a bright
+  // cloud, without the grey smudge a black pool leaves on a daytime sky.
   for (const area of keepClear) {
     const x = area.x + area.width / 2;
     const y = area.y + area.height / 2;
-    const reach = Math.max(area.width, area.height) * 0.85;
+    const reach = Math.max(area.width, area.height) * 0.7;
     context.save();
     context.translate(x, y);
     context.scale(
@@ -222,14 +222,18 @@ function front(renderer: ManualRenderer, details: BoxDetails, pieces: number) {
       area.height / Math.max(area.width, area.height),
     );
     const glow = context.createRadialGradient(0, 0, 0, 0, 0, reach);
-    glow.addColorStop(0, 'rgba(0, 0, 0, 0.7)');
-    glow.addColorStop(0.55, 'rgba(0, 0, 0, 0.45)');
-    glow.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    glow.addColorStop(0, 'rgba(8, 28, 58, 0.3)');
+    glow.addColorStop(0.55, 'rgba(8, 28, 58, 0.16)');
+    glow.addColorStop(1, 'rgba(8, 28, 58, 0)');
     context.fillStyle = glow;
     context.fillRect(-reach, -reach, reach * 2, reach * 2);
     context.restore();
   }
 
+  // A soft drop shadow does most of the work of keeping the white type readable.
+  context.shadowColor = 'rgba(4, 16, 36, 0.6)';
+  context.shadowBlur = 14;
+  context.shadowOffsetY = 2;
   context.fillStyle = '#ffffff';
   context.textAlign = 'center';
   context.textBaseline = 'alphabetic';
@@ -274,6 +278,9 @@ function front(renderer: ManualRenderer, details: BoxDetails, pieces: number) {
   const count = context.measureText(String(pieces)).width;
   context.font = `400 34px ${SANS}`;
   context.fillText(' pcs', left + count, y);
+
+  context.shadowColor = 'transparent';
+  context.shadowBlur = context.shadowOffsetY = 0;
 
   context.fillStyle = INK;
   context.fillRect(0, band, WIDTH, HEIGHT - band);
@@ -387,23 +394,71 @@ function texture(source: HTMLCanvasElement, renderer: WebGLRenderer) {
   return map;
 }
 
-/** The panels folded into a box, seen from the front left like a product photo. */
+/** Size of the product shot in pixels. */
+const PHOTO = { width: 1800, height: 1600 };
+
+/**
+ * A seamless studio sweep: a pale backdrop brightest just behind the box, falling off to the
+ * edges, with the box's soft contact shadow pooled where it stands. Without the sweep only the
+ * shadow is drawn, on a transparent background.
+ */
+function backdrop(base: Vector3[], sweep: boolean) {
+  const [panel, context] = canvas(PHOTO.width, PHOTO.height);
+  const { width, height } = PHOTO;
+  if (sweep) paintSweep(context);
+  const shadow = (blur: number, alpha: number, [dx, dy]: [number, number]) => {
+    context.save();
+    context.filter = `blur(${Math.round(width * blur)}px)`;
+    // On a transparent canvas a tinted shadow's faint edges round to stray colours; black stays black.
+    context.fillStyle = sweep ? `rgba(30, 26, 22, ${alpha})` : `rgba(0, 0, 0, ${alpha})`;
+    context.beginPath();
+    for (const [index, point] of base.entries())
+      if (index) context.lineTo(point.x + dx, point.y + dy);
+      else context.moveTo(point.x + dx, point.y + dy);
+    context.closePath();
+    context.fill();
+    context.restore();
+  };
+  // A broad, soft shadow thrown back and to the left by the softbox, then a tight dark one where
+  // the box meets the floor and no light reaches.
+  shadow(0.035, 0.28, [-width * 0.025, -height * 0.01]);
+  shadow(0.006, 0.5, [0, 0]);
+  return panel;
+}
+
+function paintSweep(context: CanvasRenderingContext2D) {
+  const { width, height } = PHOTO;
+  const gradient = context.createRadialGradient(
+    width * 0.52,
+    height * 0.5,
+    0,
+    width * 0.52,
+    height * 0.5,
+    Math.hypot(width, height) * 0.62,
+  );
+  gradient.addColorStop(0, '#f3f1ed');
+  gradient.addColorStop(0.45, '#dedad4');
+  gradient.addColorStop(1, '#a9a49d');
+  context.fillStyle = gradient;
+  context.fillRect(0, 0, width, height);
+}
+
+/** The panels folded into a box, shot on a studio sweep from the front left like a product photo. */
 function photograph(faces: {
   front: HTMLCanvasElement;
   side: HTMLCanvasElement;
   lid: HTMLCanvasElement;
 }) {
   const renderer = new WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
-  renderer.setSize(1800, 1600, false);
-  renderer.toneMapping = ACESFilmicToneMapping;
-  renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = PCFShadowMap;
+  renderer.setSize(PHOTO.width, PHOTO.height, false);
+  // Neutral tone mapping keeps the printed panels' colours true instead of washing them out.
+  renderer.toneMapping = NeutralToneMapping;
   renderer.setClearColor(0x000000, 0);
   const scene = new Scene();
   const pmrem = new PMREMGenerator(renderer);
   const room = new RoomEnvironment();
   scene.environment = pmrem.fromScene(room, 0.04).texture;
-  scene.environmentIntensity = 0.35;
+  scene.environmentIntensity = 0.3;
   room.dispose();
   pmrem.dispose();
 
@@ -419,46 +474,53 @@ function photograph(faces: {
   lidMap.center.set(0.5, 0.5);
   lidMap.rotation = Math.PI;
   const plain = new MeshStandardMaterial({ color: INK, roughness: 0.5 });
-  const printed = (map: CanvasTexture) => new MeshStandardMaterial({ map, roughness: 0.42 });
+  // Printed card with a satin varnish: a soft sheen, never a mirror.
+  const printed = (map: CanvasTexture) => new MeshStandardMaterial({ map, roughness: 0.55 });
   // BoxGeometry's faces run +x, -x, +y, -y, +z, -z.
   const materials = [plain, printed(sideMap), printed(lidMap), plain, printed(frontMap), plain];
   const box = new Mesh(geometry, materials);
   box.position.y = height / 2;
-  box.castShadow = true;
-  const floorGeometry = new PlaneGeometry(20, 20);
-  const floorMaterial = new ShadowMaterial({ opacity: 0.22 });
-  const floor = new Mesh(floorGeometry, floorMaterial);
-  floor.rotation.x = -Math.PI / 2;
-  floor.receiveShadow = true;
-  const key = new DirectionalLight(0xffffff, 2.2);
-  key.position.set(-1.5, 4, 3);
-  key.castShadow = true;
-  key.shadow.mapSize.set(2048, 2048);
-  key.shadow.radius = 6;
-  Object.assign(key.shadow.camera, { left: -3, right: 3, top: 3, bottom: -3, near: 0.5, far: 12 });
-  const fill = new DirectionalLight(0xffffff, 0.6);
-  fill.position.set(3, 1.5, 2);
-  scene.add(box, floor, key, fill, new AmbientLight(0xffffff, 0.5));
+  // A large softbox high on the right lights the front fully; the side turned toward the camera
+  // falls a step darker, held up by a dim fill on the left, and the lid catches the top light.
+  const key = new DirectionalLight(0xfff8f0, 2.5);
+  key.position.set(1.6, 5.5, 3.6);
+  const fill = new DirectionalLight(0xe8eeff, 0.9);
+  fill.position.set(-4, 1.2, 1.5);
+  const top = new HemisphereLight(0xffffff, 0x8a847c, 1);
+  scene.add(box, key, fill, top);
 
-  const camera = new PerspectiveCamera(24, 1800 / 1600, 0.1, 50);
+  const camera = new PerspectiveCamera(24, PHOTO.width / PHOTO.height, 0.1, 50);
   const sphere = new Box3().setFromObject(box).getBoundingSphere(new Sphere());
   const direction = new Vector3(-0.42, 0.2, 1).normalize();
   camera.position
     .copy(sphere.center)
     .addScaledVector(direction, sphere.radius / Math.sin((12 * Math.PI) / 180));
   camera.lookAt(sphere.center);
+  camera.updateMatrixWorld();
   renderer.render(scene, camera);
-  const url = renderer.domElement.toDataURL('image/png');
+
+  const base = [
+    [-1, -1],
+    [1, -1],
+    [1, 1],
+    [-1, 1],
+  ].map(([x, z]) => {
+    const point = new Vector3((x * width) / 2, 0, (z * depth) / 2).project(camera);
+    return new Vector3(((point.x + 1) / 2) * PHOTO.width, ((1 - point.y) / 2) * PHOTO.height, 0);
+  });
+  const [studio, cutout] = [true, false].map((sweep) => {
+    const photo = backdrop(base, sweep);
+    photo.getContext('2d')!.drawImage(renderer.domElement, 0, 0);
+    return photo.toDataURL('image/png');
+  });
 
   geometry.dispose();
-  floorGeometry.dispose();
-  floorMaterial.dispose();
   for (const material of new Set(materials)) material.dispose();
   for (const map of maps) map.dispose();
   scene.environment?.dispose();
   renderer.dispose();
   renderer.forceContextLoss();
-  return url;
+  return { box: studio, cutout };
 }
 
 const pause = () => new Promise((resolve) => setTimeout(resolve));
@@ -483,7 +545,7 @@ export async function createBoxArt(
     await pause();
     return {
       front: frontPanel.toDataURL('image/png'),
-      box: photograph({ front: frontPanel, side: sidePanel, lid: lid(details) }),
+      ...photograph({ front: frontPanel, side: sidePanel, lid: lid(details) }),
     };
   } finally {
     renderer.dispose();

@@ -69,13 +69,13 @@ export const MOODS: Record<CinematicMood, Mood> = {
     environment: 0.9,
     bloom: 0.25,
     vignette: 0.4,
-    daylight: { key: 2.75, fill: ['#8d9ab8', '#1b1d22', 1.05], environment: 0.72 },
+    daylight: { key: 3.1, fill: ['#a4b0cc', '#2a2c33', 0.7], environment: 0.36 },
     sky: {
-      top: '#1a3d6b',
-      middle: '#4f80b6',
-      horizon: '#b7c3cc',
-      water: '#0c1a2a',
-      clouds: '236, 232, 224',
+      top: '#2f6fb3',
+      middle: '#78ade0',
+      horizon: '#dfeaf2',
+      water: '#235a85',
+      clouds: '255, 255, 255',
     },
   },
   golden: {
@@ -90,7 +90,7 @@ export const MOODS: Record<CinematicMood, Mood> = {
     environment: 0.6,
     bloom: 0.3,
     vignette: 0.55,
-    daylight: { key: 2.97, fill: ['#ffae7a', '#20140e', 1.05], environment: 0.54 },
+    daylight: { key: 3.2, fill: ['#ffbe92', '#2c1e16', 0.7], environment: 0.32 },
     sky: {
       top: '#131a38',
       middle: '#6a4466',
@@ -111,7 +111,7 @@ export const MOODS: Record<CinematicMood, Mood> = {
     environment: 0.4,
     bloom: 0.55,
     vignette: 0.75,
-    daylight: { key: 2.31, fill: ['#3b4f86', '#05070c', 0.77], environment: 0.5 },
+    daylight: { key: 2.7, fill: ['#4a5f98', '#0a0d16', 0.55], environment: 0.28 },
     sky: {
       top: '#02040a',
       middle: '#0a1630',
@@ -155,11 +155,14 @@ function lightDirection(base: Vector3, view: number) {
     .normalize();
 }
 const KEY_DIRECTION = new Vector3(1.1, 1.5, 0.35);
-/** Outdoors the sun stands high over the camera's left shoulder, so the side in view is lit. */
-const SUN_DIRECTION = new Vector3(0.1, 1.3, 1);
+/**
+ * Outdoors the key stands high and well off to the camera's left, like a studio softbox: the
+ * faces turned to it are lit, the ones turned away fall a clear step darker, so the model has form.
+ */
+const SUN_DIRECTION = new Vector3(-0.25, 1.2, 1);
 
 /** Outdoors the rim softens and the vignette fades to a hint; see `Mood.daylight` for the rest. */
-export const DAYLIGHT = { rim: 0.4, vignette: 0.35 };
+export const DAYLIGHT = { rim: 1, vignette: 0.35, bloom: 0.3 };
 const RIM_DIRECTION = new Vector3(-0.8, 2.2, -0.65);
 
 export function stageSphere(bounds: Box3 | null) {
@@ -342,7 +345,11 @@ export function createCinematicComposer(
   composer.addPass(
     new EffectPass(
       camera,
-      new BloomEffect({ mipmapBlur: true, intensity: settings.bloom, ...BLOOM }),
+      new BloomEffect({
+        mipmapBlur: true,
+        intensity: settings.bloom * (outdoor ? DAYLIGHT.bloom : 1),
+        ...BLOOM,
+      }),
       new ToneMappingEffect({ mode: ToneMappingMode.ACES_FILMIC }),
       new VignetteEffect({
         offset: VIGNETTE_OFFSET,

@@ -445,6 +445,14 @@ export function InstructionsApp() {
                   </a>
                   <a
                     className="secondary download-link"
+                    href={box.cutout}
+                    download={`${slug(box.name)}-box-transparent.png`}
+                  >
+                    <Download size={15} />
+                    Download box (transparent)
+                  </a>
+                  <a
+                    className="secondary download-link"
                     href={box.front}
                     download={`${slug(box.name)}-box-front.png`}
                   >
