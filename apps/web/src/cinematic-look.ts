@@ -154,7 +154,12 @@ function lightDirection(base: Vector3, view: number) {
     .applyAxisAngle(new Vector3(0, 1, 0), (-view * Math.PI) / 2)
     .normalize();
 }
-const KEY_DIRECTION = new Vector3(1.1, 1.5, 0.35);
+/**
+ * Builds face +z, so the key stands between the camera (about 43° round from +z) and the front
+ * (20° round): the front takes most of its light and the +x side a little less, for form. Raking
+ * in from the +x side instead left fronts lit by the fill alone.
+ */
+const KEY_DIRECTION = new Vector3(0.42, 1.5, 1.15);
 /**
  * Outdoors the key stands high behind the camera and off to its left (the camera looks from
  * 39° round in this frame, the sun from 5°), so the front of the model is lit while its sides
@@ -299,7 +304,7 @@ export function createStudioEnvironment(renderer: WebGLRenderer, mood: Cinematic
   const materials: MeshBasicMaterial[] = [];
   const boxes: [string, number, [number, number, number], [number, number]][] = [
     ['#ffffff', 3, [0, 6, 0], [8, 8]],
-    [settings.key, 4, [7, 3, 2], [3, 7]],
+    [settings.key, 4, [2.6, 3, 7], [3, 7]],
     [settings.rim, 5, [-7, 2, -6], [2, 8]],
   ];
   for (const [color, intensity, position, [width, height]] of boxes) {
