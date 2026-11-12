@@ -177,7 +177,11 @@ export class ManualRenderer {
   private loose: { brick: Brick; object: Object3D }[] = [];
   /** Every consolidated piece, drawn by one batched mesh. */
   private batch: LDrawBatch | null = null;
-  private readonly batched: BatchEntry[] = [];
+  /**
+   * Replaced, never added to in place: a batch skips its bookkeeping when handed the same array
+   * as last time, so pieces pushed onto that array would never be tracked.
+   */
+  private batched: readonly BatchEntry[] = [];
   /**
    * The same pieces for cinematic shots: every face kept and a hairline joint between bricks,
    * so walls read as stacked bricks in a photo rather than one smooth painted surface. Built on
@@ -270,7 +274,7 @@ export class ManualRenderer {
   /** Merges loose opaque LDraw pieces into the batched mesh. */
   private consolidate() {
     const remaining: typeof this.loose = [];
-    let added = false;
+    const added: BatchEntry[] = [];
     for (const entry of this.loose) {
       const { brick } = entry;
       const model = this.models[brick.partId];
@@ -279,10 +283,10 @@ export class ManualRenderer {
         continue;
       }
       this.placed.remove(entry.object);
-      this.batched.push({ brick, model });
-      added = true;
+      added.push({ brick, model });
     }
-    if (added) {
+    if (added.length) {
+      this.batched = [...this.batched, ...added];
       if (!this.batch) {
         this.batch = new LDrawBatch();
         for (const lines of this.batch.lines) lines.layers.set(EDGE_LAYER);
