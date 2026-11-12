@@ -37,6 +37,7 @@ import {
   VOXEL_FILL_PART_IDS,
   VOXEL_PLATE_PART_IDS,
   voxelizeShapes,
+  smoothAssembly,
   PLATE_STUDS,
   MAX_PHYSICS_PIECES,
 } from '@brick-workshop/engine';
@@ -379,6 +380,29 @@ export const BUILDER_TOOLS: readonly Anthropic.Tool[] = [
         },
       },
       ['shapes'],
+    ),
+  },
+  {
+    name: 'brick_smooth',
+    description:
+      'Finish surfaces the way sets dress a sculpted shape: plain 1 x 1 and 2 x 2 pieces on outside corners become round and quarter-circle pieces, studs against a step two plates or taller get a cheese slope or a curved slope leaning on the step, studs against a one-plate step get a flush tile, open edges get tiles and corners quarter-round tiles, and with accents green tops get a scatter of flowers. Only exposed studs of plain bricks and plates are built on, so call it once a region is finished (nothing more will stand on it), usually after brick_shape or brick_sculpt and before brick_physics. Doors, windows, floors and detail parts are left alone; every change is engine-checked and dropped if it does not fit. Region limits it to pieces whose minimum corner lies in the box; pass the region a brick_shape result reports to smooth just that shape.',
+    input_schema: objectSchema(
+      {
+        region: {
+          ...regionSchema,
+          description:
+            'Only smooth pieces whose minimum corner lies in this box (studs for x/z, plates for y).',
+        },
+        corners: { type: 'boolean', description: 'Round outside corners; default true.' },
+        slopes: { type: 'boolean', description: 'Slopes against steps; default true.' },
+        tiles: { type: 'boolean', description: 'Tiles on edges and plate steps; default true.' },
+        accents: {
+          type: 'boolean',
+          description: 'Flowers on green tops (grass, gardens); default false.',
+        },
+        preview: { type: 'boolean', description: 'Report what would change without changing it.' },
+      },
+      [],
     ),
   },
   {
@@ -1095,6 +1119,76 @@ export function createBuilderSession(
             detail: 'Call brick_physics for masses, load paths and assembly order.',
           },
           buildability: getBuildabilityReport(physicalAssessment).status,
+        },
+      };
+    }
+    if (name === 'brick_smooth') {
+      const colorAllowed = (partId: string, color: number) =>
+        !requireObservedColors ||
+        getPartColorStatus(partId, color, evidence).manufactured === 'observed';
+      const firstId = nextId;
+      const smoothed = smoothAssembly(assembly, {
+        region: args.region as Record<string, number> | undefined,
+        corners: args.corners as boolean | undefined,
+        slopes: args.slopes as boolean | undefined,
+        tiles: args.tiles as boolean | undefined,
+        accents: args.accents as boolean | undefined,
+        maxPieces,
+        colorAllowed,
+        nextId: () => {
+          while (assembly.bricks.some((piece) => piece.id === `ai-${nextId}`)) nextId += 1;
+          return `ai-${nextId++}`;
+        },
+      });
+      const { added, swapped, counts } = smoothed;
+      if (!added.length && !swapped.length) {
+        nextId = firstId;
+        return {
+          ok: true,
+          revision,
+          data: {
+            changed: 0,
+            detail:
+              'Nothing to smooth: no exposed studs or outside corners of plain bricks and plates in the region.',
+          },
+        };
+      }
+      const evaluation = evaluateAssemblyPolicy(smoothed.assembly, editPolicy);
+      if (!evaluation.allowed) {
+        nextId = firstId;
+        const issue = evaluation.issues[0];
+        return fail(
+          issue.code,
+          issue.message,
+          Array.isArray(issue.details) ? issue.details.slice(0, 20) : issue.details,
+        );
+      }
+      if (args.preview === true) nextId = firstId;
+      else {
+        assembly = smoothed.assembly;
+        physicalAssessment = evaluation.physical!;
+        policyAssessment = evaluation;
+        revision += 1;
+      }
+      return {
+        ok: true,
+        revision,
+        data: {
+          ...(args.preview === true && { purpose: 'preview-only' }),
+          pieceCount: smoothed.assembly.bricks.length,
+          counts,
+          added: added.length
+            ? {
+                pieces: added.length,
+                ids: [added[0].id, added.at(-1)!.id],
+                billOfMaterials: getBillOfMaterials({ ...assembly, bricks: added }),
+              }
+            : { pieces: 0 },
+          swappedIds: swapped.slice(0, 40),
+          physical: {
+            status: evaluation.physical!.status,
+            gravity: evaluation.physical!.gravity,
+          },
         },
       };
     }

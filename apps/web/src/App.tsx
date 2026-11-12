@@ -25,6 +25,7 @@ import {
   Save,
   Search,
   Sparkles,
+  Spline,
   Trash2,
   Undo2,
   Upload,
@@ -61,6 +62,7 @@ import {
   resizeBuildArea,
   seatOnClips,
   seatOnSideStuds,
+  smoothAssembly,
   validateAddition,
   validateAssembly,
 } from '@brick-workshop/engine';
@@ -1091,6 +1093,18 @@ export default function App() {
   function exportParts() {
     download(JSON.stringify(report(), null, 2), 'parts-list.json', 'application/json');
   }
+  /** Rounds corners, slopes steps and tiles edges of the whole build, as one undoable edit. */
+  function smoothBuild(accents: boolean) {
+    const { assembly: next, added, swapped } = smoothAssembly(assembly, { accents });
+    if (!added.length && !swapped.length) {
+      setMessage('Nothing to smooth: no open studs or corners on plain bricks and plates.');
+      return;
+    }
+    commit(next);
+    setMessage(
+      `Smoothed: ${added.length} piece${added.length === 1 ? '' : 's'} added, ${swapped.length} rounded.`,
+    );
+  }
   function resetAssembly(next: Assembly) {
     commit(next);
     setSelectedId(null);
@@ -1421,6 +1435,18 @@ export default function App() {
                         },
                       ]
                     : []),
+                  {
+                    label: 'Smooth surfaces',
+                    icon: <Spline size={15} />,
+                    disabled: empty || issues.length > 0,
+                    onSelect: () => smoothBuild(false),
+                  },
+                  {
+                    label: 'Smooth surfaces and add flowers',
+                    icon: <Leaf size={15} />,
+                    disabled: empty || issues.length > 0,
+                    onSelect: () => smoothBuild(true),
+                  },
                   {
                     label: 'Import JSON…',
                     icon: <Upload size={15} />,

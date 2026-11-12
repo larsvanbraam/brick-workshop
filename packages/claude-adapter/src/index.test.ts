@@ -666,6 +666,45 @@ describe('headless Claude builder tools', () => {
     ).toMatchObject({ ok: false, error: { code: 'invalid_input' } });
   });
 
+  it('smooths a shape it sculpted in place, with preview and region', () => {
+    const session = createBuilderSession(
+      { name: 'Hill', bricks: [], buildArea: 24 },
+      {
+        maxPieces: 2000,
+      },
+    );
+    const shaped = session.runTool('brick_shape', {
+      resolution: 'brick',
+      shapes: [{ type: 'ellipsoid', center: [10, 0, 10], radii: [7, 4, 6], color: 72 }],
+    });
+    if (!shaped.ok) throw new Error('Shape rejected');
+    const region = (shaped.data as { region: Record<string, number> }).region;
+    const before = session.snapshot();
+    const preview = session.runTool('brick_smooth', { region, preview: true });
+    expect(preview).toMatchObject({ ok: true, revision: 1, data: { purpose: 'preview-only' } });
+    expect(session.snapshot()).toEqual(before);
+    if (!preview.ok) throw new Error('Preview rejected');
+
+    const result = session.runTool('brick_smooth', { region });
+    expect(result).toMatchObject({ ok: true, revision: 2 });
+    if (!result.ok) throw new Error('Smoothing rejected');
+    const data = result.data as { counts: Record<string, number>; added: { pieces: number } };
+    expect(data.counts.slopes + data.counts.curves).toBeGreaterThan(10);
+    expect(data.counts.accents).toBe(0);
+    const after = session.snapshot();
+    expect(after.bricks.length).toBe(before.bricks.length + data.added.pieces);
+    expect(validateAssembly(after)).toEqual([]);
+    // Same IDs as the preview reported, and new ones follow the session's numbering.
+    expect(preview.data).toMatchObject({ added: data.added });
+    expect(after.bricks.every((brick) => brick.id.startsWith('ai-'))).toBe(true);
+    // Smoothed tops have nothing left to dress.
+    expect(session.runTool('brick_smooth', { region, corners: false })).toMatchObject({
+      ok: true,
+      revision: 2,
+      data: { changed: 0 },
+    });
+  });
+
   it('offers read-only candidates with color policy, physical coverage and engine capabilities', () => {
     const session = createBuilderSession();
     expect(session.runTool('brick_catalog', {})).toMatchObject({

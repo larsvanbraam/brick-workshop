@@ -10,6 +10,7 @@ export * from './techniques.ts';
 export * from './voxels.ts';
 export * from './shapes.ts';
 export * from './board.ts';
+export * from './smoothing.ts';
 export * from './instructions.ts';
 export {
   EXAMPLES,

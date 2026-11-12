@@ -7,7 +7,7 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
     url: 'https://cdn.rebrickable.com/media/downloads/inventory_parts.csv.gz',
     retrievedAt: '2026-11-11T21:31:00.359Z',
     mappingNote:
-      '174 supported design mappings reviewed against public Rebrickable parts.csv.gz; 39 opaque solid color names (Gray and Grey treated as the same spelling) reviewed against colors.csv.gz. LDraw 3023b maps to Rebrickable 3023. Native LDraw keywords explicitly map 6934 to Rebrickable 6934a, 39266 to 39268, and 3861c to 3861b. Grooved tiles and suffixed mould IDs retain reviewed variants. Legacy doors 801a and 802a remain unmapped because native and inventory handle names disagree. These are reviewed mappings, not numeric-ID or RGB inference. Native LDraw keywords also map 3046 to Rebrickable 3046a, 30413 to 43337, and the wedge plates 41769a, 41770a, 43722a and 43723a to their unsuffixed IDs. The 45 degree cut tiles 5091 and 5092 remain unmapped because Rebrickable uses those numbers for stud-notch tiles. The thin-clip trapezoid flag 44676a maps to Rebrickable 44676, which does not split the clip variants.',
+      '178 supported design mappings reviewed against public Rebrickable parts.csv.gz; 39 opaque solid color names (Gray and Grey treated as the same spelling) reviewed against colors.csv.gz. LDraw 3023b maps to Rebrickable 3023. Native LDraw keywords explicitly map 6934 to Rebrickable 6934a, 39266 to 39268, and 3861c to 3861b. Grooved tiles and suffixed mould IDs retain reviewed variants. Legacy doors 801a and 802a remain unmapped because native and inventory handle names disagree. These are reviewed mappings, not numeric-ID or RGB inference. Native LDraw keywords also map 3046 to Rebrickable 3046a, 30413 to 43337, and the wedge plates 41769a, 41770a, 43722a and 43723a to their unsuffixed IDs. The 45 degree cut tiles 5091 and 5092 remain unmapped because Rebrickable uses those numbers for stud-notch tiles. The thin-clip trapezoid flag 44676a maps to Rebrickable 44676, which does not split the clip variants. The cheese slopes 54200 and 85984, the curved slope 11477 and the quarter-round tile 25269 map to the same Rebrickable IDs, matched by name.',
   },
   mappings: {
     parts: {
@@ -103,6 +103,7 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
       '10202': '10202',
       '11212': '11212',
       '11213': '11213',
+      '11477': '11477',
       '14716': '14716',
       '14719': '14719',
       '14769': '14769',
@@ -111,6 +112,7 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
       '22385': '22385',
       '22888': '22888',
       '24309': '24309',
+      '25269': '25269',
       '26603': '26603',
       '27507': '27507',
       '27925': '27925',
@@ -135,6 +137,7 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
       '48092': '48092',
       '48288': '48288',
       '49311': '49311',
+      '54200': '54200',
       '59900': '59900',
       '60479': '60479',
       '60592': '60592',
@@ -151,6 +154,7 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
       '78329': '78329',
       '79393': '79393',
       '85080': '85080',
+      '85984': '85984',
       '87079': '87079',
       '87081': '87081',
       '87620': '87620',
@@ -355,6 +359,11 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
       inventoryId: 17,
     },
     {
+      partId: '54200',
+      colorId: 15,
+      inventoryId: 17,
+    },
+    {
       partId: '3020',
       colorId: 0,
       inventoryId: 22,
@@ -412,6 +421,16 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
     {
       partId: '43723',
       colorId: 71,
+      inventoryId: 22,
+    },
+    {
+      partId: '54200',
+      colorId: 71,
+      inventoryId: 22,
+    },
+    {
+      partId: '85984',
+      colorId: 72,
       inventoryId: 22,
     },
     {
@@ -732,6 +751,11 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
     {
       partId: '6141',
       colorId: 71,
+      inventoryId: 30,
+    },
+    {
+      partId: '85984',
+      colorId: 4,
       inventoryId: 30,
     },
     {
@@ -1340,6 +1364,16 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
       inventoryId: 38,
     },
     {
+      partId: '54200',
+      colorId: 14,
+      inventoryId: 38,
+    },
+    {
+      partId: '54200',
+      colorId: 70,
+      inventoryId: 38,
+    },
+    {
       partId: '6141',
       colorId: 0,
       inventoryId: 38,
@@ -1427,6 +1461,11 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
     {
       partId: '4865b',
       colorId: 19,
+      inventoryId: 45,
+    },
+    {
+      partId: '54200',
+      colorId: 288,
       inventoryId: 45,
     },
     {
@@ -1815,6 +1854,21 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
       inventoryId: 58,
     },
     {
+      partId: '11477',
+      colorId: 72,
+      inventoryId: 58,
+    },
+    {
+      partId: '11477',
+      colorId: 288,
+      inventoryId: 58,
+    },
+    {
+      partId: '11477',
+      colorId: 71,
+      inventoryId: 58,
+    },
+    {
       partId: '2431',
       colorId: 71,
       inventoryId: 58,
@@ -2190,6 +2244,21 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
       inventoryId: 58,
     },
     {
+      partId: '54200',
+      colorId: 378,
+      inventoryId: 58,
+    },
+    {
+      partId: '54200',
+      colorId: 0,
+      inventoryId: 58,
+    },
+    {
+      partId: '54200',
+      colorId: 320,
+      inventoryId: 58,
+    },
+    {
       partId: '59900',
       colorId: 0,
       inventoryId: 58,
@@ -2336,6 +2405,11 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
     },
     {
       partId: '44676',
+      colorId: 0,
+      inventoryId: 62,
+    },
+    {
+      partId: '85984',
       colorId: 0,
       inventoryId: 62,
     },
@@ -2531,6 +2605,16 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
     },
     {
       partId: '43723',
+      colorId: 1,
+      inventoryId: 74,
+    },
+    {
+      partId: '54200',
+      colorId: 73,
+      inventoryId: 74,
+    },
+    {
+      partId: '54200',
       colorId: 1,
       inventoryId: 74,
     },
@@ -2770,6 +2854,11 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
       inventoryId: 83,
     },
     {
+      partId: '54200',
+      colorId: 72,
+      inventoryId: 83,
+    },
+    {
       partId: '6112',
       colorId: 14,
       inventoryId: 83,
@@ -2935,6 +3024,11 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
       inventoryId: 89,
     },
     {
+      partId: '85984',
+      colorId: 15,
+      inventoryId: 89,
+    },
+    {
       partId: '87079',
       colorId: 15,
       inventoryId: 89,
@@ -3020,6 +3114,11 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
       inventoryId: 94,
     },
     {
+      partId: '54200',
+      colorId: 25,
+      inventoryId: 94,
+    },
+    {
       partId: '6111',
       colorId: 0,
       inventoryId: 94,
@@ -3051,6 +3150,11 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
     },
     {
       partId: '3623',
+      colorId: 27,
+      inventoryId: 101,
+    },
+    {
+      partId: '54200',
       colorId: 27,
       inventoryId: 101,
     },
@@ -3405,6 +3509,11 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
       inventoryId: 119,
     },
     {
+      partId: '11477',
+      colorId: 26,
+      inventoryId: 123,
+    },
+    {
       partId: '14716',
       colorId: 15,
       inventoryId: 123,
@@ -3575,6 +3684,11 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
       inventoryId: 123,
     },
     {
+      partId: '85984',
+      colorId: 191,
+      inventoryId: 123,
+    },
+    {
       partId: '87079',
       colorId: 0,
       inventoryId: 123,
@@ -3695,6 +3809,11 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
       inventoryId: 151,
     },
     {
+      partId: '54200',
+      colorId: 4,
+      inventoryId: 151,
+    },
+    {
       partId: '60479',
       colorId: 308,
       inventoryId: 151,
@@ -3742,6 +3861,11 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
     {
       partId: '6636',
       colorId: 72,
+      inventoryId: 153,
+    },
+    {
+      partId: '85984',
+      colorId: 14,
       inventoryId: 153,
     },
     {
@@ -3890,6 +4014,11 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
       inventoryId: 172,
     },
     {
+      partId: '54200',
+      colorId: 2,
+      inventoryId: 172,
+    },
+    {
       partId: '61678',
       colorId: 0,
       inventoryId: 172,
@@ -3898,6 +4027,11 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
       partId: '6636',
       colorId: 4,
       inventoryId: 172,
+    },
+    {
+      partId: '11477',
+      colorId: 70,
+      inventoryId: 173,
     },
     {
       partId: '14769',
@@ -4008,6 +4142,26 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
       partId: '6636',
       colorId: 272,
       inventoryId: 186,
+    },
+    {
+      partId: '11477',
+      colorId: 73,
+      inventoryId: 188,
+    },
+    {
+      partId: '11477',
+      colorId: 15,
+      inventoryId: 188,
+    },
+    {
+      partId: '11477',
+      colorId: 2,
+      inventoryId: 188,
+    },
+    {
+      partId: '11477',
+      colorId: 25,
+      inventoryId: 188,
     },
     {
       partId: '3001',
@@ -4145,6 +4299,11 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
       inventoryId: 206,
     },
     {
+      partId: '11477',
+      colorId: 308,
+      inventoryId: 207,
+    },
+    {
       partId: '3023',
       colorId: 70,
       inventoryId: 207,
@@ -4157,6 +4316,11 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
     {
       partId: '3942c',
       colorId: 4,
+      inventoryId: 207,
+    },
+    {
+      partId: '54200',
+      colorId: 19,
       inventoryId: 207,
     },
     {
@@ -4211,6 +4375,11 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
     },
     {
       partId: '6636',
+      colorId: 25,
+      inventoryId: 218,
+    },
+    {
+      partId: '85984',
       colorId: 25,
       inventoryId: 218,
     },
@@ -4605,6 +4774,16 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
       inventoryId: 284,
     },
     {
+      partId: '11477',
+      colorId: 4,
+      inventoryId: 299,
+    },
+    {
+      partId: '11477',
+      colorId: 1,
+      inventoryId: 299,
+    },
+    {
       partId: '43722',
       colorId: 4,
       inventoryId: 299,
@@ -4613,6 +4792,11 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
       partId: '43723',
       colorId: 4,
       inventoryId: 299,
+    },
+    {
+      partId: '85984',
+      colorId: 71,
+      inventoryId: 302,
     },
     {
       partId: '3659',
@@ -4885,6 +5069,11 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
       inventoryId: 375,
     },
     {
+      partId: '85984',
+      colorId: 19,
+      inventoryId: 375,
+    },
+    {
       partId: '2431',
       colorId: 6,
       inventoryId: 379,
@@ -5020,6 +5209,11 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
       inventoryId: 395,
     },
     {
+      partId: '11477',
+      colorId: 0,
+      inventoryId: 403,
+    },
+    {
       partId: '14769',
       colorId: 19,
       inventoryId: 403,
@@ -5060,6 +5254,11 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
       inventoryId: 403,
     },
     {
+      partId: '11477',
+      colorId: 272,
+      inventoryId: 409,
+    },
+    {
       partId: '3020',
       colorId: 28,
       inventoryId: 409,
@@ -5081,6 +5280,11 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
     },
     {
       partId: '3710',
+      colorId: 191,
+      inventoryId: 412,
+    },
+    {
+      partId: '54200',
       colorId: 191,
       inventoryId: 412,
     },
@@ -5113,6 +5317,11 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
       partId: '4477',
       colorId: 2,
       inventoryId: 422,
+    },
+    {
+      partId: '11477',
+      colorId: 14,
+      inventoryId: 423,
     },
     {
       partId: '14769',
@@ -5190,6 +5399,11 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
       inventoryId: 423,
     },
     {
+      partId: '54200',
+      colorId: 272,
+      inventoryId: 423,
+    },
+    {
       partId: '60479',
       colorId: 4,
       inventoryId: 423,
@@ -5238,6 +5452,11 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
       partId: '43723',
       colorId: 72,
       inventoryId: 427,
+    },
+    {
+      partId: '85984',
+      colorId: 27,
+      inventoryId: 431,
     },
     {
       partId: '2431',
@@ -5405,6 +5624,11 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
       inventoryId: 444,
     },
     {
+      partId: '11477',
+      colorId: 191,
+      inventoryId: 457,
+    },
+    {
       partId: '3007',
       colorId: 19,
       inventoryId: 460,
@@ -5531,6 +5755,11 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
     },
     {
       partId: '4740',
+      colorId: 2,
+      inventoryId: 486,
+    },
+    {
+      partId: '85984',
       colorId: 2,
       inventoryId: 486,
     },
@@ -5700,6 +5929,11 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
       inventoryId: 544,
     },
     {
+      partId: '85984',
+      colorId: 70,
+      inventoryId: 546,
+    },
+    {
       partId: '3865',
       colorId: 10,
       inventoryId: 549,
@@ -5787,6 +6021,11 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
     {
       partId: '3031',
       colorId: 27,
+      inventoryId: 583,
+    },
+    {
+      partId: '54200',
+      colorId: 29,
       inventoryId: 583,
     },
     {
@@ -5915,6 +6154,11 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
       inventoryId: 621,
     },
     {
+      partId: '85984',
+      colorId: 28,
+      inventoryId: 621,
+    },
+    {
       partId: '3006',
       colorId: 1,
       inventoryId: 635,
@@ -5960,6 +6204,11 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
       inventoryId: 655,
     },
     {
+      partId: '85984',
+      colorId: 30,
+      inventoryId: 655,
+    },
+    {
       partId: '6191',
       colorId: 71,
       inventoryId: 661,
@@ -5987,6 +6236,11 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
     {
       partId: '3795',
       colorId: 323,
+      inventoryId: 676,
+    },
+    {
+      partId: '85984',
+      colorId: 29,
       inventoryId: 676,
     },
     {
@@ -6092,6 +6346,11 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
     {
       partId: '6182',
       colorId: 71,
+      inventoryId: 740,
+    },
+    {
+      partId: '85984',
+      colorId: 1,
       inventoryId: 740,
     },
     {
@@ -6295,6 +6554,11 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
       inventoryId: 845,
     },
     {
+      partId: '11477',
+      colorId: 27,
+      inventoryId: 847,
+    },
+    {
       partId: '3676',
       colorId: 0,
       inventoryId: 848,
@@ -6378,6 +6642,11 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
       partId: '3031',
       colorId: 26,
       inventoryId: 861,
+    },
+    {
+      partId: '54200',
+      colorId: 308,
+      inventoryId: 862,
     },
     {
       partId: '43337',
@@ -6468,6 +6737,21 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
       partId: '98138',
       colorId: 25,
       inventoryId: 953,
+    },
+    {
+      partId: '11477',
+      colorId: 226,
+      inventoryId: 955,
+    },
+    {
+      partId: '11477',
+      colorId: 30,
+      inventoryId: 955,
+    },
+    {
+      partId: '11477',
+      colorId: 5,
+      inventoryId: 955,
     },
     {
       partId: '14719',
@@ -7220,6 +7504,21 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
       inventoryId: 1305,
     },
     {
+      partId: '25269',
+      colorId: 0,
+      inventoryId: 1305,
+    },
+    {
+      partId: '25269',
+      colorId: 71,
+      inventoryId: 1305,
+    },
+    {
+      partId: '25269',
+      colorId: 19,
+      inventoryId: 1305,
+    },
+    {
       partId: '27507',
       colorId: 71,
       inventoryId: 1305,
@@ -7297,6 +7596,11 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
     {
       partId: '3795',
       colorId: 308,
+      inventoryId: 1305,
+    },
+    {
+      partId: '54200',
+      colorId: 84,
       inventoryId: 1305,
     },
     {
@@ -7448,6 +7752,11 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
       partId: '43888',
       colorId: 70,
       inventoryId: 1461,
+    },
+    {
+      partId: '11477',
+      colorId: 322,
+      inventoryId: 1465,
     },
     {
       partId: '2423',
@@ -7710,8 +8019,23 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
       inventoryId: 1555,
     },
     {
+      partId: '11477',
+      colorId: 321,
+      inventoryId: 1566,
+    },
+    {
+      partId: '11477',
+      colorId: 28,
+      inventoryId: 1566,
+    },
+    {
       partId: '3021',
       colorId: 321,
+      inventoryId: 1566,
+    },
+    {
+      partId: '54200',
+      colorId: 484,
       inventoryId: 1566,
     },
     {
@@ -8045,6 +8369,11 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
       inventoryId: 1842,
     },
     {
+      partId: '85984',
+      colorId: 320,
+      inventoryId: 1842,
+    },
+    {
       partId: '3456',
       colorId: 6,
       inventoryId: 1869,
@@ -8140,6 +8469,11 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
       inventoryId: 1875,
     },
     {
+      partId: '54200',
+      colorId: 322,
+      inventoryId: 1875,
+    },
+    {
       partId: '87079',
       colorId: 19,
       inventoryId: 1875,
@@ -8193,6 +8527,11 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
       partId: '60593',
       colorId: 0,
       inventoryId: 1929,
+    },
+    {
+      partId: '11477',
+      colorId: 19,
+      inventoryId: 1963,
     },
     {
       partId: '3710',
@@ -8398,6 +8737,11 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
       partId: '30144',
       colorId: 4,
       inventoryId: 2225,
+    },
+    {
+      partId: '54200',
+      colorId: 323,
+      inventoryId: 2226,
     },
     {
       partId: '2454b',
@@ -8810,6 +9154,11 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
       inventoryId: 2796,
     },
     {
+      partId: '54200',
+      colorId: 28,
+      inventoryId: 2796,
+    },
+    {
       partId: '99301',
       colorId: 15,
       inventoryId: 2796,
@@ -9105,6 +9454,11 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
       inventoryId: 3259,
     },
     {
+      partId: '11477',
+      colorId: 323,
+      inventoryId: 3305,
+    },
+    {
       partId: '3710',
       colorId: 323,
       inventoryId: 3305,
@@ -9380,6 +9734,11 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
       inventoryId: 3653,
     },
     {
+      partId: '11477',
+      colorId: 31,
+      inventoryId: 3662,
+    },
+    {
       partId: '3023',
       colorId: 31,
       inventoryId: 3662,
@@ -9387,6 +9746,11 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
     {
       partId: '3030',
       colorId: 27,
+      inventoryId: 3662,
+    },
+    {
+      partId: '54200',
+      colorId: 5,
       inventoryId: 3662,
     },
     {
@@ -9720,6 +10084,11 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
       inventoryId: 4290,
     },
     {
+      partId: '85984',
+      colorId: 308,
+      inventoryId: 4290,
+    },
+    {
       partId: '87620',
       colorId: 19,
       inventoryId: 4290,
@@ -9777,6 +10146,11 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
     {
       partId: '43337',
       colorId: 288,
+      inventoryId: 4486,
+    },
+    {
+      partId: '54200',
+      colorId: 10,
       inventoryId: 4486,
     },
     {
@@ -9861,6 +10235,16 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
     },
     {
       partId: '4477',
+      colorId: 321,
+      inventoryId: 4580,
+    },
+    {
+      partId: '54200',
+      colorId: 321,
+      inventoryId: 4580,
+    },
+    {
+      partId: '85984',
       colorId: 321,
       inventoryId: 4580,
     },
@@ -10048,6 +10432,11 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
       partId: '3659',
       colorId: 10,
       inventoryId: 5029,
+    },
+    {
+      partId: '85984',
+      colorId: 323,
+      inventoryId: 5083,
     },
     {
       partId: '3037',
@@ -10470,6 +10859,11 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
       inventoryId: 6146,
     },
     {
+      partId: '54200',
+      colorId: 30,
+      inventoryId: 6172,
+    },
+    {
       partId: '44676',
       colorId: 1,
       inventoryId: 6175,
@@ -10536,6 +10930,11 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
     },
     {
       partId: '3666',
+      colorId: 5,
+      inventoryId: 6332,
+    },
+    {
+      partId: '85984',
       colorId: 5,
       inventoryId: 6332,
     },
@@ -10673,6 +11072,11 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
       partId: '6191',
       colorId: 351,
       inventoryId: 6648,
+    },
+    {
+      partId: '25269',
+      colorId: 322,
+      inventoryId: 6668,
     },
     {
       partId: '4032a',
@@ -10817,6 +11221,11 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
     {
       partId: '6003',
       colorId: 322,
+      inventoryId: 7340,
+    },
+    {
+      partId: '85984',
+      colorId: 10,
       inventoryId: 7340,
     },
     {
@@ -11175,6 +11584,11 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
       inventoryId: 9343,
     },
     {
+      partId: '25269',
+      colorId: 15,
+      inventoryId: 9395,
+    },
+    {
       partId: '3068b',
       colorId: 31,
       inventoryId: 9395,
@@ -11461,6 +11875,11 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
     },
     {
       partId: '22385',
+      colorId: 379,
+      inventoryId: 11002,
+    },
+    {
+      partId: '54200',
       colorId: 379,
       inventoryId: 11002,
     },
@@ -12200,6 +12619,11 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
       inventoryId: 16318,
     },
     {
+      partId: '25269',
+      colorId: 4,
+      inventoryId: 16466,
+    },
+    {
       partId: '22888',
       colorId: 10,
       inventoryId: 16482,
@@ -12275,6 +12699,11 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
       inventoryId: 16757,
     },
     {
+      partId: '11477',
+      colorId: 84,
+      inventoryId: 16791,
+    },
+    {
       partId: '4032a',
       colorId: 84,
       inventoryId: 16791,
@@ -12287,6 +12716,11 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
     {
       partId: '26603',
       colorId: 212,
+      inventoryId: 16813,
+    },
+    {
+      partId: '85984',
+      colorId: 73,
       inventoryId: 16813,
     },
     {
@@ -12330,6 +12764,11 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
       inventoryId: 17067,
     },
     {
+      partId: '25269',
+      colorId: 2,
+      inventoryId: 17068,
+    },
+    {
       partId: '87079',
       colorId: 320,
       inventoryId: 17071,
@@ -12338,6 +12777,11 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
       partId: '3031',
       colorId: 272,
       inventoryId: 17087,
+    },
+    {
+      partId: '11477',
+      colorId: 484,
+      inventoryId: 17088,
     },
     {
       partId: '3024',
@@ -12350,9 +12794,24 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
       inventoryId: 17088,
     },
     {
+      partId: '85984',
+      colorId: 484,
+      inventoryId: 17091,
+    },
+    {
       partId: '3034',
       colorId: 288,
       inventoryId: 17094,
+    },
+    {
+      partId: '85984',
+      colorId: 288,
+      inventoryId: 17094,
+    },
+    {
+      partId: '11477',
+      colorId: 320,
+      inventoryId: 17349,
     },
     {
       partId: '2423',
@@ -12406,6 +12865,11 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
     },
     {
       partId: '18980',
+      colorId: 25,
+      inventoryId: 18402,
+    },
+    {
+      partId: '25269',
       colorId: 25,
       inventoryId: 18402,
     },
@@ -12610,6 +13074,11 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
       inventoryId: 19314,
     },
     {
+      partId: '85984',
+      colorId: 378,
+      inventoryId: 19346,
+    },
+    {
       partId: '27507',
       colorId: 15,
       inventoryId: 19403,
@@ -12685,6 +13154,11 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
       inventoryId: 19497,
     },
     {
+      partId: '11477',
+      colorId: 378,
+      inventoryId: 19522,
+    },
+    {
       partId: '88292',
       colorId: 191,
       inventoryId: 19564,
@@ -12693,6 +13167,11 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
       partId: '48092',
       colorId: 379,
       inventoryId: 19567,
+    },
+    {
+      partId: '11477',
+      colorId: 379,
+      inventoryId: 19579,
     },
     {
       partId: '44676',
@@ -12980,6 +13459,11 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
       inventoryId: 21143,
     },
     {
+      partId: '54200',
+      colorId: 26,
+      inventoryId: 21143,
+    },
+    {
       partId: '27507',
       colorId: 3,
       inventoryId: 21145,
@@ -13018,6 +13502,11 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
       partId: '48092',
       colorId: 3,
       inventoryId: 21145,
+    },
+    {
+      partId: '25269',
+      colorId: 70,
+      inventoryId: 21192,
     },
     {
       partId: '3024',
@@ -13130,6 +13619,11 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
       inventoryId: 21569,
     },
     {
+      partId: '25269',
+      colorId: 321,
+      inventoryId: 21573,
+    },
+    {
       partId: '30357',
       colorId: 321,
       inventoryId: 21573,
@@ -13150,6 +13644,11 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
       inventoryId: 21576,
     },
     {
+      partId: '25269',
+      colorId: 72,
+      inventoryId: 21718,
+    },
+    {
       partId: '24309',
       colorId: 28,
       inventoryId: 21723,
@@ -13158,6 +13657,11 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
       partId: '87079',
       colorId: 3,
       inventoryId: 22222,
+    },
+    {
+      partId: '25269',
+      colorId: 27,
+      inventoryId: 22833,
     },
     {
       partId: '99780',
@@ -13220,7 +13724,17 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
       inventoryId: 23162,
     },
     {
+      partId: '25269',
+      colorId: 14,
+      inventoryId: 23212,
+    },
+    {
       partId: '3020',
+      colorId: 84,
+      inventoryId: 23212,
+    },
+    {
+      partId: '85984',
       colorId: 84,
       inventoryId: 23212,
     },
@@ -13295,9 +13809,19 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
       inventoryId: 24011,
     },
     {
+      partId: '25269',
+      colorId: 26,
+      inventoryId: 24012,
+    },
+    {
       partId: '11213',
       colorId: 14,
       inventoryId: 24049,
+    },
+    {
+      partId: '85984',
+      colorId: 272,
+      inventoryId: 24177,
     },
     {
       partId: '22888',
@@ -13340,6 +13864,11 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
       inventoryId: 24331,
     },
     {
+      partId: '85984',
+      colorId: 3,
+      inventoryId: 24331,
+    },
+    {
       partId: '15332',
       colorId: 5,
       inventoryId: 24333,
@@ -13378,6 +13907,11 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
       partId: '3942c',
       colorId: 321,
       inventoryId: 24373,
+    },
+    {
+      partId: '25269',
+      colorId: 272,
+      inventoryId: 24374,
     },
     {
       partId: '3034',
@@ -13510,6 +14044,11 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
       inventoryId: 25241,
     },
     {
+      partId: '25269',
+      colorId: 226,
+      inventoryId: 25289,
+    },
+    {
       partId: '3020',
       colorId: 226,
       inventoryId: 25289,
@@ -13518,6 +14057,11 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
       partId: '99780',
       colorId: 323,
       inventoryId: 25289,
+    },
+    {
+      partId: '25269',
+      colorId: 484,
+      inventoryId: 25290,
     },
     {
       partId: '2431',
@@ -13530,9 +14074,19 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
       inventoryId: 25291,
     },
     {
+      partId: '85984',
+      colorId: 31,
+      inventoryId: 25291,
+    },
+    {
       partId: '87079',
       colorId: 31,
       inventoryId: 25291,
+    },
+    {
+      partId: '25269',
+      colorId: 28,
+      inventoryId: 25433,
     },
     {
       partId: '14719',
@@ -13625,6 +14179,11 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
       inventoryId: 27294,
     },
     {
+      partId: '25269',
+      colorId: 84,
+      inventoryId: 27758,
+    },
+    {
       partId: '6934a',
       colorId: 25,
       inventoryId: 27858,
@@ -13655,9 +14214,19 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
       inventoryId: 29343,
     },
     {
+      partId: '11477',
+      colorId: 29,
+      inventoryId: 29345,
+    },
+    {
       partId: '93606',
       colorId: 29,
       inventoryId: 29345,
+    },
+    {
+      partId: '25269',
+      colorId: 5,
+      inventoryId: 29403,
     },
     {
       partId: '3676',
@@ -13668,6 +14237,16 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
       partId: '6141',
       colorId: 26,
       inventoryId: 29403,
+    },
+    {
+      partId: '11477',
+      colorId: 3,
+      inventoryId: 29412,
+    },
+    {
+      partId: '25269',
+      colorId: 3,
+      inventoryId: 29412,
     },
     {
       partId: '3021',
@@ -13810,6 +14389,11 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
       inventoryId: 30175,
     },
     {
+      partId: '25269',
+      colorId: 191,
+      inventoryId: 30176,
+    },
+    {
       partId: '3958',
       colorId: 3,
       inventoryId: 30176,
@@ -13818,6 +14402,11 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
       partId: '85080',
       colorId: 191,
       inventoryId: 30176,
+    },
+    {
+      partId: '25269',
+      colorId: 30,
+      inventoryId: 30177,
     },
     {
       partId: '3070b',
@@ -13873,6 +14462,11 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
       partId: '4282',
       colorId: 321,
       inventoryId: 30187,
+    },
+    {
+      partId: '25269',
+      colorId: 323,
+      inventoryId: 30189,
     },
     {
       partId: '2453b',
@@ -13998,6 +14592,11 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
       partId: '3068b',
       colorId: 484,
       inventoryId: 34983,
+    },
+    {
+      partId: '25269',
+      colorId: 29,
+      inventoryId: 34994,
     },
     {
       partId: '60593',
@@ -14575,6 +15174,11 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
       inventoryId: 45427,
     },
     {
+      partId: '25269',
+      colorId: 31,
+      inventoryId: 46162,
+    },
+    {
       partId: '3070b',
       colorId: 226,
       inventoryId: 46166,
@@ -14625,6 +15229,11 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
       inventoryId: 47459,
     },
     {
+      partId: '25269',
+      colorId: 1,
+      inventoryId: 47459,
+    },
+    {
       partId: '35480',
       colorId: 226,
       inventoryId: 47893,
@@ -14651,6 +15260,16 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
     },
     {
       partId: '41770',
+      colorId: 226,
+      inventoryId: 47893,
+    },
+    {
+      partId: '54200',
+      colorId: 226,
+      inventoryId: 47893,
+    },
+    {
+      partId: '85984',
       colorId: 226,
       inventoryId: 47893,
     },
@@ -14785,6 +15404,16 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
       inventoryId: 57565,
     },
     {
+      partId: '25269',
+      colorId: 10,
+      inventoryId: 57566,
+    },
+    {
+      partId: '25269',
+      colorId: 288,
+      inventoryId: 57567,
+    },
+    {
       partId: '27925',
       colorId: 4,
       inventoryId: 57808,
@@ -14822,6 +15451,11 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
     {
       partId: '26603',
       colorId: 70,
+      inventoryId: 57861,
+    },
+    {
+      partId: '54200',
+      colorId: 3,
       inventoryId: 57861,
     },
     {
@@ -15195,6 +15829,11 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
       inventoryId: 80972,
     },
     {
+      partId: '85984',
+      colorId: 322,
+      inventoryId: 80973,
+    },
+    {
       partId: '4490',
       colorId: 2,
       inventoryId: 80979,
@@ -15231,6 +15870,11 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
     },
     {
       partId: '43723',
+      colorId: 26,
+      inventoryId: 80988,
+    },
+    {
+      partId: '85984',
       colorId: 26,
       inventoryId: 80988,
     },
@@ -15285,9 +15929,19 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
       inventoryId: 81558,
     },
     {
+      partId: '25269',
+      colorId: 212,
+      inventoryId: 81559,
+    },
+    {
       partId: '69729',
       colorId: 321,
       inventoryId: 81893,
+    },
+    {
+      partId: '11477',
+      colorId: 212,
+      inventoryId: 82164,
     },
     {
       partId: '4162',
@@ -15308,6 +15962,11 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
       partId: '3069b',
       colorId: 78,
       inventoryId: 83220,
+    },
+    {
+      partId: '25269',
+      colorId: 320,
+      inventoryId: 85198,
     },
     {
       partId: '3004',
@@ -15393,6 +16052,11 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
       partId: '42022',
       colorId: 26,
       inventoryId: 87835,
+    },
+    {
+      partId: '25269',
+      colorId: 73,
+      inventoryId: 87842,
     },
     {
       partId: '98138',
@@ -15506,6 +16170,11 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
     },
     {
       partId: '3941',
+      colorId: 78,
+      inventoryId: 97517,
+    },
+    {
+      partId: '54200',
       colorId: 78,
       inventoryId: 97517,
     },
@@ -15995,7 +16664,17 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
       inventoryId: 110726,
     },
     {
+      partId: '54200',
+      colorId: 212,
+      inventoryId: 110726,
+    },
+    {
       partId: '63864',
+      colorId: 212,
+      inventoryId: 110726,
+    },
+    {
+      partId: '85984',
       colorId: 212,
       inventoryId: 110726,
     },
@@ -16113,6 +16792,16 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
       partId: '99780',
       colorId: 3,
       inventoryId: 117052,
+    },
+    {
+      partId: '11477',
+      colorId: 78,
+      inventoryId: 117586,
+    },
+    {
+      partId: '25269',
+      colorId: 78,
+      inventoryId: 117586,
     },
     {
       partId: '27507',
@@ -16597,6 +17286,11 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
     {
       partId: '11212',
       colorId: 288,
+      inventoryId: 133715,
+    },
+    {
+      partId: '25269',
+      colorId: 379,
       inventoryId: 133715,
     },
     {
@@ -17208,6 +17902,11 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
       partId: '88292',
       colorId: 272,
       inventoryId: 152358,
+    },
+    {
+      partId: '25269',
+      colorId: 378,
+      inventoryId: 152360,
     },
     {
       partId: '27925',
@@ -17880,6 +18579,11 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
       inventoryId: 189447,
     },
     {
+      partId: '11477',
+      colorId: 10,
+      inventoryId: 191266,
+    },
+    {
       partId: '24309',
       colorId: 10,
       inventoryId: 191266,
@@ -18165,6 +18869,11 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
       inventoryId: 218031,
     },
     {
+      partId: '85984',
+      colorId: 78,
+      inventoryId: 218031,
+    },
+    {
       partId: '99780',
       colorId: 191,
       inventoryId: 219008,
@@ -18378,6 +19087,11 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
       partId: '5520',
       colorId: 15,
       inventoryId: 222857,
+    },
+    {
+      partId: '25269',
+      colorId: 308,
+      inventoryId: 222992,
     },
     {
       partId: '26603',
@@ -18598,6 +19312,11 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
       partId: '66857',
       colorId: 72,
       inventoryId: 240721,
+    },
+    {
+      partId: '11477',
+      colorId: 92,
+      inventoryId: 244116,
     },
     {
       partId: '3038',
@@ -19220,6 +19939,11 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
       inventoryId: 280513,
     },
     {
+      partId: '85984',
+      colorId: 92,
+      inventoryId: 280513,
+    },
+    {
       partId: '3031',
       colorId: 78,
       inventoryId: 280514,
@@ -19650,6 +20374,11 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
       inventoryId: 329651,
     },
     {
+      partId: '25269',
+      colorId: 92,
+      inventoryId: 329652,
+    },
+    {
       partId: '35480',
       colorId: 92,
       inventoryId: 329652,
@@ -19801,6 +20530,11 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
     },
     {
       partId: '30565',
+      colorId: 31,
+      inventoryId: 334310,
+    },
+    {
+      partId: '54200',
       colorId: 31,
       inventoryId: 334310,
     },
@@ -20118,6 +20852,11 @@ export const DEFAULT_PART_COLOR_EVIDENCE = importPartColorEvidence({
       partId: '6320',
       colorId: 0,
       inventoryId: 348866,
+    },
+    {
+      partId: '85984',
+      colorId: 379,
+      inventoryId: 349634,
     },
     {
       partId: '3029',
