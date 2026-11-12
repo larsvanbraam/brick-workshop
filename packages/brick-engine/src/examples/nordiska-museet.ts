@@ -96,8 +96,8 @@ const insideBay = (x: number, z: number) =>
   (z === FRONT || z === BACK) && BAYS.some((bay) => x > bay && x < bay + 7);
 
 /**
- * Octagonal corner towers: 8 x 8 with three studs cut from each corner, standing four studs
- * proud of the main block's corners. Round bricks along the cut corners soften their outline.
+ * Octagonal corner towers: 8 x 8 with a stud cut from each corner, standing four studs proud
+ * of the main block's corners. Facet bricks chamfer the cut corners into straight faces.
  */
 const TURRET = 8;
 const TURRETS = [
@@ -109,7 +109,7 @@ const TURRETS = [
 const isTurret = (x: number, z: number) =>
   TURRETS.some(([tx, tz]) => {
     const [dx, dz] = [x - tx, z - tz].map((at) => Math.min(at, TURRET - 1 - at));
-    return dx >= 0 && dz >= 0 && dx + dz >= 2;
+    return dx >= 0 && dz >= 0 && dx + dz >= 1;
   });
 const TURRET_WALLS = cellSet(
   (x, z) => isTurret(x, z) && NEIGHBOURS.some(([dx, dz]) => !isTurret(x + dx, z + dz)),
@@ -181,6 +181,57 @@ const footprint = (x: number, z: number) =>
   !isTurret(x, z);
 /** Cells inside the building's outline at wall height. */
 const enclosed = (x: number, z: number) => footprint(x, z) || isTurret(x, z);
+/**
+ * Each 2 x 2 facet brick, turned by `rotation`, as its box's corner cell that the chamfer
+ * crosses (the turret's cut corner) and the cell inside the corner that it leaves hollow.
+ */
+const FACET_CELLS: Readonly<Record<Rotation, readonly [cut: Cell, hollow: Cell]>> = {
+  0: [
+    [1, 0],
+    [0, 1],
+  ],
+  90: [
+    [0, 0],
+    [1, 1],
+  ],
+  180: [
+    [0, 1],
+    [1, 0],
+  ],
+  270: [
+    [1, 1],
+    [0, 0],
+  ],
+};
+type Cell = readonly [number, number];
+/**
+ * Facet bricks on the turrets' outer corners as [x, z, rotation], one a course: each covers
+ * the two cells either side of the cut corner and chamfers across it. Corners inside the main
+ * block keep plain walls.
+ */
+const FACETS = TURRETS.flatMap(([tx, tz]) =>
+  (
+    [
+      [0, 0, 90],
+      [TURRET - 2, 0, 0],
+      [0, TURRET - 2, 180],
+      [TURRET - 2, TURRET - 2, 270],
+    ] as const
+  )
+    .map(([dx, dz, rotation]) => [tx + dx, tz + dz, rotation] as const)
+    .filter(([x, z, rotation]) => {
+      const [cx, cz] = FACET_CELLS[rotation][0];
+      return !enclosed(x + cx, z + cz);
+    }),
+);
+/** Every cell a facet's box takes: no wall brick or round brick goes there. */
+const FACET_BOXES = new Set(
+  FACETS.flatMap(([x, z]) => [0, 1].flatMap((dx) => [0, 1].map((dz) => key(x + dx, z + dz)))),
+);
+for (const [x, z, rotation] of FACETS) {
+  const [hx, hz] = FACET_CELLS[rotation][1];
+  TURRET_WALLS.delete(key(x + hx, z + hz));
+}
 const apseWall = (x: number, z: number) =>
   isApse(x, z) && NEIGHBOURS.some(([dx, dz]) => !enclosed(x + dx, z + dz));
 const PARTITIONS = new Set(
@@ -238,6 +289,7 @@ const isCorner = (x: number, z: number) =>
 const ROUND_CELLS = cellSet(
   (x, z) =>
     (TURRET_WALLS.has(key(x, z)) &&
+      !FACET_BOXES.has(key(x, z)) &&
       OUTWARD.filter(([dx, dz]) => !isTurret(x + dx, z + dz)).length >= 2) ||
     (isApse(x, z) && apseWall(x, z) && isCorner(x, z)),
 );
@@ -818,7 +870,7 @@ function addApseRoof(
 function addFinial(add: ExampleBrickAdder, x: number, y: number, z: number, tip = COPPER) {
   add('3794b', TRIM, x, y, z, 90);
   add('3062b', TRIM, x + 0.5, y + 1, z);
-  add('4589', tip, x + 0.5, y + 4, z);
+  add('59900', tip, x + 0.5, y + 4, z);
   if (tip === ROOFING) add('98138', GOLD, x + 0.5, y + 7, z);
 }
 
@@ -1045,7 +1097,7 @@ function addLampPost(add: ExampleBrickAdder, x: number, z: number, y = LAWN_TOP)
 
 /**
  * A sailing boat moored off the quay, its bow towards +x: a white hull with a pointed bow under
- * a wooden deck, a cabin aft, and a stepped mainsail and jib either side of the mast.
+ * a wooden deck, a cabin aft, a stepped mainsail and jib either side of the mast and a pennant at its head.
  */
 function addSailboat(add: ExampleBrickAdder, x: number, z: number) {
   add('3029', WHITE, x, GROUND, z, 90);
@@ -1059,7 +1111,10 @@ function addSailboat(add: ExampleBrickAdder, x: number, z: number) {
   add('87079', WHITE, x + 1, deck + 3, z + 1, 90);
   const mast = x + 6;
   for (const post of [0, 15, 30]) add('2453b', WHITE, mast, deck + post, z + 1);
-  add('4589', GOLD, mast, deck + 45, z + 1);
+  // A gilded cone tops the mast, and a navy pennant streams aft off a short pole above it.
+  add('59900', GOLD, mast, deck + 45, z + 1);
+  add('3957a', GOLD, mast, deck + 48, z + 1);
+  add('44676a', NAVY, mast - 2, deck + 52, z + 1, 270);
   // The mainsail clears the cabin on two short rows by the mast; no row is longer than a brick.
   for (const [row, length] of [1, 1, 4, 4, 4, 4, 3, 3, 3, 2, 2, 2, 1, 1].entries())
     addRun(add, 'brick', WHITE, 'x', mast - length, deck + row * 3, z + 1, length);
@@ -1080,7 +1135,7 @@ export const nordiskaMuseet: ExampleDefinition = {
     'park',
     'waterfront',
   ],
-  expectedPieceCount: 11506,
+  expectedPieceCount: 10285,
   buildArea: SIZE,
   brickIdPrefix: 'museet',
   build(drawnAdd) {
@@ -1179,7 +1234,7 @@ export const nordiskaMuseet: ExampleDefinition = {
     addAreaMap(
       add,
       plan((x, z) =>
-        !terrace(x, z) || enclosed(x, z) || isPortal(x, z)
+        !terrace(x, z) || enclosed(x, z) || isPortal(x, z) || FACET_BOXES.has(key(x, z))
           ? ' '
           : x >= DOOR[0] && x <= DOOR[1] && z > PAVILION_FRONT
             ? 't'
@@ -1218,13 +1273,22 @@ export const nordiskaMuseet: ExampleDefinition = {
         !isOpen(x, z, course) &&
         !dentil(x, z, course);
       addWallCourse(
-        (x, z) => (standing(x, z) && !ROUND_CELLS.has(key(x, z)) ? material(x, z, course) : ' '),
+        (x, z) =>
+          standing(x, z) && !ROUND_CELLS.has(key(x, z)) && !FACET_BOXES.has(key(x, z))
+            ? material(x, z, course)
+            : ' ',
         y,
         course,
       );
       for (const cell of ROUND_CELLS) {
         const [x, z] = cell.split(':').map(Number);
         if (standing(x, z)) add('3062b', WALL_LEGEND[material(x, z, course)][1], x, y, z);
+      }
+      // The facet takes the colour of the cell beside the corner it chamfers.
+      for (const [x, z, rotation] of FACETS) {
+        const [cx, cz] = FACET_CELLS[rotation][0];
+        const [ox, oz] = [x + 1 - cx, z + cz];
+        add('87620', WALL_LEGEND[material(ox, oz, course)][1], x, y, z, rotation);
       }
       if (course === COURSES - 1)
         for (const cell of WALLS) {
@@ -1727,7 +1791,7 @@ export const nordiskaMuseet: ExampleDefinition = {
       // Corner pinnacles stand taller than the railing posts between them.
       if (corner) {
         add('3062b', COPPER, x, balcony + 4, z);
-        add('4589', ROOFING, x, balcony + 7, z);
+        add('59900', ROOFING, x, balcony + 7, z);
       } else add('98138', GOLD, x, balcony + 4, z);
     }
     for (const at of [1, 7]) {
@@ -1795,19 +1859,20 @@ export const nordiskaMuseet: ExampleDefinition = {
       for (const y of [0, 3]) add('3062b', COPPER, x, upper + y, z);
     for (const z of [46, 49]) add('60592', JOINERY, 63, upper, z, 90);
     for (const x of [62, 65]) add('60592', JOINERY, x, upper, 47, 0);
+    // The onion: two round bricks swelling under a 4 x 4 dome, and a 3 x 3 dome on the one
+    // centred stud the larger dome ends in, drawing it up to a point.
     add('3031', COPPER, 62, upper + 6, 46);
-    add('3943b', COPPER, 62, upper + 7, 46);
-    const spire = upper + 13;
-    for (const [index, y] of [0, 4].entries()) {
-      add('3941', COPPER, 63, spire + y, 47);
-      add('4032a', index ? COPPER : GOLD, 63, spire + y + 3, 47);
-    }
-    add('3942c', COPPER, 63, spire + 8, 47);
-    add('3062b', GOLD, 63.5, spire + 14, 47.5);
-    add('3062b', COPPER, 63.5, spire + 17, 47.5);
-    add('3062b', COPPER, 63.5, spire + 20, 47.5);
-    add('4589', GOLD, 63.5, spire + 23, 47.5);
-    add('3957a', GOLD, 63.5, spire + 26, 47.5);
+    for (const y of [7, 10]) add('87081', COPPER, 62, upper + y, 46);
+    add('3960', COPPER, 62, upper + 13, 46);
+    add('43898', COPPER, 62.5, upper + 15, 46.5);
+    // The needle: a slim copper shaft between gold rings, a grooved cone and a gilded point.
+    const spire = upper + 17;
+    add('6141', GOLD, 63.5, spire, 47.5);
+    for (const y of [1, 4, 7]) add('3062b', COPPER, 63.5, spire + y, 47.5);
+    add('6141', GOLD, 63.5, spire + 10, 47.5);
+    add('3062b', COPPER, 63.5, spire + 11, 47.5);
+    add('59900', COPPER, 63.5, spire + 14, 47.5);
+    add('3957a', GOLD, 63.5, spire + 17, 47.5);
 
     // The towers end in an octagonal tan slab under their steeples.
     const towerTop = BASE + TURRET_COURSES * 3;
