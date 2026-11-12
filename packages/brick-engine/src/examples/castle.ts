@@ -127,6 +127,10 @@ const GATE_TOWERS = [
 const [GATE_BACK, GATE_FRONT] = [46, 53];
 const GATE = [29, 34, 48, 51] as const;
 const PASSAGE = [30, 33] as const;
+/** Courses the gate passage stands open before the arch closes over it. */
+const PASSAGE_COURSES = 6;
+/** The portcullis hangs a stud in from the arch; the gate doors close the back of the passage. */
+const PORTCULLIS_Z = GATE[3] - 1;
 const gateTower = (x: number, z: number) =>
   GATE_TOWERS.some(([x0, x1]) => within(x, z, x0, GATE_BACK, x1, GATE_FRONT));
 const gateMiddle = (x: number, z: number) => within(x, z, GATE[0], GATE[2], GATE[1], GATE[3]);
@@ -182,8 +186,8 @@ const TREES = [
   [44, 41, [288, 2, 2], 8],
 ] as const;
 const BRIDGE = [29, 34, 52, 60] as const;
-/** Posts either side of the bridge at these rows carry its rails. */
-const BRIDGE_POSTS = [54, 59] as const;
+/** Fences line both sides of the bridge over these rows, with a post at each end. */
+const BRIDGE_RAIL = [53, 60] as const;
 const bridge = (x: number, z: number) => within(x, z, BRIDGE[0], BRIDGE[2], BRIDGE[1], BRIDGE[3]);
 const MOAT = [16, 54, 47, 59] as const;
 const moat = (x: number, z: number) =>
@@ -209,7 +213,6 @@ const grassy = (x: number, z: number) => {
  */
 const BANNERS = [
   ...GATE_TOWERS.map(([x0]) => [x0 + 2, GATE_FRONT, 7] as const),
-  [31, GATE[3], 7],
   [31, HALL[3], 9],
 ] as const;
 const behindBanner = (x: number, z: number, n: number) =>
@@ -223,6 +226,7 @@ const occupied = (x: number, z: number) =>
   wallAt(x, z) !== undefined ||
   gateTower(x, z) ||
   gateMiddle(x, z) ||
+  within(x, z, PASSAGE[0], GATE[2] - 1, PASSAGE[1], GATE[2] - 1) ||
   keepTower(x, z) ||
   hall(x, z) ||
   within(x, z, HALL[0], HALL[3] + 1, HALL[1], HALL[3] + 3) ||
@@ -231,7 +235,7 @@ const occupied = (x: number, z: number) =>
   within(x, z, WELL[0], WELL[1], WELL[0] + 3, WELL[1] + 3) ||
   TREES.some(([tx, tz]) => within(x, z, tx - 1, tz - 1, tx, tz)) ||
   TOWERS.some(([cx, cz]) => within(x, z, cx - 6, cz - 6, cx + 5, cz + 5)) ||
-  bridge(x, z) ||
+  within(x, z, BRIDGE[0], BRIDGE[2], BRIDGE[1], BRIDGE_RAIL[1] + 1) ||
   moat(x, z);
 
 /** One stone course of every wall, tower and building that has stonework at course `n`. */
@@ -271,9 +275,9 @@ function courseCell(x: number, z: number, n: number): string {
   }
   if (gateMiddle(x, z)) {
     const front = z === GATE[3];
-    if (n < 4) return x >= PASSAGE[0] && x <= PASSAGE[1] ? ' ' : mottled();
-    if (n === 4) return ' ';
-    if (n === 5 && front) return ' ';
+    if (n < PASSAGE_COURSES) return x >= PASSAGE[0] && x <= PASSAGE[1] ? ' ' : mottled();
+    if (n === PASSAGE_COURSES) return ' ';
+    if (n === PASSAGE_COURSES + 1 && front) return ' ';
     if (n < GATE_COURSES) return mottled();
     if (n === GATE_COURSES) return (z === GATE[2] || front) && merlon(x) ? 'a' : ' ';
     return ' ';
@@ -809,7 +813,7 @@ export const castle: ExampleDefinition = {
   id: 'castle',
   name: 'Castle',
   tags: ['castle', 'medieval', 'towers', 'gatehouse', 'keep', 'moat', 'drawbridge', 'banners'],
-  expectedPieceCount: 7959,
+  expectedPieceCount: 7951,
   buildArea: SIZE,
   brickIdPrefix: 'castle',
   build(drawnAdd) {
@@ -888,13 +892,20 @@ export const castle: ExampleDefinition = {
       TILES,
     );
 
-    // Gatehouse: the passage roofed over with long bricks behind an arch, a portcullis in it,
-    // flat tops behind the merlons and banners on its three fronts.
+    // Gatehouse: a tall passage roofed over with long bricks behind a round arch, a black
+    // portcullis grid hanging just inside it, plank doors at the back, flat tops behind the
+    // merlons and banners on the two towers.
     for (let z = GATE[2]; z < GATE[3]; z++)
-      addRun(add, 'brick', STONE, 'x', GATE[0], course(4), z, 6);
-    add('3307', STONE, GATE[0], course(4), GATE[3], 90);
-    for (let n = 0; n < 4; n++)
-      for (const x of [PASSAGE[0], PASSAGE[0] + 2]) add('2877', BLACK, x, course(n), GATE[3], 90);
+      addRun(add, 'brick', STONE, 'x', GATE[0], course(PASSAGE_COURSES), z, 6);
+    add('3307', STONE, GATE[0], course(PASSAGE_COURSES), GATE[3], 90);
+    for (let n = 0; n < PASSAGE_COURSES; n += 2)
+      add('30055', BLACK, PASSAGE[0], course(n), PORTCULLIS_Z, 90);
+    addFramedDoor(
+      drawnAdd,
+      { partId: '60596', color: DARK_TIMBER, x: PASSAGE[0], y: G, z: GATE[2], rotation: 90 },
+      '60616a',
+      TIMBER,
+    );
     addRowMap(
       add,
       plan((x, z) => {
@@ -1020,14 +1031,20 @@ export const castle: ExampleDefinition = {
     // Courtyard trees.
     for (const [x, z, crown, seed] of TREES) addTree(add, x, z, G, crown, TIMBER, 2, seed);
 
-    // Drawbridge planks with posts and rails either side.
-    for (let z = BRIDGE[2]; z <= BRIDGE[3]; z++) {
-      const posts = (BRIDGE_POSTS as readonly number[]).includes(z);
-      addRun(add, 'tile', z % 2 ? TIMBER : DARK_TIMBER, 'x', posts ? 30 : 29, G, z, posts ? 4 : 6);
-    }
+    // Drawbridge: planks across the deck between spindled fences, a handrail along their tops
+    // and stout posts with pale caps at either end.
+    for (let z = BRIDGE[2]; z <= BRIDGE[3]; z++)
+      addRun(add, 'tile', hash(31, z, 5) < 0.3 ? DARK_TIMBER : TIMBER, 'x', 30, G, z, 4);
     for (const x of [BRIDGE[0], BRIDGE[1]]) {
-      for (const z of BRIDGE_POSTS) for (const y of [G, G + 3]) add('3062b', DARK_TIMBER, x, y, z);
-      add('3666', TIMBER, x, G + 6, BRIDGE_POSTS[0]);
+      for (let z = BRIDGE_RAIL[0]; z <= BRIDGE_RAIL[1]; z += 4) add('30055', TIMBER, x, G, z);
+      for (let z = BRIDGE_RAIL[0]; z <= BRIDGE_RAIL[1]; z += 8)
+        add('4162', DARK_TIMBER, x, G + 6, z);
+      for (const z of [BRIDGE_RAIL[0] - 1, BRIDGE_RAIL[1] + 1]) {
+        for (const y of [G, G + 3]) add('3062b', DARK_TIMBER, x, y, z);
+        add('3062b', STONE, x, G + 6, z);
+        add('6141', WHITE, x, G + 9, z);
+        add('4589', WHITE, x, G + 10, z);
+      }
     }
 
     // Lily pads and ripples on the moat, rocks and bushes along its banks.
