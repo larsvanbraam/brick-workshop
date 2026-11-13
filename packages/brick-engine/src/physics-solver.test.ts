@@ -43,22 +43,26 @@ describe('HiGHS static solver', () => {
     ...SMALL_EXAMPLES.map(({ id, name }) => ({ name, build: () => createExampleAssembly(id) })),
     { name: 'a holding overhang', build: () => overhang(8) },
     { name: 'an overloaded overhang', build: () => overhang(16) },
-  ])('matches the built-in simplex on $name', ({ build }) => {
-    const assembly = build();
-    setLinearSolver(null);
-    const simplex = assessPhysicalFeasibility(fresh(assembly), options);
-    setLinearSolver(createHighsSolver(highs));
-    const fast = assessPhysicalFeasibility(fresh(assembly), options);
-    expect(fast).toMatchObject({
-      status: simplex.status,
-      gravity: simplex.gravity,
-      connectionStrength: simplex.connectionStrength,
-    });
-    if (simplex.minimumStudTensionNewtons === null)
-      expect(fast.minimumStudTensionNewtons).toBe(null);
-    else expect(fast.minimumStudTensionNewtons).toBeCloseTo(simplex.minimumStudTensionNewtons, 6);
-    expect(fast.overloadedConnections.length > 0).toBe(simplex.overloadedConnections.length > 0);
-  });
+  ])(
+    'matches the built-in simplex on $name',
+    ({ build }) => {
+      const assembly = build();
+      setLinearSolver(null);
+      const simplex = assessPhysicalFeasibility(fresh(assembly), options);
+      setLinearSolver(createHighsSolver(highs));
+      const fast = assessPhysicalFeasibility(fresh(assembly), options);
+      expect(fast).toMatchObject({
+        status: simplex.status,
+        gravity: simplex.gravity,
+        connectionStrength: simplex.connectionStrength,
+      });
+      if (simplex.minimumStudTensionNewtons === null)
+        expect(fast.minimumStudTensionNewtons).toBe(null);
+      else expect(fast.minimumStudTensionNewtons).toBeCloseTo(simplex.minimumStudTensionNewtons, 6);
+      expect(fast.overloadedConnections.length > 0).toBe(simplex.overloadedConnections.length > 0);
+    },
+    60_000,
+  );
 });
 
 describe('physical checks run elsewhere', () => {

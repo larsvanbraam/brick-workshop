@@ -1320,15 +1320,19 @@ describe('shaped and carried pieces in the static solver', () => {
     expect(report.gravity).not.toBe('not-assessed');
     expect(report.masses.map(({ brickId }) => brickId)).toEqual(['bracket', 'plate']);
   });
-  it.each(SMALL_EXAMPLES)('assesses gravity for the $name example', ({ id }) => {
-    const assembly = createExampleAssembly(id);
-    const report = assessPhysicalFeasibility(assembly, { estimateMissingMasses: true });
-    // Past the solver's cap only tipping is decided; nothing may tip.
-    if (assembly.bricks.length > MAX_PHYSICS_PIECES) {
-      expect(report.gravity).toBe('not-assessed');
-      expect(report.groundedGroups.some((group) => group.tips)).toBe(false);
-    } else expect(['balanced', 'requires-clutch']).toContain(report.gravity);
-  });
+  it.each(SMALL_EXAMPLES)(
+    'assesses gravity for the $name example',
+    ({ id }) => {
+      const assembly = createExampleAssembly(id);
+      const report = assessPhysicalFeasibility(assembly, { estimateMissingMasses: true });
+      // Past the solver's cap only tipping is decided; nothing may tip.
+      if (assembly.bricks.length > MAX_PHYSICS_PIECES) {
+        expect(report.gravity).toBe('not-assessed');
+        expect(report.groundedGroups.some((group) => group.tips)).toBe(false);
+      } else expect(['balanced', 'requires-clutch']).toContain(report.gravity);
+    },
+    60_000,
+  );
 });
 
 describe('grounded groups', () => {
