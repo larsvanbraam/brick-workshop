@@ -3,6 +3,8 @@ import {
   ArrowUp,
   Boxes,
   Camera,
+  Feather,
+  Footprints,
   ChevronDown,
   ChevronUp,
   Clapperboard,
@@ -17,6 +19,7 @@ import {
   Maximize,
   MousePointer2,
   Orbit,
+  PersonStanding,
   PanelRight,
   Redo2,
   RotateCcw,
@@ -85,6 +88,7 @@ import { PhysicsClient } from './physics-client';
 import { Scene, captureScene } from './Scene';
 import { MOODS } from './cinematic';
 import type { CinematicMood } from './cinematic';
+import type { WalkCamera } from './walk-view';
 import type {
   BuildProgress,
   PointerDevice,
@@ -573,10 +577,19 @@ export default function App() {
   const [buildProgress, setBuildProgress] = useState<BuildProgress | null>(null);
   const [mood, setMood] = useState<CinematicMood>('studio');
   const [turntable, setTurntable] = useState(false);
+  const [walk, setWalk] = useState<WalkCamera | null>(null);
+  const [flying, setFlying] = useState(false);
   const cinematicStage = useMemo(
-    () => (cinematic ? { mood, turntable } : null),
-    [cinematic, mood, turntable],
+    () =>
+      cinematic
+        ? { mood, turntable: turntable && !walk, walk, flying, onFlyingChange: setFlying }
+        : null,
+    [cinematic, mood, turntable, walk, flying],
   );
+  function toggleWalk() {
+    setWalk(walk ? null : 'first');
+    setFlying(false);
+  }
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [trayOpen, setTrayOpen] = useState(false);
   const [message, setMessage] = useState('');
@@ -1124,6 +1137,8 @@ export default function App() {
   function exitCinematic() {
     setCinematic(false);
     setTurntable(false);
+    setWalk(null);
+    setFlying(false);
     resetView();
   }
   function captureScreenshot() {
@@ -1291,7 +1306,12 @@ export default function App() {
       setShiftHeld(event.shiftKey);
       if (modal || isTyping(event.target)) return;
       if (cinematic) {
-        if (event.key === 'Escape') exitCinematic();
+        // Escape leaves the walk first, then the stage.
+        if (event.key === 'Escape') {
+          if (walk) toggleWalk();
+          else exitCinematic();
+        } else if (walk && event.key.toLowerCase() === 'v' && !event.repeat)
+          setWalk(walk === 'first' ? 'third' : 'first');
         return;
       }
       const key = event.key.toLowerCase();
@@ -1669,6 +1689,16 @@ export default function App() {
             progress={buildProgress}
           />
 
+          {cinematic && walk && (
+            <>
+              <div className="walk-hint" aria-live="polite">
+                {flying
+                  ? 'Flying · Space to rise · Shift to sink · double-tap W to sprint · sink to the ground or press F to land · Esc to stop'
+                  : 'Click or drag to look around · WASD to walk · Space to jump · Shift to run · double-tap Space to fly · V to switch view · Esc to stop'}
+              </div>
+              {walk === 'first' && <div className="walk-crosshair" aria-hidden="true" />}
+            </>
+          )}
           {cinematic && (
             <div className="cinematic-bar" role="toolbar" aria-label="Cinematic view">
               <div className="segmented" role="group" aria-label="Lighting">
@@ -1684,10 +1714,42 @@ export default function App() {
                 title="Turntable"
                 aria-label="Turntable"
                 aria-pressed={turntable}
+                disabled={walk !== null}
                 onClick={() => setTurntable(!turntable)}
               >
                 <Orbit size={16} />
               </button>
+              <button
+                className="icon-button"
+                title="Walk around as a minifigure"
+                aria-label="Walk around"
+                aria-pressed={walk !== null}
+                onClick={toggleWalk}
+              >
+                <Footprints size={16} />
+              </button>
+              {walk && (
+                <button
+                  className="icon-button"
+                  title="Over the shoulder (V)"
+                  aria-label="Over the shoulder"
+                  aria-pressed={walk === 'third'}
+                  onClick={() => setWalk(walk === 'first' ? 'third' : 'first')}
+                >
+                  <PersonStanding size={16} />
+                </button>
+              )}
+              {walk && (
+                <button
+                  className="icon-button"
+                  title="Fly (F, or double-tap Space)"
+                  aria-label="Fly"
+                  aria-pressed={flying}
+                  onClick={() => setFlying(!flying)}
+                >
+                  <Feather size={16} />
+                </button>
+              )}
               <button
                 className="icon-button"
                 title="Save screenshot"

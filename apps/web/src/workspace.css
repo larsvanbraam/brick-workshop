@@ -982,7 +982,9 @@ kbd {
   z-index: 100;
   background: #0b0c10;
 }
-.workspace.cinematic .viewport > :not(:first-child, .cinematic-bar, .scene-debug) {
+.workspace.cinematic
+  .viewport
+  > :not(:first-child, .cinematic-bar, .scene-debug, .walk-hint, .walk-crosshair) {
   display: none;
 }
 .cinematic-bar {
@@ -1028,6 +1030,33 @@ kbd {
 }
 .cinematic-bar .divider {
   background: rgba(255, 255, 255, 0.15);
+}
+
+.walk-hint {
+  position: absolute;
+  left: 50%;
+  top: 18px;
+  transform: translateX(-50%);
+  max-width: calc(100% - 32px);
+  padding: 6px 12px;
+  border-radius: 10px;
+  background: rgba(20, 22, 28, 0.55);
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 12px;
+  text-align: center;
+  pointer-events: none;
+}
+.walk-crosshair {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  margin: -3px 0 0 -3px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.7);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
 }
 
 /* Details drawer */

@@ -39,6 +39,8 @@ import {
 } from './scene-frame';
 import { CinematicStage } from './cinematic';
 import type { CinematicMood } from './cinematic';
+import { WalkMode } from './walk-view';
+import type { WalkCamera } from './walk-view';
 import {
   BUILD_AREA,
   COLORS,
@@ -85,7 +87,15 @@ interface SceneProps {
   models: Record<string, Group>;
   onReady: () => void;
   /** Swaps the workshop for a dark, dramatically lit stage meant for screenshots. */
-  cinematic?: { mood: CinematicMood; turntable: boolean } | null;
+  cinematic?: {
+    mood: CinematicMood;
+    turntable: boolean;
+    /** A minifigure walks the build, seen through its eyes or over its shoulder. */
+    walk?: WalkCamera | null;
+    /** The walker is flying. */
+    flying?: boolean;
+    onFlyingChange?: (flying: boolean) => void;
+  } | null;
   /** Parts still loading: their bricks wait for them instead of showing fallback shapes. */
   pendingParts?: readonly string[];
   /** Hears how far a big rebuild has come, and `null` once the model is complete. */
@@ -95,6 +105,8 @@ interface SceneProps {
 }
 
 export type BuildProgress = { done: number; total: number };
+
+const noop = () => {};
 
 /** Rebuilds that place at least this many bricks run in slices between frames. */
 const SLICED_REBUILD = 400;
@@ -217,9 +229,12 @@ function CameraRig({
   onDevice,
   cinematic,
   turntable,
+  walking,
 }: {
   controls: RefObject<CameraControls | null>;
   cinematic: boolean;
+  /** The walker drives the camera: navigation stands aside and the view refits afterwards. */
+  walking: boolean;
   turntable: boolean;
   trackpad: boolean;
   onDevice?: (device: PointerDevice) => void;
@@ -259,15 +274,15 @@ function CameraRig({
     // Refits when the stage opens and once the viewport has grown to fill the window.
     const rig = controls.current;
     const { bounds } = latest.current;
-    if (!cinematic || !rig || !bounds || !(camera instanceof PerspectiveCamera)) return;
+    if (!cinematic || walking || !rig || !bounds || !(camera instanceof PerspectiveCamera)) return;
     const frame = getCinematicFrame(bounds, size.width / size.height, camera.fov);
     void rig.setLookAt(...frame.position, ...frame.target, true);
-  }, [cinematic, size.width, size.height, camera, controls]);
+  }, [cinematic, walking, size.width, size.height, camera, controls]);
   useEffect(() => {
     if (turntable) invalidate();
   }, [turntable, invalidate]);
   useFrame((_, delta) => {
-    if (!turntable) return;
+    if (!turntable || walking) return;
     void controls.current?.rotate(delta * 0.15, 0, false);
     invalidate();
   });
@@ -395,6 +410,7 @@ function CameraRig({
     <CameraControls
       ref={controls}
       makeDefault
+      enabled={!walking}
       minDistance={2}
       maxDistance={maxDistance}
       maxPolarAngle={Math.PI / 2 - 0.03}
@@ -924,6 +940,7 @@ export const Scene = memo(function Scene(props: SceneProps) {
       ),
     [props.assembly, props.layer],
   );
+  const visibleBricks = useMemo(() => [...visible.values()], [visible]);
   const selected = props.selectedId ? visible.get(props.selectedId) : undefined;
   const highlighted = props.highlightId ? visible.get(props.highlightId) : undefined;
   const mode = props.mode ?? 'select';
@@ -1106,7 +1123,17 @@ export const Scene = memo(function Scene(props: SceneProps) {
           onDevice={props.onPointerDevice}
           cinematic={cinematic !== null}
           turntable={cinematic?.turntable ?? false}
+          walking={Boolean(cinematic?.walk)}
         />
+        {cinematic?.walk && (
+          <WalkMode
+            bricks={visibleBricks}
+            buildArea={buildArea}
+            view={cinematic.walk}
+            flying={cinematic.flying ?? false}
+            onFlyingChange={cinematic.onFlyingChange ?? noop}
+          />
+        )}
         <StillCapture onFull={setFullStill} />
         <SceneReady onReady={props.onReady} />
         {debug.enabled && (

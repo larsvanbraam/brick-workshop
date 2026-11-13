@@ -4,6 +4,7 @@ import { isAbsolute, relative, resolve, sep } from 'node:path';
 import { createInterface } from 'node:readline';
 import type { Plugin, ViteDevServer } from 'vite-plus';
 import { PARTS } from '@brick-workshop/engine';
+import { MINIFIG_PARTS } from '../src/minifig-parts.ts';
 
 export interface LibraryManifest {
   available: boolean;
@@ -136,6 +137,9 @@ async function findFile(root: string, reference: string): Promise<string> {
   throw Object.assign(new Error(`Missing LDraw dependency: ${reference}`), { code: 'ENOENT' });
 }
 
+/** Everything the workshop draws from the library: the catalogue's parts and the minifigure. */
+const SHIPPED_PARTS = [...PARTS.map((part) => part.id), ...MINIFIG_PARTS];
+
 export async function collectLibrary(
   libraryPath: string,
   partIds: readonly string[] = PARTS.map((part) => part.id),
@@ -181,7 +185,12 @@ export async function collectLibrary(
 
 export function ldrawLibraryPlugin(libraryPath: string): Plugin {
   let library: ReturnType<typeof collectLibrary> | undefined;
-  const loadLibrary = () => (library ??= collectLibrary(libraryPath));
+  // A library without the minifigure's parts still serves the catalogue; the walker then draws
+  // a stand-in figure.
+  const loadLibrary = () =>
+    (library ??= collectLibrary(libraryPath, SHIPPED_PARTS).catch(() =>
+      collectLibrary(libraryPath),
+    ));
   let catalog: Promise<LibraryCatalog> | undefined;
   const loadCatalog = () => (catalog ??= indexLibrary(libraryPath));
   const previews = new Map<string, ReturnType<typeof collectLibrary>>();
@@ -222,8 +231,8 @@ export function ldrawLibraryPlugin(libraryPath: string): Plugin {
           const ids = url.searchParams.get('parts')!.split(',');
           if (
             url.searchParams.getAll('parts').length !== 1 ||
-            ids.length > PARTS.length ||
-            ids.some((id) => !PARTS.some((part) => part.id === id))
+            ids.length > SHIPPED_PARTS.length ||
+            ids.some((id) => !SHIPPED_PARTS.includes(id))
           ) {
             response.statusCode = 400;
             response.end('Expected supported part IDs.');
