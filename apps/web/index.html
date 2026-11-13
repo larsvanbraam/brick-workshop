@@ -66,40 +66,61 @@
       /* Bricks drop in and stack, then lift away and start over. Transform and opacity only,
          so it stays on the compositor and keeps moving while part parsing and shader
          compilation block the main thread. */
+      /* Real brick proportions on a 16px stud pitch: a brick is 1.2 pitches tall, a stud 0.6
+         wide and about 0.2 high. Every brick sits on studs: two 1 x 4s, a 1 x 4 across their
+         joint and a 1 x 2 on its middle two studs. */
       #workshop-loading .loading-bricks {
         position: relative;
-        width: 96px;
-        height: 70px;
-        margin: 28px auto 0;
+        width: 128px;
+        height: 62px;
+        margin: 36px auto 4px;
+      }
+      #workshop-loading .loading-bricks::after {
+        content: '';
+        position: absolute;
+        left: -8px;
+        right: -8px;
+        bottom: -7px;
+        height: 10px;
+        border-radius: 50%;
+        background: radial-gradient(closest-side, rgb(48 56 50 / 0.16), transparent);
       }
       #workshop-loading .loading-bricks span {
-        --stud: rgb(255 255 255 / 0.18);
+        --light: color-mix(in srgb, var(--c), white 28%);
+        --dark: color-mix(in srgb, var(--c), black 22%);
         position: absolute;
-        bottom: var(--y);
-        left: var(--x);
-        width: var(--w);
-        height: 18px;
-        border-radius: 2px;
-        background: var(--c);
-        box-shadow: inset 0 -4px 0 rgb(0 0 0 / 0.16);
+        z-index: 1;
+        bottom: calc(var(--row) * 19px);
+        left: calc(var(--at) * 16px);
+        width: calc(var(--studs) * 16px);
+        height: 19px;
+        border-radius: 1.5px;
+        background: linear-gradient(
+          var(--light) 0 2px,
+          var(--c) 2px calc(100% - 5px),
+          var(--dark) calc(100% - 5px)
+        );
+        box-shadow:
+          inset 1px 0 rgb(255 255 255 / 0.18),
+          inset -1px 0 rgb(0 0 0 / 0.18);
         opacity: 0;
         will-change: transform, opacity;
         animation: workshop-brick-drop 2.8s cubic-bezier(0.5, 0, 0.75, 0) var(--d) infinite both;
       }
-      /* Studs: one drawn, the rest repeated with box-shadow every 24px. */
+      /* Studs, one per 16px cell, shaded like a cylinder lit from the left. */
       #workshop-loading .loading-bricks span::before {
         content: '';
         position: absolute;
-        top: -4px;
-        left: 6px;
-        width: 12px;
-        height: 4px;
-        border-radius: 1px 1px 0 0;
-        background: var(--c);
-        box-shadow: 24px 0 var(--c);
-      }
-      #workshop-loading .loading-bricks span.narrow::before {
-        box-shadow: none;
+        inset: -3px 0 auto;
+        height: 3px;
+        background: repeating-linear-gradient(
+          90deg,
+          transparent 0 3px,
+          var(--light) 3px 6px,
+          var(--c) 6px 10px,
+          var(--dark) 10px 13px,
+          transparent 13px 16px
+        );
       }
       @keyframes workshop-brick-drop {
         0% {
@@ -151,13 +172,10 @@
     <div id="workshop-loading" role="status" aria-live="polite">
       <h1>Brick Workshop</h1>
       <div class="loading-bricks" role="progressbar" aria-label="Loading workshop">
-        <span style="--c: #c91a09; --x: 0px; --y: 0px; --w: 48px; --d: 0s"></span>
-        <span style="--c: #0055bf; --x: 48px; --y: 0px; --w: 48px; --d: 0.22s"></span>
-        <span style="--c: #f2cd37; --x: 24px; --y: 22px; --w: 48px; --d: 0.44s"></span>
-        <span
-          class="narrow"
-          style="--c: #25714f; --x: 36px; --y: 44px; --w: 24px; --d: 0.66s"
-        ></span>
+        <span style="--c: #c91a09; --at: 0; --row: 0; --studs: 4; --d: 0s"></span>
+        <span style="--c: #0055bf; --at: 4; --row: 0; --studs: 4; --d: 0.22s"></span>
+        <span style="--c: #f2cd37; --at: 2; --row: 1; --studs: 4; --d: 0.44s"></span>
+        <span style="--c: #237841; --at: 3; --row: 2; --studs: 2; --d: 0.66s"></span>
       </div>
       <p data-loading-message>Loading parts...</p>
     </div>
