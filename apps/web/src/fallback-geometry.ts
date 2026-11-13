@@ -97,10 +97,12 @@ export function createFallbackGeometry(brick: Brick) {
     const profile = new Shape();
     const halfSpan = part.depth / 2;
     const halfHeight = height / 2;
-    profile.moveTo(-halfSpan, -halfHeight);
-    profile.lineTo(halfSpan, -halfHeight);
-    profile.lineTo(halfSpan, halfHeight);
-    profile.lineTo(-halfSpan, halfHeight);
+    // A door leaf fits inside its frame's border rather than covering the frame flush.
+    const inset = part.shape === 'door' && !['3579', '60596'].includes(part.id) ? 0.3 : 0;
+    profile.moveTo(-halfSpan + inset, -halfHeight + inset);
+    profile.lineTo(halfSpan - inset, -halfHeight + inset);
+    profile.lineTo(halfSpan - inset, halfHeight - inset);
+    profile.lineTo(-halfSpan + inset, halfHeight - inset);
     profile.closePath();
     if (part.shape === 'slope' || part.shape === 'inverted-slope') {
       profile.curves.length = 0;

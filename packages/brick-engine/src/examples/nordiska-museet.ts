@@ -37,6 +37,7 @@ const BRIGHT = 10;
 const OLIVE = 330;
 const SAND_GREEN = 378;
 const BARK = 70;
+const TIMBER_DARK = 308;
 const BLUE = 1;
 const MEDIUM_BLUE = 73;
 const RIPPLE = 43;
@@ -71,6 +72,8 @@ const FLAT = ROOF + ROOF_STEPS * 3;
 const CAP = FLAT + 1;
 /** The turrets stand clear of the roof, as high as its ridge. */
 const TURRET_COURSES = COURSES + ROOF_STEPS;
+/** The entrance towers rise higher still, a belfry stage clear above the pavilion's gable. */
+const ENTRANCE_COURSES = TURRET_COURSES + 6;
 /** Courses that are tan bands: the sill course, the string course, the cornice and the turrets'. */
 const BANDS = new Set([2, 10, 15, 22, TURRET_COURSES - 1]);
 
@@ -82,6 +85,9 @@ const PAVILION_FRONT = 67;
 /** Façade bays: 8-stud projections, two studs deep, in front of both long walls. */
 const BAYS = [20, 32, 44, 76, 88, 100];
 const RECESSES = [28, 40, 84, 96];
+/** In front, the bays either side of the pavilion give way to the entrance towers. */
+const FRONT_BAYS = BAYS.filter((bay) => bay !== 44 && bay !== 76);
+const bays = (front: boolean) => (front ? FRONT_BAYS : BAYS);
 
 const key = (x: number, z: number) => `${x}:${z}`;
 const within = (x: number, z: number, x0: number, z0: number, x1: number, z1: number) =>
@@ -103,29 +109,39 @@ const range = (from: number, to: number) =>
   Array.from({ length: to - from + 1 }, (_, index) => from + index);
 const NEIGHBOURS = [-1, 0, 1].flatMap((dx) => [-1, 0, 1].map((dz) => [dx, dz] as const));
 
-const inBay = (x: number) => BAYS.some((bay) => x >= bay && x <= bay + 7);
+const inBay = (x: number, front: boolean) => bays(front).some((bay) => x >= bay && x <= bay + 7);
 /** The cells a bay projects past its long wall. */
 const isBay = (x: number, z: number) =>
-  inBay(x) && ((z > FRONT && z <= FRONT + 2) || (z >= BACK - 2 && z < BACK));
+  (inBay(x, true) && z > FRONT && z <= FRONT + 2) || (inBay(x, false) && z >= BACK - 2 && z < BACK);
 const bayWall = (x: number, z: number) =>
-  BAYS.some(
-    (bay) => rim(x, z, bay, FRONT, bay + 7, FRONT + 2) || rim(x, z, bay, BACK - 2, bay + 7, BACK),
-  );
+  FRONT_BAYS.some((bay) => rim(x, z, bay, FRONT, bay + 7, FRONT + 2)) ||
+  BAYS.some((bay) => rim(x, z, bay, BACK - 2, bay + 7, BACK));
 /** The long wall doesn't run on behind a bay: each bay opens into the hall. */
 const insideBay = (x: number, z: number) =>
-  (z === FRONT || z === BACK) && BAYS.some((bay) => x > bay && x < bay + 7);
+  (z === FRONT || z === BACK) && bays(z === FRONT).some((bay) => x > bay && x < bay + 7);
 
 /**
- * Octagonal corner towers: 8 x 8 with a stud cut from each corner, standing four studs proud
- * of the main block's corners. Facet bricks chamfer the cut corners into straight faces.
+ * Octagonal towers: 8 x 8 with a stud cut from each corner, four standing four studs proud of
+ * the main block's corners and two flanking the entrance pavilion, flush with its portal.
+ * Facet bricks chamfer the cut corners into straight faces.
  */
 const TURRET = 8;
+const ENTRANCE_TOWERS = [
+  [44, FRONT + 1],
+  [76, FRONT + 1],
+] as const;
 const TURRETS = [
   [WEST - 4, FRONT - 3],
   [EAST - 3, FRONT - 3],
   [WEST - 4, BACK - 4],
   [EAST - 3, BACK - 4],
+  ...ENTRANCE_TOWERS,
 ] as const;
+const isEntranceTower = (x: number, z: number) =>
+  ENTRANCE_TOWERS.some(([tx, tz]) => within(x, z, tx, tz, tx + TURRET - 1, tz + TURRET - 1));
+/** How many courses the tower over this cell rises. */
+const turretCourses = (x: number, z: number) =>
+  isEntranceTower(x, z) ? ENTRANCE_COURSES : TURRET_COURSES;
 const isTurret = (x: number, z: number) =>
   TURRETS.some(([tx, tz]) => {
     const [dx, dz] = [x - tx, z - tz].map((at) => Math.min(at, TURRET - 1 - at));
@@ -338,15 +354,18 @@ const FRAME_COURSES: Readonly<Record<string, number>> = {
   '60592': 2,
 };
 /**
- * Window styles as rows of [frame part, 'casements' or 'transom', plates above the sill]. Frames
- * repeat along the opening. Casements are a 1 x 4 x 3 frame with a two-bar casement hung at
- * each end in place of glass, the far one upside down: a grid of six lights like the many
- * small panes of the real upper windows. A transom is a tan brick across the opening, between
- * the lights below and above it.
+ * Window styles as rows of [frame part, 'casements' or 'transom', plates above the sill].
+ * Frames repeat along the opening. Casements are a 1 x 4 x 3 frame with a latticed
+ * casement hung at each end, the Bookshop's windows: a grid of small square panes like the
+ * real museum's, with a black wall a stud behind so the panes read as dark glass. A transom is
+ * a tan brick across the opening, between the lights below and above it.
  */
 const LIGHTS: Readonly<Record<string, readonly (readonly [string, number])[]>> = {
-  // Three tall lights, like the real ground-floor windows.
-  tall: [['57894', 0]],
+  // Two latticed windows one above the other, like the real tall ground-floor windows.
+  tall: [
+    ['casements', 0],
+    ['casements', 9],
+  ],
   wide: [['60592', 0]],
   casements: [['casements', 0]],
   // A tan sill plate under a window whose own rounded head fills its top, with no arch to
@@ -367,7 +386,8 @@ const ARCH_COURSES: Readonly<Record<string, number>> = {
 
 /** Window openings in the walls, as [x, z, rotation]: each a tall window and one above it. */
 const OPENINGS: readonly (readonly [number, number, 0 | 90])[] = [
-  ...BAYS.flatMap((bay) => [[bay + 2, FRONT + 2, 90] as const, [bay + 2, BACK - 2, 90] as const]),
+  ...FRONT_BAYS.map((bay) => [bay + 2, FRONT + 2, 90] as const),
+  ...BAYS.map((bay) => [bay + 2, BACK - 2, 90] as const),
   ...RECESSES.flatMap((x) => [[x, FRONT, 90] as const, [x, BACK, 90] as const]),
   [59, BACK - 8, 90],
   [65, BACK - 8, 90],
@@ -379,7 +399,10 @@ const MAIN_WINDOWS: readonly Window[] = OPENINGS.flatMap(([x, z, rotation]) => [
   { x, z, rotation, width: 4, frame: 'tall', course: 2, arch: '3009', archCourse: 8 },
   { x, z, rotation, width: 4, frame: 'casements', course: 11, arch: '3009', archCourse: 14 },
 ]);
-/** Each turret has a window on each outside face at four levels, two of them above the eaves. */
+/**
+ * Each tower has a window on each outside face at four levels, two of them above the eaves; the
+ * entrance towers have a fifth in their belfry stage.
+ */
 const TURRET_WINDOWS: readonly Window[] = TURRETS.flatMap(([tx, tz]) =>
   (
     [
@@ -391,7 +414,7 @@ const TURRET_WINDOWS: readonly Window[] = TURRETS.flatMap(([tx, tz]) =>
   )
     .filter(([, , , outsideX, outsideZ]) => !enclosed(outsideX, outsideZ))
     .flatMap(([x, z, rotation]) =>
-      [4, 11, 18, 24].map((course): Window => ({
+      [4, 11, 18, 24, ...(isEntranceTower(tx, tz) ? [30] : [])].map((course): Window => ({
         x,
         z,
         rotation,
@@ -403,20 +426,7 @@ const TURRET_WINDOWS: readonly Window[] = TURRETS.flatMap(([tx, tz]) =>
       })),
     ),
 );
-/** The pavilion's sides show only three studs past the bays beside it: narrow windows. */
-const PAVILION_WINDOWS: readonly Window[] = [PAVILION_WEST, PAVILION_EAST].flatMap((x) =>
-  [4, 11].map((course): Window => ({
-    x,
-    z: FRONT + 3,
-    rotation: 0,
-    width: 2,
-    frame: 'rounded',
-    course,
-    arch: 'none',
-    archCourse: course + 3,
-  })),
-);
-const WINDOWS = [...MAIN_WINDOWS, ...TURRET_WINDOWS, ...PAVILION_WINDOWS];
+const WINDOWS = [...MAIN_WINDOWS, ...TURRET_WINDOWS];
 const windowCells = (window: Window, from: number, length: number) =>
   range(from, from + length - 1).map((offset) =>
     window.rotation === 90 ? key(window.x + offset, window.z) : key(window.x, window.z + offset),
@@ -433,9 +443,20 @@ const opens = (windows: readonly Window[], x: number, z: number, course: number)
         course < window.archCourse + ARCH_COURSES[window.arch] &&
         windowCells(window, -1, window.width + 2).includes(key(x, z))),
   );
+/** A piece on its own, for seating others on its clips and side studs. */
+const piece = (
+  partId: string,
+  color: number,
+  x: number,
+  y: number,
+  z: number,
+  rotation: Rotation = 0,
+  facing?: Facing,
+): Brick => ({ id: partId, partId, color, x, y, z, rotation, ...(facing ? { facing } : {}) });
+
 /**
- * A 1 x 4 x 3 frame with a two-bar casement at each end, through `open`, which glazes nothing:
- * each pane goes in whichever half and way up the engine says its pins fit.
+ * A 1 x 4 x 3 frame with a latticed casement at each end, through `open`, which glazes
+ * nothing: each casement goes in whichever half and way up the engine says its pins fit.
  */
 function addCasements(open: ExampleBrickAdder, x: number, y: number, z: number, rotation: 0 | 90) {
   const frame = { id: 'frame', partId: '60594', color: JOINERY, x, y, z, rotation };
@@ -445,14 +466,48 @@ function addCasements(open: ExampleBrickAdder, x: number, y: number, z: number, 
       const pane = {
         ...frame,
         id: 'pane',
-        partId: '60608',
+        partId: '60607',
         x: rotation === 90 ? x + offset : x,
         z: rotation === 90 ? z : z + offset,
         ...(upsideDown ? { upsideDown: true as const } : {}),
       };
       if (isMatchingInsertFrame(pane, frame))
-        open('60608', JOINERY, pane.x, y, pane.z, rotation, undefined, upsideDown);
+        open('60607', JOINERY, pane.x, y, pane.z, rotation, undefined, upsideDown);
     }
+}
+
+/**
+ * A course of the black wall a stud inside a window, the dark room the panes show: it stands
+ * from the floor up to the window's head, out of sight behind the wall between windows, and
+ * steps round the apses' hidden partitions.
+ */
+function addBacking(add: ExampleBrickAdder, window: Window, y: number) {
+  const way = outward(window.x, window.z);
+  if (!way) throw new Error(`No way out of the wall for a window at ${window.x}, ${window.z}.`);
+  const [dx, dz] = way;
+  const cells = windowCells(window, 0, window.width).map((cell) => {
+    const [x, z] = cell.split(':').map(Number);
+    return [x - dx, z - dz] as const;
+  });
+  let run: (readonly [number, number])[] = [];
+  for (const cell of [...cells, undefined]) {
+    if (cell && !PARTITIONS.has(key(...cell))) {
+      run.push(cell);
+      continue;
+    }
+    if (run.length)
+      addRun(
+        add,
+        'brick',
+        BLACK,
+        window.rotation === 90 ? 'x' : 'z',
+        run[0][0],
+        y,
+        run[0][1],
+        run.length,
+      );
+    run = [];
+  }
 }
 
 /**
@@ -499,6 +554,23 @@ function addWindows(
 
 /** The main door: two leaves under an arch, in the pavilion front. */
 const DOOR = [60, 67] as const;
+/**
+ * The wicket door cut into the great door, three studs wide and four courses high, off centre
+ * in the six studs the stone jambs leave showing.
+ */
+const WICKET = DOOR[0] + 2;
+const WICKET_COURSES = 4;
+/**
+ * What fills each cell of the great door below its arch: the wicket, plain wood behind the
+ * jambs, a boss on every other stud of every other course, staggered from row to row, or
+ * plain wood.
+ */
+const doorCell = (x: number, course: number) => {
+  if (x >= WICKET && x < WICKET + 3 && course < WICKET_COURSES) return 'wicket';
+  if (x === DOOR[0] || x === DOOR[1]) return 'wood';
+  if (course % 2 === 1 && (x + (course % 4 === 3 ? 1 : 0)) % 2 === 0) return 'boss';
+  return 'wood';
+};
 /** Headlight bricks under each tall window read as basement lights in the plinth. */
 const BASEMENT_CELLS = new Set(
   MAIN_WINDOWS.filter(({ frame }) => frame === 'tall').flatMap((window) =>
@@ -573,7 +645,7 @@ const material = (x: number, z: number, course: number) => {
   if (PARTITIONS.has(key(x, z))) return 'w';
   if (course <= 1) return 'p';
   // The towers wear copper bands at the eaves and under their steeples.
-  if (TURRET_WALLS.has(key(x, z)) && (course === COURSES - 1 || course === TURRET_COURSES - 1))
+  if (TURRET_WALLS.has(key(x, z)) && (course === COURSES - 1 || course === turretCourses(x, z) - 1))
     return 'c';
   if (BANDS.has(course)) return 'b';
   if (course % 2 === 1 && isCorner(x, z)) return 'b';
@@ -599,7 +671,8 @@ const END_CEILINGS = [
 ] as const;
 const PAVILION_CEILING = [PAVILION_WEST - 2, FRONT + 3, PAVILION_EAST + 2, PAVILION_FRONT] as const;
 const CEILINGS = [MAIN_CEILING, ...END_CEILINGS, PAVILION_CEILING];
-const inCeiling = (x: number, z: number) => CEILINGS.some((area) => within(x, z, ...area));
+const inCeiling = (x: number, z: number) =>
+  CEILINGS.some((area) => within(x, z, ...area)) && !isTurret(x, z) && !FACET_BOXES.has(key(x, z));
 
 /**
  * The tower rises through the roof at the crossing, centred on the ridge: a square shaft hidden
@@ -1237,17 +1310,6 @@ function addLampPost(add: ExampleBrickAdder, x: number, z: number, y = LAWN_TOP)
   add('98138', BLACK, x + 0.5, y + 24, z + 0.5);
 }
 
-/** A piece on its own, for seating others on its clips and side studs. */
-const piece = (
-  partId: string,
-  color: number,
-  x: number,
-  y: number,
-  z: number,
-  rotation: Rotation = 0,
-  facing?: Facing,
-): Brick => ({ id: partId, partId, color, x, y, z, rotation, ...(facing ? { facing } : {}) });
-
 /**
  * A sloop moored in the bay, its bow towards -x, [x, z] the corner of its 16 x 4 hull. The hull
  * is two white plates at the waterline under three of dark tan and a reddish brown deck, its
@@ -1354,7 +1416,7 @@ export const nordiskaMuseet: ExampleDefinition = {
     'park',
     'waterfront',
   ],
-  expectedPieceCount: 13827,
+  expectedPieceCount: 15020,
   buildArea: SIZE,
   brickIdPrefix: 'museet',
   smooth: [{ only: (brick) => NATURAL.has(naturalKey(brick)) }],
@@ -1586,11 +1648,11 @@ export const nordiskaMuseet: ExampleDefinition = {
 
     // Walls and turrets, a course at a time: the main walls stop at the cornice, the turrets
     // rise on past the eaves.
-    for (let course = 0; course < TURRET_COURSES; course++) {
+    for (let course = 0; course < ENTRANCE_COURSES; course++) {
       const y = BASE + course * 3;
       const main = course < COURSES;
       const standing = (x: number, z: number) =>
-        ((main && wall(x, z)) || TURRET_WALLS.has(key(x, z))) &&
+        ((main && wall(x, z)) || (TURRET_WALLS.has(key(x, z)) && course < turretCourses(x, z))) &&
         !isOpen(x, z, course) &&
         !dentil(x, z, course);
       addWallCourse(
@@ -1607,6 +1669,7 @@ export const nordiskaMuseet: ExampleDefinition = {
       }
       // The facet takes the colour of the cell beside the corner it chamfers.
       for (const [x, z, rotation] of FACETS) {
+        if (course >= turretCourses(x, z)) continue;
         const [cx, cz] = FACET_CELLS[rotation][0];
         const [ox, oz] = [x + 1 - cx, z + cz];
         add('87620', WALL_LEGEND[material(ox, oz, course)][1], x, y, z, rotation);
@@ -1634,25 +1697,48 @@ export const nordiskaMuseet: ExampleDefinition = {
           const [x, z] = cell.split(':').map(Number);
           add('4070', SLATE, x, y, z, outward(x, z)![2]);
         }
-      // The main door: two four-pane leaves in frames, then a plate across them, an arch and
-      // two plates up to the next course, before anything rests on them. Behind, a navy panel
-      // on two piers fills the half-moon, like the banner hung over the real entrance.
-      if (course < 6)
-        for (const x of [DOOR[0] - 1, DOOR[1] + 1])
-          add('3005', SANDSTONE, x, y, PAVILION_FRONT - 1);
-      if (course === 0)
-        for (const x of [DOOR[0], DOOR[0] + 4]) {
-          // Hung half a turn round, so the leaf's extra half stud stands inside the hall
-          // rather than out on the landing tile.
-          add('60596', TRIM, x, y, PAVILION_FRONT, 270);
-          add('60623', BARK, x, y, PAVILION_FRONT - 1, 270);
+      // The main door: one great wooden door set a stud back behind a stone surround, as on
+      // the real museum, so the arch frames its rounded head: stone jambs carry the arch, and
+      // behind them the door's boarded face, studded with dark bosses on headlight bricks,
+      // runs on up into the half-moon as a wooden panel on two piers. As in a medieval church
+      // door, a small wicket door is cut into it to walk through, in a dark frame, so the
+      // great door needn't open. Over the arch two plates go up to the next course.
+      const door = PAVILION_FRONT - 1;
+      if (course < 6) {
+        for (const x of [DOOR[0] - 1, DOOR[1] + 1]) add('3005', SANDSTONE, x, y, door);
+        for (const x of DOOR) add('3005', TRIM, x, y, PAVILION_FRONT);
+      }
+      if (course === 0) {
+        // Hung in the back of its frame, so it stands half a stud into the hall rather than
+        // out on the threshold.
+        add('3579', TIMBER_DARK, WICKET, y, door, 90);
+        add('3192a', BARK, WICKET, y, door - 0.5, 270);
+        addRun(add, 'tile', TRIM, 'x', DOOR[0] + 1, y, PAVILION_FRONT, DOOR[1] - DOOR[0] - 1);
+      }
+      if (course < 6) {
+        let run: number | undefined;
+        for (let x = DOOR[0]; x <= DOOR[1] + 1; x++) {
+          const cell = x > DOOR[1] ? 'end' : doorCell(x, course);
+          if (cell === 'wood') {
+            run ??= x;
+            continue;
+          }
+          if (run !== undefined) addRun(add, 'brick', BARK, 'x', run, y, door, x - run);
+          run = undefined;
+          if (cell !== 'boss') continue;
+          add('4070', BARK, x, y, door, 180);
+          const host = piece('4070', BARK, x, y, door, 180);
+          const boss = seatOnSideStuds(piece('98138', TIMBER_DARK, x, y, door, 0, '+z'), host);
+          if (!boss) throw new Error('No side stud for a door boss.');
+          add('98138', TIMBER_DARK, boss.x, boss.y, boss.z, boss.rotation, boss.facing);
         }
+      }
       if (course === 6) {
-        add('3460', TRIM, DOOR[0], y, PAVILION_FRONT, 90);
+        for (const x of DOOR) add('3024', TRIM, x, y, PAVILION_FRONT);
         add('3308', TRIM, DOOR[0], y + 1, PAVILION_FRONT, 90);
         for (const plate of [7, 8]) add('3460', TRIM, DOOR[0], y + plate, PAVILION_FRONT, 90);
       }
-      if (course >= 6 && course < 9) add('6111', NAVY, DOOR[0] - 1, y, PAVILION_FRONT - 1, 90);
+      if (course >= 6 && course < 9) add('6111', BARK, DOOR[0] - 1, y, door, 90);
       // The banner: navy tiles on headlight bricks in the wall, with a gilded emblem.
       if (course >= BANNER_COURSES[0] && course <= BANNER_COURSES[1]) {
         for (let x = BANNER[0]; x <= BANNER[1]; x++)
@@ -1672,6 +1758,8 @@ export const nordiskaMuseet: ExampleDefinition = {
         else add('2431', NAVY, BANNER[0], y + 0.5, PAVILION_FRONT + 0.8, 90, '+z');
       }
       addWindows(add, open, WINDOWS, course, y);
+      if (course < 14)
+        for (const window of MAIN_WINDOWS) if (window.frame === 'tall') addBacking(add, window, y);
     }
     // Stone portal: round columns either side of the door carry an entablature, its frieze a
     // row of headlight bricks holding the gilded name band, a projecting cornice and a stepped
@@ -1769,13 +1857,18 @@ export const nordiskaMuseet: ExampleDefinition = {
     // Ceiling slab over every wall, overhanging the long walls and the ends by two studs as a
     // cornice. Apses are roofed a row at a time along the wall, each run ending on a wall or a
     // hidden partition; their first two rows lie under the main ceiling.
-    addAreaMap(
-      add,
-      plan((x, z) => (inCeiling(x, z) ? 'c' : ' ')),
-      CEILING,
-      { c: ['plate', TRIM] },
-      (x, z) => wall(x, z) || TURRET_WALLS.has(key(x, z)),
-    );
+    // The stretch between the pavilion's side walls is laid on its own, so its plates start on
+    // those walls rather than wherever the cut round the entrance towers leaves off.
+    for (const middle of [true, false])
+      addAreaMap(
+        add,
+        plan((x, z) =>
+          inCeiling(x, z) && (x >= PAVILION_WEST && x <= PAVILION_EAST) === middle ? 'c' : ' ',
+        ),
+        CEILING,
+        { c: ['plate', TRIM] },
+        (x, z) => wall(x, z) || TURRET_WALLS.has(key(x, z)),
+      );
     const addApseCeiling = ({ width, cell, partitions }: Apse, y: number, firstRow: number) => {
       const axis = cell(1, 0)[0] === cell(0, 0)[0] ? 'z' : 'x';
       for (const [d, [from, to]] of apseRows(width).entries()) {
@@ -1838,9 +1931,9 @@ export const nordiskaMuseet: ExampleDefinition = {
      * slopes run on unbroken from the course level with the dormers' ridges, which end against
      * them.
      */
-    const inDormer = (x: number, step: number) => {
+    const inDormer = (x: number, step: number, front: boolean) => {
       const inset = Math.max(0, step - DORMER);
-      return inset < 3 && BAYS.some((bay) => x >= bay + inset && x <= bay + 7 - inset);
+      return inset < 3 && bays(front).some((bay) => x >= bay + inset && x <= bay + 7 - inset);
     };
     for (let step = 0; step < ROOF_STEPS; step++) {
       const y = ROOF + step * 3;
@@ -1852,7 +1945,10 @@ export const nordiskaMuseet: ExampleDefinition = {
         [before, FRONT - 1 - step, 180],
       ] as const) {
         const sloped = (x: number) =>
-          x >= from && x <= to && (x <= edge || x >= mirrored(edge)) && !inDormer(x, step);
+          x >= from &&
+          x <= to &&
+          (x <= edge || x >= mirrored(edge)) &&
+          !inDormer(x, step, rotation === 180);
         for (let x = from; x <= to; x++) {
           if (!sloped(x)) continue;
           let end = x;
@@ -1968,6 +2064,7 @@ export const nordiskaMuseet: ExampleDefinition = {
         [FRONT + 2, -1],
         [BACK - 2, 1],
       ]) {
+        if (!bays(inward < 0).includes(bay)) continue;
         const back = face + inward;
         /** A stretch of `length` studs along z from `depth` studs behind the backing wall. */
         const reach = (depth: number, length: number) =>
@@ -2045,6 +2142,8 @@ export const nordiskaMuseet: ExampleDefinition = {
         course,
       );
       addWindows(add, open, GABLE_WINDOWS, course, y);
+      for (const window of GABLE_WINDOWS)
+        if (window.frame === 'tall' && course < window.course + 6) addBacking(add, window, y);
       // Each new step leaves a shoulder two studs wide either side: a pinnacle on every other
       // one, a tan cap on the rest.
       if (inset > gableStep(course - 1) * 2)
@@ -2202,16 +2301,35 @@ export const nordiskaMuseet: ExampleDefinition = {
     add('59900', COPPER, 63.5, spire + 14, 47.5);
     add('3957a', GOLD, 63.5, spire + 17, 47.5);
 
-    // The towers end in an octagonal tan slab under their steeples.
-    const towerTop = BASE + TURRET_COURSES * 3;
-    addAreaMap(
-      add,
-      plan((x, z) => (isTurret(x, z) ? 'c' : ' ')),
-      towerTop,
-      { c: ['plate', TRIM] },
-      (x, z) => TURRET_WALLS.has(key(x, z)),
-    );
-    for (const [x, z] of TURRETS) addSteeple(add, x + 1, towerTop + 1, z + 1);
+    // The towers end in an octagonal tan slab under their steeples. Round the entrance towers'
+    // steeples runs a gallery, as on the real ones: dark railings between gilded pinnacles.
+    for (const [tx, tz] of TURRETS) {
+      const towerTop = BASE + turretCourses(tx, tz) * 3;
+      addAreaMap(
+        add,
+        plan((x, z) => (isTurret(x, z) && within(x, z, tx, tz, tx + 7, tz + 7) ? 'c' : ' ')),
+        towerTop,
+        { c: ['plate', TRIM] },
+        (x, z) => TURRET_WALLS.has(key(x, z)),
+      );
+      addSteeple(add, tx + 1, towerTop + 1, tz + 1);
+      if (!isEntranceTower(tx, tz)) continue;
+      for (const [dx, dz] of [
+        [1, 0],
+        [6, 0],
+        [1, 7],
+        [6, 7],
+        [0, 1],
+        [0, 6],
+        [7, 1],
+        [7, 6],
+      ]) {
+        add('3062b', TRIM, tx + dx, towerTop + 1, tz + dz);
+        add('4589', GOLD, tx + dx, towerTop + 4, tz + dz);
+      }
+      for (const z of [tz, tz + 7]) add('3633', SLATE, tx + 2, towerTop + 1, z, 90);
+      for (const x of [tx, tx + 7]) add('3633', SLATE, x, towerTop + 1, tz + 2);
+    }
 
     // ----------------------------------------------------------------------------------------
     // The grounds: a black railing along the quay with lamps between its runs, flags at the
