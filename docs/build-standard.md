@@ -52,11 +52,26 @@ plain is not finished.
   bricks), beam ends and corbels stick out, loopholes and small arched windows break it up.
 - Battered bases, buttresses and corbelled turrets keep towers from being straight tubes.
 
-**Landscape bases, not a board with a building on it.**
+**A base that fits the subject, not a board with a building on it.**
+
+Pick the setting the subject would really stand in, the way the reference sets do: a modular
+on its street, a castle on its crag, a saloon on a dusty main street. Every setting shares the
+rules below; the settings then differ in outline, ground and planting.
+
+- The base has height and depth: it rises at least a plate or two above the board, and its
+  edges show what it is made of (strata, a curb, a quay wall, boardwalk posts).
+- The ground follows "Calm ground" below: a few large areas of one material each, detail at
+  the edges and transitions.
+- Something living or weathered softens the built edges: plants, ivy, dust, worn paving.
+
+_Landscape_ (castle, cottage, tower, ruin, mill):
 
 - The base has an organic outline and height: leave the board's edge free and shape the ground
   with rounded-corner plates, so the build stands on an island, not a square. Show layered rock
   and earth strata (`72`, `71`, `19`, `28`) on the sides like a cut-away.
+- From above the outline is clearly organic, with bays and promontories, not a square with
+  rounded corners: leave at least a quarter of the board bare, and give the outline three or
+  more bays at least 3 studs deep.
 - Terrain rises and falls by plates. Rocks are angled clusters of mixed sizes in two or three
   greys, worn paths are tan and dark tan tiles, and the ground mixes grass, earth and gravel
   rather than one green field.
@@ -70,18 +85,57 @@ plain is not finished.
 - Green climbs buildings: ivy up walls, hanging baskets and window boxes, a tree against the
   façade.
 
+_Street_ (town houses, shops, modulars, a station):
+
+- A rectangular base is right here, as in the modular sets: the building fills its plot to
+  the back and sides, and the street runs along the front.
+- The street is layered: a road of dark bluish grey `72` plates and tiles (with a few
+  `71` patches, white `15` tile markings and a drain grille), a curb a plate higher, then a
+  pavement of tiles in light bluish grey `71` with tan `19` or dark tan `28` borders and some
+  open studs, reaching the façade. A side alley or a cobbled corner in `71`/`72` round tiles
+  breaks the rectangle.
+- Street furniture tells the story: lampposts, a bench, a post box, a bin, a bicycle rack,
+  café tables, crates and a sign by the shop door.
+- Green comes in planters, window boxes, hanging baskets, a tree in a pavement pit and ivy,
+  not lawns.
+- A row of buildings varies plot by plot: heights, colours, rooflines and setbacks change
+  between neighbours.
+
+_Desert_ (western town, mine, mesa, desert outpost):
+
+- The base has a ragged outline like a landscape base, but the ground is dry: tan `19` sand
+  and dark tan `28` hardpan in large patches, medium nougat `84` and dark orange `484` patches
+  where the earth turns red, and a wheel-rutted main street in dark tan.
+- Rock is layered sandstone, not grey crag: mesas and outcrops banded in dark orange `484`,
+  medium nougat `84`, tan `19` and reddish brown `70`, stepped and smoothed into rounded
+  ledges, with a few grey `71`/`72` boulders at their feet.
+- Buildings stand on a raised boardwalk of reddish brown `70` and dark brown `308` tiles on
+  posts, with a hitching rail, a water trough, barrels, crates, sacks and a wagon in front.
+  Wood is weathered: two or three browns mixed, a few medium nougat `84` boards.
+- Plants are sparse and grouped: cacti built from green `2` and olive green `330` round bricks
+  with side-stud arms, dry scrub in olive green `330` and tan grass, a dead tree in dark
+  brown `308`. No lawns, no flowers on the ground except a few small accents on the cacti.
+- Water is rare and earns its place: a trough, a well, a muddy waterhole in dark tan with a
+  little blue.
+
+_Waterfront_ (harbour, lighthouse, quay, boathouse):
+
+- The land side follows the landscape or street rules; the water side ends in a straight
+  built edge (a quay wall in `71`/`72` stone, a timber jetty on posts) or a rocky shore.
+- Water fills a real share of the board and is layered as above, with boats, buoys, bollards,
+  rope coils, nets and crates on the quay.
+
 **Calm ground, not confetti.** The references read as a few large, quiet areas (a lawn, a
-path, a rocky bank, a pond) with detail gathered where they meet. Scattering single pieces in
-many colours over the whole base reads as noise.
+path, a rocky bank, a pond; a road, a pavement; a sandy street, a boardwalk) with detail
+gathered where they meet. Scattering single pieces in many colours over the whole base reads
+as noise.
 
 - Each ground area is one material with its own two or three shades, in patches of at least
   about 3 x 3 studs. Keep to three or four materials across the base.
 - Gather detail along edges and transitions (the foot of a wall, a path's border, the bank of
-  the pond, round a tree) and leave the middle of a lawn mostly plain studs with a few tufts.
+  the pond, the curb, round a tree) and leave the middle of a lawn, a road or a sandy street
+  mostly plain with a few tufts, patches or ruts.
 - Dress at most about one stud in eight of a lawn; flowers in clumps of one colour.
-- From above the outline is clearly organic, with bays and promontories, not a square with
-  rounded corners: leave at least a quarter of the board bare, and give the outline three or
-  more bays at least 3 studs deep.
 
 **Stories and props.** Every scene has something going on: a well, a cart, a market stall, a
 lamppost and bench, a fountain, barrels and crates, a sign over the door, a flag on the tower.
@@ -126,16 +180,18 @@ lamppost and bench, a fountain, barrels and crates, a sign over the door, a flag
 Pick a small palette per material and use it in shades, the way sets do: about 70% base,
 20% shadow, 10% highlight, plus small bright accents (under 5% of the pieces).
 
-| Material   | Base                                                                                      | Shadow                | Highlight                     |
-| ---------- | ----------------------------------------------------------------------------------------- | --------------------- | ----------------------------- |
-| Stone      | Light Bluish Grey `71`                                                                    | Dark Bluish Grey `72` | Very Light Bluish Grey `151`  |
-| Earth/sand | Tan `19`                                                                                  | Dark Tan `28`         | (Reddish Brown `70` for soil) |
-| Timber     | Reddish Brown `70`                                                                        | Dark Brown `308`      | Medium Nougat `84`            |
-| Foliage    | Green `2`                                                                                 | Dark Green `288`      | Bright Green `10`, Lime `27`  |
-| Old green  | Sand Green `378`                                                                          | Olive Green `330`     | Yellowish Green `326`         |
-| Water      | Blue `1`, Medium Blue `73`                                                                | Dark Blue `272`       | Trans Light Blue `43`         |
-| Roofs      | Dark Red `320`, Dark Bluish Grey `72`, Sand Green `378`, Black `0`, Reddish Brown `70`    |
-| Accents    | Red `4`, Yellow `14`, White `15`, Pink `13`, Dark Pink `5`, Orange `25`, Pearl Gold `297` |
+| Material    | Base                                                                                      | Shadow                | Highlight                                                |
+| ----------- | ----------------------------------------------------------------------------------------- | --------------------- | -------------------------------------------------------- |
+| Stone       | Light Bluish Grey `71`                                                                    | Dark Bluish Grey `72` | Very Light Bluish Grey `151`                             |
+| Earth/sand  | Tan `19`                                                                                  | Dark Tan `28`         | (Reddish Brown `70` for soil)                            |
+| Desert rock | Medium Nougat `84`, Dark Orange `484`                                                     | Reddish Brown `70`    | Tan `19`                                                 |
+| Street      | Dark Bluish Grey `72` (road)                                                              | Black `0`             | Light Bluish Grey `71` (pavement), White `15` (markings) |
+| Timber      | Reddish Brown `70`                                                                        | Dark Brown `308`      | Medium Nougat `84`                                       |
+| Foliage     | Green `2`                                                                                 | Dark Green `288`      | Bright Green `10`, Lime `27`                             |
+| Old green   | Sand Green `378`                                                                          | Olive Green `330`     | Yellowish Green `326`                                    |
+| Water       | Blue `1`, Medium Blue `73`                                                                | Dark Blue `272`       | Trans Light Blue `43`                                    |
+| Roofs       | Dark Red `320`, Dark Bluish Grey `72`, Sand Green `378`, Black `0`, Reddish Brown `70`    |
+| Accents     | Red `4`, Yellow `14`, White `15`, Pink `13`, Dark Pink `5`, Orange `25`, Pearl Gold `297` |
 
 - Shade by position: darker low down, in recesses and on the shaded side; lighter on tops and
   edges that catch the light. Foliage is darkest inside and below, lightest on top.
@@ -161,6 +217,13 @@ Palettes the references use, as starting points:
   white `15` lattice windows, green `2` lawn and dark green `288` tree.
 - **Landmark**: one colour family (tan `19` with dark tan `28` in the recesses) on a black `0`
   base, with one dark accent (a spire in `72`).
+- **Town street**: dark bluish grey `72` road with white `15` markings, light bluish grey `71`
+  pavement with tan `19` borders, the building's own palette above it, green only in planters
+  and boxes, red `4` or yellow `14` in a post box, an awning or a sign.
+- **Western town**: tan `19` and dark tan `28` street, reddish brown `70`, dark brown `308`
+  and medium nougat `84` timber, sandstone in dark orange `484` and medium nougat `84`, olive
+  green `330` and green `2` cacti and scrub, faded paint in sand blue `379`, sand red `335`
+  or dark red `320` on a façade or two.
 
 **How a build comes together.** List what makes the subject recognisable (silhouette,
 colours, roof, windows, towers, entrance, props, scenery) and plan the footprint and layers
@@ -175,8 +238,9 @@ takes as long as the bulk, and it is where a build becomes good. Rework the mode
   Is the back as finished as the front?
 - Does every façade have storey bands, framed windows with sills and boxes, and a textured
   roof with a broken roofline?
-- Does it stand on a shaped landscape with height, layered edges, water or rock where it
-  fits, and plant clusters of several kinds?
+- Does the base fit the subject's setting (landscape, street, desert, waterfront), with
+  height, layered edges and the setting's own ground, props and planting? A landscape or
+  desert base has an organic outline; a street base has a layered road, curb and pavement.
 - Is the ground calm: a few large areas of one material each, detail gathered at the edges,
   no confetti of single pieces in many colours?
 - Does anything natural still have a straight edge, a flat top or a hard corner?
