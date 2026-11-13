@@ -1,10 +1,16 @@
 import { describe, expect, it } from 'vite-plus/test';
 import sharp from 'sharp';
 import type Anthropic from '@anthropic-ai/sdk';
-import { createDemoAssembly } from '@brick-workshop/engine';
+import { PARTS, createDemoAssembly } from '@brick-workshop/engine';
 import { createBuilderSession, runClaudeBuild, splitToolImage } from './index.ts';
 import type { BuilderToolResult, ClaudeTransport } from './index.ts';
-import { RENDER_VIEWS, renderAssembly } from './render.ts';
+import {
+  MAX_SHEET_PARTS,
+  RENDER_VIEWS,
+  canLabel,
+  renderAssembly,
+  renderPartSheet,
+} from './render.ts';
 
 type RenderData = {
   view: string;
@@ -164,5 +170,88 @@ describe('brick_render', () => {
       type: 'image',
       source: { type: 'base64', media_type: 'image/png' },
     });
+  });
+});
+
+describe('part sheets', () => {
+  const session = () => createBuilderSession({ name: 'Empty', bricks: [] });
+  type Catalog = {
+    detail: string;
+    partColumns: string[];
+    partRows: unknown[][];
+    parts: { id: string; uses: string }[];
+    sheet?: { parts: string[]; columns: number };
+    image?: { mediaType: string; data: string };
+  };
+  const catalog = (input: Record<string, unknown>) => {
+    const response = session().runTool('brick_catalog', input);
+    expect(response.ok).toBe(true);
+    return (response as Extract<BuilderToolResult, { ok: true }>).data as Catalog;
+  };
+
+  it('can write every part ID', () => {
+    expect(PARTS.filter((part) => !canLabel(part.id))).toEqual([]);
+  });
+
+  it('lays parts out in rows of six cells, capped', async () => {
+    const sheet = renderPartSheet(
+      PARTS.slice(0, 40).map((part) => ({ partId: part.id, color: 4 })),
+    );
+    expect(sheet.parts).toHaveLength(MAX_SHEET_PARTS);
+    expect(sheet.columns).toBe(6);
+    const { info, at } = await pixels(sheet.png.toString('base64'));
+    expect([info.width, info.height]).toEqual([sheet.width, sheet.height]);
+    expect(info.height / 5).toBeGreaterThan(info.width / 6);
+    // Each cell shows its red part.
+    const [cellWidth, cellHeight] = [info.width / 6, info.height / 5];
+    for (const index of [0, 7, 29]) {
+      const [left, top] = [(index % 6) * cellWidth, Math.floor(index / 6) * cellHeight];
+      const red = Array.from({ length: 40 * 40 }, (_, step) =>
+        at(left + 40 + (step % 40), top + 30 + Math.floor(step / 40)),
+      ).some(isRed);
+      expect(red).toBe(true);
+    }
+  });
+
+  it('searches the catalogue by use and family, with uses on every row', () => {
+    const overview = catalog({});
+    expect(overview.partColumns).not.toContain('uses');
+    expect(overview.partRows).toHaveLength(PARTS.length);
+
+    const sills = catalog({ query: 'window sill' });
+    expect(sills.partColumns.at(-1)).toBe('uses');
+    expect(sills.partRows.length).toBeGreaterThan(0);
+    expect(sills.partRows.length).toBeLessThanOrEqual(30);
+    expect(sills.partRows[0][0]).toBe('3853');
+    expect(sills.detail).toContain('best first');
+
+    const cones = catalog({ family: 'cone' });
+    expect(cones.partRows.map((row) => row[0]).sort()).toEqual(
+      PARTS.filter((part) => part.family === 'cone')
+        .map((part) => part.id)
+        .sort(),
+    );
+    expect(catalog({ family: 'slope', query: 'ridge' }).partRows.map((row) => row[0])).toContain(
+      '3043',
+    );
+    expect(catalog({ partIds: ['4070'] }).parts[0].uses).toContain('SNOT');
+    expect(catalog({ family: 'cone' }).image).toBeUndefined();
+  });
+
+  it('attaches a sheet of the matched parts only when asked', () => {
+    expect(session().runTool('brick_catalog', { sheet: true })).toMatchObject({
+      ok: false,
+      error: { code: 'sheet_needs_parts' },
+    });
+    const cones = catalog({ family: 'cone', sheet: true });
+    expect(cones.sheet?.parts).toEqual(cones.partRows.map((row) => row[0]));
+    expect(cones.image?.mediaType).toBe('image/png');
+    const chosen = catalog({ partIds: ['3040b', '87087'], sheet: true });
+    expect(chosen.sheet).toEqual({ parts: ['3040b', '87087'], columns: 2 });
+    const { response, image } = splitToolImage(
+      session().runTool('brick_catalog', { query: 'flag', sheet: true }),
+    );
+    expect(image?.mediaType).toBe('image/png');
+    expect(JSON.stringify(response)).not.toContain(image!.data);
   });
 });

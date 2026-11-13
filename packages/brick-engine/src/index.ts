@@ -19,3 +19,4 @@ export {
   createExampleRegistry,
 } from './examples/registry.ts';
 export type { ExampleDefinition, ExampleMetadata, ExampleBrickAdder } from './examples/types.ts';
+export * from './part-uses.ts';

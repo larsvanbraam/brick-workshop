@@ -155,6 +155,22 @@ function partSolids(part: Part): Vec[][][] {
       piece(0, length, h - span, h),
     ];
   }
+  if (part.sideStuds?.length) {
+    // Side-stud bricks reserve room round the body for their studs: draw the body inside it.
+    const inset = (facing: string, offset: (stud: Vec) => number) =>
+      Math.max(
+        0,
+        ...part
+          .sideStuds!.filter((stud) => stud.facing === facing)
+          .map((stud) => offset([stud.x, stud.y, stud.z])),
+      );
+    return [
+      offsetBox(
+        [inset('-x', ([x]) => x), 0, inset('-z', ([, , z]) => z)],
+        [w - inset('+x', ([x]) => w - x), h, d - inset('+z', ([, , z]) => d - z)],
+      ),
+    ];
+  }
   return [box(w, h, d)];
 }
 
@@ -168,9 +184,27 @@ function offsetBox(low: Vec, high: Vec): Vec[][] {
 const STUD_HEIGHT = 0.5;
 const STUD_RADIUS = 0.3;
 
-/** Studs on the part's top, in its own frame. */
-function partStuds(part: Part): Vec[][] {
-  return part.connections.topStuds.flatMap((site) =>
+/** Half a stud's width in plates, for studs on the sides. */
+const SIDE_STUD_HALF_HEIGHT = (STUD_RADIUS * 20) / 8;
+const SIDE_STUD_LENGTH = 0.2;
+
+/** Studs on the part's top and sides, in its own frame. */
+function partStuds(part: Part): Vec[][][] {
+  const sides = (part.sideStuds ?? []).map(({ x, y, z, facing }) => {
+    const sign = facing[0] === '-' ? -1 : 1;
+    const out = sign * SIDE_STUD_LENGTH;
+    const [y0, y1] = [y - SIDE_STUD_HALF_HEIGHT, y + SIDE_STUD_HALF_HEIGHT];
+    return facing[1] === 'x'
+      ? offsetBox(
+          [Math.min(x, x + out), y0, z - STUD_RADIUS],
+          [Math.max(x, x + out), y1, z + STUD_RADIUS],
+        )
+      : offsetBox(
+          [x - STUD_RADIUS, y0, Math.min(z, z + out)],
+          [x + STUD_RADIUS, y1, Math.max(z, z + out)],
+        );
+  });
+  const tops = part.connections.topStuds.map((site) =>
     octagon(
       site.x + 0.5,
       site.z + 0.5,
@@ -180,6 +214,7 @@ function partStuds(part: Part): Vec[][] {
       STUD_RADIUS,
     ),
   );
+  return [...tops, ...sides];
 }
 
 /** Convex solids, each a list of polygons. */
@@ -190,13 +225,7 @@ function partGeometry(partId: string) {
   let geometry = SOLIDS.get(partId);
   if (!geometry) {
     const part = getPart(partId);
-    const studs = partStuds(part);
-    geometry = {
-      solid: partSolids(part),
-      studs: Array.from({ length: studs.length / 10 }, (_, index) =>
-        studs.slice(index * 10, index * 10 + 10),
-      ),
-    };
+    geometry = { solid: partSolids(part), studs: partStuds(part) };
     SOLIDS.set(partId, geometry);
   }
   return geometry;
@@ -317,6 +346,19 @@ export function renderAssembly(assembly: Assembly, options: RenderOptions = {}) 
       clear: false,
     });
 
+  const { width, height, pixels } = rasterize(faces, view, size);
+  return {
+    view,
+    width,
+    height,
+    pieces: bricks.length,
+    studs,
+    png: encodePng(width, height, pixels),
+  };
+}
+
+/** Draws faces in an orthographic view fitted to them, longest side `size` pixels. */
+function rasterize(faces: readonly Face[], view: RenderView, size: number) {
   const camera = VIEWS[view];
   const toward = unit(camera.toward);
   const right = unit(cross(camera.up, toward));
@@ -431,12 +473,98 @@ export function renderAssembly(assembly: Assembly, options: RenderOptions = {}) 
       for (let channel = 0; channel < 3; channel += 1)
         pixels[pixel * 3 + channel] = pixels[pixel * 3 + channel] * 0.55;
 
+  return { width, height, pixels };
+}
+
+/** 3 x 5 pixel glyphs for part IDs, a row of three bits per line, top first. */
+const GLYPHS: Record<string, readonly number[]> = {
+  '0': [7, 5, 5, 5, 7],
+  '1': [2, 6, 2, 2, 7],
+  '2': [7, 1, 7, 4, 7],
+  '3': [7, 1, 7, 1, 7],
+  '4': [5, 5, 7, 1, 1],
+  '5': [7, 4, 7, 1, 7],
+  '6': [7, 4, 7, 5, 7],
+  '7': [7, 1, 2, 2, 2],
+  '8': [7, 5, 7, 5, 7],
+  '9': [7, 5, 7, 1, 7],
+  a: [0, 3, 5, 5, 3],
+  b: [4, 4, 7, 5, 7],
+  c: [0, 7, 4, 4, 7],
+  d: [1, 1, 7, 5, 7],
+  e: [7, 4, 7, 4, 7],
+  f: [3, 4, 7, 4, 4],
+  u: [0, 5, 5, 5, 7],
+  x: [5, 5, 2, 5, 5],
+};
+
+/** Whether a part ID can be written on a part sheet. */
+export const canLabel = (text: string) => [...text].every((char) => char in GLYPHS);
+
+const SHEET_COLUMNS = 6;
+const SHEET_ART = 104;
+const SHEET_LABEL = 16;
+const GLYPH_SCALE = 2;
+/** Most parts on one sheet, which keeps it near 800 image tokens. */
+export const MAX_SHEET_PARTS = 30;
+
+/**
+ * Renders parts side by side for picking one by sight: each alone in a cell at rotation 0, seen
+ * from back-left above (-x, -z) so a slope's low side and -x/-z side studs face the viewer,
+ * scaled to fill its cell, with its ID written under it. Cells run left to right, then down.
+ */
+export function renderPartSheet(entries: readonly { partId: string; color: number }[]) {
+  const shown = entries.slice(0, MAX_SHEET_PARTS);
+  const columns = Math.max(1, Math.min(SHEET_COLUMNS, shown.length));
+  const rows = Math.max(1, Math.ceil(shown.length / columns));
+  const cellWidth = SHEET_ART + 16;
+  const cellHeight = SHEET_ART + SHEET_LABEL + 8;
+  const width = columns * cellWidth;
+  const height = rows * cellHeight;
+  const pixels = new Uint8Array(width * height * 3).fill(255);
+  shown.forEach(({ partId, color }, index) => {
+    const left = (index % columns) * cellWidth;
+    const top = Math.floor(index / columns) * cellHeight;
+    // The cell's background and a hairline frame.
+    for (let y = 0; y < cellHeight; y += 1)
+      for (let x = 0; x < cellWidth; x += 1) {
+        const edge = x === cellWidth - 1 || y === cellHeight - 1;
+        const pixel = ((top + y) * width + left + x) * 3;
+        pixels.fill(edge ? 200 : 238, pixel, pixel + 3);
+      }
+    const faces: Face[] = [];
+    brickFaces({ id: partId, partId, color, x: 0, y: 0, z: 0, rotation: 0 }, faces, true);
+    const art = rasterize(faces, 'iso-back', SHEET_ART);
+    const artLeft = left + 8 + Math.floor((SHEET_ART - art.width) / 2);
+    const artTop = top + 4 + Math.floor((SHEET_ART - art.height) / 2);
+    for (let y = 0; y < art.height; y += 1)
+      pixels.set(
+        art.pixels.subarray(y * art.width * 3, (y + 1) * art.width * 3),
+        ((artTop + y) * width + artLeft) * 3,
+      );
+    const advance = 4 * GLYPH_SCALE;
+    let x = left + Math.floor((cellWidth - partId.length * advance + GLYPH_SCALE) / 2);
+    const labelTop = top + 8 + SHEET_ART;
+    for (const char of partId) {
+      const glyph = GLYPHS[char] ?? [7, 7, 7, 7, 7];
+      glyph.forEach((bits, row) => {
+        for (let column = 0; column < 3; column += 1)
+          if (bits & (4 >> column))
+            for (let dy = 0; dy < GLYPH_SCALE; dy += 1)
+              for (let dx = 0; dx < GLYPH_SCALE; dx += 1) {
+                const pixel =
+                  ((labelTop + row * GLYPH_SCALE + dy) * width + x + column * GLYPH_SCALE + dx) * 3;
+                pixels.fill(30, pixel, pixel + 3);
+              }
+      });
+      x += advance;
+    }
+  });
   return {
-    view,
     width,
     height,
-    pieces: bricks.length,
-    studs,
+    columns,
+    parts: shown.map(({ partId }) => partId),
     png: encodePng(width, height, pixels),
   };
 }

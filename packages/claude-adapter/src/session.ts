@@ -41,8 +41,10 @@ import {
   smoothAssembly,
   PLATE_STUDS,
   MAX_PHYSICS_PIECES,
+  getPartUses,
+  searchParts,
 } from '@brick-workshop/engine';
-import { RENDER_VIEWS, renderAssembly } from './render.ts';
+import { MAX_SHEET_PARTS, RENDER_VIEWS, renderAssembly, renderPartSheet } from './render.ts';
 import type { RenderOptions, RenderView } from './render.ts';
 import type {
   Assembly,
@@ -58,6 +60,10 @@ import type {
 } from '@brick-workshop/engine';
 
 const partIdSchema = { type: 'string', enum: PARTS.map((part) => part.id) };
+/** Part families, with the plain kinds (brick, plate, tile) for parts without one. */
+const PART_FAMILIES = [...new Set(PARTS.map((part) => part.family ?? part.kind))].sort();
+/** Most rows a catalogue search returns, best first. */
+const MAX_SEARCH_PARTS = 30;
 const colorSchema = { type: 'integer', enum: COLORS.map((color) => color.id) };
 const idSchema = { type: 'string', minLength: 1, maxLength: 100 };
 const placementProperties = {
@@ -239,10 +245,13 @@ export const BUILDER_TOOLS: readonly Anthropic.Tool[] = [
   {
     name: 'brick_catalog',
     description:
-      'Read engine-owned capabilities, supported part designs, reserved footprints, plate-unit heights and color choices. Without partIds it lists every part briefly; pass partIds (up to 20) for their local connector cells and observed colors. Call the overview once and reuse it; never invent part or color IDs. topStuds and bottomReceivers are zero-based [x, z] cells before rotation, with half-cell offsets where needed; "full" means every whole cell of the width x depth footprint. Parts use the top-level collisionModel unless they list their own. Baseplates have no bottomReceivers and must remain on the ground; smooth tiles have no topStuds. Only explicitly listed matchingInsertFrameId exceptions permit static inserts inside reserved frame envelopes. Parts with bars or clips list them as {from, to} or {at, axis} in [x studs, y plates up, z studs] from the min corner before rotation: a clip holds a piece whose bar runs through it along its axis, anywhere along the bar (a flag 2335 on an antenna 3957a, or a loose bar 30374 mounted level between clip plates 4081b), and the two may share space. By default only inventory-observed colors are listed. includeUnverifiedColors is for inspection, not permission to place unobserved colors.',
+      'Read engine-owned capabilities, supported part designs, reserved footprints, plate-unit heights and color choices. Without partIds it lists every part briefly; pass partIds (up to 20) for their local connector cells and observed colors. Call the overview once and reuse it; never invent part or color IDs. topStuds and bottomReceivers are zero-based [x, z] cells before rotation, with half-cell offsets where needed; "full" means every whole cell of the width x depth footprint. Parts use the top-level collisionModel unless they list their own. Baseplates have no bottomReceivers and must remain on the ground; smooth tiles have no topStuds. Only explicitly listed matchingInsertFrameId exceptions permit static inserts inside reserved frame envelopes. Parts with bars or clips list them as {from, to} or {at, axis} in [x studs, y plates up, z studs] from the min corner before rotation: a clip holds a piece whose bar runs through it along its axis, anywhere along the bar (a flag 2335 on an antenna 3957a, or a loose bar 30374 mounted level between clip plates 4081b), and the two may share space. By default only inventory-observed colors are listed. includeUnverifiedColors is for inspection, not permission to place unobserved colors. To find a part for a job, search instead of reading the whole list: query matches IDs, names and what each part is for in builder\'s words (query "sill", "roof ridge", "stepping stone", "side stud", "finial") and returns the best matches with their uses; family lists one family (slope, round, detail, window, ...) with uses. sheet adds a PNG of the matched parts (family, query or partIds, up to 30) for picking by sight: each part alone at rotation 0 seen from back-left above (-x, -z), so a slope\'s low side and -x/-z side studs face you, scaled to fill its cell with its ID underneath, cells left to right then down in the listed order. Shapes are rough (slopes as wedges, round parts as octagons, many detail parts as boxes), so read uses and connectors for the details; ask for a sheet only when shape decides the choice, as each costs about 800 tokens.',
     input_schema: objectSchema(
       {
         includeUnverifiedColors: { type: 'boolean' },
+        query: { type: 'string', minLength: 2, maxLength: 80 },
+        family: { type: 'string', enum: PART_FAMILIES },
+        sheet: { type: 'boolean' },
         partIds: {
           type: 'array',
           items: partIdSchema,
@@ -1099,6 +1108,41 @@ export function createBuilderSession(
     }
     if (name === 'brick_catalog') {
       const observedColors = new Set(evidence.observations.map((entry) => entry.colorId));
+      const query = args.query as string | undefined;
+      const family = args.family as string | undefined;
+      const partIds = args.partIds as string[] | undefined;
+      const filtered = query !== undefined || family !== undefined;
+      // A search: the family's parts, or the best matches for the query among them.
+      const inFamily = family
+        ? PARTS.filter((part) => (part.family ?? part.kind) === family)
+        : PARTS;
+      const found = query
+        ? searchParts(query, inFamily)
+            .slice(0, MAX_SEARCH_PARTS)
+            .map((match) => match.part)
+        : inFamily;
+      if (args.sheet && !filtered && !partIds)
+        return fail(
+          'sheet_needs_parts',
+          'A sheet shows up to 30 parts: pass query, family or partIds to choose them.',
+        );
+      const sheetParts = args.sheet
+        ? (partIds ? PARTS.filter(({ id }) => partIds.includes(id)) : found).slice(
+            0,
+            MAX_SHEET_PARTS,
+          )
+        : [];
+      const sheet = sheetParts.length
+        ? renderPartSheet(
+            sheetParts.map(({ id }) => {
+              const colors = COLORS.filter(
+                (color) => getPartColorStatus(id, color.id, evidence).manufactured === 'observed',
+              ).map((color) => color.id);
+              // Light bluish grey reads best; glass and the like show in their own colour.
+              return { partId: id, color: colors.includes(71) ? 71 : (colors[0] ?? 71) };
+            }),
+          )
+        : undefined;
       return {
         ok: true,
         revision,
@@ -1113,47 +1157,52 @@ export function createBuilderSession(
           collisionModel: getEngineCapabilities(assembly).collisionModel,
           // Connector cells and per-part colors are most of the catalogue and it stays in the
           // conversation for every later turn, so they are listed only for requested parts.
-          ...(!args.partIds && {
-            detail:
-              'Call brick_catalog with partIds for the connector cells and observed colors of the parts you will use.',
+          ...(!partIds && {
+            detail: filtered
+              ? `${found.length} part${found.length === 1 ? '' : 's'} found${query ? ', best first' : ''}. Call brick_catalog with partIds for the connector cells and observed colors of the parts you will use.`
+              : 'Call brick_catalog with partIds for the connector cells and observed colors of the parts you will use, or search with query or family to see what parts are for.',
           }),
-          ...(!args.partIds && {
-            partColumns: PART_COLUMNS,
-            partRows: PARTS.map(({ id }) => {
+          ...(!partIds && {
+            partColumns: filtered ? [...PART_COLUMNS, 'uses'] : PART_COLUMNS,
+            partRows: found.map(({ id }) => {
               const part = getPartCapabilities(id);
               const row: unknown[] = PART_COLUMNS.map((column) => part[column]);
+              if (filtered) row.push(getPartUses(id));
               return part.matchingInsertFrameId
                 ? [...row, { matchingInsertFrameId: part.matchingInsertFrameId }]
                 : row;
             }),
           }),
-          parts: PARTS.filter(({ id }) => (args.partIds as string[] | undefined)?.includes(id)).map(
-            ({ id }) => {
-              const { connections, collisionModel, matchingInsertFrameId, ...part } =
-                getPartCapabilities(id);
-              return {
-                ...part,
-                ...(matchingInsertFrameId ? { matchingInsertFrameId } : {}),
-                connections: Object.fromEntries(
-                  Object.entries(connections).map(([key, cells]) => [
-                    key,
-                    compactCells(cells, part.width, part.depth),
-                  ]),
-                ),
-                ...(collisionModel === getEngineCapabilities(assembly).collisionModel
-                  ? {}
-                  : { collisionModel }),
-                observedColors: COLORS.filter(
-                  (color) => getPartColorStatus(id, color.id, evidence).manufactured === 'observed',
-                ).map((color) => color.id),
-              };
-            },
-          ),
+          parts: PARTS.filter(({ id }) => partIds?.includes(id)).map(({ id }) => {
+            const { connections, collisionModel, matchingInsertFrameId, ...part } =
+              getPartCapabilities(id);
+            return {
+              ...part,
+              uses: getPartUses(id),
+              ...(matchingInsertFrameId ? { matchingInsertFrameId } : {}),
+              connections: Object.fromEntries(
+                Object.entries(connections).map(([key, cells]) => [
+                  key,
+                  compactCells(cells, part.width, part.depth),
+                ]),
+              ),
+              ...(collisionModel === getEngineCapabilities(assembly).collisionModel
+                ? {}
+                : { collisionModel }),
+              observedColors: COLORS.filter(
+                (color) => getPartColorStatus(id, color.id, evidence).manufactured === 'observed',
+              ).map((color) => color.id),
+            };
+          }),
           colors: COLORS.filter(
             (color) =>
               args.includeUnverifiedColors ||
               observedColors.has(evidence.mappings.colors[String(color.id)]),
           ).map(({ id, name, hex, alpha, finish }) => ({ id, name, hex, alpha, finish })),
+          ...(sheet && {
+            sheet: { parts: sheet.parts, columns: sheet.columns },
+            image: { mediaType: 'image/png', data: sheet.png.toString('base64') },
+          }),
         },
       };
     }
