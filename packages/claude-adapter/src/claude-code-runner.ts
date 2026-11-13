@@ -4,7 +4,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import { BUILD_SYSTEM_PROMPT, finishBuild, prepareBuild } from './runner.ts';
 import type { BuildOptions } from './runner.ts';
-import { BUILDER_TOOLS, MODEL_TOOLS } from './session.ts';
+import { BUILDER_TOOLS, MODEL_TOOLS, splitToolImage } from './session.ts';
 import type { BuilderSession } from './session.ts';
 
 const SERVER_NAME = 'brick';
@@ -69,7 +69,14 @@ export async function runClaudeCodeBuild(
       revision: response.revision,
       pieces: session.snapshot().bricks.length,
     });
-    return { content: [{ type: 'text', text: JSON.stringify(response) }], isError: !response.ok };
+    const { response: rest, image } = splitToolImage(response);
+    return {
+      content: [
+        { type: 'text' as const, text: JSON.stringify(rest) },
+        ...(image ? [{ type: 'image' as const, data: image.data, mimeType: image.mediaType }] : []),
+      ],
+      isError: !response.ok,
+    };
   });
 
   const abort = () => controller.abort();

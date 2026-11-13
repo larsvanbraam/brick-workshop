@@ -42,6 +42,8 @@ import {
   PLATE_STUDS,
   MAX_PHYSICS_PIECES,
 } from '@brick-workshop/engine';
+import { RENDER_VIEWS, renderAssembly } from './render.ts';
+import type { RenderOptions, RenderView } from './render.ts';
 import type {
   Assembly,
   Brick,
@@ -434,6 +436,22 @@ export const BUILDER_TOOLS: readonly Anthropic.Tool[] = [
     input_schema: objectSchema({ region: regionSchema }, []),
   },
   {
+    name: 'brick_render',
+    description:
+      'Look at the current build: returns a PNG of it from one side, every piece as a flat-shaded solid with outlines and studs, the board in light grey, orthographic so sizes compare. front looks from +z (high z) toward -z with x running left to right, back from -z, left from -x, right from +x, top straight down with the front at the bottom, iso from front-right above and iso-back from back-left above. Slopes show as wedges and round parts as octagons, so judge silhouette, proportions, colours and layering, not part shapes. Use it after the bulk and before finishing to compare the build with any reference images and the standard: flat walls, bare stud fields, a plain roofline, square ground, one flat colour per mass. Region limits it to pieces whose minimum corner lies in the box, to look closer at one part.',
+    input_schema: objectSchema(
+      {
+        view: { type: 'string', enum: [...RENDER_VIEWS], description: 'Default iso.' },
+        region: {
+          ...regionSchema,
+          description:
+            'Only show pieces whose minimum corner lies in this box (studs for x/z, plates for y).',
+        },
+      },
+      [],
+    ),
+  },
+  {
     name: 'brick_board',
     description:
       'Resize the square build board (studs per side). Existing pieces move with whole-stud shifts to stay centred where they fit; the result reports the shift. Resize before placing anything when the requested subject plus its surroundings does not fit the current board. Shrinking is rejected when the pieces would not fit. Not available with a reference 3D model.',
@@ -538,6 +556,18 @@ const ajv = new Ajv({ allErrors: true, coerceTypes: false });
 const validators = new Map(
   BUILDER_TOOLS.map((tool) => [tool.name, ajv.compile(tool.input_schema)]),
 );
+
+/** A tool result's image, if it has one, split from the rest so it can travel as an image. */
+export function splitToolImage(response: BuilderToolResult): {
+  response: BuilderToolResult;
+  image?: { mediaType: 'image/png'; data: string };
+} {
+  if (!response.ok || !response.data || typeof response.data !== 'object') return { response };
+  const { image, ...data } = response.data as {
+    image?: { mediaType: 'image/png'; data: string };
+  };
+  return image ? { response: { ...response, data }, image } : { response };
+}
 
 export type BuilderToolResult =
   | { ok: true; revision: number; data: unknown }
@@ -1180,6 +1210,24 @@ export function createBuilderSession(
               },
             };
           }),
+        },
+      };
+    }
+    if (name === 'brick_render') {
+      const render = renderAssembly(assembly, {
+        view: args.view as RenderView | undefined,
+        region: args.region as RenderOptions['region'],
+      });
+      return {
+        ok: true,
+        revision,
+        data: {
+          view: render.view,
+          pieces: render.pieces,
+          width: render.width,
+          height: render.height,
+          ...(render.studs ? {} : { note: 'Studs are left off on builds this large.' }),
+          image: { mediaType: 'image/png', data: render.png.toString('base64') },
         },
       };
     }
