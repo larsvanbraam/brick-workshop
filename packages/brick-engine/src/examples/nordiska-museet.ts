@@ -6,6 +6,8 @@ import {
   getConnectionSites,
   getPart,
   isMatchingInsertFrame,
+  seatOnClips,
+  seatOnSideStuds,
 } from '../core.ts';
 import type { Brick, Facing, Rotation } from '../core.ts';
 import { addTree } from './trees.ts';
@@ -1235,31 +1237,108 @@ function addLampPost(add: ExampleBrickAdder, x: number, z: number, y = LAWN_TOP)
   add('98138', BLACK, x + 0.5, y + 24, z + 0.5);
 }
 
+/** A piece on its own, for seating others on its clips and side studs. */
+const piece = (
+  partId: string,
+  color: number,
+  x: number,
+  y: number,
+  z: number,
+  rotation: Rotation = 0,
+  facing?: Facing,
+): Brick => ({ id: partId, partId, color, x, y, z, rotation, ...(facing ? { facing } : {}) });
+
 /**
- * A sailing boat moored off the quay, its bow towards +x: a white hull with a pointed bow under
- * a wooden deck, a cabin aft, a stepped mainsail and jib either side of the mast and a pennant at its head.
+ * A sloop moored in the bay, its bow towards -x, [x, z] the corner of its 16 x 4 hull. The hull
+ * is two white plates at the waterline under three of dark tan and a reddish brown deck, its
+ * bow a point of wedge plates. A pearl gold rail runs along both sides, and a white cabin with
+ * gilded portholes stands aft under a curved roof. A black mast carries the boom and, on an
+ * antenna at its head, a white mainsail and a red pennant; a reddish brown jib flies from a
+ * stay on the foredeck. The sails are real sail sheets clipped by their luffs.
  */
-function addSailboat(add: ExampleBrickAdder, x: number, z: number) {
-  add('3029', WHITE, x, WATER_TOP, z, 90);
-  for (const row of [z, z + 2]) {
-    add('3006', WHITE, x, WATER_TOP + 1, row, 90);
-    add('3039', WHITE, x + 10, WATER_TOP + 1, row, 270);
+export function addSailboat(add: ExampleBrickAdder, x: number, z: number) {
+  const hull = (cx: number, cz: number) => within(cx, cz, x + 4, z, x + 15, z + 3);
+  const deck = WATER_TOP + 6;
+  for (let layer = 0; layer < 6; layer++) {
+    const y = WATER_TOP + layer;
+    const color = layer < 2 ? WHITE : layer < 5 ? SANDSTONE : BARK;
+    addAreaMap(
+      add,
+      plan((cx, cz) => (hull(cx, cz) ? 'h' : ' ')),
+      y,
+      { h: ['plate', color] },
+    );
+    // The bow: a right and a left wedge plate meeting in a point.
+    add('41770a', color, x, y, z, 90);
+    add('41769a', color, x, y, z + 2, 90);
   }
-  add('3030', BARK, x, WATER_TOP + 4, z, 90);
-  const deck = WATER_TOP + 5;
-  add('3001', WHITE, x + 1, deck, z + 1, 90);
-  add('87079', WHITE, x + 1, deck + 3, z + 1, 90);
-  const mast = x + 6;
-  for (const post of [0, 15, 30]) add('2453b', WHITE, mast, deck + post, z + 1);
-  // A gilded cone tops the mast, and a navy pennant streams aft off a short pole above it.
-  add('59900', GOLD, mast, deck + 45, z + 1);
-  add('3957a', GOLD, mast, deck + 48, z + 1);
-  add('44676a', NAVY, mast - 2, deck + 52, z + 1, 270);
-  // The mainsail clears the cabin on two short rows by the mast; no row is longer than a brick.
-  for (const [row, length] of [1, 1, 4, 4, 4, 4, 3, 3, 3, 2, 2, 2, 1, 1].entries())
-    addRun(add, 'brick', WHITE, 'x', mast - length, deck + row * 3, z + 1, length);
-  for (const [row, length] of [3, 3, 2, 2, 2, 1, 1, 1].entries())
-    addRun(add, 'brick', WHITE, 'x', mast + 1, deck + row * 3, z + 1, length);
+  // A rail of handled tiles along both sides of the foredeck, up to the cabin's portholes.
+  for (const row of [z, z + 3])
+    for (let at = x + 4; at <= x + 8; at += 2) add('2432', GOLD, at, deck, row);
+
+  // The cabin: white walls with headlight bricks for portholes, gilded rims on their side studs,
+  // and a curved white roof.
+  const cabin = x + 11;
+  for (const [row, facing] of [
+    [z + 1, '-z'],
+    [z + 2, '+z'],
+  ] as const) {
+    add('3005', WHITE, cabin, deck, row);
+    add('3005', WHITE, cabin + 3, deck, row);
+    for (const at of [cabin + 1, cabin + 2]) {
+      const rotation = facing === '-z' ? 0 : 180;
+      add('4070', WHITE, at, deck, row, rotation);
+      const host = piece('4070', WHITE, at, deck, row, rotation);
+      const port = seatOnSideStuds(piece('98138', GOLD, at, deck, row, 0, facing), host);
+      if (!port) throw new Error('No side stud for a porthole.');
+      add('98138', GOLD, port.x, port.y, port.z, port.rotation, port.facing);
+    }
+  }
+  for (const at of [cabin, cabin + 2]) add('15068', WHITE, at, deck + 3, z + 1);
+
+  // The mast on the centre line: a jumper plate, round bricks, the boom, more round bricks and
+  // an antenna at the head. The mainsail clips to the antenna and stands on the boom.
+  const mast = x + 10;
+  const centre = z + 1.5;
+  add('3794b', BLACK, mast, deck, z + 1);
+  let y = deck + 1;
+  for (; y < deck + 7; y += 3) add('3062b', BLACK, mast, y, centre);
+  add('3666', BLACK, mast, y, centre, 90);
+  const boom = y + 1;
+  for (y = boom; y < boom + 27; y += 3) add('3062b', BLACK, mast, y, centre);
+  const head = piece('3957a', BLACK, mast, y, centre);
+  add(head.partId, head.color, head.x, head.y, head.z);
+  const hoist = (color: number, stay: Brick, near: number, clip: (sail: Brick) => boolean) => {
+    for (const [facing, rotation] of [
+      ['-z', 0],
+      ['+z', 180],
+    ] as const) {
+      const sail = seatOnClips(
+        piece('u66', color, stay.x + 1, near, centre + 0.3, rotation, facing),
+        stay,
+      );
+      if (sail && sail.x >= stay.x && clip(sail)) {
+        add('u66', color, sail.x, sail.y, sail.z, sail.rotation, sail.facing);
+        return sail;
+      }
+    }
+    throw new Error('No way to hoist the sail.');
+  };
+  const main = hoist(WHITE, head, boom, (sail) => sail.y >= boom);
+  // A red pennant on the antenna above the sail, streaming aft.
+  for (const rotation of [90, 270] as const) {
+    const pennant = seatOnClips(piece('44676a', RED, mast, main.y + 32.5, centre, rotation), head);
+    if (pennant && pennant.x >= mast && pennant.y >= main.y + 32.5) {
+      add('44676a', RED, pennant.x, pennant.y, pennant.z, pennant.rotation);
+      break;
+    }
+  }
+  // The jib on a stay at the foot of the foredeck, its clew reaching back to the mast.
+  const stay = x + 4;
+  add('3794b', BLACK, stay, deck, z + 1);
+  const post = piece('3957a', BLACK, stay, deck + 1, centre);
+  add(post.partId, post.color, post.x, post.y, post.z);
+  hoist(BARK, post, deck, (sail) => sail.y >= deck && sail.x + 5 <= mast);
 }
 
 export const nordiskaMuseet: ExampleDefinition = {
@@ -1275,7 +1354,7 @@ export const nordiskaMuseet: ExampleDefinition = {
     'park',
     'waterfront',
   ],
-  expectedPieceCount: 13806,
+  expectedPieceCount: 13827,
   buildArea: SIZE,
   brickIdPrefix: 'museet',
   smooth: [{ only: (brick) => NATURAL.has(naturalKey(brick)) }],
@@ -2150,7 +2229,7 @@ export const nordiskaMuseet: ExampleDefinition = {
       add('3957a', WHITE, x, LAWN_TOP + 18, z);
       add('2335', BLUE, x, LAWN_TOP + 24, z, 90);
     }
-    addSailboat(add, 70, 109);
+    addSailboat(add, 56, 109);
     // Ripples along the bay's edges and the odd one out on the water.
     for (let z = 0; z < SIZE; z++)
       for (let x = 0; x < SIZE; x++) {

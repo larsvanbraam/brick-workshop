@@ -1866,6 +1866,30 @@ export const PARTS: readonly Part[] = [
     top: spans([0, 0], [1, 1]),
     bottom: spans([0, 0], [1, 1]),
   }),
+  // A boat's sail, a sheet lying flat with its straight luff along z and the peak at high z,
+  // the clew out towards +x. Mounted on its side (`facing` ±z or ±x) it stands up with the peak
+  // at the top. The holes at the tack and head lie half a stud outside the box, on the luff's
+  // line, so they grip a bar beside it, such as an antenna topping a mast, while the rest of the
+  // mast stands clear of the sheet. The sheet lies in the middle of the box's one-plate
+  // thickness, and its hemmed luff reaches past the box towards the mast, as cloth wraps one.
+  contouredPart(
+    'u66',
+    'Sail 6 x 12 Triangular',
+    5,
+    13,
+    1,
+    'brick',
+    'detail',
+    { bottom: [] },
+    {
+      ldrawCenter: { x: 60, z: 100 },
+      ldrawBaseY: 4,
+      clips: [
+        { at: [-0.5, 0.5, 1.5], axis: 'z' },
+        { at: [-0.5, 0.5, 11.4], axis: 'z' },
+      ],
+    },
+  ),
   // A pennant or a boat's sail: the 2 x 2 flag's two clips, with the cloth tapering away.
   contouredPart(
     '44676a',

@@ -450,10 +450,28 @@ export function importPhysicalData(input: unknown): PhysicalData {
  * spans, and they are about half a plate thick.
  */
 const FLAT_FOLIAGE_FILL = 0.25;
+/**
+ * Sails and flags: thin sheets whose box, stood up on a mast, would weigh like a solid wall.
+ * Their proxy is the sheet itself, about 0.3 mm thick and filling some 60% of its flat outline.
+ */
+const SHEETS = new Set(['u66', '2335', '44676a']);
+const SHEET_MM = 0.3;
+const SHEET_FILL = 0.6;
 
 function estimatedMass(brick: Brick): PartMass {
   const size = footprint(brick);
   const part = getPart(brick.partId);
+  if (SHEETS.has(part.id)) {
+    // The flag parts stand upright, their cloth in the depth and height; the sail lies flat.
+    const [across, along] =
+      part.id === 'u66' ? [part.width * 8, part.depth * 8] : [part.depth * 8, part.height * 3.2];
+    return {
+      massGrams: (across * along * SHEET_MM * 1.05 * SHEET_FILL) / 1000,
+      kind: 'estimated',
+      source:
+        'Thin sheet proxy: the outline of a sail or flag, 0.3 mm thick and filling about 60% of it, at an assumed density of 1.05 g/cm3; NOT an actual part weight.',
+    };
+  }
   const leafy = part.family === 'foliage' && part.height === 1;
   const solid = (size.width * 8 * size.depth * 8 * size.height * 3.2 * 1.05) / 1000;
   return {
