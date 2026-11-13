@@ -172,6 +172,9 @@ describe('Claude tool-use loop', () => {
     const session = createBuilderSession();
     const result = await runClaudeBuild('Plan a staggered wall.', session, transport);
     expect(requests[0].system).toContain('use brick_techniques');
+    // The same design standard Claude Code builds examples to (docs/build-standard.md).
+    expect(requests[0].system).toContain('<build_standard>\nThe bar is the reference builds');
+    expect(requests[0].system).toContain('Calm ground, not confetti.');
     expect(
       requests[0].tools?.some((tool) => 'name' in tool && tool.name === 'brick_techniques'),
     ).toBe(true);
@@ -218,7 +221,7 @@ describe('Claude tool-use loop', () => {
     expect(result.complete).toBe(true);
     expect(result.assembly.bricks.filter((brick) => brick.partId === '3001')).toHaveLength(1);
     expect(requests).toHaveLength(2);
-    expect(requests[0]).toMatchObject({ model: 'test-model', max_tokens: 4096, stream: false });
+    expect(requests[0]).toMatchObject({ model: 'test-model', max_tokens: 16_000, stream: false });
   });
   it('executes dependent calls in response order and returns matching tool-result IDs', async () => {
     const requests: Anthropic.MessageCreateParamsNonStreaming[] = [];

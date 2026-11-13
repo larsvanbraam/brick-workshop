@@ -177,7 +177,7 @@ export function createWorkshopServer(
     options.apiKey || options.transport ? 'api' : options.claudeCode ? 'claude-code' : null;
   const configured = !!backend;
   const client = options.apiKey
-    ? new Anthropic({ apiKey: options.apiKey, timeout: 60_000, maxRetries: 0 })
+    ? new Anthropic({ apiKey: options.apiKey, timeout: 300_000, maxRetries: 0 })
     : null;
   const transport =
     options.transport ??
@@ -258,9 +258,10 @@ export function createWorkshopServer(
         );
       }
       const input = value as GenerationRequest;
-      // Long turn limits need more than five minutes; allow about 30 seconds a turn.
+      // Long turn limits need more than five minutes; allow about a minute a turn, since a
+      // turn may write a full 100-operation patch.
       clearTimeout(deadline);
-      deadline = arm(Math.max(300_000, input.maxTurns * 30_000));
+      deadline = arm(Math.max(300_000, input.maxTurns * 60_000));
       let images: ReferenceImage[];
       let render: ReferenceImage | undefined;
       try {
