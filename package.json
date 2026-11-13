@@ -14,6 +14,7 @@
     "ldraw:fetch": "node apps/web/tooling/fetch-ldraw.ts",
     "colors:import": "node apps/web/tooling/import-colors.ts",
     "colors:inventory": "node apps/web/tooling/import-inventory.ts",
+    "rebrickable:report": "node apps/web/tooling/rebrickable-report.ts",
     "claude:build": "node --env-file-if-exists=.env packages/claude-adapter/src/cli.ts",
     "workshop:server": "node --env-file-if-exists=.env packages/claude-adapter/src/server.ts"
   },

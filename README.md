@@ -182,6 +182,24 @@ part, pass a configuration file with it added as the second argument. Map parts
 and colours explicitly, from matching names or LDraw's `Rebrickable` keywords;
 never infer them from similar numbers, names or RGB values.
 
+### Benchmarks against real sets
+
+[docs/rebrickable-benchmarks.md](docs/rebrickable-benchmarks.md) compares the examples with
+the reference sets (modular buildings, Architecture landmarks, Ideas and Icons castles and
+cottages) by piece count, part-category mix, small-part share and palette. It also ranks
+the parts those sets use that the catalogue lacks, and the supported parts the examples
+underuse. The reference sets and the example each group benchmarks are `REFERENCE_GROUPS`
+in [rebrickable-report.ts](apps/web/tooling/rebrickable-report.ts). Regenerate with:
+
+```sh
+pnpm rebrickable:report
+pnpm fmt
+```
+
+It downloads any missing Rebrickable CSVs into `data/` first. Inventories list parts, not
+positions, so it measures proportions, not construction. For counting only, it treats
+lettered moulds (`3665a`, `3665`) as one design; it never writes part or colour mappings.
+
 ## Examples
 
 | Example             | Pieces | Detail                                                                                           |
