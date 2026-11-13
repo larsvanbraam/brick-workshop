@@ -114,31 +114,31 @@ Palettes (top colours by share of pieces):
 | ----------------------------- | -----: | ------: | -----------: | ----: | -----------: |
 | 21061-1 Notre-Dame de Paris   |   4339 |     158 |            9 |   63% |          3.0 |
 | 21060-1 Himeji Castle         |   2122 |     140 |           11 |   46% |          7.4 |
-| **Nordiska Museet** (example) |  11800 |     110 |           10 |   56% |          0.3 |
+| **Nordiska Museet** (example) |  13795 |     121 |           11 |   59% |          0.7 |
 
 | Category                                  | Reference mean | Nordiska Museet |
 | ----------------------------------------- | -------------: | --------------: |
-| Plates                                    |            24% |             10% |
+| Plates                                    |            24% |             17% |
 | Plates special (jumpers, brackets, clips) |            16% |            0.1% |
-| Slopes, curves and wedges                 |            12% |             12% |
-| Tiles                                     |            10% |            3.3% |
-| Bricks                                    |           7.9% |             40% |
-| Tiles special and round                   |           7.4% |            0.3% |
-| Round bricks, plates and cones            |           5.5% |             17% |
-| Plants                                    |           5.4% |            7.4% |
-| Bricks special (SNOT, masonry)            |           4.5% |            5.9% |
+| Slopes, curves and wedges                 |            12% |             13% |
+| Tiles                                     |            10% |             10% |
+| Bricks                                    |           7.9% |             37% |
+| Tiles special and round                   |           7.4% |            1.8% |
+| Round bricks, plates and cones            |           5.5% |             12% |
+| Plants                                    |           5.4% |            3.1% |
+| Bricks special (SNOT, masonry)            |           4.5% |            3.7% |
 | Other                                     |           3.7% |            0.0% |
-| Bars, fences and ladders                  |           1.7% |            0.7% |
+| Bars, fences and ladders                  |           1.7% |            0.3% |
 | Hinges and turntables                     |           0.7% |            0.0% |
 | Panels                                    |           0.7% |            0.0% |
 | Technic                                   |           0.5% |            0.0% |
-| Windows and doors                         |           0.3% |            2.5% |
+| Windows and doors                         |           0.3% |            2.2% |
 
 Palettes (top colours by share of pieces):
 
 - Notre-Dame de Paris: Tan `19` 57%, Dark Bluish Grey `72` 12%, Dark Tan `28` 10%, Black `0` 8.6%, Trans Clear `47` 3.2%, Trans-Black `1095` 2.5%, White `15` 2.2%, Green `2` 1.5%
 - Himeji Castle: White `15` 30%, Dark Bluish Grey `72` 20%, Dark Tan `28` 15%, Reddish Brown `70` 7.2%, Light Bluish Grey `71` 7.0%, Dark Green `288` 6.5%, Sand Green `378` 3.7%, Black `0` 3.0%
-- Nordiska Museet: Tan `19` 28%, Dark Bluish Grey `72` 17%, Dark Tan `28` 13%, Light Bluish Grey `71` 8.7%, Dark Green `288` 8.3%, Green `2` 7.4%, Reddish Brown `70` 5.7%, Medium Nougat `84` 5.2%
+- Nordiska Museet: Tan `19` 28%, Dark Bluish Grey `72` 19%, Dark Tan `28` 18%, Light Bluish Grey `71` 8.9%, Green `2` 5.9%, Dark Green `288` 5.6%, Medium Nougat `84` 4.5%, Reddish Brown `70` 3.0%
 
 ### Lighthouse
 
@@ -268,6 +268,5 @@ techniques within reach today.
 | `26603` | Tile 2 x 3                                                                  |   10 |            0.4% |          0.0% |
 | `30136` | Brick Special 1 x 2 Palisade [aka Log]                                      |   10 |            0.5% |          0.2% |
 | `14716` | Brick 1 x 1 x 3                                                             |    9 |            0.3% |          0.0% |
-| `3034`  | Plate 2 x 8                                                                 |   10 |            0.4% |          0.1% |
 | `87079` | Tile 2 x 4 with Groove                                                      |   11 |            0.3% |          0.0% |
-| `3001`  | Brick 2 x 4                                                                 |   11 |            0.4% |          0.1% |
+| `3034`  | Plate 2 x 8                                                                 |   10 |            0.4% |          0.1% |

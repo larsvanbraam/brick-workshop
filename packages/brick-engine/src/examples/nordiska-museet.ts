@@ -7,9 +7,9 @@ import {
   getPart,
   isMatchingInsertFrame,
 } from '../core.ts';
-import type { Facing, Rotation } from '../core.ts';
-import { layPlateFloor } from '../board.ts';
+import type { Brick, Facing, Rotation } from '../core.ts';
 import { addTree } from './trees.ts';
+import type { Box as TreeBox } from './trees.ts';
 
 // The museum again at twice the scale, 0.75 studs to the metre, on the 128-stud board. Plans
 // are drawn top-down with the front at high z; the building is symmetric about x = 64. Walls
@@ -22,15 +22,27 @@ const SANDSTONE = 28;
 const TRIM = 19;
 const GRANITE = 71;
 const SLATE = 72;
-/** The steep roofs, spires and dome are dark grey slate with visible tile rows, as on the box. */
+/**
+ * The steep roofs, spires and dome are dark grey slate with visible tile rows, as on the box,
+ * with about a fifth of the slopes in black scattered through them as weathered slates.
+ */
 const ROOFING = 72;
+const ROOF_DARK = 0;
 const COPPER = 378;
 const LAWN = 2;
 const FOREST = 288;
+const BRIGHT = 10;
+const OLIVE = 330;
+const SAND_GREEN = 378;
 const BARK = 70;
-const WATER = 1;
+const BLUE = 1;
+const MEDIUM_BLUE = 73;
+const RIPPLE = 43;
 const NAVY = 272;
 const WHITE = 15;
+const YELLOW = 14;
+const RED = 4;
+const PALE = 151;
 /** Trans-black glass, dark behind the window frames as in the real museum's deep reveals. */
 const PANES = 40;
 /** Window frames and casements are medium nougat: wood a shade darker than the stone, as on the box. */
@@ -41,12 +53,12 @@ const BLACK = 0;
 const GOLD = 297;
 
 /**
- * Heights: water level, the quay top, the lawn on it, the terrace top (building base), the
- * ceiling at the eaves, the roof base, the ridge and the top of the tiles on it. The roof rises
- * thirteen slope courses to the ridge.
+ * Heights: the water on the board, the island's turf layer over three strata, the top of the
+ * turf, the terrace top (building base), the ceiling at the eaves, the roof base, the ridge and
+ * the top of the tiles on it. The roof rises thirteen slope courses to the ridge.
  */
-const GROUND = 2;
-const QUAY = GROUND + 7;
+const WATER_TOP = 1;
+const QUAY = 5;
 const LAWN_TOP = QUAY + 1;
 const BASE = QUAY + 7;
 const COURSES = 16;
@@ -671,56 +683,334 @@ const TOWER_WINDOWS: readonly Window[] = [
 );
 
 /**
- * The island quay rising from the water, with a promenade along its front edge and the name
- * plaque set in the middle of the front wall. On it a granite terrace raises the museum, with
- * broad steps between cheek walls up to the entrance and a tan path on to the promenade.
+ * A granite terrace raises the museum, with broad steps between cheek walls up to the entrance
+ * and a tan path down to the promenade along the quay.
  */
-const ISLAND = [4, 12, 123, 100] as const;
-const PROMENADE = 92;
 const TERRACE = [5, 24, 122, 73] as const;
 const STEPS = [54, 73] as const;
 const STEP_ROWS = 7;
 /** Cheek walls two studs wide either side of the steps, by their western stud. */
 const CHEEKS = [STEPS[0] - 2, STEPS[1] + 1];
 const PATH = [58, 69] as const;
-const PLAQUE = [56, 71] as const;
+
+/** A repeatable 0 to 1 hash of a cell, so ground, rock and roof are mottled the same each time. */
+function hash(x: number, z: number, salt = 0) {
+  let value = Math.imul(x + 101, 0x27d4eb2d) ^ Math.imul(z + 211, 0x165667b1) ^ (salt * 0x9e3779b9);
+  value = Math.imul(value ^ (value >>> 15), 0x85ebca6b);
+  value = Math.imul(value ^ (value >>> 13), 0xc2b2ae35);
+  return ((value ^ (value >>> 16)) >>> 0) / 4294967296;
+}
+
+/** Smooth 0 to 1 noise: hashes on a grid `scale` studs apart, blended between, for blob shapes. */
+function noise(x: number, z: number, scale: number, salt: number) {
+  const [gx, gz] = [x / scale, z / scale];
+  const [x0, z0] = [Math.floor(gx), Math.floor(gz)];
+  const [fx, fz] = [gx - x0, gz - z0].map((t) => t * t * (3 - 2 * t));
+  const corner = (dx: number, dz: number) => hash(x0 + dx, z0 + dz, salt);
+  const top = corner(0, 0) + (corner(1, 0) - corner(0, 0)) * fx;
+  const bottom = corner(0, 1) + (corner(1, 1) - corner(0, 1)) * fx;
+  return top + (bottom - top) * fz;
+}
+
+// ---------------------------------------------------------------------------------------------
+// The island: an organic outline round the terrace, with coves cut into it front and back, in
+// four strata set in a little in places so the sides show ledges: dark rock, mixed rock and
+// earth, earth, then the turf. In front a bay of water reaches up to a straight granite quay
+// under the promenade, as at the real museum's waterfront; elsewhere its banks are rock and reed.
+
+const [IX, IZ, HX, HZ, CORNER] = [63.5, 57.5, 61.5, 46.5, 22];
 /**
- * Two-stud lampposts along the quay's front edge, by their western stud and mirrored about the
- * middle, with a spindled iron fence centred in each gap between them and down both sides.
+ * How far a cell lies outside the island's outline, in studs: a rounded rectangle round the
+ * terrace whose edge wanders in and out by a couple of studs.
  */
-const QUAY_LAMPS = [5, 30, 55, 71, 96, 121];
-const RAILINGS = [
-  ...QUAY_LAMPS.slice(1).flatMap((lamp, index) => {
-    const from = QUAY_LAMPS[index] + 2;
-    const runs = Math.floor((lamp - from) / 4);
-    const start = from + Math.floor((lamp - from - runs * 4) / 2);
-    return range(0, runs - 1).map((run) => [start + run * 4, ISLAND[3], 90] as const);
-  }),
-  ...range(0, 20).flatMap((index) =>
-    [ISLAND[0], ISLAND[2]].map((x) => [x, 16 + index * 4, 0] as const),
-  ),
+function reach(x: number, z: number) {
+  const [px, pz] = [Math.abs(x + 0.5 - IX), Math.abs(z + 0.5 - IZ)];
+  const [qx, qz] = [px - HX + CORNER, pz - HZ + CORNER];
+  const box = Math.hypot(Math.max(qx, 0), Math.max(qz, 0)) + Math.min(Math.max(qx, qz), 0) - CORNER;
+  const angle = Math.atan2(z + 0.5 - IZ, x + 0.5 - IX);
+  const wobble =
+    1.5 * Math.sin(7 * angle + 0.9) + 0.9 * Math.sin(11 * angle + 2.4) + 0.4 * Math.sin(17 * angle);
+  return box + wobble;
+}
+const SECTORS = 96;
+const sector = (x: number, z: number) =>
+  Math.floor(((Math.atan2(z + 0.5 - IZ, x + 0.5 - IX) + Math.PI) / (2 * Math.PI)) * SECTORS) %
+  SECTORS;
+/** Coves cut into the outline: [x, z] of the centre and the radius. */
+const COVES = [
+  [64, -1, 12],
+  [33, 1, 9],
+  [95, 1, 9],
+  [-3, 86, 7],
+  [130, 80, 7],
+  [9, 102, 11],
+  [118, 102, 11],
+] as const;
+/** The promenade along the quay: x from and to, and z from its back to the quay's edge. */
+const PROMENADE = [36, 91, 94, 101] as const;
+const QUAY_Z = PROMENADE[3];
+/** Cells the museum, its steps and the promenade need under them, whatever the outline does. */
+const required = (x: number, z: number) =>
+  within(x, z, TERRACE[0] - 1, TERRACE[1] - 1, TERRACE[2] + 1, TERRACE[3] + 8) ||
+  within(x, z, PROMENADE[0], TERRACE[3], PROMENADE[1], QUAY_Z);
+/** The bay before the quay: 1 on its outline. */
+const bayReach = (x: number, z: number) => {
+  const [dx, dz] = [(x + 0.5 - 64) / 33, (z + 0.5 - 110.5) / 9];
+  const angle = Math.atan2(dz, dx);
+  return (
+    (Math.abs(dx) ** 2.4 + Math.abs(dz) ** 2.4) ** (1 / 2.4) / (1 + 0.05 * Math.sin(5 * angle + 1))
+  );
+};
+function inLayer(x: number, z: number, layer: number) {
+  if (x < 0 || z < 0 || x >= SIZE || z >= SIZE) return false;
+  if (z > QUAY_Z && bayReach(x, z) <= 1) return false;
+  if (required(x, z)) return true;
+  if (COVES.some(([cx, cz, r]) => Math.hypot(x + 0.5 - cx, z + 0.5 - cz) < r - (3 - layer) * 0.8))
+    return false;
+  let limit = 0;
+  for (let level = 1; level <= layer; level++)
+    if (hash(sector(x, z), level, 7) < [0, 0.4, 0.45, 0.5][level]) limit -= 1;
+  return reach(x, z) <= limit;
+}
+/** Water fills the bay and runs on up to the banks either side of the quay. */
+const inWater = (x: number, z: number) =>
+  x >= 0 &&
+  z >= 0 &&
+  x < SIZE &&
+  z < SIZE &&
+  (bayReach(x, z) <= 1.25 || within(x, z, 20, 96, 107, 107)) &&
+  !inLayer(x, z, 0);
+const SIDES = NEIGHBOURS.filter(([dx, dz]) => Math.abs(dx) + Math.abs(dz) === 1);
+const onEdge = (x: number, z: number, layer: number) =>
+  NEIGHBOURS.some(([dx, dz]) => !inLayer(x + dx, z + dz, layer));
+/** The quay wall: the island's edge along the promenade, dressed granite instead of rock. */
+const isQuayWall = (x: number, z: number) =>
+  within(x, z, PROMENADE[0], PROMENADE[2], PROMENADE[1], QUAY_Z) && onEdge(x, z, 0);
+/** Water depth: how many cells to the nearest bank or open edge, 1 at the edge. */
+const DEPTH = (() => {
+  const depth = new Map<string, number>();
+  let frontier: [number, number][] = [];
+  for (let z = 0; z < SIZE; z++)
+    for (let x = 0; x < SIZE; x++)
+      if (inWater(x, z) && SIDES.some(([dx, dz]) => !inWater(x + dx, z + dz))) {
+        depth.set(key(x, z), 1);
+        frontier.push([x, z]);
+      }
+  for (let level = 2; frontier.length; level++) {
+    const next: [number, number][] = [];
+    for (const [x, z] of frontier)
+      for (const [dx, dz] of SIDES) {
+        const [nx, nz] = [x + dx, z + dz];
+        if (inWater(nx, nz) && !depth.has(key(nx, nz))) {
+          depth.set(key(nx, nz), level);
+          next.push([nx, nz]);
+        }
+      }
+    frontier = next;
+  }
+  return depth;
+})();
+const depthAt = (x: number, z: number) => DEPTH.get(key(x, z)) ?? 0;
+/** Water along a natural bank rather than the quay or the open edge. */
+const atBank = (x: number, z: number) =>
+  depthAt(x, z) > 0 &&
+  NEIGHBOURS.some(([dx, dz]) => inLayer(x + dx, z + dz, 0) && !isQuayWall(x + dx, z + dz));
+
+/**
+ * Gravel walks as polylines with a half width: a loop through each front lawn from the foot of
+ * the terrace round to the promenade, and a walk along the back between the trees.
+ */
+const WALKS: readonly (readonly (readonly [number, number])[])[] = [
+  [
+    [50, 76],
+    [34, 77],
+    [18, 76],
+    [10, 81],
+    [11, 89],
+    [20, 95],
+    [37, 97],
+  ],
+  [
+    [77, 76],
+    [93, 76],
+    [108, 77],
+    [117, 83],
+    [114, 91],
+    [104, 96],
+    [90, 97],
+  ],
+  [
+    [10, 21],
+    [26, 20],
+    [44, 21],
+    [64, 20],
+    [84, 21],
+    [100, 20],
+    [117, 21],
+  ],
 ];
+const toSegment = (
+  x: number,
+  z: number,
+  [ax, az]: readonly number[],
+  [bx, bz]: readonly number[],
+) => {
+  const [dx, dz] = [bx - ax, bz - az];
+  const t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / (dx * dx + dz * dz)));
+  return Math.hypot(x - ax - t * dx, z - az - t * dz);
+};
+const isWalk = (x: number, z: number) =>
+  WALKS.some((walk) =>
+    walk
+      .slice(1)
+      .some(
+        (point, index) =>
+          toSegment(x + 0.5, z + 0.5, walk[index], point) < 1.6 + 0.4 * Math.sin((x + z) * 0.37),
+      ),
+  );
+const isTerrace = (x: number, z: number) => within(x, z, ...TERRACE);
+const isStairs = (x: number, z: number) =>
+  within(x, z, CHEEKS[0], TERRACE[3] + 1, CHEEKS[1] + 1, TERRACE[3] + STEP_ROWS);
+/**
+ * What the turf layer is at a cell: granite coping along the quay, paving on the promenade, the
+ * tan path from the steps, tan and dark tan gravel on the walks, and lawn in broad patches of
+ * green, dark green and the odd bright green, the way sets shade a field.
+ */
+function topCell(x: number, z: number): string {
+  if (!inLayer(x, z, 3) || isTerrace(x, z) || isStairs(x, z)) return ' ';
+  if (within(x, z, PROMENADE[0], PROMENADE[2], PROMENADE[1], QUAY_Z))
+    return z >= QUAY_Z - 1 ? 'k' : 'p';
+  if (x >= PATH[0] && x <= PATH[1] && z > TERRACE[3]) return 't';
+  if (isWalk(x, z)) return noise(x, z, 4, 14) < 0.4 ? 'f' : 'e';
+  const shade = noise(x, z, 7, 15) + (noise(x, z, 3, 17) - 0.5) * 0.25;
+  return shade < 0.33 ? 'h' : shade > 0.74 ? 'l' : 'g';
+}
+const isLawn = (x: number, z: number) => ['g', 'h', 'l'].includes(topCell(x, z));
+
+// Pieces the smoothing pass may finish: strata, rocks, knolls and lawn, keyed by world place.
+const NATURAL = new Set<string>();
+const naturalKey = (piece: Pick<Brick, 'partId' | 'x' | 'y' | 'z'>) =>
+  `${piece.partId}@${piece.x},${piece.y},${piece.z}`;
+
 /**
  * Leafy crowns, each as the green of its shaded underside, its body and its sunlit top: deep,
- * dark greens like the box's lime trees, an elm and a horse chestnut.
+ * dark greens like lime trees, an elm and a horse chestnut.
  */
 const CROWNS = [
-  [FOREST, LAWN, LAWN],
+  [FOREST, LAWN, BRIGHT],
   [FOREST, FOREST, LAWN],
-  [FOREST, LAWN, FOREST],
+  [FOREST, LAWN, LAWN],
 ] as const;
 /**
- * Trees as [x, z, crown, trunk courses], x and z the stud corner the trunk stands round: two
- * rows on the front lawn and one behind, mirrored but each grown differently.
+ * Broadleaf trees as [x, z, crown, trunk courses], x and z the stud corner the trunk stands
+ * round: tall ones grouped behind the museum, whose crowns reach its eaves, and smaller groups
+ * on the front lawns that leave the façade clear.
  */
 const TREES = [
-  ...[11, 23, 35, 47].map((x, index) => [x, 79, index % 3, 4 - (index % 2)]),
-  ...[17, 29, 41].map((x, index) => [x, 88, (index + 1) % 3, 3 + (index % 2)]),
-  ...[11, 25, 39, 53].map((x, index) => [x, 18, (index + 2) % 3, 3 + (index % 2)]),
-].flatMap(([x, z, crown, trunk]) => [
-  [x, z, crown, trunk] as const,
-  [SIZE - x, z, (crown + 1) % 3, trunk] as const,
-]);
+  [13, 15, 0, 7],
+  [36, 13, 1, 8],
+  [50, 19, 2, 6],
+  [80, 18, 0, 7],
+  [95, 13, 2, 8],
+  [117, 19, 1, 7],
+  [16, 86, 1, 6],
+  [29, 89, 2, 5],
+  [109, 86, 0, 6],
+  [98, 89, 1, 5],
+] as const;
+/** Conifers: the min corner of each 5 x 5 tree. */
+const CONIFERS = [
+  [20, 2],
+  [58, 15],
+  [101, 2],
+  [3, 76],
+  [119, 74],
+  [41, 82],
+  [84, 82],
+  [0, 34],
+  [123, 52],
+] as const;
+/** Grassy knolls on the lawns: [x, z] of the centre, radii and peak in plates. */
+const KNOLLS = [
+  [24, 82, 5, 3.5, 3],
+  [103, 82, 5, 3.5, 3],
+  [28, 7, 4, 3, 3],
+  [86, 9, 5, 3.5, 4],
+] as const;
+/** Rock outcrops: [x, z] of the centre, radii, peak in plates and a seed. */
+const ROCKS = [
+  [6, 94, 3.5, 3, 9, 1],
+  [121, 92, 3, 3.5, 8, 2],
+  [32, 100, 3, 2.5, 6, 3],
+  [95, 100, 3, 2.5, 6, 4],
+  [55, 15, 3, 2.5, 7, 5],
+  [74, 15, 3, 3, 8, 6],
+  [6, 8, 3, 3, 7, 7],
+  [119, 9, 3, 3, 7, 8],
+  [2, 52, 2, 3, 6, 9],
+] as const;
+/** Bushes, half a stud over: [x, z, colour]. */
+const BUSHES = [
+  [8.5, 72.5, FOREST],
+  [36.5, 79.5, LAWN],
+  [90.5, 79.5, FOREST],
+  [118.5, 70.5, LAWN],
+  [22.5, 22.5, FOREST],
+  [70.5, 21.5, LAWN],
+  [104.5, 22.5, FOREST],
+  [41.5, 92.5, LAWN],
+  [86.5, 92.5, FOREST],
+  [10.5, 26.5, LAWN],
+  [116.5, 30.5, FOREST],
+] as const;
+const FERNS = [
+  [5.5, 90.5, LAWN],
+  [117.5, 88.5, FOREST],
+  [60.5, 19.5, FOREST],
+  [69.5, 19.5, LAWN],
+  [2.5, 46.5, FOREST],
+  [124.5, 60.5, LAWN],
+] as const;
+/** Tall grass: [x, z] of its middle stud and the way the blades run. */
+const TALL_GRASS = [
+  [30, 97, 0],
+  [97, 97, 0],
+  [12, 95, 90],
+  [116, 95, 90],
+  [62, 13, 0],
+  [3, 60, 90],
+  [124, 36, 90],
+] as const;
+/** Flower clumps: [x, z, colour, count, seed]. */
+const FLOWERS = [
+  [26, 79, YELLOW, 6, 81],
+  [101, 79, RED, 6, 82],
+  [44, 95, WHITE, 5, 83],
+  [84, 95, YELLOW, 5, 84],
+  [32, 23, RED, 5, 85],
+  [96, 23, WHITE, 5, 86],
+  [8, 30, YELLOW, 4, 87],
+  [120, 66, RED, 4, 88],
+] as const;
+/** Benches beside the walks, by the lawn stud at their west end and the way they face. */
+const BENCHES = [
+  [26, 74, 0],
+  [98, 74, 0],
+  [40, 23, 180],
+  [86, 23, 180],
+] as const;
+/**
+ * Two-stud lampposts on the quay's coping, by their western stud and mirrored about the
+ * middle, with a spindled iron fence centred in each gap between them.
+ */
+const QUAY_LAMPS = [36, 52, 74, 90];
+const RAILINGS = QUAY_LAMPS.slice(1).flatMap((lamp, index) => {
+  const from = QUAY_LAMPS[index] + 2;
+  const runs = Math.floor((lamp - from) / 4);
+  const start = from + Math.floor((lamp - from - runs * 4) / 2);
+  return range(0, runs - 1).map((run) => [start + run * 4, QUAY_Z, 90] as const);
+});
+const PLAQUE = [56, 71] as const;
 /** The portal in front of the door: columns either side and a pier beyond each. */
 const COLUMNS = [57, 69];
 const PIERS = [52, 72];
@@ -730,9 +1020,15 @@ const isPortal = (x: number, z: number) =>
   [...COLUMNS.map((x0) => [x0, x0 + 1]), ...PIERS.map((x0) => [x0, x0 + 3])].some(
     ([x0, x1]) => x >= x0 && x <= x1,
   );
+/** A slate's shade: about a fifth of the roof in black, scattered with no pattern. */
+const slate = (x: number, y: number, z: number) =>
+  hash(Math.floor(x * 2), Math.floor(z * 2) + y * 131, 33) < 0.2 ? ROOF_DARK : ROOFING;
+
 /**
- * A row of 45 degree roof slopes, split into the widest pieces that fit. No piece but a lone
- * one is a single stud wide, so a row may overhang the course below by a stud at either end.
+ * A row of 45 degree roof slopes. Each row starts with a piece of a length drawn from where it
+ * lies and goes on in mostly four-stud pieces with the odd three, so the joints shift from
+ * course to course like laid slates. No piece but a lone one is a single stud wide, so a row
+ * may overhang the course below by a stud at either end.
  */
 function addSlopeRun(
   add: ExampleBrickAdder,
@@ -742,13 +1038,23 @@ function addSlopeRun(
   line: number,
   rotation: Rotation,
 ) {
+  const total = to - from + 1;
+  let first = total <= 4 ? total : 2 + Math.floor(hash(from + line * 7, y, 31) * 3);
+  if (total - first === 1) first = total <= 4 ? total : first - 1;
   // Rotations 0 and 180 run along x at z = line; 90 and 270 run along z at x = line.
   for (let at = from; at <= to;) {
     const left = to - at + 1;
-    const width = left === 5 ? 3 : Math.min(4, left);
+    const width =
+      at === from
+        ? first
+        : left === 5
+          ? 3
+          : left > 6 && hash(at, y + line * 3, 32) < 0.3
+            ? 3
+            : Math.min(4, left);
     const partId = { 4: '3037', 3: '3038', 2: '3039', 1: '3040b' }[width]!;
-    if (rotation % 180) add(partId, ROOFING, line, y, at, rotation);
-    else add(partId, ROOFING, at, y, line, rotation);
+    if (rotation % 180) add(partId, slate(line, y, at), line, y, at, rotation);
+    else add(partId, slate(at, y, line), at, y, line, rotation);
     at += width;
   }
 }
@@ -810,7 +1116,7 @@ function addApseRoof(
             'top',
           ).some((stud) => stud.x === studX + 0.5 && stud.z === studZ + 0.5),
         )!;
-        add('3045', ROOFING, x, y, z, rotation);
+        add('3045', slate(x, y, z), x, y, z, rotation);
         covered.add(inner);
         hipped.add(key(u0, d0)).add(key(u1, d1));
         index++;
@@ -848,7 +1154,7 @@ function addApseRoof(
     for (const [u, d, rotation] of cheeses) {
       const [x, z] = cell(u, d);
       add('3024', ROOFING, x, y, z);
-      add('54200', ROOFING, x, y + 1, z, rotation);
+      add('54200', slate(x, y, z), x, y + 1, z, rotation);
     }
     const fill = new Set(
       [...next]
@@ -934,13 +1240,13 @@ function addLampPost(add: ExampleBrickAdder, x: number, z: number, y = LAWN_TOP)
  * a wooden deck, a cabin aft, a stepped mainsail and jib either side of the mast and a pennant at its head.
  */
 function addSailboat(add: ExampleBrickAdder, x: number, z: number) {
-  add('3029', WHITE, x, GROUND, z, 90);
+  add('3029', WHITE, x, WATER_TOP, z, 90);
   for (const row of [z, z + 2]) {
-    add('3006', WHITE, x, GROUND + 1, row, 90);
-    add('3039', WHITE, x + 10, GROUND + 1, row, 270);
+    add('3006', WHITE, x, WATER_TOP + 1, row, 90);
+    add('3039', WHITE, x + 10, WATER_TOP + 1, row, 270);
   }
-  add('3030', BARK, x, GROUND + 4, z, 90);
-  const deck = GROUND + 5;
+  add('3030', BARK, x, WATER_TOP + 4, z, 90);
+  const deck = WATER_TOP + 5;
   add('3001', WHITE, x + 1, deck, z + 1, 90);
   add('87079', WHITE, x + 1, deck + 3, z + 1, 90);
   const mast = x + 6;
@@ -969,75 +1275,177 @@ export const nordiskaMuseet: ExampleDefinition = {
     'park',
     'waterfront',
   ],
-  expectedPieceCount: 11812,
+  expectedPieceCount: 13806,
   buildArea: SIZE,
   brickIdPrefix: 'museet',
+  smooth: [{ only: (brick) => NATURAL.has(naturalKey(brick)) }],
   build(drawnAdd) {
+    NATURAL.clear();
     // Pieces are collected and laid a layer at a time, lowest first, so each one's support is
     // in place before it whatever order the sections below come in.
     const pieces: Parameters<ExampleBrickAdder>[] = [];
-    const open = turnAround((...piece) => {
+    let tagging = false;
+    const turned = turnAround((...piece) => {
+      if (tagging)
+        NATURAL.add(naturalKey({ partId: piece[0], x: piece[2], y: piece[3], z: piece[4] }));
       pieces.push(piece);
     }, SIZE);
+    // What stands where, in plan studs, so the scenery and the trees' crowns keep off it.
+    const columns = new Map<string, number[]>();
+    const boxes: TreeBox[] = [];
+    const open: ExampleBrickAdder = (partId, color, x, y, z, rotation = 0, facing, ...rest) => {
+      const size = pieceSize({
+        id: '',
+        partId,
+        color,
+        x,
+        y,
+        z,
+        rotation,
+        ...(facing ? { facing } : {}),
+      });
+      boxes.push({
+        u0: x,
+        u1: x + size.width,
+        v0: z,
+        v1: z + size.depth,
+        y0: y,
+        y1: y + size.height,
+      });
+      for (let cx = Math.floor(x); cx < Math.ceil(x + size.width - 0.01); cx++)
+        for (let cz = Math.floor(z); cz < Math.ceil(z + size.depth - 0.01); cz++) {
+          const spans = columns.get(key(cx, cz)) ?? [];
+          spans.push(y, y + size.height);
+          columns.set(key(cx, cz), spans);
+        }
+      turned(partId, color, x, y, z, rotation, facing, ...rest);
+    };
     const add = glazeWindows(open, PANES);
     const addWallCourse = (cell: (x: number, z: number) => string, y: number, course: number) =>
       addBondedMap(add, plan(cell), y, WALL_LEGEND, course);
+    const blocked = (x0: number, x1: number, z0: number, z1: number, y0: number, y1: number) => {
+      for (let cx = Math.floor(x0); cx < Math.ceil(x1 - 0.01); cx++)
+        for (let cz = Math.floor(z0); cz < Math.ceil(z1 - 0.01); cz++) {
+          const spans = columns.get(key(cx, cz));
+          if (!spans) continue;
+          for (let index = 0; index < spans.length; index += 2)
+            if (spans[index] < y1 && y0 < spans[index + 1]) return true;
+        }
+      return false;
+    };
+    /** Adds a piece the smoothing pass may finish. */
+    const natural: ExampleBrickAdder = (...piece) => {
+      tagging = true;
+      add(...piece);
+      tagging = false;
+    };
+    /** Adds a piece only where its whole box is free, and on the ground only over lawn. */
+    const tryAdd = (
+      partId: string,
+      color: number,
+      x: number,
+      y: number,
+      z: number,
+      rotation: Rotation = 0,
+    ) => {
+      const size = pieceSize({ id: '', partId, color, x, y, z, rotation });
+      if (blocked(x, x + size.width, z, z + size.depth, y, y + size.height)) return false;
+      if (y === LAWN_TOP)
+        for (let cx = Math.floor(x); cx < Math.ceil(x + size.width - 0.01); cx++)
+          for (let cz = Math.floor(z); cz < Math.ceil(z + size.depth - 0.01); cz++)
+            if (!isLawn(cx, cz)) return false;
+      add(partId, color, x, y, z, rotation);
+      return true;
+    };
+    const areaMap = (
+      into: ExampleBrickAdder,
+      cell: (x: number, z: number) => string,
+      y: number,
+      legend: Readonly<Record<string, readonly ['plate' | 'tile' | 'brick', number]>>,
+    ) => addAreaMap(into, plan(cell), y, legend);
 
-    // The 128 x 128 board is the water round the island, a two-layer plate floor, so the whole
-    // board lifts as one.
-    for (const plate of layPlateFloor({ x: 0, z: 0, width: SIZE, depth: SIZE }, WATER)!.bricks)
-      add(plate.partId, plate.color, plate.x, plate.y, plate.z, plate.rotation);
-
-    // Island quay: a slate plate footing, two courses of dark masonry quay wall round a brick
-    // core, and the name plaque in the front wall, black tiles on a row of headlight bricks.
-    const island = (x: number, z: number) => within(x, z, ...ISLAND);
-    const quay = (x: number, z: number) => rim(x, z, ...ISLAND);
-    const isPlaque = (x: number, z: number) => z === ISLAND[3] && x >= PLAQUE[0] && x <= PLAQUE[1];
-    addAreaMap(
-      add,
-      plan((x, z) => (island(x, z) ? 's' : ' ')),
-      GROUND,
-      { s: ['plate', SLATE] },
+    // The island's strata. Rock at the foot, a brick course of rock and earth whose outer face
+    // mixes dark and light grey with dark tan, and an earth plate in dark tan and reddish brown
+    // with the odd tan; along the promenade they are a dressed granite quay wall instead, with
+    // the museum's name on black tiles held by a row of headlight bricks.
+    const isPlaque = (x: number, z: number) => z === QUAY_Z && x >= PLAQUE[0] && x <= PLAQUE[1];
+    areaMap(natural, (x, z) => (inLayer(x, z, 0) ? 'r' : ' '), 0, { r: ['plate', SLATE] });
+    areaMap(
+      natural,
+      (x, z) => {
+        if (!inLayer(x, z, 1) || isQuayWall(x, z)) return ' ';
+        if (!onEdge(x, z, 1)) return 'i';
+        const roll = hash(Math.floor(x / 2), Math.floor(z / 2), 11);
+        return roll < 0.45 ? 'r' : roll < 0.8 ? 's' : 't';
+      },
+      1,
+      {
+        i: ['brick', SLATE],
+        r: ['brick', SLATE],
+        s: ['brick', GRANITE],
+        t: ['brick', SANDSTONE],
+      },
     );
-    for (const course of [0, 1]) {
-      const y = GROUND + 1 + course * 3;
-      addBondedMap(
-        add,
-        plan((x, z) => (quay(x, z) && !(course === 1 && isPlaque(x, z)) ? 'q' : ' ')),
-        y,
-        WALL_LEGEND,
-        course,
-      );
-      addAreaMap(
-        add,
-        plan((x, z) => (island(x, z) && !quay(x, z) ? 'c' : ' ')),
-        y,
-        { c: ['brick', SLATE] },
-      );
-    }
-    for (let x = PLAQUE[0]; x <= PLAQUE[1]; x++) add('4070', SLATE, x, GROUND + 4, ISLAND[3], 180);
-    for (const x of [PLAQUE[0], PLAQUE[0] + 8])
-      add('4162', BLACK, x, GROUND + 4.5, ISLAND[3] + 0.8, 90, '+z');
-
-    // On the quay: granite coping round the edge, the paved promenade along the front, a tan
-    // path from the steps to it, and lawn everywhere else.
-    const terrace = (x: number, z: number) => within(x, z, ...TERRACE);
-    const stairs = (x: number, z: number) =>
-      within(x, z, CHEEKS[0], TERRACE[3] + 1, CHEEKS[1] + 1, TERRACE[3] + STEP_ROWS);
-    addAreaMap(
+    addBondedMap(
       add,
-      plan((x, z) => {
-        if (!island(x, z) || terrace(x, z) || stairs(x, z)) return ' ';
-        if (quay(x, z)) return 'k';
-        if (z >= PROMENADE) return 'p';
-        return x >= PATH[0] && x <= PATH[1] && z > TERRACE[3] ? 't' : 'g';
-      }),
+      plan((x, z) => (isQuayWall(x, z) && !isPlaque(x, z) ? 'p' : ' ')),
+      1,
+      WALL_LEGEND,
+      0,
+    );
+    for (let x = PLAQUE[0]; x <= PLAQUE[1]; x++) add('4070', SLATE, x, 1, QUAY_Z, 180);
+    for (const x of [PLAQUE[0], PLAQUE[0] + 8]) add('4162', BLACK, x, 1.5, QUAY_Z + 0.8, 90, '+z');
+    areaMap(
+      natural,
+      (x, z) => {
+        if (!inLayer(x, z, 2) || isQuayWall(x, z)) return ' ';
+        if (!onEdge(x, z, 2)) return 'i';
+        const roll = hash(Math.floor(x / 3), Math.floor(z / 3), 12);
+        return roll < 0.55 ? 'd' : roll < 0.85 ? 'b' : 'n';
+      },
+      4,
+      {
+        i: ['plate', SANDSTONE],
+        d: ['plate', SANDSTONE],
+        b: ['plate', BARK],
+        n: ['plate', TRIM],
+      },
+    );
+    areaMap(add, (x, z) => (isQuayWall(x, z) ? 'q' : ' '), 4, { q: ['plate', GRANITE] });
+
+    // The bay: dark blue in the deep middle, blue, and medium blue in the shallows at the
+    // banks, with trans ripples along the edges.
+    areaMap(
+      add,
+      (x, z) => {
+        const depth = depthAt(x, z);
+        return depth === 0 ? ' ' : depth >= 8 ? 'k' : depth >= 3 ? 'u' : 'v';
+      },
+      0,
+      { k: ['plate', NAVY], u: ['plate', BLUE], v: ['plate', MEDIUM_BLUE] },
+    );
+
+    // The turf: granite coping on the quay, paving on the promenade in two greys, the tan path
+    // from the steps, gravel walks and the lawns.
+    const turf = (x: number, z: number) => {
+      const cell = topCell(x, z);
+      return cell === 'p' && hash(Math.floor(x / 3), Math.floor(z / 2), 16) < 0.3 ? 'P' : cell;
+    };
+    areaMap(
+      (partId, color, ...rest) =>
+        ([LAWN, FOREST, BRIGHT].includes(color) ? natural : add)(partId, color, ...rest),
+      turf,
       QUAY,
       {
         k: ['plate', GRANITE],
-        t: ['tile', TRIM],
         p: ['tile', GRANITE],
+        P: ['tile', PALE],
+        t: ['tile', TRIM],
+        e: ['plate', TRIM],
+        f: ['plate', SANDSTONE],
         g: ['plate', LAWN],
+        h: ['plate', FOREST],
+        l: ['plate', BRIGHT],
       },
     );
 
@@ -1054,21 +1462,21 @@ export const nordiskaMuseet: ExampleDefinition = {
       );
       addAreaMap(
         add,
-        plan((x, z) => (terrace(x, z) && !rim(x, z, ...TERRACE) ? 'c' : ' ')),
+        plan((x, z) => (isTerrace(x, z) && !rim(x, z, ...TERRACE) ? 'c' : ' ')),
         y,
         { c: ['brick', SLATE] },
       );
     }
     addAreaMap(
       add,
-      plan((x, z) => (terrace(x, z) ? 's' : ' ')),
+      plan((x, z) => (isTerrace(x, z) ? 's' : ' ')),
       QUAY + 6,
       { s: ['plate', GRANITE] },
     );
     addAreaMap(
       add,
       plan((x, z) =>
-        !terrace(x, z) || enclosed(x, z) || isPortal(x, z) || FACET_BOXES.has(key(x, z))
+        !isTerrace(x, z) || enclosed(x, z) || isPortal(x, z) || FACET_BOXES.has(key(x, z))
           ? ' '
           : x >= DOOR[0] && x <= DOOR[1] && z > PAVILION_FRONT
             ? 't'
@@ -1441,7 +1849,14 @@ export const nordiskaMuseet: ExampleDefinition = {
     // against its wall, either side of the cross gable.
     for (const x of range(TOWER[0], gableWest + CROSSING - 2))
       for (const at of [x, mirrored(x)])
-        add('54200', ROOFING, at, ROOF + CROSSING * 3, gableBack, 0);
+        add(
+          '54200',
+          slate(at, ROOF + CROSSING * 3, gableBack),
+          at,
+          ROOF + CROSSING * 3,
+          gableBack,
+          0,
+        );
 
     // The pavilion's own roof runs from its gable back to the tower, as high as the main ridge:
     // slopes either side meeting under a granite ridge, each course starting where the main
@@ -1719,26 +2134,223 @@ export const nordiskaMuseet: ExampleDefinition = {
     );
     for (const [x, z] of TURRETS) addSteeple(add, x + 1, towerTop + 1, z + 1);
 
-    // Grounds: a black railing round the quay with lamps between its runs, leafy trees on the
-    // front lawn and behind the museum, and a sailing boat moored off the front.
+    // ----------------------------------------------------------------------------------------
+    // The grounds: a black railing along the quay with lamps between its runs, flags at the
+    // promenade's ends, a sailing boat moored in the bay, and round the museum knolls, rock
+    // outcrops, groups of broadleaf trees and conifers, bushes, ferns, reeds and flowers.
+
     for (const [x, z, rotation] of RAILINGS) add('15332', BLACK, x, LAWN_TOP, z, rotation);
-    for (const x of QUAY_LAMPS) addLampPost(add, x, ISLAND[3] - 1);
-    // The trees grow round each other and round the lamps and railings already standing. The
-    // pieces so far are recorded turned about, so turn them back to the trees' frame.
-    const around = pieces.map(([partId, , x, y, z, rotation = 0, facing]) => {
-      const size = pieceSize({ id: '', partId, color: 0, x, y, z, rotation, facing });
-      return {
-        u0: SIZE - x - size.width,
-        u1: SIZE - x,
-        v0: SIZE - z - size.depth,
-        v1: SIZE - z,
-        y0: y,
-        y1: y + size.height,
-      };
-    });
+    for (const x of QUAY_LAMPS) addLampPost(add, x, QUAY_Z - 1);
+    // Flagpoles of white round bricks on granite footings, each flying a blue flag.
+    for (const x of [PROMENADE[0] + 3, PROMENADE[1] - 3]) {
+      const z = PROMENADE[2] - 2;
+      if (!isLawn(x, z) || blocked(x, x + 1, z, z + 1, LAWN_TOP, LAWN_TOP + 40)) continue;
+      add('3062b', GRANITE, x, LAWN_TOP, z);
+      for (let course = 1; course < 6; course++) add('3062b', WHITE, x, LAWN_TOP + course * 3, z);
+      add('3957a', WHITE, x, LAWN_TOP + 18, z);
+      add('2335', BLUE, x, LAWN_TOP + 24, z, 90);
+    }
+    addSailboat(add, 70, 109);
+    // Ripples along the bay's edges and the odd one out on the water.
+    for (let z = 0; z < SIZE; z++)
+      for (let x = 0; x < SIZE; x++) {
+        const depth = depthAt(x, z);
+        if (blocked(x, x + 1, z, z + 1, WATER_TOP, WATER_TOP + 1)) continue;
+        if (depth === 1 && hash(x, z, 21) < 0.3) add('3070b', RIPPLE, x, WATER_TOP, z);
+        else if (depth >= 2 && depth <= 4 && hash(x, z, 22) < 0.04)
+          add('98138', RIPPLE, x, WATER_TOP, z);
+      }
+
+    /** Stacks of plates and bricks in `tones`, highest in the middle, that smoothing rounds off. */
+    const mound = (
+      heights: Map<string, number>,
+      salt: number,
+      tones: readonly [number, number, number],
+      bricks: boolean,
+    ) => {
+      const topAt = new Map<string, number>();
+      for (const cell of heights.keys()) topAt.set(cell, LAWN_TOP);
+      const max = Math.max(0, ...heights.values());
+      for (let y = LAWN_TOP; y < LAWN_TOP + max; y++) {
+        const cells = new Map<string, string>();
+        for (const [cell, height] of heights) {
+          if (topAt.get(cell) !== y || y >= LAWN_TOP + height) continue;
+          const [x, z] = cell.split(':').map(Number);
+          const brick = bricks && LAWN_TOP + height - y >= 3;
+          const roll = hash(
+            Math.floor(x / 2),
+            Math.floor((y - LAWN_TOP) / 3) * 7 + Math.floor(z / 2),
+            salt,
+          );
+          const tone = roll < 0.4 ? 'a' : roll < 0.88 ? 'd' : 'l';
+          cells.set(cell, brick ? tone.toUpperCase() : tone);
+        }
+        areaMap(natural, (x, z) => cells.get(key(x, z)) ?? ' ', y, {
+          A: ['brick', tones[0]],
+          D: ['brick', tones[1]],
+          L: ['brick', tones[2]],
+          a: ['plate', tones[0]],
+          d: ['plate', tones[1]],
+          l: ['plate', tones[2]],
+        });
+        for (const [cell, tone] of cells)
+          topAt.set(cell, y + (tone === tone.toUpperCase() ? 3 : 1));
+      }
+    };
+    /** A rounded heap round [cx, cz] over open ground: rock outcrops and grassy knolls. */
+    const heap = (
+      cx: number,
+      cz: number,
+      rx: number,
+      rz: number,
+      peak: number,
+      salt: number,
+      ground: (x: number, z: number) => boolean,
+    ) => {
+      const heights = new Map<string, number>();
+      for (let z = Math.floor(cz - rz); z <= Math.ceil(cz + rz); z++)
+        for (let x = Math.floor(cx - rx); x <= Math.ceil(cx + rx); x++) {
+          if (!ground(x, z)) continue;
+          const distance = Math.hypot((x + 0.5 - cx) / rx, (z + 0.5 - cz) / rz);
+          const height = Math.round((1 - distance) * peak + (hash(x, z, salt) - 0.5) * 3);
+          if (height > 0 && !blocked(x, x + 1, z, z + 1, LAWN_TOP, LAWN_TOP + height))
+            heights.set(key(x, z), height);
+        }
+      return heights;
+    };
+    // Trees first, so their feet stand on flat lawn and the heaps below keep clear of them.
+    const near = (x: number, z: number, reachOut: number) =>
+      boxes.filter(
+        (box) =>
+          box.u1 > x - reachOut &&
+          box.u0 < x + reachOut &&
+          box.v1 > z - reachOut &&
+          box.v0 < z + reachOut,
+      );
     for (const [index, [x, z, crown, trunk]] of TREES.entries())
-      addTree(add, x, z, LAWN_TOP, CROWNS[crown], BARK, trunk, index, around);
-    addSailboat(add, 86, 110);
+      addTree(add, x, z, LAWN_TOP, CROWNS[crown], BARK, trunk, index, near(x, z, 12));
+    for (const [x, z] of CONIFERS) tryAdd('3471', FOREST, x, LAWN_TOP, z);
+
+    const openGround = (x: number, z: number) => isLawn(x, z) || ['e', 'f'].includes(topCell(x, z));
+    for (const [cx, cz, rx, rz, peak, salt] of ROCKS)
+      mound(heap(cx, cz, rx, rz, peak, salt, openGround), salt, [GRANITE, SLATE, PALE], true);
+    // Stones along the bay's natural banks.
+    const bank = new Map<string, number>();
+    for (let z = 0; z < SIZE; z++)
+      for (let x = 0; x < SIZE; x++) {
+        if (!openGround(x, z)) continue;
+        const shore = NEIGHBOURS.some(([dx, dz]) => depthAt(x + dx, z + dz) > 0);
+        if (shore && hash(x, z, 61) < 0.4 && !blocked(x, x + 1, z, z + 1, LAWN_TOP, LAWN_TOP + 2))
+          bank.set(key(x, z), 1 + Math.floor(hash(x, z, 62) * 2));
+      }
+    mound(bank, 3, [GRANITE, SLATE, PALE], true);
+    for (const [index, [cx, cz, rx, rz, peak]] of KNOLLS.entries())
+      mound(
+        heap(cx, cz, rx, rz, peak, 40 + index, isLawn),
+        40 + index,
+        [LAWN, FOREST, BRIGHT],
+        false,
+      );
+
+    // Bushes and ferns stand on a stud between their own cells, so they sit half a stud over.
+    for (const [x, z, color] of BUSHES) tryAdd('6064', color, x, LAWN_TOP, z);
+    for (const [x, z, color] of FERNS) tryAdd('6255', color, x, LAWN_TOP, z);
+    for (const [x, z, rotation] of TALL_GRASS)
+      tryAdd(
+        '30093',
+        hash(x, z) < 0.4 ? FOREST : OLIVE,
+        rotation ? x : x - 1.5,
+        LAWN_TOP,
+        rotation ? z - 1.5 : z,
+        rotation,
+      );
+    // Reeds in the shallows along the natural banks, lily pads a little further out.
+    for (let z = 0; z < SIZE; z++)
+      for (let x = 0; x < SIZE; x++) {
+        const depth = depthAt(x, z);
+        if (depth === 1 && atBank(x, z) && hash(x, z, 71) < 0.14) {
+          if (blocked(x, x + 1, z, z + 1, WATER_TOP, WATER_TOP + 13)) continue;
+          add('6141', OLIVE, x, WATER_TOP, z);
+          add('3957a', hash(x, z, 72) < 0.5 ? OLIVE : SAND_GREEN, x, WATER_TOP + 1, z);
+        } else if (
+          depth >= 2 &&
+          depth <= 3 &&
+          NEIGHBOURS.some(([dx, dz]) => atBank(x + dx * 2, z + dz * 2)) &&
+          hash(x, z, 73) < 0.12
+        )
+          tryAdd('98138', hash(x, z, 74) < 0.6 ? BRIGHT : LAWN, x, WATER_TOP, z);
+      }
+
+    // Flowers in clumps of one colour.
+    const flowers = (cx: number, cz: number, color: number, count: number, salt: number) => {
+      let placed = 0;
+      const cells: [number, number, number][] = [];
+      for (let z = cz - 2; z <= cz + 2; z++)
+        for (let x = cx - 2; x <= cx + 2; x++)
+          cells.push([x, z, Math.hypot(x - cx, z - cz) + hash(x, z, salt) * 1.5]);
+      cells.sort((a, b) => a[2] - b[2]);
+      for (const [x, z] of cells) {
+        if (placed >= count) break;
+        if (!isLawn(x, z)) continue;
+        if (
+          placed === 0 &&
+          !blocked(x, x + 2, z, z + 2, LAWN_TOP, LAWN_TOP + 5) &&
+          isLawn(x + 1, z + 1) &&
+          isLawn(x + 1, z) &&
+          isLawn(x, z + 1)
+        ) {
+          add('18674', LAWN, x, LAWN_TOP, z);
+          add('4727', LAWN, x, LAWN_TOP + 1, z);
+          add('24866', color, x, LAWN_TOP + 4, z);
+          placed++;
+          continue;
+        }
+        if (tryAdd(hash(x, z, salt + 1) < 0.5 ? '98138' : '6141', color, x, LAWN_TOP, z)) placed++;
+      }
+    };
+    for (const [x, z, color, count, salt] of FLOWERS) flowers(x, z, color, count, salt);
+
+    // Benches by the walks: brick legs, a plate seat and tile slats.
+    for (const [x, z] of BENCHES) {
+      const free =
+        !blocked(x, x + 3, z, z + 2, LAWN_TOP, LAWN_TOP + 6) &&
+        range(x, x + 2).every((cx) => isLawn(cx, z) && isLawn(cx, z + 1));
+      if (!free) continue;
+      for (const at of [x, x + 2]) add('3004', BARK, at, LAWN_TOP, z, 90);
+      add('3021', BARK, x, LAWN_TOP + 3, z, 90);
+      for (const row of [z, z + 1])
+        add('63864', row === z ? BARK : WHITE, x, LAWN_TOP + 4, row, 90);
+    }
+
+    // The ground dressed last: tiles and stepping stones on the walks, the odd tuft gathered
+    // along the edges of the lawns and at the feet of walls, the middles left plain.
+    for (let z = 0; z < SIZE; z++)
+      for (let x = 0; x < SIZE; x++) {
+        const cell = topCell(x, z);
+        if (!['g', 'h', 'l', 'e', 'f'].includes(cell)) continue;
+        if (blocked(x, x + 1, z, z + 1, LAWN_TOP, LAWN_TOP + 1)) continue;
+        const roll = hash(x, z, 91);
+        if (cell === 'e' || cell === 'f') {
+          if (roll < 0.3) continue;
+          const color = hash(Math.floor(x / 2), Math.floor(z / 2), 92) < 0.55 ? TRIM : SANDSTONE;
+          if (roll < 0.45) add('98138', color, x, LAWN_TOP, z);
+          else add('3070b', color, x, LAWN_TOP, z);
+          continue;
+        }
+        const edge = NEIGHBOURS.some(([dx, dz]) => !isLawn(x + dx, z + dz));
+        const foot = NEIGHBOURS.some(([dx, dz]) =>
+          blocked(x + dx, x + dx + 1, z + dz, z + dz + 1, LAWN_TOP, LAWN_TOP + 3),
+        );
+        const tuft = cell === 'h' ? LAWN : FOREST;
+        if (!edge && !foot) {
+          if (roll < 0.02) add('3070b', tuft, x, LAWN_TOP, z);
+          continue;
+        }
+        if (roll < 0.06) add('3070b', tuft, x, LAWN_TOP, z);
+        else if (roll < 0.12)
+          tryAdd('32607', hash(x, z, 93) < 0.5 ? LAWN : FOREST, x, LAWN_TOP, z - 1);
+      }
+
     for (const piece of pieces.toSorted((first, second) => first[3] - second[3]))
       drawnAdd(...piece);
   },
