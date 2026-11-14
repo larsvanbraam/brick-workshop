@@ -19,8 +19,8 @@ import {
 import { ColorPicker } from './ColorPicker';
 import { getPart } from '@brick-workshop/engine';
 import type { Part } from '@brick-workshop/engine';
-import type { CatalogPart, LibraryCatalog } from '../tooling/ldraw-library';
-import { CURATED_PARTS_ONLY, loadLDrawCatalog, loadLDrawPart } from './ldraw';
+import type { CatalogPart, LibraryCatalog } from '@brick-workshop/render/ldraw-library';
+import { CURATED_PARTS_ONLY, loadLDrawCatalog, loadLDrawPart } from '@brick-workshop/render/ldraw';
 import { LDrawMesh, WorkshopEnvironment } from './Scene';
 import { inferLDrawPartDefinition, searchCatalog } from './catalog';
 import './part-browser.css';

@@ -4,7 +4,7 @@ import { isAbsolute, relative, resolve, sep } from 'node:path';
 import { createInterface } from 'node:readline';
 import type { Plugin, ViteDevServer } from 'vite-plus';
 import { PARTS } from '@brick-workshop/engine';
-import { MINIFIG_PARTS } from '../src/minifig-parts.ts';
+import { MINIFIG_PARTS } from './minifig-parts.ts';
 
 export interface LibraryManifest {
   available: boolean;

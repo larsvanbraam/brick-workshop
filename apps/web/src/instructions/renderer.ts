@@ -33,11 +33,11 @@ import {
   getPart,
 } from '@brick-workshop/engine';
 import type { Assembly, Brick } from '@brick-workshop/engine';
-import { createFallbackGeometry } from '../fallback-geometry';
-import { coloredLDrawModel, loadLDrawModels } from '../ldraw';
-import { LDrawBatch, canBatchLDrawModel } from '../ldraw-batches';
-import type { BatchEntry } from '../ldraw-batches';
-import { colorMaterialProperties } from '../ldraw-materials';
+import { createFallbackGeometry } from '@brick-workshop/render/fallback-geometry';
+import { coloredLDrawModel, loadLDrawModels } from '@brick-workshop/render/ldraw';
+import { LDrawBatch, canBatchLDrawModel } from '@brick-workshop/render/ldraw-batches';
+import type { BatchEntry } from '@brick-workshop/render/ldraw-batches';
+import { colorMaterialProperties } from '@brick-workshop/render/ldraw-materials';
 import {
   MOODS,
   createCinematicComposer,
@@ -45,9 +45,9 @@ import {
   createStudioEnvironment,
   fogRange,
   paintSky,
-} from '../cinematic-look';
-import type { CinematicMood } from '../cinematic-look';
-import { LDRAW_SCALE, worldZ } from '../scene-frame';
+} from '@brick-workshop/render/cinematic-look';
+import type { CinematicMood } from '@brick-workshop/render/cinematic-look';
+import { LDRAW_SCALE, worldZ } from '@brick-workshop/render/scene-frame';
 import { rgbCss } from './layout';
 import type { Rgb } from './layout';
 

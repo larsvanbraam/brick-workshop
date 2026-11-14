@@ -1,17 +1,24 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import type { RefObject } from 'react';
+import type { ReactNode, RefObject } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { LineSegments, Mesh, MeshStandardMaterial, Vector3 } from 'three';
 import type { Box3, Object3D } from 'three';
 import type { CameraControls } from '@react-three/drei';
 import type { BatchStats, LDrawBatch } from './ldraw-batches';
-import type { PointerTarget } from './Scene';
 import './scene-debug.css';
+
+/** What the pointer or crosshair rests on, in stud units: the face hit and the piece, if any. */
+export interface DebugHover {
+  face: string;
+  brick?: { partId: string } | null;
+  x: number;
+  z: number;
+}
 
 /**
  * Renderer debugging: an overlay with frame, GPU and batch statistics plus a few visual helpers.
  * Toggle it with the backtick key (`), or open the app with `?debug` in the URL. The chosen
- * options are remembered per browser.
+ * options are remembered per browser, under a key of each app's own.
  */
 export interface DebugOptions {
   enabled: boolean;
@@ -26,7 +33,6 @@ export interface DebugOptions {
   axes: boolean;
 }
 
-const STORAGE_KEY = 'brick-workshop-debug-v1';
 const DEFAULTS: DebugOptions = {
   enabled: false,
   wireframe: false,
@@ -36,10 +42,10 @@ const DEFAULTS: DebugOptions = {
   axes: false,
 };
 
-function loadOptions(): DebugOptions {
+function loadOptions(storageKey: string): DebugOptions {
   let saved: Partial<DebugOptions> = {};
   try {
-    saved = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}') as Partial<DebugOptions>;
+    saved = JSON.parse(localStorage.getItem(storageKey) ?? '{}') as Partial<DebugOptions>;
   } catch {
     // Storage may be blocked; debugging still works for this visit.
   }
@@ -55,15 +61,15 @@ function isTyping(target: EventTarget | null) {
   );
 }
 
-export function useDebugOptions() {
-  const [options, setOptions] = useState(loadOptions);
+export function useDebugOptions(storageKey = 'brick-workshop-debug-v1') {
+  const [options, setOptions] = useState(() => loadOptions(storageKey));
   useEffect(() => {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(options));
+      localStorage.setItem(storageKey, JSON.stringify(options));
     } catch {
       // Not remembered, which is fine.
     }
-  }, [options]);
+  }, [options, storageKey]);
   useEffect(() => {
     const keydown = (event: KeyboardEvent) => {
       if (event.code !== 'Backquote' || event.repeat || isTyping(event.target)) return;
@@ -101,7 +107,7 @@ export interface DebugSnapshot {
 /** Frame statistics, published from inside the canvas a few times a second. */
 export class DebugStore {
   private snapshot: DebugSnapshot | null = null;
-  private hoverTarget: PointerTarget | null = null;
+  private hoverTarget: DebugHover | null = null;
   private readonly listeners = new Set<() => void>();
   private lastPublish = 0;
   private trailing: ReturnType<typeof setTimeout> | undefined;
@@ -124,7 +130,7 @@ export class DebugStore {
     else this.trailing = setTimeout(() => this.emit(performance.now()), 200);
   }
 
-  hover(target: PointerTarget | null) {
+  hover(target: DebugHover | null) {
     this.hoverTarget = target;
     this.emit(performance.now());
   }
@@ -295,8 +301,10 @@ const compact = (value: number) =>
   value.toLocaleString('en-US', { notation: 'compact', maximumFractionDigits: 1 });
 const vector = (value: readonly number[]) => value.map((entry) => entry.toFixed(2)).join(', ');
 
+export type DebugSwitch = Exclude<keyof DebugOptions, 'enabled'>;
+
 const SWITCHES: {
-  key: Exclude<keyof DebugOptions, 'enabled'>;
+  key: DebugSwitch;
   label: string;
 }[] = [
   { key: 'wireframe', label: 'Wireframe' },
@@ -320,11 +328,19 @@ export function DebugOverlay({
   options,
   onChange,
   counts,
+  title = 'Renderer debug',
+  switches,
+  children,
 }: {
   store: DebugStore;
   options: DebugOptions;
   onChange: (options: DebugOptions) => void;
   counts: DebugCounts;
+  title?: string;
+  /** The helpers this scene has; all of them when left out. */
+  switches?: readonly DebugSwitch[];
+  /** An app's own readouts and switches, shown under the renderer's. */
+  children?: ReactNode;
 }) {
   const stats = useSyncExternalStore(store.subscribe, store.getSnapshot);
   const hover = useSyncExternalStore(store.subscribe, store.getHover);
@@ -332,7 +348,7 @@ export function DebugOverlay({
   return (
     <aside className="scene-debug" aria-label="Renderer debug information">
       <header>
-        <strong>Renderer debug</strong>
+        <strong>{title}</strong>
         <button
           type="button"
           onClick={() => onChange({ ...options, enabled: false })}
@@ -444,8 +460,9 @@ export function DebugOverlay({
           </table>
         </details>
       )}
+      {children}
       <fieldset>
-        {SWITCHES.map(({ key, label }) => (
+        {SWITCHES.filter(({ key }) => !switches || switches.includes(key)).map(({ key, label }) => (
           <label key={key}>
             <input
               type="checkbox"

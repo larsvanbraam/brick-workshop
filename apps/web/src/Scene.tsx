@@ -21,13 +21,16 @@ import {
   Vector3,
 } from 'three';
 import type { Object3D } from 'three';
-import { FallbackBatch } from './fallback-batch';
-import { createFallbackBrickGeometry, fallbackShapeKey } from './fallback-geometry';
+import { FallbackBatch } from '@brick-workshop/render/fallback-batch';
+import {
+  createFallbackBrickGeometry,
+  fallbackShapeKey,
+} from '@brick-workshop/render/fallback-geometry';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { coloredLDrawModel } from './ldraw';
-import { LDrawBatch, canBatchLDrawModel } from './ldraw-batches';
+import { coloredLDrawModel } from '@brick-workshop/render/ldraw';
+import { LDrawBatch, canBatchLDrawModel } from '@brick-workshop/render/ldraw-batches';
 import type { ThreeEvent } from '@react-three/fiber';
-import { colorMaterialProperties, displayHex } from './ldraw-materials';
+import { colorMaterialProperties, displayHex } from '@brick-workshop/render/ldraw-materials';
 import {
   getCinematicFrame,
   getLDrawModelOffset,
@@ -36,11 +39,11 @@ import {
   getSceneHeight,
   LDRAW_SCALE,
   worldZ,
-} from './scene-frame';
-import { CinematicStage } from './cinematic';
-import type { CinematicMood } from './cinematic';
-import { WalkMode } from './walk-view';
-import type { WalkCamera } from './walk-view';
+} from '@brick-workshop/render/scene-frame';
+import { CinematicStage } from '@brick-workshop/render/cinematic';
+import type { CinematicMood } from '@brick-workshop/render/cinematic';
+import { WalkMode } from '@brick-workshop/walk/walk-view';
+import type { WalkCamera } from '@brick-workshop/walk/walk-view';
 import {
   BUILD_AREA,
   COLORS,
@@ -50,7 +53,13 @@ import {
   getLDrawTransform,
 } from '@brick-workshop/engine';
 import type { Assembly, Brick, PhysicalAssessment } from '@brick-workshop/engine';
-import { DebugHelpers, DebugOverlay, DebugProbe, DebugStore, useDebugOptions } from './scene-debug';
+import {
+  DebugHelpers,
+  DebugOverlay,
+  DebugProbe,
+  DebugStore,
+  useDebugOptions,
+} from '@brick-workshop/render/scene-debug';
 
 /** Where the pointer rests on the board, in stud and plate units. */
 export interface PointerTarget {

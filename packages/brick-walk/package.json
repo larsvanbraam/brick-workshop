@@ -1,0 +1,45 @@
+{
+  "name": "@brick-workshop/walk",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./walk": {
+      "types": "./src/walk.ts",
+      "import": "./src/walk.ts"
+    },
+    "./walk-gamepad": {
+      "types": "./src/walk-gamepad.ts",
+      "import": "./src/walk-gamepad.ts"
+    },
+    "./walk-sounds": {
+      "types": "./src/walk-sounds.ts",
+      "import": "./src/walk-sounds.ts"
+    },
+    "./walk-view": {
+      "types": "./src/walk-view.tsx",
+      "import": "./src/walk-view.tsx"
+    }
+  },
+  "scripts": {
+    "test": "vp test",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@brick-workshop/engine": "workspace:*",
+    "@brick-workshop/render": "workspace:*"
+  },
+  "devDependencies": {
+    "@react-three/fiber": "^9.8.2",
+    "@types/react": "^19.3.0",
+    "@types/three": "^0.183.0",
+    "react": "^19.3.1",
+    "three": "^0.183.0",
+    "vite-plus": "1.4.0"
+  },
+  "peerDependencies": {
+    "@react-three/fiber": "^9.8.2",
+    "react": "^19.3.1",
+    "three": "^0.183.0"
+  }
+}

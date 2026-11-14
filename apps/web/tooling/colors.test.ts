@@ -15,7 +15,7 @@ import {
   cloneLDrawModel,
   colorMaterialProperties,
   displayHex,
-} from '../src/ldraw-materials';
+} from '@brick-workshop/render/ldraw-materials';
 import { Readable } from 'node:stream';
 import { gzipSync } from 'node:zlib';
 import { basicInventoryConfiguration, readInventoryEvidence } from './import-inventory';

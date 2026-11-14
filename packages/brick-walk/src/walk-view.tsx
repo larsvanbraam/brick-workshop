@@ -3,14 +3,21 @@ import { useFrame, useThree } from '@react-three/fiber';
 import { Box3, Group, Matrix4, PerspectiveCamera, Vector3 } from 'three';
 import type { Object3D } from 'three';
 import type { Brick } from '@brick-workshop/engine';
-import { coloredLDrawModel, loadLDrawModels } from './ldraw';
-import { MINIFIG_PARTS } from './minifig-parts';
-import { LDRAW_SCALE } from './scene-frame';
+import { coloredLDrawModel, loadLDrawModels } from '@brick-workshop/render/ldraw';
+import { MINIFIG_PARTS } from '@brick-workshop/render/minifig-parts';
+import { LDRAW_SCALE } from '@brick-workshop/render/scene-frame';
 import { MINIFIG, WalkWorld, spawnWalker, stepWalker } from './walk';
+import type { Walker } from './walk';
 import { LOOK_RATE, readGamepads } from './walk-gamepad';
 import { WalkSounds } from './walk-sounds';
 
 export type WalkCamera = 'first' | 'third';
+
+/** The walker as it moves, and the world of boxes it collides with. */
+export interface WalkProbe {
+  walker: Walker;
+  world: WalkWorld;
+}
 
 const LOOK_SPEED = 0.0022;
 const MAX_PITCH = Math.PI / 2 - 0.05;
@@ -54,6 +61,14 @@ function pressJump(fly: FlyState, now: number) {
   } else fly.lastSpace = now;
 }
 
+/** Keys typed into a field (a search box over the scene) are text, not steps. */
+function isTyping(target: EventTarget | null) {
+  return (
+    target instanceof HTMLElement &&
+    (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))
+  );
+}
+
 function clampPitch(pitch: number) {
   return Math.max(-MAX_PITCH, Math.min(MAX_PITCH, pitch));
 }
@@ -74,6 +89,8 @@ export function WalkMode({
   onViewChange,
   onExit,
   sound = true,
+  start,
+  probe,
 }: {
   bricks: Iterable<Brick>;
   buildArea: number;
@@ -85,11 +102,22 @@ export function WalkMode({
   /** A controller's Menu button stops walking. */
   onExit?: () => void;
   sound?: boolean;
+  /** Where the minifigure starts, in scene x and z; the front of the board when left out. */
+  start?: { x: number; z: number };
+  /** Filled with the live walker and the boxes it collides with, for a debug view. */
+  probe?: { current: WalkProbe | null };
 }) {
   const { camera, gl, invalidate } = useThree();
   const world = useMemo(() => new WalkWorld(bricks, buildArea), [bricks, buildArea]);
-  const [spawn] = useState(() => spawnWalker(world, buildArea));
+  const [spawn] = useState(() => spawnWalker(world, buildArea, start));
   const walker = useRef(spawn);
+  useEffect(() => {
+    if (!probe) return;
+    probe.current = { walker: walker.current, world };
+    return () => {
+      probe.current = null;
+    };
+  }, [probe, world]);
   const look = useRef({ yaw: 0, pitch: -0.08 });
   const held = useRef(new Set<string>());
   const jumpQueued = useRef(false);
@@ -191,7 +219,7 @@ export function WalkMode({
     const element = gl.domElement;
     const keydown = (event: KeyboardEvent) => {
       if (event.metaKey || event.ctrlKey || event.altKey) return;
-      if (!HANDLED.has(event.code)) return;
+      if (!HANDLED.has(event.code) || isTyping(event.target)) return;
       event.preventDefault();
       // Keeps the workshop's own shortcuts (Space pans, F frames) out of it.
       event.stopImmediatePropagation();

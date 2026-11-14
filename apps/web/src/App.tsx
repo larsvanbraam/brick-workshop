@@ -88,9 +88,9 @@ import type {
 } from '@brick-workshop/engine';
 import { PhysicsClient } from './physics-client';
 import { Scene, captureScene } from './Scene';
-import { MOODS } from './cinematic';
-import type { CinematicMood } from './cinematic';
-import type { WalkCamera } from './walk-view';
+import { MOODS } from '@brick-workshop/render/cinematic';
+import type { CinematicMood } from '@brick-workshop/render/cinematic';
+import type { WalkCamera } from '@brick-workshop/walk/walk-view';
 import type {
   BuildProgress,
   PointerDevice,
@@ -99,10 +99,10 @@ import type {
   SceneStability,
 } from './Scene';
 import { ViewportLoader } from './ViewportLoader';
-import { useLDrawLibrary } from './ldraw';
-import { displayHex } from './ldraw-materials';
+import { useLDrawLibrary } from '@brick-workshop/render/ldraw';
+import { displayHex } from '@brick-workshop/render/ldraw-materials';
 import { PartBrowser } from './PartBrowser';
-import { usePartThumbnail } from './part-thumbnails';
+import { usePartThumbnail } from '@brick-workshop/render/part-thumbnails';
 import { ColorPicker } from './ColorPicker';
 import { GenerationPanel } from './GenerationPanel';
 import { GENERATION_ENABLED } from './generation';

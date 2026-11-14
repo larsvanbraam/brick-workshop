@@ -1,6 +1,6 @@
 import { COLORS } from '@brick-workshop/engine';
 import type { Assembly } from '@brick-workshop/engine';
-import { displayHex } from '../ldraw-materials';
+import { displayHex } from '@brick-workshop/render/ldraw-materials';
 
 /** ISO and North American paper sizes, portrait, in millimetres. */
 export const PAGE_SIZES = {

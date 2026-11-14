@@ -9,7 +9,7 @@ import {
   rgbCss,
 } from './layout';
 import type { ManualTheme, Orientation, PageSize, Rgb } from './layout';
-import type { CinematicMood } from '../cinematic-look';
+import type { CinematicMood } from '@brick-workshop/render/cinematic-look';
 import { createCoverArt } from './cover';
 import { ManualRenderer, OVERVIEW_SCALE } from './renderer';
 import type { StepImage } from './renderer';

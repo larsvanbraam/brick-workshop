@@ -23,20 +23,20 @@ import {
   Vector3,
 } from 'three';
 import type { Material, ShaderMaterial } from 'three';
-import { LDrawBatch, canBatchLDrawModel } from '../src/ldraw-batches';
-import { createFallbackGeometry } from '../src/fallback-geometry';
+import { LDrawBatch, canBatchLDrawModel } from '@brick-workshop/render/ldraw-batches';
+import { createFallbackGeometry } from '@brick-workshop/render/fallback-geometry';
 import {
   LDRAW_SCALE,
   getLDrawModelOffset,
   getMaxZoomDistance,
   getSceneFrame,
   worldZ,
-} from '../src/scene-frame';
+} from '@brick-workshop/render/scene-frame';
 import { LDrawLoader } from 'three/addons/loaders/LDrawLoader.js';
 import { LDrawConditionalLineMaterial } from 'three/addons/materials/LDrawConditionalLineMaterial.js';
 import { PARTS, footprint, getLDrawTransform } from '@brick-workshop/engine';
-import { cloneLDrawModel } from '../src/ldraw-materials';
-import { loadLDrawModels } from '../src/ldraw';
+import { cloneLDrawModel } from '@brick-workshop/render/ldraw-materials';
+import { loadLDrawModels } from '@brick-workshop/render/ldraw';
 import { inferLDrawPartDefinition, searchCatalog } from '../src/catalog';
 import {
   collectLibrary,
@@ -46,7 +46,7 @@ import {
   isLibraryPath,
   ldrawLibraryPlugin,
   parsePartHeader,
-} from './ldraw-library';
+} from '@brick-workshop/render/ldraw-library';
 
 /**
  * How far, in LDU, each clip plate's clip reaches below the plate's underside and above its

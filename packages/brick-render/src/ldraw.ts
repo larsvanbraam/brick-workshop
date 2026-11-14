@@ -3,7 +3,7 @@ import type { Group } from 'three';
 import { LDrawLoader } from 'three/addons/loaders/LDrawLoader.js';
 import { LDrawConditionalLineMaterial } from 'three/addons/materials/LDrawConditionalLineMaterial.js';
 import { PARTS } from '@brick-workshop/engine';
-import type { LibraryCatalog } from '../tooling/ldraw-library';
+import type { LibraryCatalog } from './ldraw-library';
 import { COLOR_CONFIG, cloneLDrawModel } from './ldraw-materials';
 import { MINIFIG_PARTS } from './minifig-parts';
 

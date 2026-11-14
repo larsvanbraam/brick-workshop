@@ -2,7 +2,7 @@ import react from '@vitejs/plugin-react';
 import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 import { defineConfig, loadEnv } from 'vite-plus';
-import { ldrawLibraryPlugin } from './tooling/ldraw-library.ts';
+import { ldrawLibraryPlugin } from '@brick-workshop/render/ldraw-library';
 import { savedBuildsPlugin } from './tooling/saved-builds.ts';
 
 export default defineConfig(({ mode }) => {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vite-plus/test';
-import { STICK_DEAD_ZONE, readGamepads, shapeAxis, shapeStick } from '../src/walk-gamepad';
-import type { PadLike } from '../src/walk-gamepad';
+import { STICK_DEAD_ZONE, readGamepads, shapeAxis, shapeStick } from './walk-gamepad';
+import type { PadLike } from './walk-gamepad';
 
 function pad(
   axes: number[] = [0, 0, 0, 0],

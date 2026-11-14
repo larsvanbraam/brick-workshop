@@ -1,5 +1,5 @@
 import type { Part } from '@brick-workshop/engine';
-import type { CatalogPart } from '../tooling/ldraw-library';
+import type { CatalogPart } from '@brick-workshop/render/ldraw-library';
 
 export function inferLDrawPartDefinition(
   part: CatalogPart,

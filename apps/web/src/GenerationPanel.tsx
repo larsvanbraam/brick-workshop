@@ -26,7 +26,7 @@ import type {
   PolicyAssessment,
 } from '@brick-workshop/engine';
 import { Scene } from './Scene';
-import { useLDrawLibrary } from './ldraw';
+import { useLDrawLibrary } from '@brick-workshop/render/ldraw';
 import { captureCanvas, preparePhoto, streamGeneration } from './generation';
 import type { ModelTriangles } from './model-reference';
 

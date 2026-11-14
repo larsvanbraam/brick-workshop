@@ -17,7 +17,7 @@ import {
 } from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import type { Assembly } from '@brick-workshop/engine';
-import type { CinematicMood } from '../cinematic-look';
+import type { CinematicMood } from '@brick-workshop/render/cinematic-look';
 import { ManualRenderer } from './renderer';
 
 export interface BoxDetails {

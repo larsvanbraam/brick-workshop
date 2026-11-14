@@ -1,9 +1,5 @@
 import { describe, expect, it } from 'vite-plus/test';
-import {
-  CINEMATIC_MAX_PIXELS,
-  CINEMATIC_WALK_MAX_PIXELS,
-  getCinematicDpr,
-} from '../src/cinematic-look';
+import { CINEMATIC_MAX_PIXELS, CINEMATIC_WALK_MAX_PIXELS, getCinematicDpr } from './cinematic-look';
 
 describe('cinematic resolution', () => {
   it('keeps the screen ratio while it fits the pixel budget', () => {

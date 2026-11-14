@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vite-plus/test';
 import type { Brick } from '@brick-workshop/engine';
-import { MINIFIG, WalkWorld, spawnWalker, stepWalker } from '../src/walk';
-import type { WalkInput, Walker } from '../src/walk';
+import { MINIFIG, WalkWorld, spawnWalker, stepWalker } from './walk';
+import type { WalkInput, Walker } from './walk';
 
 const AREA = 16;
 let next = 0;

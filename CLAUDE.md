@@ -1,11 +1,16 @@
 # Brick Workshop
 
 A LEGO assembly playground: a UI-free engine (`packages/brick-engine`), a Claude adapter
-(`packages/claude-adapter`) and the workshop app (`apps/web`). The [README](README.md) covers
-the engine's rules (coordinates, parts, connections, physics); read it before placing pieces.
+(`packages/claude-adapter`), the workshop app (`apps/web`) and Brick Island (`apps/game`), a
+game where a minifigure explores and builds on a generated island. Both apps draw with
+`packages/brick-render` (LDraw loading, batched drawing, the cinematic look and the LDraw
+library's Vite plugin) and walk with `packages/brick-walk` (the minifigure controller). The
+[README](README.md) covers the engine's rules (coordinates, parts, connections, physics); read it
+before placing pieces.
 
 ```sh
 pnpm dev     # workshop on http://localhost:5173
+pnpm game    # Brick Island on http://localhost:5173 (or the next free port)
 pnpm test    # Vitest
 pnpm check   # format, lint and typecheck; run before every commit
 pnpm fmt     # format the workspace

@@ -1,0 +1,90 @@
+{
+  "name": "@brick-workshop/render",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./cinematic": {
+      "types": "./src/cinematic.tsx",
+      "import": "./src/cinematic.tsx"
+    },
+    "./cinematic-look": {
+      "types": "./src/cinematic-look.ts",
+      "import": "./src/cinematic-look.ts"
+    },
+    "./fallback-batch": {
+      "types": "./src/fallback-batch.ts",
+      "import": "./src/fallback-batch.ts"
+    },
+    "./fallback-geometry": {
+      "types": "./src/fallback-geometry.ts",
+      "import": "./src/fallback-geometry.ts"
+    },
+    "./ldraw": {
+      "types": "./src/ldraw.ts",
+      "import": "./src/ldraw.ts"
+    },
+    "./ldraw-batches": {
+      "types": "./src/ldraw-batches.ts",
+      "import": "./src/ldraw-batches.ts"
+    },
+    "./ldraw-library": {
+      "types": "./src/ldraw-library.ts",
+      "import": "./src/ldraw-library.ts"
+    },
+    "./ldraw-materials": {
+      "types": "./src/ldraw-materials.ts",
+      "import": "./src/ldraw-materials.ts"
+    },
+    "./minifig-parts": {
+      "types": "./src/minifig-parts.ts",
+      "import": "./src/minifig-parts.ts"
+    },
+    "./part-thumbnails": {
+      "types": "./src/part-thumbnails.ts",
+      "import": "./src/part-thumbnails.ts"
+    },
+    "./scene-debug": {
+      "types": "./src/scene-debug.tsx",
+      "import": "./src/scene-debug.tsx"
+    },
+    "./scene-frame": {
+      "types": "./src/scene-frame.ts",
+      "import": "./src/scene-frame.ts"
+    }
+  },
+  "scripts": {
+    "test": "vp test",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@brick-workshop/engine": "workspace:*",
+    "n8ao": "^2.0.1",
+    "three-mesh-bvh": "^0.8.3"
+  },
+  "devDependencies": {
+    "@react-three/drei": "^10.7.9",
+    "@react-three/fiber": "^9.8.2",
+    "@react-three/postprocessing": "^3.2.2",
+    "@types/node": "^24.19.2",
+    "@types/react": "^19.3.0",
+    "@types/three": "^0.183.0",
+    "postprocessing": "^6.39.6",
+    "react": "^19.3.1",
+    "three": "^0.183.0",
+    "vite-plus": "1.4.0"
+  },
+  "peerDependencies": {
+    "@react-three/drei": "^10.7.9",
+    "@react-three/fiber": "^9.8.2",
+    "@react-three/postprocessing": "^3.2.2",
+    "postprocessing": "^6.39.6",
+    "react": "^19.3.1",
+    "three": "^0.183.0"
+  },
+  "peerDependenciesMeta": {
+    "@react-three/drei": {
+      "optional": true
+    }
+  }
+}

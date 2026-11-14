@@ -1,4 +1,4 @@
-import type { CinematicMood } from '../cinematic-look';
+import type { CinematicMood } from '@brick-workshop/render/cinematic-look';
 import { rgbCss } from './layout';
 import type { Rgb } from './layout';
 import type { ManualRenderer } from './renderer';

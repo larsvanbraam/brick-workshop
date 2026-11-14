@@ -176,10 +176,18 @@ function overlaps(box: WalkBox, region: WalkBox) {
   );
 }
 
-/** A minifigure standing at the front of the board, facing the build. */
-export function spawnWalker(world: WalkWorld, buildArea: number): Walker {
-  const z = buildArea / 2 + 3;
-  return { x: 0, y: world.standingHeight(0, z), z, velocityY: 0, grounded: true };
+/**
+ * A minifigure standing at the front of the board, facing the build, or at `start` (scene x and
+ * z) on top of whatever is there.
+ */
+export function spawnWalker(
+  world: WalkWorld,
+  buildArea: number,
+  start?: { x: number; z: number },
+): Walker {
+  const x = start?.x ?? 0;
+  const z = start?.z ?? buildArea / 2 + 3;
+  return { x, y: world.standingHeight(x, z), z, velocityY: 0, grounded: true };
 }
 
 /** Moves the walker along one axis, stepping up onto low ledges. Returns whether it moved. */
