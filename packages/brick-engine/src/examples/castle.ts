@@ -227,6 +227,11 @@ const PASSAGE = [30, 33] as const;
 const PASSAGE_COURSES = 6;
 /** The portcullis hangs a stud in from the arch; the gate doors close the back of the passage. */
 const PORTCULLIS_Z = GATE[3] - 1;
+/**
+ * The portcullis is drawn up: its bottom rail, running in slots in the jambs, sits this many
+ * courses up so a minifigure (four bricks) walks under it, with a last grille section above.
+ */
+const PORTCULLIS_RAISED = 4;
 const gateTower = (x: number, z: number) =>
   GATE_TOWERS.some(([x0, x1]) => within(x, z, x0, GATE_BACK, x1, GATE_FRONT));
 const gateMiddle = (x: number, z: number) => within(x, z, GATE[0], GATE[2], GATE[1], GATE[3]);
@@ -516,6 +521,7 @@ function courseCell(x: number, z: number, n: number): string {
   if (gateTower(x, z)) return n < GATE_TOWER_COURSES ? mottled() : ' ';
   if (gateMiddle(x, z)) {
     const front = z === GATE[3];
+    if (n === PORTCULLIS_RAISED && z === PORTCULLIS_Z) return ' ';
     if (n < PASSAGE_COURSES) return x >= PASSAGE[0] && x <= PASSAGE[1] ? ' ' : mottled();
     if (n === PASSAGE_COURSES) return ' ';
     if (n === PASSAGE_COURSES + 1 && front) return ' ';
@@ -1128,7 +1134,7 @@ export const castle: ExampleDefinition = {
     'market-stall',
     'landscape',
   ],
-  expectedPieceCount: 11040,
+  expectedPieceCount: 11038,
   buildArea: AREA,
   brickIdPrefix: 'castle',
   smooth: [{ only: (brick) => NATURAL.has(naturalKey(brick)) }],
@@ -1498,12 +1504,12 @@ export const castle: ExampleDefinition = {
     }
 
     // Gatehouse: a tall passage roofed over with long bricks behind a round arch, a black
-    // portcullis grid hanging just inside it, plank doors at the back and banners on the towers.
+    // portcullis drawn up just inside it, plank doors at the back and banners on the towers.
     for (let z = GATE[2]; z < GATE[3]; z++)
       addRun(add, 'brick', STONE, 'x', GATE[0], course(PASSAGE_COURSES), z, 6);
     add('3307', CAPS, GATE[0], course(PASSAGE_COURSES), GATE[3], 90);
-    for (let n = 0; n < PASSAGE_COURSES; n += 2)
-      add('30055', BLACK, PASSAGE[0], course(n), PORTCULLIS_Z, 90);
+    add('3009', BLACK, GATE[0], course(PORTCULLIS_RAISED), PORTCULLIS_Z, 90);
+    add('3633', BLACK, PASSAGE[0], course(PORTCULLIS_RAISED + 1), PORTCULLIS_Z, 90);
     addFramedDoor(
       { partId: '60596', color: DARK_TIMBER, x: PASSAGE[0], y: G, z: GATE[2], rotation: 90 },
       '60616a',
