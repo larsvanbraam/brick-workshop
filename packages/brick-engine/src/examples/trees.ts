@@ -71,6 +71,11 @@ export function addTree(
    * adds its own pieces, so trees grown in turn with one list leave room for each other.
    */
   around: Box[] = [],
+  /**
+   * The tree's form. Without a foot the trunk stands straight on the base, like a street tree
+   * in a pit; radii give each crown layer's reach in studs, lowest first, for a smaller crown.
+   */
+  { foot = true, radii: layerRadii }: { foot?: boolean; radii?: readonly number[] } = {},
 ) {
   const next = random(seed * 7919 + 17);
   const boxes: Box[] = [];
@@ -139,42 +144,45 @@ export function addTree(
 
   // The foot: a green plate with round bushes round its edge, and the trunk standing in the
   // middle on a stepped flare of roots.
-  place('3958', shade, -3, base, -3);
-  const ground = base + 1;
+  const ground = foot ? base + 1 : base;
   // The trunk stands tall and bare below the crown.
-  const courses = trunk + 3;
+  const courses = foot ? trunk + 3 : trunk;
+  if (foot) place('3958', shade, -3, base, -3);
   for (let course = 0; course < courses; course++) place('3941', bark, -1, ground + course * 3, -1);
-  // Each side steps down from the trunk to the plate: a stack of plates capped with a cheese
-  // slope against the trunk, then a lower cheese slope outside it, so the foot flares out low
-  // and wide like roots. Positions are the side's outer row, its inner row, and the quarter
-  // turn that faces each slope's high end into the trunk.
-  for (const [outer, inner, rotation] of [
-    [[-1, -3], [-1, -2], 0],
-    [[-1, 2], [-1, 1], 180],
-    [[-3, -1], [-2, -1], 90],
-    [[2, -1], [1, -1], 270],
-  ] as const) {
-    const across = rotation % 180 === 0;
-    place('3022', bark, Math.min(outer[0], inner[0]), ground, Math.min(outer[1], inner[1]));
-    place('85984', bark, outer[0], ground + 1, outer[1], rotation);
-    for (const rise of [1, 2])
-      place('3023b', bark, inner[0], ground + rise, inner[1], across ? 90 : 0);
-    place('85984', bark, inner[0], ground + 3, inner[1], rotation);
-  }
-  for (const u of range(-3, 2))
-    for (const v of range(-3, 2)) {
-      if (next() < 0.1) continue;
-      if (!fits({ u0: u, u1: u + 1, v0: v, v1: v + 1, y0: ground, y1: ground + 3 })) continue;
-      const roll = next();
-      place('3062b', roll < 0.35 ? shade : roll < 0.8 ? body : light, u, ground, v);
-      if (next() < 0.3) place('6141', next() < 0.5 ? light : body, u, ground + 3, v, 0, false);
+  if (foot) {
+    // Each side steps down from the trunk to the plate: a stack of plates capped with a cheese
+    // slope against the trunk, then a lower cheese slope outside it, so the foot flares out low
+    // and wide like roots. Positions are the side's outer row, its inner row, and the quarter
+    // turn that faces each slope's high end into the trunk.
+    for (const [outer, inner, rotation] of [
+      [[-1, -3], [-1, -2], 0],
+      [[-1, 2], [-1, 1], 180],
+      [[-3, -1], [-2, -1], 90],
+      [[2, -1], [1, -1], 270],
+    ] as const) {
+      const across = rotation % 180 === 0;
+      place('3022', bark, Math.min(outer[0], inner[0]), ground, Math.min(outer[1], inner[1]));
+      place('85984', bark, outer[0], ground + 1, outer[1], rotation);
+      for (const rise of [1, 2])
+        place('3023b', bark, inner[0], ground + rise, inner[1], across ? 90 : 0);
+      place('85984', bark, inner[0], ground + 3, inner[1], rotation);
     }
+    for (const u of range(-3, 2))
+      for (const v of range(-3, 2)) {
+        if (next() < 0.1) continue;
+        if (!fits({ u0: u, u1: u + 1, v0: v, v1: v + 1, y0: ground, y1: ground + 3 })) continue;
+        const roll = next();
+        place('3062b', roll < 0.35 ? shade : roll < 0.8 ? body : light, u, ground, v);
+        if (next() < 0.3) place('6141', next() < 0.5 ? light : body, u, ground + 3, v, 0, false);
+      }
+  }
 
   // The crown: a layer every three plates, each hung on its own branches, two plates crossed
   // on the trunk and turned against the layer below, with a round plate on top carrying the
   // trunk on up to the next.
   const crown = ground + courses * 3;
-  const layers = 6;
+  const profile = layerRadii ?? [4, 4.5, 4.6, 4.1, 3.3, 2.2];
+  const layers = profile.length;
   const sheets = 2;
   // Sprays may also stand on short stalks, one round plate high, on the layer below.
   const STALK = 1;
@@ -182,7 +190,9 @@ export function addTree(
   const first = crown + 1;
   for (let layer = 0; layer < layers; layer++) {
     const y = crown + layer * spacing;
-    const [arm, reach] = layer < layers - 2 ? (['3795', 3] as const) : (['3020', 2] as const);
+    // Long branches only where the layer reaches far enough to hide them.
+    const [arm, reach] =
+      layer < layers - 2 && profile[layer] >= 4 ? (['3795', 3] as const) : (['3020', 2] as const);
     const across = (layer + Math.floor(next() * 2)) % 2 === 0;
     // Only the lowest branches show brown; higher up they sit in the leaves' shade, and the
     // topmost, open to the sky, are leaf green.
@@ -204,7 +214,7 @@ export function addTree(
       1 + 0.07 * Math.sin(3 * angle + lobes[0]) + 0.05 * Math.sin(5 * angle + lobes[1]);
     return Math.hypot(du, dv) / wobble;
   };
-  const radii = [4, 4.5, 4.6, 4.1, 3.3, 2.2].map((radius) => radius * grow + next() * 0.3);
+  const radii = profile.map((radius) => radius * grow + next() * 0.3);
 
   // Leaf sprays laid a layer at a time, each where it covers the most of the layer's outline
   // still bare. A spray sits on the trunk or branches, or on a round plate standing on a

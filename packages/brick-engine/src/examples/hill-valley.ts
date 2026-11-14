@@ -1192,14 +1192,23 @@ const FIXTURES = new Set<string>([
   ...POLES.map(([x, z]) => key(x, z)),
 ]);
 
-/** Small trees in pits in the courthouse forecourt and the car park. */
-const PIT_TREES: readonly (readonly [number, number])[] = [
-  [44, 78],
-  [83, 78],
-  [46, 121],
-  [81, 121],
+/**
+ * Street trees in the courthouse forecourt and the car park, by the cell south-east of the
+ * trunk's centre: each 2 x 2 trunk stands in a 4 x 4 pit of earth.
+ */
+const PIT_TREES: readonly (readonly [number, number, number])[] = [
+  [44, 78, 21],
+  [83, 78, 22],
+  [46, 121, 23],
+  [81, 121, 24],
 ];
-for (const [x, z] of PIT_TREES) FIXTURES.add(key(x, z));
+/** The earth in the pits. */
+const PITS = new Set(
+  PIT_TREES.flatMap(([x, z]) =>
+    [-2, -1, 0, 1].flatMap((dx) => [-2, -1, 0, 1].map((dz) => key(x + dx, z + dz))),
+  ),
+);
+for (const cell of PITS) FIXTURES.add(cell);
 // The filling station's canopy columns, pump island and sign stand on studs too.
 for (let x = 41; x <= 50; x++) for (const z of [12, 13]) FIXTURES.add(key(x, z));
 FIXTURES.add(key(52, 14));
@@ -1574,7 +1583,7 @@ export const hillValley: ExampleDefinition = {
     'minifigures',
     'cable',
   ],
-  expectedPieceCount: 11864,
+  expectedPieceCount: 12040,
   buildArea: SIZE,
   build(add) {
     const order = bottomUp(add);
@@ -1679,6 +1688,7 @@ export const hillValley: ExampleDefinition = {
       },
     );
     function slab(x: number, z: number) {
+      if (PITS.has(key(x, z))) return 'N';
       if (FIXTURES.has(key(x, z))) return within(x, z, LAWN) ? 'M' : 'F';
       if (isRoad(x, z)) return ' ';
       if (isBuilt(x, z)) return 'B';
@@ -2128,11 +2138,6 @@ export const hillValley: ExampleDefinition = {
         ...near(x, z, 12),
         ...CABLE_CELLS,
       ]);
-    for (const [x, z] of PIT_TREES) {
-      put('3062b', BROWN, x, GROUND, z);
-      put('3062b', BROWN, x, GROUND + 3, z);
-      put('3470', GREEN, x - 2, GROUND + 6, z - 2);
-    }
 
     // ----------------------------------------------------------------------------------------
     // Cars and townsfolk. Each car stands on its wheels, and its pin plates clip onto them.
@@ -2157,6 +2162,28 @@ export const hillValley: ExampleDefinition = {
     for (let sheet = 2; sheet < 5; sheet++)
       put('3022', WHITE, PAPERS[0], GROUND + sheet, PAPERS[1]);
     put('3068b', WHITE, PAPERS[0], GROUND + 5, PAPERS[1]);
+
+    // The street trees, grown last so their crowns leave room for the townsfolk and the lamps:
+    // a trunk standing tall in its pit, clear of the heads below, under a small round crown,
+    // and the pit's earth dotted with a few tufts.
+    for (const [x, z, seed] of PIT_TREES) {
+      addTree(put, x, z, GROUND, [DARK_GREEN, GREEN, BRIGHT_GREEN], BROWN, 5, seed, near(x, z, 8), {
+        foot: false,
+        radii: [2.9, 3.3, 3, 2.2],
+      });
+      for (const dx of [-2, -1, 0, 1])
+        for (const dz of [-2, -1, 0, 1]) {
+          if (dx >= -1 && dx <= 0 && dz >= -1 && dz <= 0) continue;
+          if (CROWDED.has(key(x + dx, z + dz)) || hash(x + dx, z + dz, seed) > 0.3) continue;
+          put(
+            '6141',
+            hash(x + dx, z + dz, seed + 1) < 0.5 ? DARK_GREEN : GREEN,
+            x + dx,
+            GROUND,
+            z + dz,
+          );
+        }
+    }
 
     order.flush();
   },
