@@ -12,6 +12,7 @@ import {
   HemisphereLight,
   Mesh,
   Object3D,
+  PointLight,
   Points,
   PointsMaterial,
   ShaderMaterial,
@@ -20,8 +21,10 @@ import {
 } from 'three';
 import { AMBIENT_OCCLUSION, createStudioEnvironment } from '@brick-workshop/render/cinematic-look';
 import { random } from './world/noise.ts';
+import { PLATE_HEIGHT } from '@brick-workshop/engine';
 import { skyAt } from './sky.ts';
 import type { DayClock } from './sky.ts';
+import type { Volcano } from './world/map.ts';
 
 /** The sky dome's radius: inside the camera's far plane, round wherever the camera is. */
 const DOME = 480;
@@ -110,7 +113,15 @@ function createStars() {
  * little ambient occlusion in the joints. Shadows are redrawn as the light moves, a few times a
  * second rather than every frame.
  */
-export function GameStage({ size, clock }: { size: number; clock: DayClock }) {
+export function GameStage({
+  size,
+  clock,
+  volcano,
+}: {
+  size: number;
+  clock: DayClock;
+  volcano: Volcano | null;
+}) {
   const { gl, scene, invalidate } = useThree();
   const rig = useMemo(() => {
     const key = new DirectionalLight('#fff1dc', 2.6);
@@ -153,8 +164,16 @@ export function GameStage({ size, clock }: { size: number; clock: DayClock }) {
     stars.frustumCulled = false;
     stars.raycast = () => {};
     const fog = new Fog('#bcd7ec', size * 0.45, size * 1.6);
-    return { key, target, fill, dome, stars, fog };
-  }, [size]);
+    // A warm light just over the crater's lava, lighting the rim and the slopes round it.
+    const glow = new PointLight('#ff6a24', 0, 26, 2);
+    if (volcano)
+      glow.position.set(
+        volcano.x + 0.5 - size / 2,
+        (volcano.lake * 3 + 4) * PLATE_HEIGHT,
+        size / 2 - volcano.z - 0.5,
+      );
+    return { key, target, fill, dome, stars, fog, glow };
+  }, [size, volcano]);
 
   useEffect(
     () => () => {
@@ -163,6 +182,7 @@ export function GameStage({ size, clock }: { size: number; clock: DayClock }) {
       rig.stars.geometry.dispose();
       (rig.stars.material as PointsMaterial).dispose();
       rig.key.dispose();
+      rig.glow.dispose();
     },
     [rig],
   );
@@ -218,6 +238,8 @@ export function GameStage({ size, clock }: { size: number; clock: DayClock }) {
     stars.visible = sky.stars > 0.01;
     fog.color.copy(sky.horizon);
     scene.environmentIntensity = sky.environment;
+    // The lava glows all day; it only shows once the sun is down.
+    rig.glow.intensity = volcano ? 8 + 60 * sky.stars : 0;
     // The sky goes wherever the camera does, so it is never reached.
     dome.position.copy(camera.position);
     stars.position.copy(camera.position);
@@ -235,6 +257,7 @@ export function GameStage({ size, clock }: { size: number; clock: DayClock }) {
       <primitive object={rig.key} />
       <primitive object={rig.target} />
       <primitive object={rig.fill} />
+      {volcano && <primitive object={rig.glow} />}
       <EffectComposer multisampling={4}>
         <N8AO {...AMBIENT_OCCLUSION} quality="low" halfRes />
         <ToneMapping mode={ToneMappingMode.ACES_FILMIC} />

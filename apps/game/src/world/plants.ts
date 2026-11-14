@@ -4,6 +4,7 @@ import { addTree } from '@brick-workshop/engine/examples/trees';
 import type { Box } from '@brick-workshop/engine/examples/trees';
 import { hash2, random } from './noise.ts';
 import { COLOR } from './palette.ts';
+import { LAND_BIOMES } from './map.ts';
 import type { Biome, WorldMap } from './map.ts';
 
 /** A plant's pieces, kept or left out together. */
@@ -184,6 +185,52 @@ function smallPlants(map: WorldMap, plants: Plant[]) {
     }
 }
 
+/** Loose stones: what scree is made of, small to large. */
+const STONES = ['6141', '3024', '3062b', '3005', '3004'] as const;
+
+/**
+ * Scree: loose stones gathered at the foot of cliffs, where a neighbour stands three or more
+ * layers higher, in the cliff's greys (black and dark grey on a volcano).
+ */
+function scree(map: WorldMap, plants: Plant[]) {
+  const { size, heights, water, biomes, seed } = map;
+  const next = random(seed * 131 + 13);
+  let index = 0;
+  for (let z = 3; z < size - 3; z++)
+    for (let x = 3; x < size - 3; x++) {
+      const cell = z * size + x;
+      const biome = biomes[cell];
+      if (water[cell] || biome === 'lava' || !LAND_BIOMES.has(biome)) continue;
+      const height = heights[cell];
+      const below = [
+        heights[cell + 1],
+        heights[cell - 1],
+        heights[cell + size],
+        heights[cell - size],
+      ].some((other) => other - height >= 3);
+      if (!below || next() > 0.3) continue;
+      const { pieces, add } = collector(`plant${'s'}${index++}`);
+      const stone = STONES[Math.floor(next() ** 1.6 * STONES.length)];
+      const colors: readonly number[] =
+        biome === 'volcanic'
+          ? [COLOR.black, COLOR.darkRock]
+          : [COLOR.rock, COLOR.rock, COLOR.darkRock, COLOR.lightRock];
+      const rotation: Rotation = next() < 0.5 ? 0 : 90;
+      // A two-stud stone turned across x needs its far stud on this column's level too.
+      const across = stone === '3004' && rotation === 90 ? x + 1 : x;
+      if (heights[z * size + across] !== height) continue;
+      add(
+        stone,
+        colors[Math.floor(next() * colors.length)],
+        x,
+        height * 3,
+        z,
+        stone === '3004' ? rotation : 0,
+      );
+      plants.push(pieces);
+    }
+}
+
 /**
  * Everything that grows on the island: broadleaf trees on their clearings, and per biome cacti
  * and scrub, conifers, bushes, reeds and lily pads. They are checked together against the
@@ -193,6 +240,7 @@ export function plantIsland(map: WorldMap, ground: readonly Brick[]): Brick[] {
   let plants: Plant[] = [];
   broadleaves(map, plants);
   smallPlants(map, plants);
+  scree(map, plants);
   plants = plants.filter((pieces) => pieces.length);
   for (let round = 0; round < 8; round++) {
     const issues = validateAssembly({
@@ -209,4 +257,4 @@ export function plantIsland(map: WorldMap, ground: readonly Brick[]): Brick[] {
 }
 
 /** Whether a piece is a plant rather than ground or something a player built. */
-export const isPlant = (brick: Brick) => /^(tree|plant)\d/.test(brick.id);
+export const isPlant = (brick: Brick) => /^(tree|plant)s?\d/.test(brick.id);

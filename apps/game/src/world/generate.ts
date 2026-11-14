@@ -76,7 +76,9 @@ function findSpawn(map: WorldMap): { x: number; z: number } {
   const { size, biomes, water } = map;
   const centre = Math.floor(size / 2);
   const open = (index: number) =>
-    LAND_BIOMES.has(biomes[index]) && biomes[index] !== 'rock' && !water[index];
+    LAND_BIOMES.has(biomes[index]) &&
+    !['rock', 'volcanic', 'lava'].includes(biomes[index]) &&
+    !water[index];
   for (let radius = 0; radius < size / 2; radius++)
     for (let dz = -radius; dz <= radius; dz++)
       for (let dx = -radius; dx <= radius; dx++) {

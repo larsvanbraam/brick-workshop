@@ -30,6 +30,7 @@ import {
 import { WORLD_SIZE } from './world/generate.ts';
 import { isPlant } from './world/plants.ts';
 import type { WorldMessage } from './world/worker.ts';
+import type { Volcano } from './world/map.ts';
 
 interface Loaded {
   seed: number;
@@ -37,6 +38,7 @@ interface Loaded {
   spawn: { x: number; z: number };
   terrain: ReadonlySet<string>;
   generationMs: number;
+  volcano: Volcano | null;
 }
 
 function newSeed() {
@@ -49,8 +51,8 @@ function useWorld(seed: number): Loaded | null {
   useEffect(() => {
     const worker = new Worker(new URL('./world/worker.ts', import.meta.url), { type: 'module' });
     worker.onmessage = (event: MessageEvent<WorldMessage>) => {
-      const { assembly, spawn, terrain, generationMs } = event.data;
-      setWorld({ seed, assembly, spawn, terrain: new Set(terrain), generationMs });
+      const { assembly, spawn, terrain, generationMs, volcano } = event.data;
+      setWorld({ seed, assembly, spawn, terrain: new Set(terrain), generationMs, volcano });
       worker.terminate();
     };
     worker.postMessage({ seed });
@@ -377,6 +379,7 @@ function Game({
         onMouse={onMouse}
         playing={playing}
         clock={clock}
+        volcano={world.volcano}
         debug={{
           options: debugOptions,
           store: debugStore,

@@ -2,8 +2,10 @@ import { fbm, hash2, random } from './noise.ts';
 
 /** The world is one board this many studs across. */
 export const WORLD_SIZE = 128;
-/** Brick layers (three plates each) of the tallest peak. */
-export const MAX_LAYERS = 15;
+/** Brick layers (three plates each) of the tallest mountain; a volcano rises higher. */
+const PEAK_LAYERS = 15;
+/** Brick layers of the tallest thing on any island: a volcano's rim. */
+export const MAX_LAYERS = 22;
 /** The sea's surface, in brick layers: columns lower than this are under water. */
 export const WATER_LAYERS = 3;
 
@@ -16,7 +18,9 @@ export type Biome =
   | 'marsh'
   | 'snow'
   | 'rock'
-  | 'river';
+  | 'river'
+  | 'volcanic'
+  | 'lava';
 
 /** Biomes a minifigure can stand in, as opposed to water. */
 export const LAND_BIOMES: ReadonlySet<Biome> = new Set([
@@ -27,7 +31,24 @@ export const LAND_BIOMES: ReadonlySet<Biome> = new Set([
   'marsh',
   'snow',
   'rock',
+  'volcanic',
+  'lava',
 ]);
+
+/** A volcano: where its crater is, in studs, and the brick layers of its lava lake. */
+export interface Volcano {
+  x: number;
+  z: number;
+  /** Studs from the crater's middle to the foot of the cone. */
+  radius: number;
+  /** Brick layers up to the lava lake's surface; the rim stands three higher. */
+  lake: number;
+}
+
+/** Roughly one island in this many has a volcano. */
+const VOLCANO_ODDS = 8;
+/** Studs from the crater's middle to its rim. */
+const CRATER = 6;
 
 export interface WorldMap {
   seed: number;
@@ -44,6 +65,7 @@ export interface WorldMap {
   trees: { x: number; z: number }[];
   /** Each river's course, source to sea, for tests and debugging. */
   rivers: { x: number; z: number }[][];
+  volcano: Volcano | null;
 }
 
 const smoothstep = (edge0: number, edge1: number, value: number) => {
@@ -69,6 +91,20 @@ export function generateMap(seed: number, size = WORLD_SIZE): WorldMap {
   // Each island leans one way: a hot dry one is mostly desert, a cold wet one snow and marsh.
   const islandWarmth = (hash2(seed, 7, 1) - 0.5) * 0.36;
   const islandMoisture = (hash2(seed, 7, 2) - 0.5) * 0.3;
+  const volcano: Volcano | null =
+    hash2(seed, 11, 5) * VOLCANO_ODDS < 1
+      ? {
+          x: Math.round(centre + (hash2(seed, 11, 6) - 0.5) * 24),
+          z: Math.round(centre + (hash2(seed, 11, 7) - 0.5) * 24),
+          radius: 30,
+          lake: MAX_LAYERS - 4,
+        }
+      : null;
+  /** How far a column is from the crater's middle, with the cone's foot ragged. */
+  const fromCrater = (x: number, z: number) =>
+    volcano
+      ? Math.hypot(x - volcano.x, z - volcano.z) + (fbm(seed + 91, x, z, 8, 2) - 0.5) * 5
+      : Infinity;
 
   for (let z = 0; z < size; z++)
     for (let x = 0; x < size; x++) {
@@ -85,7 +121,27 @@ export function generateMap(seed: number, size = WORLD_SIZE): WorldMap {
         smoothstep(0.58, 0.85, fbm(seed + 41, x, z, 44, 2)) * smoothstep(0.5, 0.9, land);
       peaks[index] = peakMask;
       const rise = peakMask * (4 + fbm(seed + 43, x, z, 12, 3) * 8);
-      const layers = Math.max(1, Math.min(MAX_LAYERS, Math.round(1 + base + rise)));
+      let layers = 1 + base + rise;
+      // Mountains climb in terraces: flat shelves with sheer faces three bricks tall, their edges
+      // wavering so the faces bend round the mountain.
+      if (peakMask > 0.3 && layers > WATER_LAYERS + 3) {
+        const above = layers - WATER_LAYERS - 1 + (fbm(seed + 45, x, z, 9, 2) - 0.5) * 2.4;
+        layers = WATER_LAYERS + 1 + Math.round(above / 3) * 3;
+      }
+      // Here and there the coast rises straight out of the sea instead of ending on a beach.
+      const cliffs = fbm(seed + 81, x, z, 30, 2);
+      if (cliffs > 0.64 && land > 0.08)
+        layers = Math.max(layers, WATER_LAYERS + 3 + (cliffs > 0.7 ? 1 : 0));
+      layers = Math.max(1, Math.min(PEAK_LAYERS, Math.round(layers)));
+      // A volcano's steep cone, its rim highest round the crater and its lake three layers down.
+      const crater = fromCrater(x, z);
+      if (volcano && crater < volcano.radius) {
+        const rim = volcano.lake + 3;
+        const slope = (crater - CRATER) / (volcano.radius - CRATER);
+        const cone =
+          crater < CRATER ? volcano.lake : WATER_LAYERS + (rim - WATER_LAYERS) * (1 - slope) ** 1.2;
+        layers = crater < CRATER ? volcano.lake : Math.max(layers, Math.round(cone));
+      }
       // The board's own edge always stays sea.
       const edge = Math.min(x, z, size - 1 - x, size - 1 - z);
       heights[index] = edge < 2 ? Math.min(layers, WATER_LAYERS - 1) : layers;
@@ -98,6 +154,16 @@ export function generateMap(seed: number, size = WORLD_SIZE): WorldMap {
 
   for (let index = 0; index < count; index++)
     biomes[index] = biomeFor(heights[index], peaks[index], warmth[index], moisture[index]);
+  // The volcano's cone is bare black rock, whatever the climate, with lava in its crater.
+  if (volcano)
+    for (let z = 0; z < size; z++)
+      for (let x = 0; x < size; x++) {
+        const index = z * size + x;
+        const crater = fromCrater(x, z);
+        if (crater < CRATER) biomes[index] = 'lava';
+        else if (crater < volcano.radius * 0.85 && heights[index] > WATER_LAYERS)
+          biomes[index] = 'volcanic';
+      }
 
   const map: WorldMap = {
     seed,
@@ -109,7 +175,9 @@ export function generateMap(seed: number, size = WORLD_SIZE): WorldMap {
     moisture,
     trees: [],
     rivers: [],
+    volcano,
   };
+  if (volcano) pourLava(map, fromCrater);
   floodSea(map);
   flattenMarshes(map);
   carveRivers(map);
@@ -127,6 +195,38 @@ function biomeFor(height: number, peak: number, warmth: number, moisture: number
   if (moisture > 0.6 && height <= WATER_LAYERS + 2) return 'marsh';
   if (moisture > 0.5) return 'forest';
   return 'meadow';
+}
+
+/**
+ * Lava flows: one or two tongues that spill through a notch in the rim and run down the cone
+ * toward the sea, wavering as they go, two or three studs wide.
+ */
+function pourLava(map: WorldMap, fromCrater: (x: number, z: number) => number) {
+  const { size, heights, biomes, seed } = map;
+  const volcano = map.volcano!;
+  const flows = 1 + Math.floor(hash2(seed, 13, 1) * 2);
+  for (let flow = 0; flow < flows; flow++) {
+    const heading = hash2(seed, 13, 2 + flow) * Math.PI * 2 + flow * Math.PI * 0.8;
+    for (let reach = CRATER - 1; reach < volcano.radius + 4; reach += 0.5) {
+      const angle = heading + Math.sin(reach * 0.35 + flow) * 0.22;
+      const cx = volcano.x + Math.cos(angle) * reach;
+      const cz = volcano.z + Math.sin(angle) * reach;
+      const width = reach < volcano.radius * 0.5 ? 1 : 1.5;
+      for (let dz = -2; dz <= 2; dz++)
+        for (let dx = -2; dx <= 2; dx++) {
+          const x = Math.round(cx + dx);
+          const z = Math.round(cz + dz);
+          if (x < 2 || z < 2 || x >= size - 2 || z >= size - 2) continue;
+          if (Math.hypot(x - cx, z - cz) > width) continue;
+          const index = z * size + x;
+          if (heights[index] <= WATER_LAYERS) continue;
+          // Through the rim, a notch down to the lake, so the lava has somewhere to spill from.
+          if (fromCrater(x, z) < CRATER + 3)
+            heights[index] = Math.min(heights[index], volcano.lake);
+          biomes[index] = 'lava';
+        }
+    }
+  }
 }
 
 /** The sea stands at its surface over every column below it. */
@@ -177,7 +277,12 @@ function carveRivers(map: WorldMap) {
     for (let x = 10; x < size - 10; x++) {
       const index = z * size + x;
       const height = heights[index];
-      if (height >= WATER_LAYERS + 4 && height <= 10 && biomes[index] !== 'desert')
+      const biome = biomes[index];
+      if (
+        height >= WATER_LAYERS + 4 &&
+        height <= 10 &&
+        !['desert', 'volcanic', 'lava'].includes(biome)
+      )
         sources.push({ x, z, order: next() });
     }
   sources.sort((a, b) => a.order - b.order);

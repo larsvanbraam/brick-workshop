@@ -23,6 +23,10 @@ export const COLOR = {
   sea: 1,
   deep: 272,
   bark: 70,
+  black: 0,
+  lava: 25,
+  lavaDark: 4,
+  lavaBright: 14,
 } as const;
 
 /**
@@ -48,6 +52,25 @@ function sandstone(seed: number, x: number, z: number, layer: number) {
 }
 
 /**
+ * Rock and earth in layers by height, so a cliff face reads as strata, the way the reference
+ * builds cut their bases away: dark bluish grey and light bluish grey with bands of tan and dark
+ * tan, wavering a little from place to place.
+ */
+function strata(seed: number, x: number, z: number, layer: number) {
+  const bands = [
+    COLOR.darkRock,
+    COLOR.rock,
+    COLOR.rock,
+    COLOR.sand,
+    COLOR.darkRock,
+    COLOR.darkSand,
+    COLOR.rock,
+  ];
+  const wobble = fbm(seed + 19, x, z, 13, 2) > 0.6 ? 1 : 0;
+  return bands[(layer + wobble) % bands.length];
+}
+
+/**
  * The colour of a column's cell `depth` layers below its top (0 is the top), `layer` brick
  * layers up from the board.
  */
@@ -62,10 +85,19 @@ export function cellColor(map: WorldMap, x: number, z: number, depth: number, la
       ? shade(seed + 1, x, z, COLOR.sand, COLOR.darkSand, COLOR.sand)
       : COLOR.seabed;
   }
-  if (depth >= 3)
-    return dry
-      ? sandstone(seed, x, z, layer)
-      : shade(seed + 2, x, z, COLOR.darkRock, COLOR.darkRock, COLOR.rock);
+  if (biome === 'lava') {
+    if (depth > 0) return COLOR.black;
+    // Molten orange with cooling red crust and bright yellow where it runs hottest.
+    const patch = fbm(seed + 17, x, z, 4, 2);
+    return patch < 0.36 ? COLOR.lavaDark : patch > 0.68 ? COLOR.lavaBright : COLOR.lava;
+  }
+  if (biome === 'volcanic')
+    return depth === 0
+      ? shade(seed + 18, x, z, COLOR.darkRock, COLOR.black, COLOR.darkRock)
+      : layer % 3 === 0
+        ? COLOR.darkRock
+        : COLOR.black;
+  if (depth >= 2) return dry ? sandstone(seed, x, z, layer) : strata(seed, x, z, layer);
   switch (biome) {
     case 'beach':
       return depth === 0
@@ -91,9 +123,10 @@ export function cellColor(map: WorldMap, x: number, z: number, depth: number, la
       return patch < 0.32 ? COLOR.darkSand : patch > 0.78 ? COLOR.nougat : COLOR.sand;
     }
     case 'rock':
-      return dry
-        ? sandstone(seed, x, z, layer)
-        : shade(seed + 5 + depth, x, z, COLOR.rock, COLOR.darkRock, COLOR.lightRock);
+      if (dry) return sandstone(seed, x, z, layer);
+      return depth === 0
+        ? shade(seed + 5, x, z, COLOR.rock, COLOR.darkRock, COLOR.lightRock)
+        : strata(seed, x, z, layer);
     case 'snow':
       return depth === 0
         ? shade(seed + 6, x, z, COLOR.snow, COLOR.lightRock, COLOR.snow)

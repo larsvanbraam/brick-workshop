@@ -18,6 +18,7 @@ import { aimAt, aimKey } from './build.ts';
 import { GameStage } from './GameStage.tsx';
 import { skyAt } from './sky.ts';
 import type { DayClock } from './sky.ts';
+import type { Volcano } from './world/map.ts';
 import type { Aim } from './build.ts';
 
 /** How far the crosshair reaches from the eye, in studs; further from the over-shoulder camera. */
@@ -44,6 +45,8 @@ export interface GameSceneProps {
   debug: GameSceneDebug;
   /** The time of day the sky and the light follow. */
   clock: DayClock;
+  /** The island's volcano, whose crater glows. */
+  volcano: Volcano | null;
 }
 
 /** The debug window's probes inside the canvas; drawn only while the window is open. */
@@ -88,7 +91,7 @@ export function GameScene(props: GameSceneProps) {
       dpr={[1, 2]}
       aria-label="Brick island"
     >
-      <GameStage size={buildArea} clock={props.clock} />
+      <GameStage size={buildArea} clock={props.clock} volcano={props.volcano} />
       <NativeBatch
         bricks={split.batched}
         models={models}

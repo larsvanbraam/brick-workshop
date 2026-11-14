@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vite-plus/test';
 import { MAX_PIECES, validateAssembly } from '@brick-workshop/engine';
-import { WORLD_SIZE, generateMap, generateWorld } from './generate.ts';
+import { WATER_LAYERS, WORLD_SIZE, generateMap, generateWorld } from './generate.ts';
 import { LAND_BIOMES } from './map.ts';
 import { isPlant } from './plants.ts';
 
@@ -74,5 +74,36 @@ describe('world generation', () => {
   it('shapes a different island for a different seed', () => {
     const other = generateMap(99);
     expect(Buffer.from(other.heights).equals(Buffer.from(generateMap(1234).heights))).toBe(false);
+  });
+
+  it('raises a volcano on some islands: a black cone over every peak, lava in its crater', () => {
+    const map = generateMap(8);
+    expect(map.volcano).not.toBeNull();
+    const { x, z, lake } = map.volcano!;
+    expect(map.biomes[z * WORLD_SIZE + x]).toBe('lava');
+    expect(map.heights[z * WORLD_SIZE + x]).toBe(lake);
+    expect(Math.max(...map.heights)).toBeGreaterThan(15);
+    expect(map.biomes.filter((biome) => biome === 'volcanic').length).toBeGreaterThan(500);
+    // Lava runs down out of the crater, past the rim.
+    const flows = map.biomes.filter(
+      (biome, index) =>
+        biome === 'lava' &&
+        Math.hypot((index % WORLD_SIZE) - x, Math.floor(index / WORLD_SIZE) - z) > 12,
+    );
+    expect(flows.length).toBeGreaterThan(10);
+    expect(generateMap(2).volcano).toBeNull();
+  });
+
+  it('lets some coasts rise straight out of the sea as cliffs', () => {
+    let cliffs = 0;
+    for (const seed of [1, 2, 3]) {
+      const map = generateMap(seed);
+      for (let index = WORLD_SIZE; index < map.heights.length - WORLD_SIZE; index++) {
+        if (map.biomes[index] !== 'sea') continue;
+        const neighbours = [index + 1, index - 1, index + WORLD_SIZE, index - WORLD_SIZE];
+        if (neighbours.some((other) => map.heights[other] >= WATER_LAYERS + 3)) cliffs++;
+      }
+    }
+    expect(cliffs).toBeGreaterThan(20);
   });
 });
