@@ -592,6 +592,14 @@ const half = (value: number) => Math.round(value * 2) / 2 + 0;
 const siteKey = (x: number, y: number, z: number) => `${half(x)}:${half(y)}:${half(z)}`;
 
 /**
+ * Door leaves that close flush with their frame's face: the 1 x 3 x 4 leaf covers the frame's
+ * jambs and lintel in the very plane of the frame's front, so the two flicker where they overlap.
+ * Each stands this far (in LDraw units, along its own x, where the leaf's outer face points)
+ * proud of the frame, too little to see but enough for the depth test.
+ */
+const FLUSH_LEAVES: Readonly<Record<string, number>> = { '3193a': 0.5, '3192a': -0.5 };
+
+/**
  * Where a brick's part sits in the batch. With a `gap` (in LDraw units) an upright brick is
  * narrowed about its centre and shortened from its bottom, so neighbours and courses meet at a
  * hairline joint that wide, as real bricks do; its top and studs stay put.
@@ -599,6 +607,8 @@ const siteKey = (x: number, y: number, z: number) => `${half(x)}:${half(y)}:${ha
 function brickMatrix(brick: Brick, buildArea: number, explode: boolean, gap = 0) {
   const transform = getLDrawTransform(brick);
   const [a, b, c, d, e, f, g, h, i] = transform.matrix;
+  // The part's own x axis is the matrix's first column.
+  const proud = FLUSH_LEAVES[brick.partId] ?? 0;
   let [kx, ky, kz] = [1, 1, 1];
   if (gap > 0 && !brick.facing && !brick.upsideDown) {
     // The part's own x and z run along the footprint's width and depth until it turns.
@@ -629,9 +639,9 @@ function brickMatrix(brick: Brick, buildArea: number, explode: boolean, gap = 0)
       1,
     )
     .setPosition(
-      transform.x - buildArea * 10,
-      transform.y - (explode ? brick.y * 0.18 * 20 : 0),
-      transform.z - buildArea * 10,
+      transform.x - buildArea * 10 + a * proud,
+      transform.y - (explode ? brick.y * 0.18 * 20 : 0) + d * proud,
+      transform.z - buildArea * 10 + g * proud,
     );
 }
 
