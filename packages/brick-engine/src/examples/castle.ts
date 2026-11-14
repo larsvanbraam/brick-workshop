@@ -228,10 +228,13 @@ const PASSAGE_COURSES = 6;
 /** The portcullis hangs a stud in from the arch; the gate doors close the back of the passage. */
 const PORTCULLIS_Z = GATE[3] - 1;
 /**
- * The portcullis is drawn up: its bottom rail, running in slots in the jambs, sits this many
- * courses up so a minifigure (four bricks) walks under it, with a last grille section above.
+ * The portcullis is drawn up into the arch: its bottom rail, a plate running in slots in the
+ * jambs, sits this many plates over the passage floor so a minifigure (12 plates) walks under it
+ * with room to spare, even stepping in off the drawbridge, and a last grille section shows above.
  */
-const PORTCULLIS_RAISED = 4;
+const PORTCULLIS_RAISED = 14;
+/** The course of the jambs the portcullis rail is slotted into. */
+const PORTCULLIS_SLOT = Math.floor(PORTCULLIS_RAISED / 3);
 const gateTower = (x: number, z: number) =>
   GATE_TOWERS.some(([x0, x1]) => within(x, z, x0, GATE_BACK, x1, GATE_FRONT));
 const gateMiddle = (x: number, z: number) => within(x, z, GATE[0], GATE[2], GATE[1], GATE[3]);
@@ -521,7 +524,7 @@ function courseCell(x: number, z: number, n: number): string {
   if (gateTower(x, z)) return n < GATE_TOWER_COURSES ? mottled() : ' ';
   if (gateMiddle(x, z)) {
     const front = z === GATE[3];
-    if (n === PORTCULLIS_RAISED && z === PORTCULLIS_Z) return ' ';
+    if (n === PORTCULLIS_SLOT && z === PORTCULLIS_Z) return ' ';
     if (n < PASSAGE_COURSES) return x >= PASSAGE[0] && x <= PASSAGE[1] ? ' ' : mottled();
     if (n === PASSAGE_COURSES) return ' ';
     if (n === PASSAGE_COURSES + 1 && front) return ' ';
@@ -1134,7 +1137,7 @@ export const castle: ExampleDefinition = {
     'market-stall',
     'landscape',
   ],
-  expectedPieceCount: 11038,
+  expectedPieceCount: 11042,
   buildArea: AREA,
   brickIdPrefix: 'castle',
   smooth: [{ only: (brick) => NATURAL.has(naturalKey(brick)) }],
@@ -1508,8 +1511,12 @@ export const castle: ExampleDefinition = {
     for (let z = GATE[2]; z < GATE[3]; z++)
       addRun(add, 'brick', STONE, 'x', GATE[0], course(PASSAGE_COURSES), z, 6);
     add('3307', CAPS, GATE[0], course(PASSAGE_COURSES), GATE[3], 90);
-    add('3009', BLACK, GATE[0], course(PORTCULLIS_RAISED), PORTCULLIS_Z, 90);
-    add('3633', BLACK, PASSAGE[0], course(PORTCULLIS_RAISED + 1), PORTCULLIS_Z, 90);
+    // The jambs' slot is packed with plates under the rail; the grille stands on the rail.
+    for (const x of [GATE[0], GATE[1]])
+      for (let y = course(PORTCULLIS_SLOT); y < G + PORTCULLIS_RAISED; y++)
+        add('3024', STONE, x, y, PORTCULLIS_Z);
+    add('3666', BLACK, GATE[0], G + PORTCULLIS_RAISED, PORTCULLIS_Z, 90);
+    add('3633', BLACK, PASSAGE[0], G + PORTCULLIS_RAISED + 1, PORTCULLIS_Z, 90);
     addFramedDoor(
       { partId: '60596', color: DARK_TIMBER, x: PASSAGE[0], y: G, z: GATE[2], rotation: 90 },
       '60616a',
