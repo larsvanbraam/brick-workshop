@@ -1583,7 +1583,7 @@ export const hillValley: ExampleDefinition = {
     'minifigures',
     'cable',
   ],
-  expectedPieceCount: 12040,
+  expectedPieceCount: 12043,
   buildArea: SIZE,
   build(add) {
     const order = bottomUp(add);
@@ -1909,21 +1909,34 @@ export const hillValley: ExampleDefinition = {
       seatedHost.z,
       seatedHost.rotation,
     );
-    const dial = seatOnSideStuds(
-      {
-        id: 'dial',
-        partId: '60474',
-        color: WHITE,
-        x: clockX,
-        y: clockY,
-        z: CLOCK_TOWER.z0,
-        rotation: 0,
-        facing: '-z',
-      },
-      { id: 'host', ...seatedHost },
-    );
-    if (!dial) throw new Error('hill-valley: the clock dial does not seat.');
-    put('60474', WHITE, dial.x, dial.y, dial.z, dial.rotation, '-z');
+    // Each piece of the clock face hangs on the studs of the one behind it.
+    const mountOn = (
+      host: Omit<Brick, 'id'>,
+      partId: string,
+      color: number,
+      x: number,
+      y: number,
+      z: number,
+      rotation: Rotation = 0,
+    ) => {
+      const seated = seatOnSideStuds(
+        { id: 'piece', partId, color, x, y, z, rotation, facing: '-z' },
+        { id: 'host', ...host },
+      );
+      if (!seated) throw new Error(`hill-valley: the clock's ${partId} does not seat.`);
+      put(partId, color, seated.x, seated.y, seated.z, rotation, '-z');
+      return seated;
+    };
+    // The dial hangs by its second column, so it centres on the tower's middle line.
+    const dial = mountOn(seatedHost, '60474', WHITE, clockX - 1, clockY - 1, CLOCK_TOWER.z0 - 0.4);
+    if (dial.x + 2 !== (CLOCK_TOWER.x0 + CLOCK_TOWER.x1 + 1) / 2)
+      throw new Error('hill-valley: the clock dial is off centre.');
+    // The hands turn on a black round jumper on the dial's middle four studs, its one stud at the
+    // dial's centre: the long minute hand, a plate, up to twelve, and the short hour hand, a
+    // tile on the plate's lower stud, across to nine.
+    const boss = mountOn(dial, '18674', BLACK, dial.x + 1, dial.y + 2.5, dial.z - 0.4);
+    const minute = mountOn(boss, '3023b', BLACK, dial.x + 1.5, dial.y + 3.75, boss.z - 0.4);
+    mountOn(minute, '3069b', BLACK, dial.x + 0.5, dial.y + 3.75, minute.z - 0.4, 90);
 
     // ----------------------------------------------------------------------------------------
     // The shops round the square.

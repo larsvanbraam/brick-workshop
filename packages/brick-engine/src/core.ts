@@ -2551,7 +2551,8 @@ export function seatOnSideStuds(brick: Brick, host: Brick): Brick | null {
       const seated: Brick = {
         ...brick,
         x: Math.round((brick.x + dx / 20) * 10) / 10,
-        y: Math.round((brick.y - dy / 8) * 10) / 10,
+        // Mounted pieces step a quarter plate up or down, as half a stud is 1 1/4 plates.
+        y: Math.round((brick.y - dy / 8) * 4) / 4,
         z: Math.round((brick.z + dz / 20) * 10) / 10,
       };
       const distance = Math.hypot(dx / 20, dy / 20, dz / 20);
@@ -2814,7 +2815,8 @@ function isValidStrung(brick: Brick): boolean {
 
 function isValid(brick: Brick, buildArea: number): boolean {
   // Upright pieces sit on the half-stud grid; recessed studs and 0.4 stud plates put a mounted
-  // piece's coordinate along the facing on 0.1 stud steps.
+  // piece's coordinate along the facing on 0.1 stud steps, and a half-stud offset on a jumper
+  // puts its height on quarter-plate steps.
   const step = (axis: 'x' | 'z') => (brick.facing?.endsWith(axis) ? 0.1 : 0.5);
   if (
     !brick.id.trim() ||
@@ -2831,7 +2833,7 @@ function isValid(brick: Brick, buildArea: number): boolean {
         !getPart(brick.partId).flippable)) ||
     ![brick.x, brick.y, brick.z].every((value) => Number.isFinite(value) && value >= 0) ||
     !onGrid(brick.x, step('x')) ||
-    !onGrid(brick.y, 0.5) ||
+    !onGrid(brick.y, brick.facing ? 0.25 : 0.5) ||
     !onGrid(brick.z, step('z'))
   )
     return false;

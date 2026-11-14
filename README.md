@@ -76,7 +76,8 @@ Vite proxies `/api/workshop` to it.
 Positions are in studs for X/Z and plates for Y, in steps of 0.5; a brick is
 three plates. X/Z are the minimum corner of the rotated footprint, rotations are
 quarter turns, and all studs point up (except side-stud bricks, which hold pieces
-mounted sideways). Boards are square, 16 to 128 studs (`Assembly.buildArea`).
+mounted sideways; a mounted piece's height steps by a quarter plate, so a jumper
+can set the next piece half a stud up). Boards are square, 16 to 128 studs (`Assembly.buildArea`).
 
 `placeBrick`, `removeBrick`, `previewPatch` and `applyPatch` return a new valid
 assembly or structured issues and never mutate their input. A piece above the
