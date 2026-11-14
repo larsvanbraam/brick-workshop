@@ -99,6 +99,8 @@ interface SceneProps {
     onWalkViewChange?: (view: WalkCamera) => void;
     /** A controller stopped the walk. */
     onWalkExit?: () => void;
+    /** Steps, jumps and landings make plastic clicks. */
+    sound?: boolean;
   } | null;
   /** Parts still loading: their bricks wait for them instead of showing fallback shapes. */
   pendingParts?: readonly string[];
@@ -1143,6 +1145,7 @@ export const Scene = memo(function Scene(props: SceneProps) {
             onFlyingChange={cinematic.onFlyingChange ?? noop}
             onViewChange={cinematic.onWalkViewChange}
             onExit={cinematic.onWalkExit}
+            sound={cinematic.sound ?? true}
           />
         )}
         <StillCapture onFull={setFullStill} />

@@ -8,6 +8,7 @@ import { MINIFIG_PARTS } from './minifig-parts';
 import { LDRAW_SCALE } from './scene-frame';
 import { MINIFIG, WalkWorld, spawnWalker, stepWalker } from './walk';
 import { LOOK_RATE, readGamepads } from './walk-gamepad';
+import { WalkSounds } from './walk-sounds';
 
 export type WalkCamera = 'first' | 'third';
 
@@ -34,6 +35,8 @@ const KEYS = {
  */
 const DOUBLE_TAP = 300;
 const HANDLED = new Set(Object.values(KEYS).flat());
+/** Falls slower than this land as a footstep, so stepping down a plate makes no clack. */
+const LANDING_SPEED = 6;
 
 interface FlyState {
   flying: boolean;
@@ -59,7 +62,8 @@ function clampPitch(pitch: number) {
  * Walks a minifigure through the build: WASD or the arrows move, the mouse looks round once the
  * pointer is locked by a click, Space jumps and Shift runs. F or a double tap of Space takes off;
  * in the air Space climbs and C sinks. A game controller works too (see `walk-gamepad.ts`).
- * Takes the camera over while mounted.
+ * Takes the camera over while mounted. With `sound` on, steps, jumps and landings click like
+ * plastic.
  */
 export function WalkMode({
   bricks,
@@ -69,6 +73,7 @@ export function WalkMode({
   onFlyingChange,
   onViewChange,
   onExit,
+  sound = true,
 }: {
   bricks: Iterable<Brick>;
   buildArea: number;
@@ -79,6 +84,7 @@ export function WalkMode({
   onViewChange?: (view: WalkCamera) => void;
   /** A controller's Menu button stops walking. */
   onExit?: () => void;
+  sound?: boolean;
 }) {
   const { camera, gl, invalidate } = useThree();
   const world = useMemo(() => new WalkWorld(bricks, buildArea), [bricks, buildArea]);
@@ -89,6 +95,13 @@ export function WalkMode({
   const jumpQueued = useRef(false);
   const eyeY = useRef(spawn.y + MINIFIG.eye);
   const stride = useRef(0);
+  /** Which half-stride the legs are in: each new one is a footstep. */
+  const footfall = useRef(0);
+  const [sounds] = useState(() => new WalkSounds());
+  useEffect(() => {
+    sounds.setEnabled(sound);
+  }, [sounds, sound]);
+  useEffect(() => () => sounds.dispose(), [sounds]);
   const figure = useRef<MinifigRig>({
     forward: 1,
     root: null,
@@ -109,6 +122,11 @@ export function WalkMode({
     lastForward: -Infinity,
     sprint: false,
   });
+  const flewBefore = useRef(flying);
+  useEffect(() => {
+    if (flewBefore.current !== flying) sounds.toggleFlight(flying);
+    flewBefore.current = flying;
+  }, [flying, sounds]);
   useEffect(() => {
     fly.current.flying = flying;
     fly.current.onFlyingChange = onFlyingChange;
@@ -177,6 +195,7 @@ export function WalkMode({
       event.preventDefault();
       // Keeps the workshop's own shortcuts (Space pans, F frames) out of it.
       event.stopImmediatePropagation();
+      sounds.wake();
       const toggle = () => fly.current.onFlyingChange(!fly.current.flying);
       if (KEYS.fly.includes(event.code) && !event.repeat) toggle();
       if (KEYS.jump.includes(event.code) && !event.repeat) {
@@ -199,6 +218,7 @@ export function WalkMode({
     // A click locks the pointer for mouse look; where the page may not lock it (an embedded
     // frame), dragging looks round instead.
     const lock = () => {
+      sounds.wake();
       if (document.pointerLockElement === element || !element.requestPointerLock) return;
       Promise.resolve(element.requestPointerLock()).catch(() => {});
     };
@@ -232,7 +252,7 @@ export function WalkMode({
       document.removeEventListener('mousemove', move);
       if (document.pointerLockElement === element) document.exitPointerLock();
     };
-  }, [gl, invalidate]);
+  }, [gl, invalidate, sounds]);
 
   const target = useMemo(() => new Vector3(), []);
   const behind = useMemo(() => new Vector3(), []);
@@ -273,6 +293,10 @@ export function WalkMode({
       if (gamepad.pressed.menu) pad.current.onExit?.();
     }
 
+    const wasGrounded = current.grounded;
+    // The speed it was falling at, before the ground stops it.
+    const fallSpeed = current.velocityY - MINIFIG.gravity * Math.min(delta, 1 / 20);
+    const jumping = jumpQueued.current && wasGrounded && !airborne;
     stepWalker(
       world,
       current,
@@ -297,6 +321,15 @@ export function WalkMode({
     eyeY.current =
       eye < eyeY.current ? eye : eyeY.current + (eye - eyeY.current) * Math.min(1, delta * 14);
     stride.current = moved > 0.001 ? stride.current + moved * 1.6 : stride.current * 0.8;
+
+    // A foot comes down at each end of the legs' swing.
+    const beat = Math.floor(stride.current / Math.PI - 0.5);
+    if (beat > footfall.current && moved > 0.001 && current.grounded && !current.flying)
+      sounds.step(run);
+    footfall.current = beat;
+    if (jumping && current.velocityY > 0) sounds.jump();
+    else if (!wasGrounded && current.grounded && !current.flying && -fallSpeed > LANDING_SPEED)
+      sounds.land(-fallSpeed);
 
     const { yaw, pitch } = look.current;
     const bob = current.grounded

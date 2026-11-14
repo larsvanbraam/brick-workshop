@@ -32,6 +32,8 @@ import {
   Trash2,
   Undo2,
   Upload,
+  Volume2,
+  VolumeX,
   X,
 } from 'lucide-react';
 import {
@@ -580,6 +582,13 @@ export default function App() {
   const [walk, setWalk] = useState<WalkCamera | null>(null);
   const [flying, setFlying] = useState(false);
   const gamepad = useGamepadConnected(Boolean(walk));
+  const [walkSound, setWalkSound] = useState(
+    () => readSetting('brick-workshop-walk-sound', ['on', 'off'], 'on') === 'on',
+  );
+  function toggleWalkSound() {
+    writeSetting('brick-workshop-walk-sound', walkSound ? 'off' : 'on');
+    setWalkSound(!walkSound);
+  }
   const cinematicStage = useMemo(
     () =>
       cinematic
@@ -594,9 +603,10 @@ export default function App() {
               setWalk(null);
               setFlying(false);
             },
+            sound: walkSound,
           }
         : null,
-    [cinematic, mood, turntable, walk, flying],
+    [cinematic, mood, turntable, walk, flying, walkSound],
   );
   function toggleWalk() {
     setWalk(walk ? null : 'first');
@@ -1324,6 +1334,7 @@ export default function App() {
           else exitCinematic();
         } else if (walk && event.key.toLowerCase() === 'v' && !event.repeat)
           setWalk(walk === 'first' ? 'third' : 'first');
+        else if (walk && event.key.toLowerCase() === 'm' && !event.repeat) toggleWalkSound();
         return;
       }
       const key = event.key.toLowerCase();
@@ -1710,7 +1721,7 @@ export default function App() {
                     : 'Left stick to walk · right stick to look · A to jump · LB to run · double-tap A to fly · View to switch view · Menu to stop'
                   : flying
                     ? 'Flying · Space to rise · Shift to sink · double-tap W to sprint · sink to the ground or press F to land · Esc to stop'
-                    : 'Click or drag to look around · WASD to walk · Space to jump · Shift to run · double-tap Space to fly · V to switch view · Esc to stop'}
+                    : 'Click or drag to look around · WASD to walk · Space to jump · Shift to run · double-tap Space to fly · V to switch view · M to mute · Esc to stop'}
               </div>
               {walk === 'first' && <div className="walk-crosshair" aria-hidden="true" />}
             </>
@@ -1764,6 +1775,17 @@ export default function App() {
                   onClick={() => setFlying(!flying)}
                 >
                   <Feather size={16} />
+                </button>
+              )}
+              {walk && (
+                <button
+                  className="icon-button"
+                  title={walkSound ? 'Mute footsteps (M)' : 'Unmute footsteps (M)'}
+                  aria-label="Footstep sounds"
+                  aria-pressed={walkSound}
+                  onClick={toggleWalkSound}
+                >
+                  {walkSound ? <Volume2 size={16} /> : <VolumeX size={16} />}
                 </button>
               )}
               <button
