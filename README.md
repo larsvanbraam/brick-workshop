@@ -210,6 +210,7 @@ lettered moulds (`3665a`, `3665`) as one design; it never writes part or colour 
 | Flower Market Stall | 351    | Booth with striped awning, flower buckets, crates, tree and bench.                               |
 | Nordiska Museet     | 11,506 | The Stockholm museum with its towers, gables, dormers and windows.                               |
 | Castle              | 7,951  | Walled castle: round towers, gatehouse, moat and drawbridge, keep, well.                         |
+| Hill Valley (1955)  | 11,378 | The courthouse square: portico and clock tower, the Essex theatre, shops, filling station.       |
 
 Each example is a module in
 [packages/brick-engine/src/examples](packages/brick-engine/src/examples)
