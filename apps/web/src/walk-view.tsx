@@ -7,6 +7,7 @@ import { coloredLDrawModel, loadLDrawModels } from './ldraw';
 import { MINIFIG_PARTS } from './minifig-parts';
 import { LDRAW_SCALE } from './scene-frame';
 import { MINIFIG, WalkWorld, spawnWalker, stepWalker } from './walk';
+import { LOOK_RATE, readGamepads } from './walk-gamepad';
 
 export type WalkCamera = 'first' | 'third';
 
@@ -34,10 +35,31 @@ const KEYS = {
 const DOUBLE_TAP = 300;
 const HANDLED = new Set(Object.values(KEYS).flat());
 
+interface FlyState {
+  flying: boolean;
+  onFlyingChange: (flying: boolean) => void;
+  lastSpace: number;
+  lastForward: number;
+  sprint: boolean;
+}
+
+/** A press of jump (Space or A): jumps, and a second press soon after takes off or lands. */
+function pressJump(fly: FlyState, now: number) {
+  if (now - fly.lastSpace < DOUBLE_TAP) {
+    fly.onFlyingChange(!fly.flying);
+    fly.lastSpace = -Infinity;
+  } else fly.lastSpace = now;
+}
+
+function clampPitch(pitch: number) {
+  return Math.max(-MAX_PITCH, Math.min(MAX_PITCH, pitch));
+}
+
 /**
  * Walks a minifigure through the build: WASD or the arrows move, the mouse looks round once the
  * pointer is locked by a click, Space jumps and Shift runs. F or a double tap of Space takes off;
- * in the air Space climbs and C sinks. Takes the camera over while mounted.
+ * in the air Space climbs and C sinks. A game controller works too (see `walk-gamepad.ts`).
+ * Takes the camera over while mounted.
  */
 export function WalkMode({
   bricks,
@@ -45,12 +67,18 @@ export function WalkMode({
   view,
   flying,
   onFlyingChange,
+  onViewChange,
+  onExit,
 }: {
   bricks: Iterable<Brick>;
   buildArea: number;
   view: WalkCamera;
   flying: boolean;
   onFlyingChange: (flying: boolean) => void;
+  /** A controller's View button switches the camera. */
+  onViewChange?: (view: WalkCamera) => void;
+  /** A controller's Menu button stops walking. */
+  onExit?: () => void;
 }) {
   const { camera, gl, invalidate } = useThree();
   const world = useMemo(() => new WalkWorld(bricks, buildArea), [bricks, buildArea]);
@@ -74,7 +102,7 @@ export function WalkMode({
     viewRef.current = view;
     invalidate();
   }, [view, invalidate]);
-  const fly = useRef({
+  const fly = useRef<FlyState>({
     flying,
     onFlyingChange,
     lastSpace: -Infinity,
@@ -87,6 +115,17 @@ export function WalkMode({
     walker.current.flying = flying;
     invalidate();
   }, [flying, onFlyingChange, invalidate]);
+  const pad = useRef({
+    held: {},
+    /** Clicking the left stick in sprints until the stick is let go. */
+    sprint: false,
+    onViewChange,
+    onExit,
+  });
+  useEffect(() => {
+    pad.current.onViewChange = onViewChange;
+    pad.current.onExit = onExit;
+  }, [onViewChange, onExit]);
   // The real minifigure from the LDraw library; a stand-in walks until it has loaded, or for good
   // when the library has no minifigure parts.
   const [models, setModels] = useState<Record<string, Group> | null>(null);
@@ -142,11 +181,7 @@ export function WalkMode({
       if (KEYS.fly.includes(event.code) && !event.repeat) toggle();
       if (KEYS.jump.includes(event.code) && !event.repeat) {
         jumpQueued.current = true;
-        const now = performance.now();
-        if (now - fly.current.lastSpace < DOUBLE_TAP) {
-          toggle();
-          fly.current.lastSpace = -Infinity;
-        } else fly.current.lastSpace = now;
+        pressJump(fly.current, performance.now());
       }
       if (KEYS.forward.includes(event.code) && !event.repeat) {
         const now = performance.now();
@@ -177,10 +212,7 @@ export function WalkMode({
     const move = (event: MouseEvent) => {
       if (document.pointerLockElement !== element && !dragging) return;
       look.current.yaw -= event.movementX * LOOK_SPEED;
-      look.current.pitch = Math.max(
-        -MAX_PITCH,
-        Math.min(MAX_PITCH, look.current.pitch - event.movementY * LOOK_SPEED),
-      );
+      look.current.pitch = clampPitch(look.current.pitch - event.movementY * LOOK_SPEED);
     };
     // Capture: runs before the camera rig's listeners on the window.
     window.addEventListener('keydown', keydown, true);
@@ -211,16 +243,46 @@ export function WalkMode({
     const fromX = current.x;
     const fromZ = current.z;
     const airborne = current.flying ?? false;
+    let forward = (pressed(KEYS.forward) ? 1 : 0) - (pressed(KEYS.back) ? 1 : 0);
+    let strafe = (pressed(KEYS.right) ? 1 : 0) - (pressed(KEYS.left) ? 1 : 0);
+    let rise = (pressed(KEYS.jump) ? 1 : 0) - (pressed(KEYS.sink) ? 1 : 0);
+    let run = fly.current.sprint || (!airborne && pressed(KEYS.run));
+
+    const pads = typeof navigator !== 'undefined' ? navigator.getGamepads?.() : undefined;
+    const gamepad = pads ? readGamepads(pads, pad.current.held) : null;
+    if (gamepad) {
+      // The keyboard wins where both are pushed; a half-tilted stick walks slowly.
+      if (forward === 0) forward = gamepad.forward;
+      if (strafe === 0) strafe = gamepad.strafe;
+      if (rise === 0) rise = gamepad.rise;
+      if (gamepad.pressed.leftStick) pad.current.sprint = true;
+      if (gamepad.forward === 0 && gamepad.strafe === 0) pad.current.sprint = false;
+      if (pad.current.sprint || (!airborne && gamepad.run)) run = true;
+      // Cubed, so small pushes aim finely and a full push turns fast.
+      look.current.yaw -= gamepad.lookX ** 3 * LOOK_RATE.yaw * delta;
+      look.current.pitch = clampPitch(
+        look.current.pitch + gamepad.lookY ** 3 * LOOK_RATE.pitch * delta,
+      );
+      if (gamepad.pressed.a) {
+        jumpQueued.current = true;
+        pressJump(fly.current, performance.now());
+      }
+      if (gamepad.pressed.y) fly.current.onFlyingChange(!fly.current.flying);
+      if (gamepad.pressed.view)
+        pad.current.onViewChange?.(viewRef.current === 'first' ? 'third' : 'first');
+      if (gamepad.pressed.menu) pad.current.onExit?.();
+    }
+
     stepWalker(
       world,
       current,
       {
-        forward: (pressed(KEYS.forward) ? 1 : 0) - (pressed(KEYS.back) ? 1 : 0),
-        strafe: (pressed(KEYS.right) ? 1 : 0) - (pressed(KEYS.left) ? 1 : 0),
+        forward,
+        strafe,
         yaw: look.current.yaw,
-        run: fly.current.sprint || (!airborne && pressed(KEYS.run)),
+        run,
         jump: jumpQueued.current,
-        rise: (pressed(KEYS.jump) ? 1 : 0) - (pressed(KEYS.sink) ? 1 : 0),
+        rise,
       },
       delta,
     );

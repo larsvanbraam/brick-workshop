@@ -95,6 +95,10 @@ interface SceneProps {
     /** The walker is flying. */
     flying?: boolean;
     onFlyingChange?: (flying: boolean) => void;
+    /** A controller switched the walk camera. */
+    onWalkViewChange?: (view: WalkCamera) => void;
+    /** A controller stopped the walk. */
+    onWalkExit?: () => void;
   } | null;
   /** Parts still loading: their bricks wait for them instead of showing fallback shapes. */
   pendingParts?: readonly string[];
@@ -1137,6 +1141,8 @@ export const Scene = memo(function Scene(props: SceneProps) {
             view={cinematic.walk}
             flying={cinematic.flying ?? false}
             onFlyingChange={cinematic.onFlyingChange ?? noop}
+            onViewChange={cinematic.onWalkViewChange}
+            onExit={cinematic.onWalkExit}
           />
         )}
         <StillCapture onFull={setFullStill} />

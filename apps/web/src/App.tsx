@@ -579,10 +579,22 @@ export default function App() {
   const [turntable, setTurntable] = useState(false);
   const [walk, setWalk] = useState<WalkCamera | null>(null);
   const [flying, setFlying] = useState(false);
+  const gamepad = useGamepadConnected(Boolean(walk));
   const cinematicStage = useMemo(
     () =>
       cinematic
-        ? { mood, turntable: turntable && !walk, walk, flying, onFlyingChange: setFlying }
+        ? {
+            mood,
+            turntable: turntable && !walk,
+            walk,
+            flying,
+            onFlyingChange: setFlying,
+            onWalkViewChange: setWalk,
+            onWalkExit: () => {
+              setWalk(null);
+              setFlying(false);
+            },
+          }
         : null,
     [cinematic, mood, turntable, walk, flying],
   );
@@ -1692,9 +1704,13 @@ export default function App() {
           {cinematic && walk && (
             <>
               <div className="walk-hint" aria-live="polite">
-                {flying
-                  ? 'Flying · Space to rise · Shift to sink · double-tap W to sprint · sink to the ground or press F to land · Esc to stop'
-                  : 'Click or drag to look around · WASD to walk · Space to jump · Shift to run · double-tap Space to fly · V to switch view · Esc to stop'}
+                {gamepad
+                  ? flying
+                    ? 'Flying · A or RT to rise · B or LT to sink · click the left stick to sprint · sink to the ground or press Y to land · Menu to stop'
+                    : 'Left stick to walk · right stick to look · A to jump · LB to run · double-tap A to fly · View to switch view · Menu to stop'
+                  : flying
+                    ? 'Flying · Space to rise · Shift to sink · double-tap W to sprint · sink to the ground or press F to land · Esc to stop'
+                    : 'Click or drag to look around · WASD to walk · Space to jump · Shift to run · double-tap Space to fly · V to switch view · Esc to stop'}
               </div>
               {walk === 'first' && <div className="walk-crosshair" aria-hidden="true" />}
             </>
@@ -2265,4 +2281,24 @@ export default function App() {
       )}
     </div>
   );
+}
+
+/**
+ * Whether a game controller is connected, watched only while `active`. Browsers announce one only
+ * once a button on it is pressed with the page open.
+ */
+function useGamepadConnected(active: boolean) {
+  const [connected, setConnected] = useState(false);
+  useEffect(() => {
+    if (!active || typeof navigator === 'undefined' || !navigator.getGamepads) return;
+    const update = () => setConnected(navigator.getGamepads().some((pad) => pad?.connected));
+    update();
+    window.addEventListener('gamepadconnected', update);
+    window.addEventListener('gamepaddisconnected', update);
+    return () => {
+      window.removeEventListener('gamepadconnected', update);
+      window.removeEventListener('gamepaddisconnected', update);
+    };
+  }, [active]);
+  return active && connected;
 }
