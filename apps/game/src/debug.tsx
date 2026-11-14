@@ -244,7 +244,7 @@ export function GameDebugPanel({
         <dt>Pieces</dt>
         <dd>
           {world.ground.toLocaleString('en-US')} ground · {world.trees.toLocaleString('en-US')}{' '}
-          trees · {world.player} yours
+          plants · {world.player} yours
         </dd>
         <dt>Collision</dt>
         <dd>{live ? `${live.boxes.toLocaleString('en-US')} boxes` : '—'}</dd>

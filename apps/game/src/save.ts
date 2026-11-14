@@ -33,7 +33,7 @@ function forget(key: string) {
  * Edits are kept per island and per version of the generator: a changed generator shapes a
  * different island from the same seed, which old edits would not fit.
  */
-export const WORLD_VERSION = 1;
+export const WORLD_VERSION = 2;
 const editsKey = (seed: number) => `edits:v${WORLD_VERSION}:${seed}`;
 const ISLANDS_KEY = `islands:v${WORLD_VERSION}`;
 

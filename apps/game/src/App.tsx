@@ -28,6 +28,7 @@ import {
   saveTime,
 } from './save.ts';
 import { WORLD_SIZE } from './world/generate.ts';
+import { isPlant } from './world/plants.ts';
 import type { WorldMessage } from './world/worker.ts';
 
 interface Loaded {
@@ -338,7 +339,7 @@ function Game({
     let trees = 0;
     let player = 0;
     for (const brick of assembly.bricks)
-      if (brick.id.startsWith('tree')) trees++;
+      if (isPlant(brick)) trees++;
       else if (isPlayerPiece(brick)) player++;
     return {
       seed: world.seed,
