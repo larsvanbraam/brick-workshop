@@ -1399,8 +1399,8 @@ const CARS: readonly Car[] = [
   { x: 25, z: 40, y: 3, turn: 180, body: BLACK, roof: BLACK },
   { x: 99, z: 100, y: 3, turn: 0, body: RED, roof: WHITE },
   { x: 56, z: 27, y: 3, turn: 270, body: SAND_BLUE, roof: WHITE },
-  // At the pumps, on the forecourt's slabs.
-  { x: 40, z: 8, y: 4, turn: 90, body: DARK_BLUE, roof: WHITE },
+  // At the pumps, on the street side of the island, leaving the way to the door clear.
+  { x: 40, z: 14, y: 4, turn: 90, body: DARK_BLUE, roof: WHITE },
   // Behind the courthouse.
   { x: 51, z: 116, y: 3, turn: 0, body: DARK_TAN, roof: WHITE },
   { x: 56, z: 116, y: 3, turn: 0, body: DARK_GREEN, roof: DARK_GREEN, pickup: true },
@@ -1498,9 +1498,21 @@ const FIGURES: readonly Figure[] = [
   { x: 104, z: 72, turn: 180, torso: TAN, legs: BROWN, hair: FEDORA(DARK_TAN) },
   { x: 57, z: 18, turn: 180, torso: WHITE, legs: DARK_BLUE, hair: QUIFF(BLACK) },
   { x: 84, z: 17, turn: 180, torso: DARK_RED, legs: DARK_RED, hair: BOB(BLACK) },
-  // The attendant at the pumps, and a policeman at the courthouse steps.
-  { x: 44, z: 14, turn: 0, torso: WHITE, legs: DARK_GREEN, hair: CAP(RED) },
+  // The attendant at the pumps, facing the car beyond them, a mechanic watching the street
+  // from beside the station, and a policeman at the courthouse steps.
+  { x: 44, z: 10, turn: 180, torso: WHITE, legs: DARK_GREEN, hair: CAP(RED) },
+  { x: 38, z: 9, turn: 90, torso: DARK_BLUE, legs: DARK_BLUE, hair: HAIR(BROWN) },
   { x: 47, z: 80, turn: 0, torso: DARK_BLUE, legs: DARK_BLUE, hair: CAP(DARK_BLUE) },
+  // A greaser in black by the car parked at the kerb on the left.
+  { x: 36, z: 61, turn: 90, torso: BLACK, legs: DARK_BLUE, hair: QUIFF(BLACK) },
+  // A waitress out on the pavement in front of the shops on the left.
+  { x: 21, z: 96, turn: 270, torso: PINK, legs: WHITE, hair: BOB(DARK_BROWN) },
+  // A newspaper seller by his stack of papers, at the square's front edge.
+  { x: 80, z: 33, turn: 0, torso: TAN, legs: DARK_TAN, hair: FEDORA(DARK_BROWN) },
+  // A crowd on the pavement by the cable's lamp, looking up the square to the clock tower.
+  { x: 36, z: 47, turn: 180, torso: SAND_RED, legs: DARK_STONE, hair: FEDORA(BLACK) },
+  { x: 36, z: 50, turn: 180, torso: SAND_BLUE, legs: SAND_BLUE, hair: BOB(TAN) },
+  { x: 36, z: 43, turn: 270, torso: DARK_GREEN, legs: TAN, hair: HAIR(BLACK) },
   // In the square: round the flagpole and up the walk.
   { x: 59, z: 53, turn: 270, torso: SAND_GREEN, legs: TAN, hair: HAIR(DARK_BROWN) },
   { x: 67, z: 53, turn: 90, torso: MEDIUM_BLUE, legs: MEDIUM_BLUE, hair: BOB(BROWN) },
@@ -1518,9 +1530,12 @@ function figurePieces({ torso, legs, hair: [hair, hairColor] }: Figure): Local[]
 }
 
 /** Pavement and square cells that keep their studs, under the figures' feet. */
-const STUDDED = new Set(
-  FIGURES.flatMap((figure) => FEET.map(landed(FIGURE, figure.x, figure.z, figure.turn))),
-);
+/** The newspaper seller's stack of papers, by the corner cell it stands on. */
+const PAPERS = [84, 33] as const;
+const STUDDED = new Set([
+  ...FIGURES.flatMap((figure) => FEET.map(landed(FIGURE, figure.x, figure.z, figure.turn))),
+  ...[0, 1].flatMap((dx) => [0, 1].map((dz) => key(PAPERS[0] + dx, PAPERS[1] + dz))),
+]);
 /** The cells each figure stands over, kept clear of tufts and flowers. */
 const CROWDED = new Set(
   FIGURES.flatMap((figure) =>
@@ -1559,7 +1574,7 @@ export const hillValley: ExampleDefinition = {
     'minifigures',
     'cable',
   ],
-  expectedPieceCount: 11808,
+  expectedPieceCount: 11864,
   buildArea: SIZE,
   build(add) {
     const order = bottomUp(add);
@@ -2136,6 +2151,12 @@ export const hillValley: ExampleDefinition = {
         figure.turn,
       ))
         put(...piece);
+    // The papers: white plates stacked on a crate, a tile on top.
+    put('3022', BROWN, PAPERS[0], GROUND, PAPERS[1]);
+    put('3022', BROWN, PAPERS[0], GROUND + 1, PAPERS[1]);
+    for (let sheet = 2; sheet < 5; sheet++)
+      put('3022', WHITE, PAPERS[0], GROUND + sheet, PAPERS[1]);
+    put('3068b', WHITE, PAPERS[0], GROUND + 5, PAPERS[1]);
 
     order.flush();
   },
