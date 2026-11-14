@@ -1,8 +1,8 @@
 /**
  * Plastic clicks for the walking minifigure, synthesised with Web Audio so no sound files ship:
- * a hollow tap for each footstep, a snap for a jump (a brick pulled off its studs) and a clack
- * on landing (one pressed home). Each sound is a short burst of filtered noise for the plastic's
- * rattle plus a decaying tone for its ring, varied a little so steps never repeat exactly.
+ * a heel-and-toe tick for each footstep, a snap for a jump (a brick pulled off its studs) and a
+ * clatter on landing (one dropped on a baseplate). Every sound is built from a few milliseconds
+ * of filtered noise, never a tone, and varies a little so steps never repeat exactly.
  */
 export class WalkSounds {
   private context: AudioContext | null = null;
@@ -25,7 +25,7 @@ export class WalkSounds {
         return;
       }
       this.output = this.context.createGain();
-      this.output.gain.value = 0.55;
+      this.output.gain.value = 1.4;
       this.output.connect(this.context.destination);
       // A quarter second of white noise, reused by every burst.
       const length = Math.floor(this.context.sampleRate / 4);
@@ -49,45 +49,64 @@ export class WalkSounds {
     this.noise = null;
   }
 
-  /** One footstep: running steps land harder. */
+  /**
+   * One footstep: a hard tick as the heel lands and a softer one from the toe, with the hollow
+   * knock of plastic on studs. Running steps land harder.
+   */
   step(run: boolean) {
     // Feet alternate a touch higher and lower, like left and right.
     this.foot = 1 - this.foot;
-    const pitch = (this.foot ? 1.06 : 0.95) * vary(0.06);
-    const volume = (run ? 0.5 : 0.36) * vary(0.15);
-    this.burst({ frequency: 3200 * pitch, q: 3, volume, decay: 0.035 });
-    this.tone({ frequency: 1250 * pitch, volume: volume * 0.35, decay: 0.03 });
-    this.tone({ frequency: 240 * pitch, volume: volume * 0.5, decay: 0.05 });
-  }
-
-  /** Pushing off: a quick double snap rising in pitch. */
-  jump() {
-    const pitch = vary(0.05);
-    this.burst({ frequency: 4200 * pitch, q: 5, volume: 0.32, decay: 0.025 });
-    this.burst({ frequency: 5200 * pitch, q: 6, volume: 0.24, decay: 0.03, delay: 0.035 });
-    this.tone({ frequency: 900 * pitch, to: 1700 * pitch, volume: 0.16, decay: 0.09 });
-  }
-
-  /** Coming down, louder the faster it falls (`speed` in scene units a second). */
-  land(speed: number) {
-    const strength = Math.min(1, Math.max(0.25, (speed - 4) / 16));
-    const pitch = vary(0.05);
-    this.burst({ frequency: 2300 * pitch, q: 2.2, volume: 0.65 * strength, decay: 0.06 });
-    this.burst({ frequency: 4800 * pitch, q: 4, volume: 0.3 * strength, decay: 0.03 });
-    this.tone({ frequency: 170 * pitch, to: 110 * pitch, volume: 0.6 * strength, decay: 0.1 });
-    this.tone({ frequency: 1500 * pitch, volume: 0.12 * strength, decay: 0.05 });
-  }
-
-  /** Taking off into the air or settling back down: a soft click. */
-  toggleFlight(flying: boolean) {
-    const pitch = flying ? 1.25 : 0.85;
-    this.burst({ frequency: 3600 * pitch, q: 6, volume: 0.22, decay: 0.03 });
-    this.tone({
-      frequency: 700 * pitch,
-      to: (flying ? 1300 : 450) * pitch,
-      volume: 0.1,
-      decay: 0.12,
+    const pitch = (this.foot ? 1.05 : 0.95) * vary(0.08);
+    const volume = (run ? 0.7 : 0.5) * vary(0.15);
+    this.click({ q: 1.2, frequency: 3500, volume, decay: 0.004 });
+    this.click({ frequency: 2000 * pitch, q: 5, volume: volume * 0.6, decay: 0.009 });
+    const toe = (run ? 0.014 : 0.022) * vary(0.2);
+    this.click({
+      type: 'highpass',
+      frequency: 4500,
+      volume: volume * 0.4,
+      decay: 0.003,
+      delay: toe,
     });
+  }
+
+  /** Pushing off: the snap of a brick pulled off its studs. */
+  jump() {
+    const pitch = vary(0.06);
+    this.click({ q: 1.2, frequency: 4000, volume: 0.6, decay: 0.003 });
+    this.click({ frequency: 2800 * pitch, q: 6, volume: 0.45, decay: 0.008 });
+    this.click({ q: 1.2, frequency: 5000, volume: 0.35, decay: 0.003, delay: 0.016 });
+  }
+
+  /**
+   * Coming down: a clatter of clicks, like a brick dropped on a baseplate, louder the faster it
+   * falls (`speed` in scene units a second).
+   */
+  land(speed: number) {
+    const strength = Math.min(1, Math.max(0.35, (speed - 4) / 14));
+    const pitch = vary(0.06);
+    let delay = 0;
+    for (const [index, level] of [1, 0.55, 0.35, 0.2].entries()) {
+      const volume = level * strength * vary(0.15);
+      this.click({ q: 1.2, frequency: 3000, volume, decay: 0.004, delay });
+      this.click({
+        frequency: (1700 + index * 350) * pitch,
+        q: 4,
+        volume: volume * 0.7,
+        decay: 0.01,
+        delay,
+      });
+      delay += (0.011 + index * 0.006) * vary(0.25);
+    }
+    // The dull knock of the whole figure, from muffled noise rather than a tone.
+    this.click({ type: 'lowpass', frequency: 500, volume: 0.5 * strength, decay: 0.012 });
+  }
+
+  /** Taking off into the air or settling back down: a light double tick. */
+  toggleFlight(flying: boolean) {
+    const pitch = flying ? 1.2 : 0.85;
+    this.click({ frequency: 3000 * pitch, q: 2, volume: 0.8, decay: 0.005 });
+    this.click({ frequency: 3800 * pitch, q: 2, volume: 0.6, decay: 0.004, delay: 0.03 });
   }
 
   private ready() {
@@ -96,9 +115,11 @@ export class WalkSounds {
     return { context: this.context, output: this.output, noise: this.noise };
   }
 
-  private burst(sound: {
+  /** A few milliseconds of filtered noise: no pitched tone, so it clicks rather than beeps. */
+  private click(sound: {
+    type?: BiquadFilterType;
     frequency: number;
-    q: number;
+    q?: number;
     volume: number;
     decay: number;
     delay?: number;
@@ -110,38 +131,16 @@ export class WalkSounds {
     const source = context.createBufferSource();
     source.buffer = noise;
     const filter = context.createBiquadFilter();
-    filter.type = 'bandpass';
+    filter.type = sound.type ?? 'bandpass';
     filter.frequency.value = sound.frequency;
-    filter.Q.value = sound.q;
-    const gain = envelope(context, start, sound.volume, sound.decay);
+    filter.Q.value = sound.q ?? 0.7;
+    const gain = context.createGain();
+    gain.gain.setValueAtTime(Math.max(0.0002, sound.volume), start);
+    gain.gain.exponentialRampToValueAtTime(0.0001, start + sound.decay * 4);
     source.connect(filter).connect(gain).connect(output);
-    // Starts at a random point in the noise so bursts differ.
-    source.start(start, Math.random() * 0.15, sound.decay * 4);
+    // Starts at a random point in the noise so clicks differ.
+    source.start(start, Math.random() * 0.2, sound.decay * 5);
   }
-
-  private tone(sound: { frequency: number; to?: number; volume: number; decay: number }) {
-    const ready = this.ready();
-    if (!ready) return;
-    const { context, output } = ready;
-    const start = context.currentTime;
-    const oscillator = context.createOscillator();
-    oscillator.type = 'triangle';
-    oscillator.frequency.setValueAtTime(sound.frequency, start);
-    if (sound.to) oscillator.frequency.exponentialRampToValueAtTime(sound.to, start + sound.decay);
-    const gain = envelope(context, start, sound.volume, sound.decay);
-    oscillator.connect(gain).connect(output);
-    oscillator.start(start);
-    oscillator.stop(start + sound.decay * 4);
-  }
-}
-
-/** A sharp attack and an exponential fall, quiet after `decay` seconds. */
-function envelope(context: AudioContext, start: number, volume: number, decay: number) {
-  const gain = context.createGain();
-  gain.gain.setValueAtTime(0.0001, start);
-  gain.gain.exponentialRampToValueAtTime(Math.max(0.0002, volume), start + 0.002);
-  gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.002 + decay * 3);
-  return gain;
 }
 
 /** A factor around 1, up to `amount` either way. */
