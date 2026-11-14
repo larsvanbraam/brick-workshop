@@ -13,6 +13,7 @@ import type { Box3 } from 'three';
 import {
   AMBIENT_OCCLUSION,
   BLOOM,
+  CINEMATIC_WALK_MAX_PIXELS,
   MOODS,
   VIGNETTE_OFFSET,
   createCinematicRig,
@@ -34,20 +35,36 @@ export function CinematicStage({
   mood,
   bounds,
   full = false,
+  walking = false,
 }: {
   mood: CinematicMood;
   bounds: Box3 | null;
   /** Renders at the screen's full pixel ratio and AO resolution, for a saved screenshot. */
   full?: boolean;
+  /**
+   * A minifigure walks the build, so every frame is drawn: fewer pixels, cheaper ambient
+   * occlusion and no SMAA keep it at 60 frames a second. A saved screenshot still renders full.
+   */
+  walking?: boolean;
 }) {
+  const live = walking && !full;
   const settings = MOODS[mood];
   const { gl, scene, size, setDpr, invalidate } = useThree();
   const rig = useMemo(() => createCinematicRig(mood, bounds), [mood, bounds]);
   useEffect(() => () => rig.dispose(), [rig]);
   useEffect(() => {
     const ratio = window.devicePixelRatio || 1;
-    setDpr(full ? Math.min(ratio, 2) : getCinematicDpr(size.width, size.height, ratio));
-  }, [full, size.width, size.height, setDpr]);
+    setDpr(
+      full
+        ? Math.min(ratio, 2)
+        : getCinematicDpr(
+            size.width,
+            size.height,
+            ratio,
+            live ? CINEMATIC_WALK_MAX_PIXELS : undefined,
+          ),
+    );
+  }, [full, live, size.width, size.height, setDpr]);
   // The workshop renders at the screen's ratio again once the stage closes.
   useEffect(() => () => setDpr([1, 2]), [setDpr]);
   useEffect(() => {
@@ -78,11 +95,11 @@ export function CinematicStage({
       <fog attach="fog" args={[settings.background, ...fogRange(rig.radius)]} />
       <primitive object={rig.group} />
       <EffectComposer multisampling={0}>
-        <N8AO {...AMBIENT_OCCLUSION} quality="high" halfRes={!full} />
+        <N8AO {...AMBIENT_OCCLUSION} quality={live ? 'low' : 'high'} halfRes={!full} />
         <Bloom mipmapBlur intensity={settings.bloom} {...BLOOM} />
         <ToneMapping mode={ToneMappingMode.ACES_FILMIC} />
         <Vignette offset={VIGNETTE_OFFSET} darkness={settings.vignette} />
-        <SMAA />
+        {!live && <SMAA />}
       </EffectComposer>
     </>
   );

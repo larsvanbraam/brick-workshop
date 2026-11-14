@@ -1024,7 +1024,12 @@ export const Scene = memo(function Scene(props: SceneProps) {
         aria-label="Interactive 3D brick model"
       >
         {cinematic ? (
-          <CinematicStage mood={cinematic.mood} bounds={bounds} full={fullStill} />
+          <CinematicStage
+            mood={cinematic.mood}
+            bounds={bounds}
+            full={fullStill}
+            walking={Boolean(cinematic.walk)}
+          />
         ) : (
           <WorkshopStage buildArea={buildArea} scenery={scenery} />
         )}

@@ -133,11 +133,21 @@ export const VIGNETTE_OFFSET = 0.25;
  * postprocessing softens anyway. Saved screenshots render at the full pixel ratio.
  */
 export const CINEMATIC_MAX_PIXELS = 3_000_000;
+/**
+ * The budget while a minifigure walks the build: every frame is drawn, not only the ones that
+ * change, so it trades sharpness for holding 60 frames a second.
+ */
+export const CINEMATIC_WALK_MAX_PIXELS = 1_500_000;
 
 /** The pixel ratio the stage renders at: the screen's own, unless that passes the budget. */
-export function getCinematicDpr(width: number, height: number, deviceRatio: number) {
+export function getCinematicDpr(
+  width: number,
+  height: number,
+  deviceRatio: number,
+  maxPixels = CINEMATIC_MAX_PIXELS,
+) {
   const full = Math.min(deviceRatio, 2);
-  const budget = Math.sqrt(CINEMATIC_MAX_PIXELS / Math.max(width * height, 1));
+  const budget = Math.sqrt(maxPixels / Math.max(width * height, 1));
   return Math.max(1, Math.min(full, budget));
 }
 

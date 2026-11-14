@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vite-plus/test';
-import { CINEMATIC_MAX_PIXELS, getCinematicDpr } from '../src/cinematic-look';
+import {
+  CINEMATIC_MAX_PIXELS,
+  CINEMATIC_WALK_MAX_PIXELS,
+  getCinematicDpr,
+} from '../src/cinematic-look';
 
 describe('cinematic resolution', () => {
   it('keeps the screen ratio while it fits the pixel budget', () => {
@@ -12,5 +16,10 @@ describe('cinematic resolution', () => {
     expect(2056 * dpr * 1164 * dpr).toBeLessThanOrEqual(CINEMATIC_MAX_PIXELS + 1);
     expect(getCinematicDpr(5120, 2880, 2)).toBe(1);
     expect(getCinematicDpr(400, 300, 3)).toBe(2);
+  });
+  it('renders fewer pixels while walking', () => {
+    const dpr = getCinematicDpr(1440, 900, 2, CINEMATIC_WALK_MAX_PIXELS);
+    expect(dpr).toBeLessThan(getCinematicDpr(1440, 900, 2));
+    expect(1440 * dpr * 900 * dpr).toBeLessThanOrEqual(CINEMATIC_WALK_MAX_PIXELS + 1);
   });
 });
