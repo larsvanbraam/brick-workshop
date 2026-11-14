@@ -178,6 +178,8 @@ const PART_USES: Record<string, string> = {
   '29633': 'minifigure hair, bob, women, on a head 3626bp01',
   '3624': 'minifigure police hat, police officer, on a head 3626bp01',
   '13565': 'minifigure fedora, hat with brim, on a head 3626bp01',
+  '75924': 'string, cord, cable, rope, rigging, washing line, 20 studs between its end studs',
+  '71149': 'long string, cord, cable, rope, rigging, power line, 40 studs between its end studs',
   // Arches.
   '3659': 'arches over windows and doors, arcades',
   '4490': 'small arches over windows and doors',

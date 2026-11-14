@@ -126,6 +126,13 @@ validation hangs them a pass at a time from held pieces, a clip and the bar it g
 may share space, physics carries them on their hosts and clamps several hosts of one
 piece together, and building instructions place them after their hosts.
 
+**Wheels and strings.** A part marked `rests` stands on whatever its base touches,
+without studs: a wheel (`4624c01`) resting on the road is held, and the pin plate
+(`4600`) that clips onto it hangs from it, so a car stands on its wheels. Braided
+strings (`75924`, `71149`) run straight between two end studs 20 or 40 studs apart,
+each a round plug with a stud on top and a hollow below; tilt one on a hinge to
+run it downhill.
+
 **Hinges and tilted frames.** A hinge brick base (`3937`) holds a hinge top (`3938`)
 one plate up at the same position and turn; the top turns about the pair's long axis.
 A piece's optional `tilt` (`toward`, `angle` in 22.5° steps up to 90°, and the hinge
@@ -210,7 +217,7 @@ lettered moulds (`3665a`, `3665`) as one design; it never writes part or colour 
 | Flower Market Stall | 351    | Booth with striped awning, flower buckets, crates, tree and bench.                                                     |
 | Nordiska Museet     | 11,506 | The Stockholm museum with its towers, gables, dormers and windows.                                                     |
 | Castle              | 7,951  | Walled castle: round towers, gatehouse, moat and drawbridge, keep, well.                                               |
-| Hill Valley (1955)  | 11,838 | The courthouse square: portico and clock tower, the Essex theatre, shops, filling station, fifties cars and townsfolk. |
+| Hill Valley (1955)  | 11,814 | The courthouse square: portico and clock tower, the Essex theatre, shops, filling station, fifties cars and townsfolk. |
 
 Each example is a module in
 [packages/brick-engine/src/examples](packages/brick-engine/src/examples)

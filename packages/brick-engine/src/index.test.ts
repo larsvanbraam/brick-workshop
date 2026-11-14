@@ -48,6 +48,11 @@ import { planInstructionSteps } from './instructions.ts';
 
 const empty: Assembly = { name: 'Test', bricks: [] };
 const base: Brick = { id: 'base', partId: '3001', color: 4, x: 0, y: 0, z: 0, rotation: 0 };
+/** Parts that fit the default 16-stud board, which the generic part tests are drawn on. */
+const DEFAULT_BOARD_PARTS = PARTS.filter((part) => Math.max(part.width, part.depth) <= 16);
+/** The smallest even board twice a part's length, so it fits side by side with a copy. */
+const boardFor = (part: { width: number; depth: number }) =>
+  Math.max(16, 2 * Math.max(part.width, part.depth));
 /** The large museum takes too long to check piece by piece, so these tests use the smaller builds. */
 const SMALL_EXAMPLES = EXAMPLES.filter((example) => example.expectedPieceCount < 2500);
 const architecturalExpansionIds = [
@@ -359,6 +364,8 @@ describe('catalogue-reported weights', () => {
         '29633',
         '3624',
         '13565',
+        '75924',
+        '71149',
         ...architecturalExpansionIds,
         ...finishingAndRoundIds,
       ]),
@@ -975,7 +982,7 @@ describe('architectural part families', () => {
     const included = assembly.bricks.filter((brick) =>
       architecturalParts.some((part) => part.id === brick.partId),
     );
-    expect(included).toHaveLength(178);
+    expect(included).toHaveLength(180);
     expect(new Set(included.map((brick) => brick.partId))).toEqual(
       new Set(architecturalParts.map((part) => part.id)),
     );
@@ -1274,7 +1281,7 @@ describe('basic part families', () => {
     'assesses $id standing on the floor with its approximated contacts',
     (part) => {
       const assessment = assessPhysicalFeasibility(
-        { ...empty, bricks: [{ ...base, partId: part.id }] },
+        { ...empty, buildArea: boardFor(part), bricks: [{ ...base, partId: part.id }] },
         { estimateMissingMasses: true },
       );
       expect(assessment).toMatchObject({
@@ -1512,6 +1519,8 @@ describe('tile connections', () => {
 
 describe('upright brick engine', () => {
   it('matches brute-force support and collision results across half-unit grid bucket boundaries', () => {
+    // Resting parts stand without studs, which the brute force leaves out.
+    const STUD_ONLY_PARTS = DEFAULT_BOARD_PARTS.filter((part) => !part.rests);
     let seed = 104729;
     const random = () => {
       seed = (seed * 1664525 + 1013904223) >>> 0;
@@ -1519,7 +1528,7 @@ describe('upright brick engine', () => {
     };
     for (let sample = 0; sample < 150; sample++) {
       const bricks = Array.from({ length: 25 }, (_, index) => {
-        const part = PARTS[Math.floor(random() * PARTS.length)];
+        const part = STUD_ONLY_PARTS[Math.floor(random() * STUD_ONLY_PARTS.length)];
         const rotation = ([0, 90, 180, 270] as const)[Math.floor(random() * 4)];
         const size = footprint({ ...base, partId: part.id, rotation });
         return {
@@ -1561,9 +1570,9 @@ describe('upright brick engine', () => {
       ).toEqual(expected);
     }
   });
-  it('contains 268 unique building and foliage parts with explicit connection sites', () => {
-    expect(PARTS).toHaveLength(268);
-    expect(new Set(PARTS.map((part) => part.id)).size).toBe(268);
+  it('contains 270 unique building and foliage parts with explicit connection sites', () => {
+    expect(PARTS).toHaveLength(270);
+    expect(new Set(PARTS.map((part) => part.id)).size).toBe(270);
     expect(PARTS.filter((part) => part.family === 'tall')).toHaveLength(10);
     expect(PARTS.filter((part) => part.family === 'slope')).toHaveLength(35);
     expect(PARTS.filter((part) => part.family === 'round')).toHaveLength(38);
@@ -1573,7 +1582,7 @@ describe('upright brick engine', () => {
       ['cone', 5],
       ['door', 7],
       ['window', 16],
-      ['detail', 64],
+      ['detail', 66],
       ['foliage', 11],
     ] as const)
       expect(PARTS.filter((part) => part.family === family)).toHaveLength(count);
@@ -1612,6 +1621,8 @@ describe('upright brick engine', () => {
   it.each(PARTS)(
     'validates $id placement, collisions, support, removal, and export in all rotations',
     (part) => {
+      const area = boardFor(part);
+      const empty: Assembly = { name: 'Test', buildArea: area, bricks: [] };
       for (const rotation of [0, 90, 180, 270] as const) {
         const brick = { ...base, partId: part.id, rotation };
         const size = footprint(brick);
@@ -1619,11 +1630,11 @@ describe('upright brick engine', () => {
         expect(
           validateAssembly({ ...empty, bricks: [{ ...brick, y: MAX_HEIGHT + 1 - part.height }] }),
         ).toContainEqual(expect.objectContaining({ code: 'invalid' }));
-        expect(placeBrick(empty, { ...brick, x: 16 - size.width, z: 16 - size.depth }).ok).toBe(
+        expect(placeBrick(empty, { ...brick, x: area - size.width, z: area - size.depth }).ok).toBe(
           true,
         );
-        expect(placeBrick(empty, { ...brick, x: 17 - size.width }).ok).toBe(false);
-        expect(placeBrick(empty, { ...brick, z: 17 - size.depth }).ok).toBe(false);
+        expect(placeBrick(empty, { ...brick, x: area + 1 - size.width }).ok).toBe(false);
+        expect(placeBrick(empty, { ...brick, z: area + 1 - size.depth }).ok).toBe(false);
         expect(
           placeBrick(
             { ...empty, bricks: [brick] },
@@ -1632,7 +1643,7 @@ describe('upright brick engine', () => {
         ).toBe(false);
         expect(
           placeBrick({ ...empty, bricks: [brick] }, { ...brick, id: 'adjacent', x: size.width }).ok,
-        ).toBe(size.width * 2 <= 16);
+        ).toBe(size.width * 2 <= area);
         let upper = { ...brick, id: 'upper', y: part.height };
         const connection = getConnectionSites(brick, 'top')
           .flatMap((stud) =>
@@ -1642,14 +1653,16 @@ describe('upright brick engine', () => {
             ({ stud, receiver }) =>
               stud.x >= receiver.x &&
               stud.z >= receiver.z &&
-              stud.x - receiver.x + size.width <= 16 &&
-              stud.z - receiver.z + size.depth <= 16,
+              stud.x - receiver.x + size.width <= area &&
+              stud.z - receiver.z + size.depth <= area,
           );
         if (!connection) {
-          expect(placeBrick({ ...empty, bricks: [brick] }, upper)).toMatchObject({
-            ok: false,
-            issues: [expect.objectContaining({ code: 'unsupported' })],
-          });
+          // A resting part stands on the one below without studs, as a wheel on the road.
+          expect(placeBrick({ ...empty, bricks: [brick] }, upper)).toMatchObject(
+            part.rests
+              ? { ok: true }
+              : { ok: false, issues: [expect.objectContaining({ code: 'unsupported' })] },
+          );
           expect(removeBrick({ ...empty, bricks: [brick] }, brick.id).ok).toBe(true);
           expect(getBillOfMaterials({ ...empty, bricks: [brick] })).toEqual([
             { partId: part.id, color: 4, quantity: 1 },
@@ -1680,8 +1693,8 @@ describe('upright brick engine', () => {
   it.each([0, 90, 180, 270] as const)(
     'connects supported part pairs only when the lower part (rotated %i) provides an aligned stud',
     (lowerRotation) => {
-      for (const lowerPart of PARTS)
-        for (const upperPart of PARTS) {
+      for (const lowerPart of DEFAULT_BOARD_PARTS)
+        for (const upperPart of DEFAULT_BOARD_PARTS) {
           for (const upperRotation of [0, 90, 180, 270] as const) {
             const lower = { ...base, partId: lowerPart.id, rotation: lowerRotation };
             const size = footprint(lower);
@@ -1700,7 +1713,8 @@ describe('upright brick engine', () => {
             const connects = getConnectionSites(lower, 'top').some((stud) =>
               receivers.some((receiver) => stud.x === receiver.x && stud.z === receiver.z),
             );
-            if (connects) expect(issues).toEqual([]);
+            // A resting part also stands on the lower part's top, studs or not.
+            if (connects || upperPart.rests) expect(issues).toEqual([]);
             else
               expect(issues).toEqual([
                 expect.objectContaining({ brickId: 'upper', code: 'unsupported' }),
@@ -1969,7 +1983,7 @@ describe('upright brick engine', () => {
 
 describe('mixed-part engine builds', () => {
   it('lays complete catalogue and tile displays on one larger board without stacking', () => {
-    for (const [id, count] of [['catalog-sampler', 268]] as const) {
+    for (const [id, count] of [['catalog-sampler', 270]] as const) {
       const assembly = createExampleAssembly(id);
       expect(assembly.buildArea).toBe(80);
       expect(assembly.bricks).toHaveLength(count);

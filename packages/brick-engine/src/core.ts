@@ -119,6 +119,11 @@ export interface Part {
   clips?: readonly Clip[];
   /** Half of a hinge, which lets the pieces on its top tilt. */
   hinge?: Hinge;
+  /**
+   * Stands on whatever its base touches, without studs, the way a wheel stands on the road: a
+   * piece resting on a held piece's top is held itself, and can hold what clips onto it.
+   */
+  rests?: true;
 }
 
 function rectangularConnections(width: number, depth: number): Part['connections'] {
@@ -243,6 +248,7 @@ function sculptedPart(
       | 'clips'
       | 'sideStuds'
       | 'hinge'
+      | 'rests'
     >
   > = {},
 ): Part {
@@ -1929,6 +1935,7 @@ export const PARTS: readonly Part[] = [
     },
   ),
   sculptedPart('4624c01', 'Wheel 6.4 x 8 with tyre', 1, 2, 5, 'detail', {
+    rests: true,
     ldrawRotation: 90,
     ldrawBaseY: 19,
     clips: [{ at: [0.5, 2.375, 1], axis: 'x' }],
@@ -1967,6 +1974,29 @@ export const PARTS: readonly Part[] = [
     ldrawBaseY: 0,
     connections: { topStuds: [], bottomReceivers: [{ x: 1, z: 1 }] },
   }),
+  // Braided string pulled straight between its end studs, which are round one-plate plugs with
+  // a stud on top and a hollow below, so either end can sit on a stud or carry a piece. The cord
+  // runs along x between them, just under their tops.
+  ...(
+    [
+      ['75924', 'String braided 21L with end studs', 21],
+      ['71149', 'String braided 41L with end studs', 41],
+    ] as const
+  ).map(([id, name, length]) =>
+    sculptedPart(id, name, length, 1, 1, 'detail', {
+      kind: 'plate',
+      connections: {
+        topStuds: [
+          { x: 0, z: 0 },
+          { x: length - 1, z: 0 },
+        ],
+        bottomReceivers: [
+          { x: 0, z: 0 },
+          { x: length - 1, z: 0 },
+        ],
+      },
+    }),
+  ),
 ];
 
 const PARTS_BY_ID = new Map(PARTS.map((part) => [part.id, part]));
@@ -3050,11 +3080,17 @@ function hang(valid: readonly Brick[]): Hanging {
           (runtimeBrickIds.has(brick.id) || runtimeBrickIds.has(support.id)) &&
           hasEnvelopeContact(brick, support),
       );
+    const restsOnSupport =
+      getPart(brick.partId).rests &&
+      (groundedByTopHeight.get(brick.y) ?? []).some((support) =>
+        hasEnvelopeContact(brick, support),
+      );
     if (
       brick.y === 0 ||
       isSupportedInsert(brick, valid) ||
       hasStudSupport ||
-      hasUnknownEnvelopeSupport
+      hasUnknownEnvelopeSupport ||
+      restsOnSupport
     )
       hold(brick, 0);
     else unheld.push(brick);

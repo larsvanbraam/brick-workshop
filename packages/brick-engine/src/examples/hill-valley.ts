@@ -1,4 +1,10 @@
-import { footprint, getPart, isMatchingInsertFrame, seatOnSideStuds } from '../core.ts';
+import {
+  footprint,
+  getHingeTilt,
+  getPart,
+  isMatchingInsertFrame,
+  seatOnSideStuds,
+} from '../core.ts';
 import type { Brick, Facing, Rotation } from '../core.ts';
 import { addAreaMap, addBondedMap, addRun, bottomUp, glazeWindows } from './layout.ts';
 import type { RunKind } from './layout.ts';
@@ -12,7 +18,8 @@ import type { ExampleBrickAdder, ExampleDefinition } from './types.ts';
 // down both sides of the square and across its front; rows of shops line them, the Essex
 // theatre with its corner turret and marquee on the left, a filling station and a three-storey
 // brick block across the front. Fifties cars stand at the kerbs, drive the streets and wait at
-// the pumps, and townsfolk stroll the pavements and the square.
+// the pumps, and townsfolk stroll the pavements and the square. A cable runs from the clock
+// tower down to a lamp at the front of the square and across the street to another.
 // Nothing on the board carries lettering, so the plan needs no mirroring.
 const SIZE = 128;
 /** Every wall starts here: two base plates, then a plate under the pavement's tiles. */
@@ -1128,8 +1135,23 @@ function courtWindows(
   return openings;
 }
 
+/**
+ * The cable from the clock tower: a long cord drops from a hinge under the clock to a lamp at the
+ * square's front edge, and a shorter one crosses the street from that lamp to one on the far
+ * pavement, strung taut between the lamps' tops. Both lamps stand by their corner cell.
+ */
+const CABLE_LAMPS = [
+  [60, 17],
+  [60, 37],
+] as const;
+/** The tower course the hinge's ledge sticks out of, by the tower's left corner. */
+const CABLE_COURSE = 4;
+/** Where both cords run, over the lamps' studs. */
+const CABLE_X = CABLE_LAMPS[0][0] + 0.5;
+
 /** Lamps, hydrants and poles on the pavement, by the corner cell they stand on. */
 const LAMPS: readonly (readonly [number, number])[] = [
+  ...CABLE_LAMPS,
   ...[6, 48, 68, 90, 112].map((z) => [21, z] as const),
   ...[6, 30, 52, 76, 98, 118].map((z) => [105, z] as const),
   ...[38, 56, 92, 108].flatMap((z) => [[37, z] as const, [89, z] as const]),
@@ -1137,7 +1159,6 @@ const LAMPS: readonly (readonly [number, number])[] = [
   [89, 76],
   [50, 33],
   [76, 33],
-  [62, 17],
   [80, 17],
 ];
 const HYDRANTS: readonly (readonly [number, number])[] = [
@@ -1355,11 +1376,8 @@ interface Car {
   pickup?: true;
 }
 const CAR: readonly [number, number] = [4, 12];
-/** The axles' front rows, and the dark posts under them that carry the car to the road. */
+/** The axles' front rows. */
 const AXLES = [2, 8] as const;
-const PAD_CELLS = AXLES.flatMap((z) =>
-  [1, 2].flatMap((x) => [[x, z] as const, [x, z + 1] as const]),
-);
 
 const CARS: readonly Car[] = [
   // Parked at the kerbs, between the bay lines.
@@ -1379,7 +1397,8 @@ const CARS: readonly Car[] = [
 ];
 
 /**
- * A four-wide fifties car, bonnet to -z: wheels on pin plates under a raised chassis, chrome
+ * A four-wide fifties car, bonnet to -z: it stands on its wheels, which rest on the road and
+ * clip onto pin plates under a raised chassis, with chrome
  * bumpers and grille, round headlamps, red tail lamps, fins, glass all round and a roof in a
  * second tone. A pickup trades the back seat and boot for a bed with a load.
  */
@@ -1387,7 +1406,7 @@ function carPieces({ body, roof, pickup }: Car): { pieces: Local[]; wheels: Loca
   const pieces: Local[] = [];
   const wheels: Local[] = [];
   for (const z of AXLES) {
-    pieces.push(['3022', BLACK, 1, 0, z], ['3022', BLACK, 1, 1, z], ['4600', BLACK, 0, 2, z]);
+    pieces.push(['4600', BLACK, 0, 2, z]);
     wheels.push(['4624c01', BLACK, 0, 0, z], ['4624c01', BLACK, 3, 0, z, 180]);
   }
   pieces.push(
@@ -1459,14 +1478,14 @@ const BOB = (color: number) => ['29633', color] as const;
 const CAP = (color: number) => ['3624', color] as const;
 
 const FIGURES: readonly Figure[] = [
-  // Under the Essex marquee, reading the bills.
-  { x: 21, z: 24, turn: 270, torso: RED, legs: DARK_BLUE, hair: QUIFF(BROWN) },
-  { x: 21, z: 31, turn: 90, torso: PINK, legs: PINK, hair: BOB(TAN) },
+  // Under the Essex marquee, a couple meeting.
+  { x: 21, z: 24, turn: 180, torso: RED, legs: DARK_BLUE, hair: QUIFF(BROWN) },
+  { x: 21, z: 31, turn: 0, torso: PINK, legs: PINK, hair: BOB(TAN) },
   // Along the pavements.
   { x: 20, z: 52, turn: 0, torso: DARK_STONE, legs: DARK_STONE, hair: FEDORA(BROWN) },
   { x: 104, z: 40, turn: 0, torso: SAND_BLUE, legs: SAND_BLUE, hair: BOB(DARK_BROWN) },
   { x: 104, z: 72, turn: 180, torso: TAN, legs: BROWN, hair: FEDORA(DARK_TAN) },
-  { x: 58, z: 16, turn: 0, torso: WHITE, legs: DARK_BLUE, hair: QUIFF(BLACK) },
+  { x: 55, z: 18, turn: 180, torso: WHITE, legs: DARK_BLUE, hair: QUIFF(BLACK) },
   { x: 84, z: 17, turn: 180, torso: DARK_RED, legs: DARK_RED, hair: BOB(BLACK) },
   // The attendant at the pumps, and a policeman at the courthouse steps.
   { x: 44, z: 14, turn: 0, torso: WHITE, legs: DARK_GREEN, hair: CAP(RED) },
@@ -1487,19 +1506,10 @@ function figurePieces({ torso, legs, hair: [hair, hairColor] }: Figure): Local[]
   ];
 }
 
-/** Road cells under a car's posts, plated rather than tiled so the posts have studs. */
-const ROAD_PADS = new Set(
-  CARS.filter((car) => car.y === 3).flatMap((car) =>
-    PAD_CELLS.map(landed(CAR, car.x, car.z, car.turn)),
-  ),
+/** Pavement and square cells that keep their studs, under the figures' feet. */
+const STUDDED = new Set(
+  FIGURES.flatMap((figure) => FEET.map(landed(FIGURE, figure.x, figure.z, figure.turn))),
 );
-/** Pavement and forecourt cells that keep their studs: feet, and posts on the forecourt. */
-const STUDDED = new Set([
-  ...CARS.filter((car) => car.y === 4).flatMap((car) =>
-    PAD_CELLS.map(landed(CAR, car.x, car.z, car.turn)),
-  ),
-  ...FIGURES.flatMap((figure) => FEET.map(landed(FIGURE, figure.x, figure.z, figure.turn))),
-]);
 /** The cells each figure stands over, kept clear of tufts and flowers. */
 const CROWDED = new Set(
   FIGURES.flatMap((figure) =>
@@ -1536,8 +1546,9 @@ export const hillValley: ExampleDefinition = {
     'trees',
     'cars',
     'minifigures',
+    'cable',
   ],
-  expectedPieceCount: 11838,
+  expectedPieceCount: 11814,
   buildArea: SIZE,
   build(add) {
     const order = bottomUp(add);
@@ -1596,7 +1607,6 @@ export const hillValley: ExampleDefinition = {
       2,
       (x, z) => {
         if (DRAIN_CELLS.has(key(x, z))) return ' ';
-        if (ROAD_PADS.has(key(x, z))) return 'q';
         if (isRoad(x, z) && !FIXTURES.has(key(x, z))) return road(x, z);
         return within(x, z, LAWN) ? 'g' : 'b';
       },
@@ -1607,7 +1617,6 @@ export const hillValley: ExampleDefinition = {
         y: ['tile', YELLOW],
         g: ['plate', GREEN],
         b: ['plate', STONE],
-        q: ['plate', DARK_STONE],
       },
     );
     for (const [x, z] of DRAINS) put('2412b', DARK_STONE, x, 2, z);
@@ -1771,7 +1780,9 @@ export const hillValley: ExampleDefinition = {
         roofY + 3 * c,
         c,
         (x, z) =>
-          !onRing(x, z, CLOCK_TOWER) || (c === CLOCK_COURSE && x === clockX && z === CLOCK_TOWER.z0)
+          !onRing(x, z, CLOCK_TOWER) ||
+          (c === CLOCK_COURSE && x === clockX && z === CLOCK_TOWER.z0) ||
+          (c === CABLE_COURSE && x === CLOCK_TOWER.x0 && z === CLOCK_TOWER.z0)
             ? ' '
             : c === TOWER_COURSES - 1 || c === 2
               ? 't'
@@ -1785,6 +1796,37 @@ export const hillValley: ExampleDefinition = {
         { w: ['brick', WHITE], t: ['brick', PALE], g: ['brick', DARK_STONE] },
       );
     const towerTop = roofY + 3 * TOWER_COURSES;
+    // The cable's anchor: a brick standing a stud proud of the tower's left corner carries a
+    // jumper, a hinge on the jumper's stud, and the long cord on the hinge, tilted down to the
+    // lamp at the front of the square. Its lower end comes to rest just above the lamp's bulb.
+    const ledgeY = roofY + 3 * CABLE_COURSE;
+    put('3004', WHITE, CLOCK_TOWER.x0, ledgeY, CLOCK_TOWER.z0 - 1, lie('3004', 1, 2));
+    put('3794b', BLACK, CLOCK_TOWER.x0, ledgeY + 3, CLOCK_TOWER.z0 - 1, lie('3794b', 2, 1));
+    const hinge: Brick = {
+      id: 'hinge',
+      partId: '3937',
+      color: BLACK,
+      x: CABLE_X - 1,
+      y: ledgeY + 4,
+      z: CLOCK_TOWER.z0 - 1,
+      rotation: 0,
+    };
+    put(hinge.partId, hinge.color, hinge.x, hinge.y, hinge.z, hinge.rotation);
+    const tilt = getHingeTilt(hinge, '-z', 22.5);
+    if (!tilt) throw new Error('hill-valley: the cable hinge does not tilt.');
+    put('3938', BLACK, hinge.x, hinge.y + 1, hinge.z, 0, undefined, undefined, tilt);
+    const long = footprint({ id: '', partId: '71149', color: 0, x: 0, y: 0, z: 0, rotation: 90 });
+    put(
+      '71149',
+      BLACK,
+      CABLE_X,
+      hinge.y + 3,
+      hinge.z + 1 - long.depth,
+      90,
+      undefined,
+      undefined,
+      tilt,
+    );
     const towerSlab: Rect = {
       x0: CLOCK_TOWER.x0 - 1,
       z0: CLOCK_TOWER.z0 - 1,
@@ -1991,7 +2033,20 @@ export const hillValley: ExampleDefinition = {
 
     // ----------------------------------------------------------------------------------------
     // Street furniture.
+    // Each lamp's lantern holds a white bulb under a black cap. The two cable lamps carry the
+    // street cord's end studs under their bulbs, and the near one a taller cap that the long
+    // cord from the tower comes down onto.
     for (const [x, z] of LAMPS) put('2039', BLACK, x, GROUND, z);
+    const [[, farZ], nearLamp] = CABLE_LAMPS;
+    put('75924', BLACK, CABLE_X, GROUND + 21, farZ + 0.5, 90);
+    for (const [x, z] of LAMPS) {
+      const cable = CABLE_LAMPS.some(([cx, cz]) => cx === x && cz === z);
+      const tall = x === nearLamp[0] && z === nearLamp[1];
+      const y = GROUND + (cable ? 22 : 21);
+      put('3062b', WHITE, x + 0.5, y, z + 0.5);
+      if (tall) put('6141', BLACK, x + 0.5, y + 3, z + 0.5);
+      put('98138', BLACK, x + 0.5, y + (tall ? 4 : 3), z + 0.5);
+    }
     for (const [x, z] of HYDRANTS) {
       put('3062b', RED, x, GROUND, z);
       put('6141', RED, x, GROUND + 3, z);
@@ -2083,13 +2138,11 @@ export const hillValley: ExampleDefinition = {
     }
 
     // ----------------------------------------------------------------------------------------
-    // Cars and townsfolk. The wheels clip onto their pins, so they go on after everything
-    // that stands, the pin plates among them.
-    const wheels: Local[] = [];
+    // Cars and townsfolk. Each car stands on its wheels, and its pin plates clip onto them.
     for (const car of CARS) {
-      const { pieces, wheels: carWheels } = carPieces(car);
-      for (const piece of turned(pieces, CAR, car.x, car.y, car.z, car.turn)) put(...piece);
-      wheels.push(...turned(carWheels, CAR, car.x, car.y, car.z, car.turn));
+      const { pieces, wheels } = carPieces(car);
+      for (const piece of turned([...wheels, ...pieces], CAR, car.x, car.y, car.z, car.turn))
+        put(...piece);
     }
     for (const figure of FIGURES)
       for (const piece of turned(
@@ -2103,6 +2156,5 @@ export const hillValley: ExampleDefinition = {
         put(...piece);
 
     order.flush();
-    for (const wheel of wheels) add(...wheel);
   },
 };
