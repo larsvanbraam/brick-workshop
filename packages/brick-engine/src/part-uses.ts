@@ -167,6 +167,17 @@ const PART_USES: Record<string, string> = {
   '3938': 'hinge top for tilted roofs and panels, carries plates at a tilt',
   '87620': 'faceted corners, angled walls, towers',
   u66: 'sails, triangular sails',
+  // Vehicles and figures.
+  '4600': 'wheel holder under cars, carts and trucks, pins for wheels 4624c01',
+  '4624c01': 'car wheels, cart wheels, clip onto the pins of 4600',
+  '3815c01': 'minifigure legs, people, figures, stands on two studs',
+  '76382p00': 'minifigure torso with arms, people, figures, on legs 3815c01',
+  '3626bp01': 'minifigure head, people, figures, on a torso 76382p00',
+  '3901': 'minifigure hair, short hair, men, on a head 3626bp01',
+  '21268': 'minifigure hair, swept back, quiff, on a head 3626bp01',
+  '29633': 'minifigure hair, bob, women, on a head 3626bp01',
+  '3624': 'minifigure police hat, police officer, on a head 3626bp01',
+  '13565': 'minifigure fedora, hat with brim, on a head 3626bp01',
   // Arches.
   '3659': 'arches over windows and doors, arcades',
   '4490': 'small arches over windows and doors',

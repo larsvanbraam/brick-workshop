@@ -1909,6 +1909,64 @@ export const PARTS: readonly Part[] = [
       ],
     },
   ),
+  // Wheels: a 2 x 2 plate whose two pins (bars here) reach a stud and a half out either side,
+  // and a small wheel with its tyre that clips onto a pin by its hub. Pin and wheel share space,
+  // so the wheel stands in the plate's outer columns, its tyre one LDU off the ground.
+  contouredPart(
+    '4600',
+    'Plate 2 x 2 with wheel pins',
+    4,
+    2,
+    1,
+    'plate',
+    'detail',
+    { top: spans([1, 2], [1, 2]), bottom: spans([1, 2], [1, 2]) },
+    {
+      bars: [
+        { from: [0.3, 0.375, 1], to: [0.9, 0.375, 1] },
+        { from: [3.1, 0.375, 1], to: [3.7, 0.375, 1] },
+      ],
+    },
+  ),
+  sculptedPart('4624c01', 'Wheel 6.4 x 8 with tyre', 1, 2, 5, 'detail', {
+    ldrawRotation: 90,
+    ldrawBaseY: 19,
+    clips: [{ at: [0.5, 2.375, 1], axis: 'x' }],
+  }),
+  // Minifigures, stacked like the real thing: hips and legs on two studs, the torso (with arms
+  // and yellow hands) on the hips, the head on the neck and hair or a hat on the head's stud.
+  // Each faces -z at rotation 0. Hips and neck rise into the piece above, and hair falls round
+  // the head below its own base, as clips dip under their plates.
+  sculptedPart('3815c01', 'Minifigure hips and legs', 2, 2, 5, 'detail', {
+    ldrawCenter: { x: 0, z: -10 },
+    ldrawBaseY: 40,
+    connections: { topStuds: spans(null, [0, 1]), bottomReceivers: spans(null, [0, 1]) },
+  }),
+  sculptedPart('76382p00', 'Minifigure torso with arms and hands', 4, 2, 4, 'detail', {
+    ldrawCenter: { x: 0, z: -10 },
+    ldrawBaseY: 32,
+    connections: { topStuds: [{ x: 1.5, z: 1 }], bottomReceivers: spans(null, [1, 2]) },
+  }),
+  sculptedPart('3626bp01', 'Minifigure head with grin', 2, 2, 3, 'detail', {
+    connections: { topStuds: [{ x: 0.5, z: 0.5 }], bottomReceivers: [{ x: 0.5, z: 0.5 }] },
+  }),
+  ...(
+    [
+      ['3901', 'Minifigure hair, short'],
+      ['21268', 'Minifigure hair, swept back'],
+      ['29633', 'Minifigure hair, bob'],
+      ['3624', 'Minifigure police hat'],
+    ] as const
+  ).map(([id, name]) =>
+    sculptedPart(id, name, 2, 2, 2, 'detail', {
+      ldrawBaseY: 0,
+      connections: { topStuds: [], bottomReceivers: [{ x: 0.5, z: 0.5 }] },
+    }),
+  ),
+  sculptedPart('13565', 'Minifigure fedora', 3, 3, 2, 'detail', {
+    ldrawBaseY: 0,
+    connections: { topStuds: [], bottomReceivers: [{ x: 1, z: 1 }] },
+  }),
 ];
 
 const PARTS_BY_ID = new Map(PARTS.map((part) => [part.id, part]));

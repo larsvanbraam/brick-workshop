@@ -51,8 +51,22 @@ import {
 /**
  * How far, in LDU, each clip plate's clip reaches below the plate's underside and above its
  * studs: the clip is taller than the plate, by less than the half-plate steps pieces sit in.
+ * Wheel pins hang under their plate the same way, minifigure hips and necks rise into the
+ * piece above, and hair and hats fall round the head below their base.
  */
-const CLIP_DIPS: Readonly<Record<string, number>> = { '4081b': 2, '60470a': 2, '63868': 1.45 };
+const CLIP_DIPS: Readonly<Record<string, number>> = {
+  '4081b': 2,
+  '60470a': 2,
+  '63868': 1.45,
+  '4600': 2,
+  '3815c01': 7,
+  '76382p00': 8,
+  '3901': 18,
+  '21268': 20,
+  '29633': 32,
+  '3624': 7,
+  '13565': 12,
+};
 
 describe('local LDraw assets', () => {
   it('loads only requested models and shares overlapping in-flight requests', async () => {
@@ -654,7 +668,8 @@ describe('local LDraw assets', () => {
             }
             reference.updateMatrixWorld(true);
             batch.object.updateMatrixWorld(true);
-            const expectedBounds = new Box3().setFromObject(reference);
+            // Precise: arms and other sub-parts turned off the axes would swell a box of boxes.
+            const expectedBounds = new Box3().setFromObject(reference, true);
             const actualBounds = new Box3().setFromObject(batch.object);
             expect(
               actualBounds.min.distanceTo(expectedBounds.min),
@@ -690,7 +705,7 @@ describe('local LDraw assets', () => {
             }
             batch.dispose();
           }
-          const bounds = new Box3().setFromObject(model);
+          const bounds = new Box3().setFromObject(model, true);
           const quarterTurn = part.ldrawRotation === 90;
           if (
             part.clearance === 'reserved' ||

@@ -11,7 +11,8 @@ import type { ExampleBrickAdder, ExampleDefinition } from './types.ts';
 // back (high z) facing it across the square, with its portico, pediment and clock. Streets run
 // down both sides of the square and across its front; rows of shops line them, the Essex
 // theatre with its corner turret and marquee on the left, a filling station and a three-storey
-// brick block across the front. No vehicles or people: only the buildings and the street.
+// brick block across the front. Fifties cars stand at the kerbs, drive the streets and wait at
+// the pumps, and townsfolk stroll the pavements and the square.
 // Nothing on the board carries lettering, so the plan needs no mirroring.
 const SIZE = 128;
 /** Every wall starts here: two base plates, then a plate under the pavement's tiles. */
@@ -38,6 +39,8 @@ const DARK_RED = 320;
 const SAND_RED = 335;
 const SAND_GREEN = 378;
 const SAND_BLUE = 379;
+const TRANS_CLEAR = 47;
+const PINK = 13;
 
 interface Rect {
   readonly x0: number;
@@ -1253,7 +1256,7 @@ function road(x: number, z: number) {
     if (centre && !inCrossing && z < BACK_LOT) return 'y';
     const bay =
       x === WEST_ROAD[1] - 1 || x === WEST_ROAD[1] || x === EAST_ROAD[0] || x === EAST_ROAD[0] + 1;
-    if (bay && z > 40 && z < 110 && (z - 40) % 7 === 0) return 'w';
+    if (bay && z > 40 && z < 110 && (z - 40) % 14 === 0) return 'w';
   } else if (z >= FRONT_ROAD[0] && z <= FRONT_ROAD[1]) {
     if ((x <= 38 || x >= 89) && z % 2 === 0) return 'w';
     if ((z === 25 || z === 26) && x > 39 && x < 88) return 'y';
@@ -1272,6 +1275,253 @@ const DRAINS: readonly (readonly [number, number])[] = [
 ];
 const DRAIN_CELLS = new Set(DRAINS.flatMap(([x, z]) => [key(x, z), key(x, z + 1)]));
 
+// ------------------------------------------------------------------------------------------
+// Cars and townsfolk, each drawn in its own frame and turned onto the board like a piece.
+
+/** A piece in a local frame: part, colour, the corner it covers, plates up and its turn. */
+type Local = readonly [
+  partId: string,
+  color: number,
+  x: number,
+  y: number,
+  z: number,
+  rotation?: Rotation,
+];
+
+/** The turn that lays `partId` `width` studs along x and `depth` along z. */
+function lie(partId: string, width: number, depth: number): Rotation {
+  const size = footprint({ id: '', partId, color: 0, x: 0, y: 0, z: 0, rotation: 0 });
+  return size.width === width && size.depth === depth ? 0 : 90;
+}
+
+/**
+ * Pieces drawn in a `width` x `depth` frame, turned a quarter turn at a time the way pieces
+ * turn (rotation 90 sends the frame's front, -z, to -x) and set down with the frame's corner
+ * at `x`, `z` and its floor at `y`.
+ */
+function turned(
+  pieces: readonly Local[],
+  [width, depth]: readonly [number, number],
+  x: number,
+  y: number,
+  z: number,
+  turn: Rotation,
+) {
+  return pieces.map(([partId, color, u, v, w, rotation = 0]) => {
+    const size = footprint({ id: '', partId, color, x: 0, y: 0, z: 0, rotation });
+    const [across, along] =
+      turn === 0
+        ? [u, w]
+        : turn === 90
+          ? [w, width - u - size.width]
+          : turn === 180
+            ? [width - u - size.width, depth - w - size.depth]
+            : [depth - w - size.depth, u];
+    return [
+      partId,
+      color,
+      x + across,
+      y + v,
+      z + along,
+      ((rotation + turn) % 360) as Rotation,
+    ] as const;
+  });
+}
+
+/** Where a frame's cell lands on the board. */
+function landed([width, depth]: readonly [number, number], x: number, z: number, turn: Rotation) {
+  return (cell: readonly [number, number]) => {
+    const [[, , cx, , cz]] = turned(
+      [['3024', 0, cell[0], 0, cell[1]]],
+      [width, depth],
+      x,
+      0,
+      z,
+      turn,
+    );
+    return key(cx, cz);
+  };
+}
+
+interface Car {
+  x: number;
+  z: number;
+  /** The road's top, in plates. */
+  y: number;
+  /** The way the bonnet points: 0 to -z, 90 to -x, 180 to +z, 270 to +x. */
+  turn: Rotation;
+  body: number;
+  roof: number;
+  pickup?: true;
+}
+const CAR: readonly [number, number] = [4, 12];
+/** The axles' front rows, and the dark posts under them that carry the car to the road. */
+const AXLES = [2, 8] as const;
+const PAD_CELLS = AXLES.flatMap((z) =>
+  [1, 2].flatMap((x) => [[x, z] as const, [x, z + 1] as const]),
+);
+
+const CARS: readonly Car[] = [
+  // Parked at the kerbs, between the bay lines.
+  { x: 32, z: 55, y: 3, turn: 0, body: MEDIUM_BLUE, roof: WHITE },
+  { x: 32, z: 83, y: 3, turn: 180, body: DARK_RED, roof: DARK_RED },
+  { x: 92, z: 69, y: 3, turn: 0, body: SAND_GREEN, roof: WHITE },
+  // On the move.
+  { x: 25, z: 40, y: 3, turn: 180, body: BLACK, roof: BLACK },
+  { x: 99, z: 100, y: 3, turn: 0, body: RED, roof: WHITE },
+  { x: 56, z: 27, y: 3, turn: 270, body: SAND_BLUE, roof: WHITE },
+  // At the pumps, on the forecourt's slabs.
+  { x: 40, z: 8, y: 4, turn: 90, body: DARK_BLUE, roof: WHITE },
+  // Behind the courthouse.
+  { x: 51, z: 116, y: 3, turn: 0, body: DARK_TAN, roof: WHITE },
+  { x: 56, z: 116, y: 3, turn: 0, body: DARK_GREEN, roof: DARK_GREEN, pickup: true },
+  { x: 71, z: 116, y: 3, turn: 0, body: BLACK, roof: WHITE },
+];
+
+/**
+ * A four-wide fifties car, bonnet to -z: wheels on pin plates under a raised chassis, chrome
+ * bumpers and grille, round headlamps, red tail lamps, fins, glass all round and a roof in a
+ * second tone. A pickup trades the back seat and boot for a bed with a load.
+ */
+function carPieces({ body, roof, pickup }: Car): { pieces: Local[]; wheels: Local[] } {
+  const pieces: Local[] = [];
+  const wheels: Local[] = [];
+  for (const z of AXLES) {
+    pieces.push(['3022', BLACK, 1, 0, z], ['3022', BLACK, 1, 1, z], ['4600', BLACK, 0, 2, z]);
+    wheels.push(['4624c01', BLACK, 0, 0, z], ['4624c01', BLACK, 3, 0, z, 180]);
+  }
+  pieces.push(
+    ['2445', BLACK, 1, 3, 0, lie('2445', 2, 12)],
+    ['2445', BLACK, 1, 4, 0, lie('2445', 2, 12)],
+    ['3029', body, 0, 5, 0, lie('3029', 4, 12)],
+    ['2431', PALE, 0, 6, 0, lie('2431', 4, 1)],
+    ['2431', PALE, 0, 6, 11, lie('2431', 4, 1)],
+    ['3062b', WHITE, 0, 6, 1],
+    ['3062b', WHITE, 3, 6, 1],
+    ['2877', PALE, 1, 6, 1, lie('2877', 2, 1)],
+    ['3008', body, 0, 6, 2, lie('3008', 1, 8)],
+    ['3008', body, 3, 6, 2, lie('3008', 1, 8)],
+    ['3007', body, 1, 6, 2, lie('3007', 2, 8)],
+    ['3062b', RED, 0, 6, 10],
+    ['3062b', RED, 3, 6, 10],
+    ['3004', body, 1, 6, 10, lie('3004', 2, 1)],
+    ['26603', body, 0, 9, 1, lie('26603', 2, 3)],
+    ['26603', body, 2, 9, 1, lie('26603', 2, 3)],
+    ['3010', TRANS_CLEAR, 0, 9, 4, lie('3010', 4, 1)],
+  );
+  if (pickup)
+    pieces.push(
+      ['3005', TRANS_CLEAR, 0, 9, 5],
+      ['3005', TRANS_CLEAR, 3, 9, 5],
+      ['3010', body, 0, 9, 6, lie('3010', 4, 1)],
+      ['26603', roof, 0, 12, 4, lie('26603', 2, 3)],
+      ['26603', roof, 2, 12, 4, lie('26603', 2, 3)],
+      ['3010', body, 0, 9, 7, lie('3010', 1, 4)],
+      ['3010', body, 3, 9, 7, lie('3010', 1, 4)],
+      ['3004', body, 1, 9, 10, lie('3004', 2, 1)],
+      ['3941', BROWN, 1, 9, 7],
+      ['3062b', TAN, 1, 9, 9],
+      ['3005', NOUGAT, 2, 9, 9],
+    );
+  else
+    pieces.push(
+      ['3004', TRANS_CLEAR, 0, 9, 5, lie('3004', 1, 2)],
+      ['3004', TRANS_CLEAR, 3, 9, 5, lie('3004', 1, 2)],
+      ['3010', TRANS_CLEAR, 0, 9, 7, lie('3010', 4, 1)],
+      ['1751', roof, 0, 12, 4],
+      ['26603', body, 1, 9, 8, lie('26603', 2, 3)],
+      ['3069b', body, 0, 9, 8, lie('3069b', 1, 2)],
+      ['3069b', body, 3, 9, 8, lie('3069b', 1, 2)],
+      ['54200', body, 0, 9, 10],
+      ['54200', body, 3, 9, 10],
+    );
+  return { pieces, wheels };
+}
+
+interface Figure {
+  x: number;
+  z: number;
+  /** The way the figure faces: 0 to -z (the camera), 90 to -x, 180 to +z, 270 to +x. */
+  turn: Rotation;
+  torso: number;
+  legs: number;
+  hair: readonly [partId: string, color: number];
+}
+const FIGURE: readonly [number, number] = [4, 2];
+const FEET = [
+  [1, 1],
+  [2, 1],
+] as const;
+const FEDORA = (color: number) => ['13565', color] as const;
+const HAIR = (color: number) => ['3901', color] as const;
+const QUIFF = (color: number) => ['21268', color] as const;
+const BOB = (color: number) => ['29633', color] as const;
+const CAP = (color: number) => ['3624', color] as const;
+
+const FIGURES: readonly Figure[] = [
+  // Under the Essex marquee, reading the bills.
+  { x: 21, z: 24, turn: 270, torso: RED, legs: DARK_BLUE, hair: QUIFF(BROWN) },
+  { x: 21, z: 31, turn: 90, torso: PINK, legs: PINK, hair: BOB(TAN) },
+  // Along the pavements.
+  { x: 20, z: 52, turn: 0, torso: DARK_STONE, legs: DARK_STONE, hair: FEDORA(BROWN) },
+  { x: 104, z: 40, turn: 0, torso: SAND_BLUE, legs: SAND_BLUE, hair: BOB(DARK_BROWN) },
+  { x: 104, z: 72, turn: 180, torso: TAN, legs: BROWN, hair: FEDORA(DARK_TAN) },
+  { x: 58, z: 16, turn: 0, torso: WHITE, legs: DARK_BLUE, hair: QUIFF(BLACK) },
+  { x: 84, z: 17, turn: 180, torso: DARK_RED, legs: DARK_RED, hair: BOB(BLACK) },
+  // The attendant at the pumps, and a policeman at the courthouse steps.
+  { x: 44, z: 14, turn: 0, torso: WHITE, legs: DARK_GREEN, hair: CAP(RED) },
+  { x: 47, z: 80, turn: 0, torso: DARK_BLUE, legs: DARK_BLUE, hair: CAP(DARK_BLUE) },
+  // In the square: round the flagpole and up the walk.
+  { x: 59, z: 53, turn: 270, torso: SAND_GREEN, legs: TAN, hair: HAIR(DARK_BROWN) },
+  { x: 67, z: 53, turn: 90, torso: MEDIUM_BLUE, legs: MEDIUM_BLUE, hair: BOB(BROWN) },
+  { x: 62, z: 66, turn: 180, torso: BROWN, legs: DARK_TAN, hair: FEDORA(BLACK) },
+];
+
+/** A minifigure facing -z: legs on two studs, torso, a grinning head and hair or a hat. */
+function figurePieces({ torso, legs, hair: [hair, hairColor] }: Figure): Local[] {
+  return [
+    ['3815c01', legs, 1, 0, 0],
+    ['76382p00', torso, 0, 5, 0],
+    ['3626bp01', YELLOW, 1, 9, 0.5],
+    hair === '13565' ? [hair, hairColor, 0.5, 12, 0] : [hair, hairColor, 1, 12, 0.5],
+  ];
+}
+
+/** Road cells under a car's posts, plated rather than tiled so the posts have studs. */
+const ROAD_PADS = new Set(
+  CARS.filter((car) => car.y === 3).flatMap((car) =>
+    PAD_CELLS.map(landed(CAR, car.x, car.z, car.turn)),
+  ),
+);
+/** Pavement and forecourt cells that keep their studs: feet, and posts on the forecourt. */
+const STUDDED = new Set([
+  ...CARS.filter((car) => car.y === 4).flatMap((car) =>
+    PAD_CELLS.map(landed(CAR, car.x, car.z, car.turn)),
+  ),
+  ...FIGURES.flatMap((figure) => FEET.map(landed(FIGURE, figure.x, figure.z, figure.turn))),
+]);
+/** The cells each figure stands over, kept clear of tufts and flowers. */
+const CROWDED = new Set(
+  FIGURES.flatMap((figure) =>
+    [0, 1, 2, 3].flatMap((u) =>
+      [0, 1].map((w) => landed(FIGURE, figure.x, figure.z, figure.turn)([u, w])),
+    ),
+  ),
+);
+/** The plate under each tile, for slabs that keep their studs. */
+const STUDDED_PLATE: Readonly<Record<string, string>> = {
+  s: 'o',
+  e: 'o',
+  H: 'o',
+  C: 'o',
+  k: 'K',
+  h: 'K',
+  f: 'K',
+  c: 'K',
+  n: 'N',
+  R: 'Q',
+};
+
 export const hillValley: ExampleDefinition = {
   id: 'hill-valley',
   name: 'Hill Valley (1955)',
@@ -1284,8 +1534,10 @@ export const hillValley: ExampleDefinition = {
     'theatre',
     'filling-station',
     'trees',
+    'cars',
+    'minifigures',
   ],
-  expectedPieceCount: 11378,
+  expectedPieceCount: 11838,
   buildArea: SIZE,
   build(add) {
     const order = bottomUp(add);
@@ -1344,6 +1596,7 @@ export const hillValley: ExampleDefinition = {
       2,
       (x, z) => {
         if (DRAIN_CELLS.has(key(x, z))) return ' ';
+        if (ROAD_PADS.has(key(x, z))) return 'q';
         if (isRoad(x, z) && !FIXTURES.has(key(x, z))) return road(x, z);
         return within(x, z, LAWN) ? 'g' : 'b';
       },
@@ -1354,6 +1607,7 @@ export const hillValley: ExampleDefinition = {
         y: ['tile', YELLOW],
         g: ['plate', GREEN],
         b: ['plate', STONE],
+        q: ['plate', DARK_STONE],
       },
     );
     for (const [x, z] of DRAINS) put('2412b', DARK_STONE, x, 2, z);
@@ -1362,18 +1616,8 @@ export const hillValley: ExampleDefinition = {
       board,
       3,
       (x, z) => {
-        if (FIXTURES.has(key(x, z))) return within(x, z, LAWN) ? 'M' : 'F';
-        if (isRoad(x, z)) return ' ';
-        if (isBuilt(x, z)) return 'B';
-        if (within(x, z, TEXACO_LOT)) return (x + z) % 9 === 0 || z % 4 === 0 ? 'C' : 'c';
-        if (within(x, z, LAWN)) {
-          if (isPath(x, z)) return isPlaza(x, z) && (x + z) % 3 === 0 ? 'H' : 'h';
-          return hash(Math.floor(x / 4), Math.floor(z / 4), 3) < 0.22 ? 'G' : 'g';
-        }
-        if (within(x, z, PORTICO)) return 'P';
-        if (within(x, z, FORECOURT))
-          return x === FORECOURT.x0 || x === FORECOURT.x1 || z === FORECOURT.z0 ? 'e' : 'f';
-        return pavement(x, z);
+        const cell = slab(x, z);
+        return STUDDED.has(key(x, z)) ? (STUDDED_PLATE[cell] ?? cell) : cell;
       },
       {
         F: ['plate', STONE],
@@ -1393,8 +1637,25 @@ export const hillValley: ExampleDefinition = {
         n: ['tile', DARK_TAN],
         o: ['plate', STONE],
         s: ['tile', STONE],
+        K: ['plate', PALE],
+        N: ['plate', DARK_TAN],
+        Q: ['plate', RED],
       },
     );
+    function slab(x: number, z: number) {
+      if (FIXTURES.has(key(x, z))) return within(x, z, LAWN) ? 'M' : 'F';
+      if (isRoad(x, z)) return ' ';
+      if (isBuilt(x, z)) return 'B';
+      if (within(x, z, TEXACO_LOT)) return (x + z) % 9 === 0 || z % 4 === 0 ? 'C' : 'c';
+      if (within(x, z, LAWN)) {
+        if (isPath(x, z)) return isPlaza(x, z) && (x + z) % 3 === 0 ? 'H' : 'h';
+        return hash(Math.floor(x / 4), Math.floor(z / 4), 3) < 0.22 ? 'G' : 'g';
+      }
+      if (within(x, z, PORTICO)) return 'P';
+      if (within(x, z, FORECOURT))
+        return x === FORECOURT.x0 || x === FORECOURT.x1 || z === FORECOURT.z0 ? 'e' : 'f';
+      return pavement(x, z);
+    }
 
     // ----------------------------------------------------------------------------------------
     // The courthouse.
@@ -1773,7 +2034,7 @@ export const hillValley: ExampleDefinition = {
     for (let x = LAWN.x0 + 1; x < LAWN.x1; x++)
       for (let z = LAWN.z0 + 1; z < LAWN.z1; z++) {
         const ring = Math.hypot(x + 0.5 - CENTRE_X - 0.5, z + 0.5 - CENTRE_Z - 0.5);
-        if (isPath(x, z) || ring < 5.5 || ring > 7) continue;
+        if (isPath(x, z) || ring < 5.5 || ring > 7 || CROWDED.has(key(x, z))) continue;
         if (hash(x, z, 61) < 0.55) {
           const angle = Math.atan2(z - CENTRE_Z, x - CENTRE_X);
           const clump = Math.floor(((angle + Math.PI) / (2 * Math.PI)) * 6);
@@ -1790,6 +2051,7 @@ export const hillValley: ExampleDefinition = {
     for (let x = LAWN.x0 + 2; x < LAWN.x1 - 1; x++)
       for (let z = LAWN.z0 + 2; z < LAWN.z1 - 1; z++) {
         if (isPath(x, z) || isPath(x + 1, z) || isPath(x, z + 1) || isPath(x - 1, z)) continue;
+        if (CROWDED.has(key(x, z))) continue;
         const ring = Math.hypot(x + 0.5 - CENTRE_X - 0.5, z + 0.5 - CENTRE_Z - 0.5);
         if (ring < 8) continue;
         if (BENCHES.some(([bx, bz]) => z === bz && x >= bx - 1 && x <= bx + 4)) continue;
@@ -1820,6 +2082,27 @@ export const hillValley: ExampleDefinition = {
       put('3470', GREEN, x - 2, GROUND + 6, z - 2);
     }
 
+    // ----------------------------------------------------------------------------------------
+    // Cars and townsfolk. The wheels clip onto their pins, so they go on after everything
+    // that stands, the pin plates among them.
+    const wheels: Local[] = [];
+    for (const car of CARS) {
+      const { pieces, wheels: carWheels } = carPieces(car);
+      for (const piece of turned(pieces, CAR, car.x, car.y, car.z, car.turn)) put(...piece);
+      wheels.push(...turned(carWheels, CAR, car.x, car.y, car.z, car.turn));
+    }
+    for (const figure of FIGURES)
+      for (const piece of turned(
+        figurePieces(figure),
+        FIGURE,
+        figure.x,
+        GROUND,
+        figure.z,
+        figure.turn,
+      ))
+        put(...piece);
+
     order.flush();
+    for (const wheel of wheels) add(...wheel);
   },
 };
