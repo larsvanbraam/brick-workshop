@@ -7,6 +7,8 @@ import { MINIFIG } from '@brick-workshop/walk/walk';
 import type { WalkBox } from '@brick-workshop/walk/walk';
 import type { WalkProbe } from '@brick-workshop/walk/walk-view';
 import type { Aim } from './build.ts';
+import { DAY_SECONDS, clockTime } from './sky.ts';
+import type { DayClock } from './sky.ts';
 
 /** Where the walker is, in build-grid studs and plates, published a few times a second. */
 export interface PlayerSnapshot {
@@ -181,6 +183,7 @@ export function GameDebugPanel({
   world,
   collision,
   onCollision,
+  clock,
 }: {
   player: PlayerStore;
   aim: Aim | null;
@@ -190,8 +193,17 @@ export function GameDebugPanel({
   world: WorldInfo;
   collision: boolean;
   onCollision: (on: boolean) => void;
+  clock: DayClock;
 }) {
   const live = useSyncExternalStore(player.subscribe, player.getSnapshot);
+  useSyncExternalStore(clock.subscribe, clock.getSnapshot);
+  const speeds: [string, number][] = [
+    ['Pause', 0],
+    ['1×', 1],
+    ['10×', 10],
+    ['60×', 60],
+  ];
+  const current = clock.paused ? 0 : Math.round(clock.speed * DAY_SECONDS);
   return (
     <>
       <dl>
@@ -237,6 +249,35 @@ export function GameDebugPanel({
         <dt>Collision</dt>
         <dd>{live ? `${live.boxes.toLocaleString('en-US')} boxes` : '—'}</dd>
       </dl>
+      <fieldset className="time">
+        <label>
+          Time {clockTime(clock.time)}
+          <input
+            type="range"
+            min={0}
+            max={1}
+            step={1 / 288}
+            value={clock.time}
+            onChange={(event) => clock.set(Number(event.target.value))}
+          />
+        </label>
+        <span>
+          {speeds.map(([label, speed]) => (
+            <button
+              key={label}
+              type="button"
+              aria-pressed={current === speed}
+              onClick={() => {
+                clock.paused = speed === 0;
+                if (speed) clock.speed = speed / DAY_SECONDS;
+                clock.changed();
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </span>
+      </fieldset>
       <fieldset>
         <label>
           <input

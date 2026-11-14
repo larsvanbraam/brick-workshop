@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { getPart } from '@brick-workshop/engine';
 import type { Assembly, Brick } from '@brick-workshop/engine';
 import { useLDrawLibrary } from '@brick-workshop/render/ldraw';
@@ -12,6 +12,7 @@ import { PLAYER_PREFIX, isPlayerPiece } from './export.ts';
 import { GameDebugPanel, PlayerStore } from './debug.tsx';
 import type { EditTiming } from './debug.tsx';
 import { DebugOverlay, DebugStore, useDebugOptions } from '@brick-workshop/render/scene-debug';
+import { DayClock, START_TIME, clockTime, isDaytime } from './sky.ts';
 import { STARTER_HOTBAR } from './hotbar.ts';
 import { BrickBox, PART_DRAG, PartImage, colorHex, colorName } from './BrickBox.tsx';
 import { colorsFor, getSnap, nextRotation } from './catalog.ts';
@@ -20,9 +21,11 @@ import {
   loadEdits,
   loadHotbar,
   loadSeed,
+  loadTime,
   saveEdits,
   saveHotbar,
   saveSeed,
+  saveTime,
 } from './save.ts';
 import { WORLD_SIZE } from './world/generate.ts';
 import type { WorldMessage } from './world/worker.ts';
@@ -80,6 +83,16 @@ export function App() {
   );
 }
 
+/** The time of day in the corner; only this updates as the minutes pass. */
+function ClockLabel({ clock }: { clock: DayClock }) {
+  useSyncExternalStore(clock.subscribe, clock.getSnapshot);
+  return (
+    <span className="clock" title="Time of day">
+      {isDaytime(clock.time) ? '☀' : '☾'} {clockTime(clock.time)}
+    </span>
+  );
+}
+
 function Splash({ message }: { message: string }) {
   return (
     <div className="splash" role="status">
@@ -132,6 +145,17 @@ function Game({
   const [playerStore] = useState(() => new PlayerStore());
   const [collision, setCollision] = useState(false);
   const [lastEdit, setLastEdit] = useState<EditTiming | null>(null);
+
+  // The island's day: carries on from the last visit, kept every few seconds.
+  const [clock] = useState(() => new DayClock(loadTime() ?? START_TIME));
+  useEffect(() => {
+    let saved = 0;
+    return clock.subscribe(() => {
+      if (Date.now() - saved < 5000) return;
+      saved = Date.now();
+      saveTime(clock.time);
+    });
+  }, [clock]);
   const onAim = useCallback(
     (next: Aim | null) => {
       setAim(next);
@@ -351,6 +375,7 @@ function Game({
         onAim={onAim}
         onMouse={onMouse}
         playing={playing}
+        clock={clock}
         debug={{
           options: debugOptions,
           store: debugStore,
@@ -376,13 +401,17 @@ function Game({
             world={worldInfo}
             collision={collision}
             onCollision={setCollision}
+            clock={clock}
           />
         </DebugOverlay>
       )}
       <div className="crosshair" aria-hidden />
       {playing && ghostCheck && !ghostCheck.ok && <div className="hint">{ghostCheck.reason}</div>}
       <div className="status">
-        <strong>Island {world.seed}</strong>
+        <strong>
+          Island {world.seed}
+          <ClockLabel clock={clock} />
+        </strong>
         <span>
           {assembly.bricks.length.toLocaleString()} pieces · {built} placed
           {flying ? ' · flying' : ''}

@@ -87,6 +87,10 @@ export function deleteIsland(seed: number) {
 export const loadSeed = () => read<number>('seed');
 export const saveSeed = (seed: number) => write('seed', seed);
 
+/** The time of day, kept across visits so the island's day carries on. */
+export const loadTime = () => read<number>('time');
+export const saveTime = (time: number) => write('time', time);
+
 export const loadHotbar = () => read<Held[]>('hotbar');
 export const saveHotbar = (slots: readonly Held[]) => write('hotbar', slots);
 

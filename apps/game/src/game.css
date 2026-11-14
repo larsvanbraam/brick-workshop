@@ -688,3 +688,44 @@ kbd {
     grid-template-columns: 1fr;
   }
 }
+
+.status strong {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+}
+
+.clock {
+  color: var(--muted);
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+
+.scene-debug fieldset.time {
+  display: grid;
+  gap: 6px;
+}
+
+.scene-debug fieldset.time label {
+  display: grid;
+  gap: 4px;
+}
+
+.scene-debug fieldset.time span {
+  display: flex;
+  gap: 4px;
+}
+
+.scene-debug fieldset.time button {
+  flex: 1;
+  padding: 2px 0;
+  border: 1px solid rgb(255 255 255 / 0.2);
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+
+.scene-debug fieldset.time button[aria-pressed='true'] {
+  background: rgb(255 255 255 / 0.18);
+}

@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { BoxGeometry, EdgesGeometry, Raycaster, Vector2 } from 'three';
-import type { Group, Object3D } from 'three';
+import type { Color, Group, Object3D } from 'three';
 import { PLATE_HEIGHT, footprint } from '@brick-workshop/engine';
 import type { Brick } from '@brick-workshop/engine';
 import { FallbackBatch } from '@brick-workshop/render/fallback-batch';
@@ -16,6 +16,8 @@ import type { PlayerStore } from './debug.tsx';
 import { COLORS } from '@brick-workshop/engine';
 import { aimAt, aimKey } from './build.ts';
 import { GameStage } from './GameStage.tsx';
+import { skyAt } from './sky.ts';
+import type { DayClock } from './sky.ts';
 import type { Aim } from './build.ts';
 
 /** How far the crosshair reaches from the eye, in studs; further from the over-shoulder camera. */
@@ -40,6 +42,8 @@ export interface GameSceneProps {
   /** Off while the menu is up, so clicks there do not build. */
   playing: boolean;
   debug: GameSceneDebug;
+  /** The time of day the sky and the light follow. */
+  clock: DayClock;
 }
 
 /** The debug window's probes inside the canvas; drawn only while the window is open. */
@@ -84,7 +88,7 @@ export function GameScene(props: GameSceneProps) {
       dpr={[1, 2]}
       aria-label="Brick island"
     >
-      <GameStage size={buildArea} />
+      <GameStage size={buildArea} clock={props.clock} />
       <NativeBatch
         bricks={split.batched}
         models={models}
@@ -111,6 +115,7 @@ export function GameScene(props: GameSceneProps) {
         start={start}
         probe={probe}
       />
+      <EdgeDimmer batch={batchRef} clock={props.clock} />
       {debug.options.enabled && (
         <>
           <DebugProbe store={debug.store} options={debug.options} batch={batchRef} />
@@ -204,6 +209,25 @@ function FallbackBatchView({
   }, [batch, bricks, buildArea, invalidate, shadows]);
   useEffect(() => () => batch.dispose(), [batch]);
   return <primitive object={batch.object} dispose={null} />;
+}
+
+/**
+ * Brick outlines are drawn without lighting; dims them with the daylight so they do not glow at
+ * night.
+ */
+function EdgeDimmer({ batch, clock }: { batch: { current: LDrawBatch | null }; clock: DayClock }) {
+  useFrame(() => {
+    const lines = batch.current?.lines;
+    if (!lines) return;
+    // Checked per material: the batch makes new line meshes as it grows.
+    const level = Math.round(skyAt(clock.time).unlit * 50) / 50;
+    for (const line of lines)
+      for (const material of Array.isArray(line.material) ? line.material : [line.material]) {
+        const { color } = material as unknown as { color: Color };
+        if (color.r !== level) color.setScalar(level);
+      }
+  });
+  return null;
 }
 
 /** The piece a batched hit belongs to. */
