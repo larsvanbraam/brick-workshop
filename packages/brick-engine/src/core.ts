@@ -124,6 +124,11 @@ export interface Part {
    * piece resting on a held piece's top is held itself, and can hold what clips onto it.
    */
   rests?: true;
+  /**
+   * Bends like a braided string: besides lying straight, it can be strung (`Brick.strung`) from
+   * its first end stud to its last anywhere within its length, the cord running straight between.
+   */
+  flexible?: true;
 }
 
 function rectangularConnections(width: number, depth: number): Part['connections'] {
@@ -249,6 +254,7 @@ function sculptedPart(
       | 'sideStuds'
       | 'hinge'
       | 'rests'
+      | 'flexible'
     >
   > = {},
 ): Part {
@@ -1985,6 +1991,7 @@ export const PARTS: readonly Part[] = [
   ).map(([id, name, length]) =>
     sculptedPart(id, name, length, 1, 1, 'detail', {
       kind: 'plate',
+      flexible: true,
       connections: {
         topStuds: [
           { x: 0, z: 0 },
@@ -2066,6 +2073,20 @@ export interface Brick {
    * which hangs this way at the far end of its frame. Left out when false.
    */
   upsideDown?: true;
+  /**
+   * A flexible part strung from its first end stud, whose cell x, y and z give, to its last end
+   * stud at this cell. The cord runs straight between them, so the ends may sit at different
+   * heights and in any direction, as long as they are no further apart than the cord's length.
+   * Rotation stays 0.
+   */
+  strung?: StrungEnd;
+}
+
+/** The cell a strung part's far end stud sits in: its min corner, studs and plates. */
+export interface StrungEnd {
+  x: number;
+  y: number;
+  z: number;
 }
 
 export interface Assembly {
@@ -2133,6 +2154,9 @@ export function resizeBuildArea(assembly: Assembly, size: number): Assembly | nu
             },
           }
         : {}),
+      ...(brick.strung
+        ? { strung: { ...brick.strung, x: brick.strung.x + dx, z: brick.strung.z + dz } }
+        : {}),
     })),
   };
 }
@@ -2145,6 +2169,8 @@ export function getPart(partId: string): Part {
 
 export function footprint(brick: Brick) {
   const part = getPart(brick.partId);
+  // A strung part's grid footprint is its first end stud; the rest follows the cord.
+  if (brick.strung) return { width: 1, depth: 1, height: part.height };
   const turned = brick.rotation === 90 || brick.rotation === 270;
   const width = turned ? part.depth : part.width;
   const depth = turned ? part.width : part.depth;
@@ -2237,6 +2263,49 @@ function tiltPoint(tilt: Tilt, point: Point): Point {
   return [x + pivot[0], y + pivot[1], z + pivot[2]];
 }
 
+/** A strung part's end studs' bases, the tops of its plugs, in level LDU. */
+function strungEnds(brick: Brick): [Point, Point] {
+  const height = getPart(brick.partId).height;
+  const end = (cell: StrungEnd): Point => [
+    (cell.x + 0.5) * 20,
+    (cell.y + height) * 8,
+    (cell.z + 0.5) * 20,
+  ];
+  return [end(brick), end(brick.strung!)];
+}
+
+/**
+ * What a strung part fills: its two plugs, standing upright like 1 x 1 round plates, and the cord
+ * between them as a thin turned box. The box starts where the cord leaves each plug's own cell.
+ */
+function strungBodies(brick: Brick): (Brick | Box)[] {
+  if (!brick.strung) return [brick];
+  const plug = (cell: StrungEnd): Brick => ({
+    id: brick.id,
+    partId: '6141',
+    color: brick.color,
+    x: cell.x,
+    y: cell.y,
+    z: cell.z,
+    rotation: 0,
+  });
+  // The cord runs 1.5 LDU under the plugs' tops.
+  const [a, b] = strungEnds(brick).map(([x, y, z]): Point => [x, y - 1.5, z]);
+  const offset: Point = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+  const length = Math.hypot(...offset);
+  const along: Point = [offset[0] / length, offset[1] / length, offset[2] / length];
+  const flat = Math.hypot(along[0], along[2]);
+  const across: Point = [-along[2] / flat, 0, along[0] / flat];
+  // How far along the cord it crosses the edge of a plug's 1 x 1 cell.
+  const leaves = 10 / Math.max(Math.abs(along[0]), Math.abs(along[2]));
+  const cord: Box = {
+    center: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2],
+    axes: [along, cross(across, along), across],
+    half: [Math.max(0, length / 2 - leaves), 2, 2],
+  };
+  return [plug(brick), plug(brick.strung), cord];
+}
+
 /** A piece's body as an oriented box in level LDU: centre, unit axes and half extents. */
 interface Box {
   center: Point;
@@ -2272,6 +2341,18 @@ function bodyBox(brick: Brick): Box {
  * its whole turned body.
  */
 export function getWorldBounds(brick: Brick) {
+  if (brick.strung) {
+    const ends = [brick, brick.strung];
+    const height = getPart(brick.partId).height;
+    return {
+      minX: Math.min(...ends.map((end) => end.x)),
+      maxX: Math.max(...ends.map((end) => end.x)) + 1,
+      minY: Math.min(...ends.map((end) => end.y)),
+      maxY: Math.max(...ends.map((end) => end.y)) + height,
+      minZ: Math.min(...ends.map((end) => end.z)),
+      maxZ: Math.max(...ends.map((end) => end.z)) + 1,
+    };
+  }
   if (!brick.tilt) {
     const size = footprint(brick);
     return {
@@ -2510,6 +2591,12 @@ export function getConnectionSites(
 
 /** Stud and receiver centres as if the piece stood upright: within its frame, if tilted. */
 function frameSites(brick: Brick, surface: 'top' | 'bottom', part: Part = getPart(brick.partId)) {
+  if (brick.strung)
+    return [brick, brick.strung].map((end) => ({
+      x: end.x + 0.5,
+      y: end.y + (surface === 'top' ? part.height : 0),
+      z: end.z + 0.5,
+    }));
   const sites = surface === 'top' ? part.connections.topStuds : part.connections.bottomReceivers;
   return sites.map((site) => {
     let x = site.x;
@@ -2673,12 +2760,11 @@ export function hasStudConnection(
   supportPart: Part = getPart(support.partId),
   part: Part = getPart(brick.partId),
 ): boolean {
-  if (support.y + supportPart.height !== brick.y) return false;
+  // A strung part's two ends stand at their own heights.
+  if (!support.strung && !brick.strung && support.y + supportPart.height !== brick.y) return false;
   if (support.facing || brick.facing || !sameFrame(support, brick)) return false;
-  const studs = new Set(
-    frameSites(support, 'top', supportPart).map((site) => `${site.x}:${site.z}`),
-  );
-  return frameSites(brick, 'bottom', part).some((site) => studs.has(`${site.x}:${site.z}`));
+  const studs = new Set(frameSites(support, 'top', supportPart).map(studKey));
+  return frameSites(brick, 'bottom', part).some((site) => studs.has(studKey(site)));
 }
 
 /** Slack for mounted pieces, whose 0.4 stud thickness doesn't add up exactly in floating point. */
@@ -2699,6 +2785,33 @@ function isValidTilt(tilt: Tilt): boolean {
   );
 }
 
+/**
+ * Whether a strung part's far end is a cell on the grid, upright and unturned, its cord no
+ * longer than the part's, and the ends at least a stud apart across the board.
+ */
+function isValidStrung(brick: Brick): boolean {
+  const end = brick.strung;
+  if (
+    typeof end !== 'object' ||
+    end === null ||
+    Object.keys(end).length !== 3 ||
+    !getPart(brick.partId).flexible ||
+    brick.rotation !== 0 ||
+    brick.facing ||
+    brick.tilt ||
+    brick.upsideDown ||
+    ![end.x, end.y, end.z].every((value) => Number.isFinite(value) && value >= 0) ||
+    !onGrid(end.x, 0.5) ||
+    !onGrid(end.y, 0.5) ||
+    !onGrid(end.z, 0.5)
+  )
+    return false;
+  const [a, b] = strungEnds(brick);
+  const across = Math.hypot(b[0] - a[0], b[2] - a[2]);
+  const length = (getPart(brick.partId).width - 1) * 20;
+  return across >= 20 - EPSILON && Math.hypot(across, b[1] - a[1]) <= length + EPSILON;
+}
+
 function isValid(brick: Brick, buildArea: number): boolean {
   // Upright pieces sit on the half-stud grid; recessed studs and 0.4 stud plates put a mounted
   // piece's coordinate along the facing on 0.1 stud steps.
@@ -2710,6 +2823,7 @@ function isValid(brick: Brick, buildArea: number): boolean {
     ![0, 90, 180, 270].includes(brick.rotation) ||
     (brick.facing !== undefined && !FACINGS.includes(brick.facing)) ||
     (brick.tilt !== undefined && (!!brick.facing || !isValidTilt(brick.tilt))) ||
+    (brick.strung !== undefined && !isValidStrung(brick)) ||
     (brick.upsideDown !== undefined &&
       (brick.upsideDown !== true ||
         !!brick.facing ||
@@ -2721,7 +2835,7 @@ function isValid(brick: Brick, buildArea: number): boolean {
     !onGrid(brick.z, step('z'))
   )
     return false;
-  if (brick.tilt) {
+  if (brick.tilt || brick.strung) {
     const bounds = getWorldBounds(brick);
     return (
       bounds.minX >= -EPSILON &&
@@ -2891,7 +3005,7 @@ interface ValidationIndex {
   buckets: ReadonlyMap<string, readonly number[]>;
   /** Each mounted piece's hosts, down to the upright piece the chain hangs from. */
   chains: Map<string, Set<string>>;
-  /** How many pieces are tilted; with any, additions are validated in full. */
+  /** How many pieces are tilted or strung; with any, additions are validated in full. */
   tilted: number;
 }
 
@@ -2942,7 +3056,7 @@ function bucketKeys(brick: Brick, size: Size): string[] {
 
 /** The buckets a piece reaches into: its whole turned body, if tilted. */
 function cellsOf(brick: Brick, size: Size): string[] {
-  if (!brick.tilt) return bucketKeys(brick, size);
+  if (!brick.tilt && !brick.strung) return bucketKeys(brick, size);
   const bounds = getWorldBounds(brick);
   return bucketKeys(
     { ...brick, x: bounds.minX, y: bounds.minY, z: bounds.minZ },
@@ -2969,6 +3083,23 @@ function swingsOn(brick: Brick, base: Brick): boolean {
  * A hinge's halves share the space round their pivot.
  */
 function collides(brick: Brick, size: Size, other: Brick, otherSize: Size): boolean {
+  if (brick.strung || other.strung) {
+    // A cord drapes over the edge of what its end studs stand on and carry.
+    const drapes = hasStudConnection(brick, other) || hasStudConnection(other, brick);
+    return strungBodies(brick).some((first) =>
+      strungBodies(other).some((second) => {
+        if ('center' in first || 'center' in second)
+          return (
+            !drapes &&
+            boxesOverlap(
+              'center' in first ? first : bodyBox(first),
+              'center' in second ? second : bodyBox(second),
+            )
+          );
+        return collides(first, footprint(first), second, footprint(second));
+      }),
+    );
+  }
   if (isHingePair(brick, other) || isHingePair(other, brick)) return false;
   if (swingsOn(brick, other) || swingsOn(other, brick)) return false;
   if (sameFrame(brick, other)) return overlaps(brick, size, other, otherSize);
@@ -3207,7 +3338,7 @@ function computeValidation(assembly: Assembly): Validation {
     bounds,
     buckets,
     chains: new Map(),
-    tilted: valid.filter((brick) => brick.tilt).length,
+    tilted: valid.filter((brick) => brick.tilt || brick.strung).length,
   };
   const holds = (piece: Brick, host: Brick) =>
     !!piece.facing && chainOf(index, piece.id).has(host.id);
@@ -3294,7 +3425,7 @@ export function validateAddition(
   const part = PARTS_BY_ID.get(brick.partId) ?? RUNTIME_PARTS.get(brick.partId);
   if (part && hasClipsOrBars(part)) return null;
   // Tilted frames and hinges are checked in full, as is anything added among tilted pieces.
-  if (brick.tilt || part?.hinge || index.tilted) return null;
+  if (brick.tilt || brick.strung || part?.hinge || index.tilted) return null;
   const bricks = [...assembly.bricks, brick];
   const next: Assembly = { ...assembly, bricks };
   const issues: Issue[] = [];
@@ -3475,6 +3606,24 @@ export function getLDrawTransform(brick: Brick): {
   matrix: Matrix;
 } {
   const part = getPart(brick.partId);
+  if (brick.strung) {
+    // The part's own x runs from one end stud to the other; leaning it that way keeps the plugs
+    // upright, so the cord runs straight between end studs at different heights.
+    const [a, b] = strungEnds(brick).map(([x, y, z]): Point => [x, -y, z]);
+    const span = (part.width - 1) * 20;
+    const along: Point = [(b[0] - a[0]) / span, (b[1] - a[1]) / span, (b[2] - a[2]) / span];
+    const flat = Math.hypot(along[0], along[2]);
+    const round = (value: number) => Math.round(value * 10000) / 10000 + 0;
+    return {
+      x: round((a[0] + b[0]) / 2),
+      y: round((a[1] + b[1]) / 2),
+      z: round((a[2] + b[2]) / 2),
+      rotation: 0,
+      matrix: [along[0], 0, -along[2] / flat, along[1], 1, 0, along[2], 0, along[0] / flat].map(
+        round,
+      ) as unknown as Matrix,
+    };
+  }
   if (brick.tilt) {
     // Placed upright, then turned about the hinge line; LDraw's y points down.
     const { tilt, ...rest } = brick;

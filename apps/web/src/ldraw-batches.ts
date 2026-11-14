@@ -610,7 +610,7 @@ function brickMatrix(brick: Brick, buildArea: number, explode: boolean, gap = 0)
   // The part's own x axis is the matrix's first column.
   const proud = FLUSH_LEAVES[brick.partId] ?? 0;
   let [kx, ky, kz] = [1, 1, 1];
-  if (gap > 0 && !brick.facing && !brick.upsideDown) {
+  if (gap > 0 && !brick.facing && !brick.upsideDown && !brick.strung) {
     // The part's own x and z run along the footprint's width and depth until it turns.
     const { width, depth, height } = footprint(brick);
     // Parts hang from their top, so this lifts the bottom and opens the course joint below.
@@ -655,6 +655,7 @@ const PLACEMENT_KEYS = [
   'facing',
   'upsideDown',
   'tilt',
+  'strung',
 ] as const;
 
 /** Everything a brick's placement depends on; the same key means nothing to redo. */
@@ -1070,7 +1071,8 @@ export class LDrawBatch {
       let closable = false;
       // Side-mounted and upside-down parts point their studs and underside elsewhere, and
       // see-through ones show what is inside them.
-      const transform = opaque && !brick.facing ? getLDrawTransform(brick) : undefined;
+      const transform =
+        opaque && !brick.facing && !brick.strung ? getLDrawTransform(brick) : undefined;
       if (transform && transform.matrix[4] === 1) {
         const shape = this.shapeOf(model);
         const { x, y, z, matrix } = transform;

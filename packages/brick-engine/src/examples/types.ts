@@ -1,4 +1,4 @@
-import type { Facing, Rotation, Tilt } from '../core.ts';
+import type { Facing, Rotation, StrungEnd, Tilt } from '../core.ts';
 import type { SmoothOptions } from '../smoothing.ts';
 
 export type ExampleBrickAdder = (
@@ -14,6 +14,8 @@ export type ExampleBrickAdder = (
   upsideDown?: boolean,
   /** Tips the piece about a hinge line (see `getHingeTilt`), as for a hinged roof panel. */
   tilt?: Tilt,
+  /** Strings a flexible part from its first end stud, at x, y, z, to this cell. */
+  strung?: StrungEnd,
 ) => void;
 
 export interface ExampleMetadata {

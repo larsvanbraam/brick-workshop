@@ -129,9 +129,14 @@ piece together, and building instructions place them after their hosts.
 **Wheels and strings.** A part marked `rests` stands on whatever its base touches,
 without studs: a wheel (`4624c01`) resting on the road is held, and the pin plate
 (`4600`) that clips onto it hangs from it, so a car stands on its wheels. Braided
-strings (`75924`, `71149`) run straight between two end studs 20 or 40 studs apart,
-each a round plug with a stud on top and a hollow below; tilt one on a hinge to
-run it downhill.
+strings (`75924`, `71149`) are `flexible`: each end is a round plug with a stud on
+top and a hollow below, and the string either lies straight, its ends 20 or 40
+studs apart, or is strung (`Brick.strung`, the far end's cell) between any two
+studs no further apart than that, at any heights and in any direction. The cord
+then runs straight between the ends, the plugs stay upright, either end holds it,
+and pieces may stand on both plugs. Nothing may cross the cord, except that it
+drapes over the edge of what its plugs stand on or carry. The physics solve
+weighs a strung string at its middle.
 
 **Hinges and tilted frames.** A hinge brick base (`3937`) holds a hinge top (`3938`)
 one plate up at the same position and turn; the top turns about the pair's long axis.
@@ -217,7 +222,7 @@ lettered moulds (`3665a`, `3665`) as one design; it never writes part or colour 
 | Flower Market Stall | 351    | Booth with striped awning, flower buckets, crates, tree and bench.                                                     |
 | Nordiska Museet     | 11,506 | The Stockholm museum with its towers, gables, dormers and windows.                                                     |
 | Castle              | 7,951  | Walled castle: round towers, gatehouse, moat and drawbridge, keep, well.                                               |
-| Hill Valley (1955)  | 11,814 | The courthouse square: portico and clock tower, the Essex theatre, shops, filling station, fifties cars and townsfolk. |
+| Hill Valley (1955)  | 11,808 | The courthouse square: portico and clock tower, the Essex theatre, shops, filling station, fifties cars and townsfolk. |
 
 Each example is a module in
 [packages/brick-engine/src/examples](packages/brick-engine/src/examples)

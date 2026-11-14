@@ -499,8 +499,8 @@ function localCenter(partId: string) {
 }
 
 function worldCenter(brick: Brick, mass: PartMass) {
-  if (brick.tilt) {
-    // A tilted piece's weight acts at the middle of its turned body.
+  if (brick.tilt || brick.strung) {
+    // A tilted or strung piece's weight acts at the middle of its turned body.
     const bounds = getWorldBounds(brick);
     return { x: (bounds.minX + bounds.maxX) / 2, z: (bounds.minZ + bounds.maxZ) / 2 };
   }

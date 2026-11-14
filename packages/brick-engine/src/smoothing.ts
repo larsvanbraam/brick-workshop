@@ -112,6 +112,7 @@ function onGrid(brick: Brick) {
   return (
     !brick.facing &&
     !brick.tilt &&
+    !brick.strung &&
     !brick.upsideDown &&
     Number.isInteger(brick.x) &&
     Number.isInteger(brick.z) &&

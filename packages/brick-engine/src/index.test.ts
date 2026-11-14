@@ -2752,6 +2752,85 @@ describe('example registry', () => {
   });
 });
 
+describe('strung strings', () => {
+  const brick = (id: string, partId: string, x: number, y: number, z: number): Brick => ({
+    id,
+    partId,
+    color: 0,
+    x,
+    y,
+    z,
+    rotation: 0,
+  });
+  const low = brick('low', '3001', 0, 0, 0);
+  const tower = Array.from({ length: 6 }, (_, level) =>
+    brick(`t${level}`, '3003', 14, level * 3, 10),
+  );
+  const cord: Brick = { ...brick('cord', '75924', 0, 3, 0), strung: { x: 14, y: 18, z: 10 } };
+  const scene: Assembly = { name: 'strung', buildArea: 32, bricks: [low, ...tower, cord] };
+  const codes = (bricks: Brick[]) =>
+    validateAssembly({ ...scene, bricks }).map((issue) => `${issue.code}:${issue.brickId}`);
+
+  it('strings a cord from a stud to a stud at another height and either end holds it', () => {
+    expect(validateAssembly(scene)).toEqual([]);
+    expect(validateAssembly({ ...scene, bricks: scene.bricks.toReversed() })).toEqual([]);
+    expect(removeBrick(scene, 'low').ok).toBe(true);
+    expect(removeBrick({ ...scene, bricks: [...tower, cord] }, 't5').ok).toBe(false);
+    expect(codes([...tower.slice(0, 5), cord])).toContain('unsupported:cord');
+  });
+
+  it('carries pieces on both end studs and lets the cord drape over them', () => {
+    const bulb = brick('bulb', '3062b', 14, 19, 10);
+    const cap = brick('cap', '98138', 0, 4, 0);
+    expect(codes([low, ...tower, cord, bulb, cap])).toEqual([]);
+    expect(codes([low, ...tower, cord, { ...bulb, y: 20 }])).toEqual(['unsupported:bulb']);
+  });
+
+  it('keeps the cord no longer than the string, level-ish and unturned', () => {
+    const invalid = (changes: Partial<Brick>) => codes([low, ...tower, { ...cord, ...changes }]);
+    expect(invalid({ strung: { x: 24, y: 18, z: 20 } })).toContain('invalid:cord');
+    expect(invalid({ strung: { x: 0.5, y: 18, z: 0 } })).toContain('invalid:cord');
+    expect(invalid({ strung: { x: 14, y: 18, z: 10.25 } })).toContain('invalid:cord');
+    expect(invalid({ rotation: 90 })).toContain('invalid:cord');
+    expect(invalid({ partId: '3005' })).toContain('invalid:cord');
+  });
+
+  it('collides where something stands in the cord’s way', () => {
+    const wall = [0, 3, 6, 9].map((y) => ({
+      ...brick(`w${y}`, '3001', 7, y, 4),
+      rotation: 90 as const,
+    }));
+    expect(codes([low, ...tower, cord, ...wall])).toEqual(
+      expect.arrayContaining(['collision:cord', 'collision:w9']),
+    );
+    expect(codes([low, ...tower, cord, ...wall.slice(0, 2)])).toEqual([]);
+  });
+
+  it('runs the part straight between its end studs, which stay upright', () => {
+    const { x, y, z, matrix } = getLDrawTransform(cord);
+    const end = (along: number) => [
+      (x + matrix[0] * along) / 20,
+      -(y + matrix[3] * along) / 8,
+      (z + matrix[6] * along) / 20,
+    ];
+    expect(end(-200)).toEqual([0.5, 4, 0.5]);
+    expect(end(200).map((value) => Math.round(value * 1000) / 1000)).toEqual([14.5, 19, 10.5]);
+    expect([matrix[1], matrix[4], matrix[7]]).toEqual([0, 1, 0]);
+    expect(exportLDraw(scene)).toContain('75924.dat');
+  });
+
+  it('moves the far end with the board and clears it to lay the string straight', () => {
+    const resized = resizeBuildArea(scene, 48)!;
+    expect(resized.bricks.at(-1)).toMatchObject({ x: 8, z: 8, strung: { x: 22, y: 18, z: 18 } });
+    expect(validateAssembly(resized)).toEqual([]);
+    const straight = applyPatch(scene, {
+      operations: [{ type: 'update', id: 'cord', changes: { strung: null } }],
+    });
+    expect(straight.ok).toBe(true);
+    if (straight.ok) expect(straight.assembly.bricks.at(-1)?.strung).toBeUndefined();
+  });
+});
+
 describe('pieces mounted on side studs', () => {
   const piece = (
     id: string,

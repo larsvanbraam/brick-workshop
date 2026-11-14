@@ -38,6 +38,7 @@ const PLACEMENT_KEYS = [
   'facing',
   'upsideDown',
   'tilt',
+  'strung',
 ] as const;
 
 const instanceColor = new Color();

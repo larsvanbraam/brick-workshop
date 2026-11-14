@@ -160,8 +160,28 @@ const DOORS = new Set(['3193a', '60616a', '60623']);
  * turn and doors stay half a stud in front of them, as the engine's insert rule expects.
  */
 export function turnAround(add: ExampleBrickAdder, buildArea = BUILD_AREA): ExampleBrickAdder {
-  return (partId, color, x, y, z, rotation = 0, facing, upsideDown, tilt) => {
+  return (partId, color, x, y, z, rotation = 0, facing, upsideDown, tilt, strung) => {
     const { width, depth } = footprint({ id: '', partId, color, x, y, z, rotation, facing });
+    if (strung) {
+      // Both end studs turn with the build; the cord follows them.
+      add(
+        partId,
+        color,
+        buildArea - x - 1,
+        y,
+        buildArea - z - 1,
+        0,
+        undefined,
+        undefined,
+        undefined,
+        {
+          x: buildArea - strung.x - 1,
+          y: strung.y,
+          z: buildArea - strung.z - 1,
+        },
+      );
+      return;
+    }
     if (tilt) {
       // The hinge line turns with the build: it leans the other way, from the other side.
       add(
@@ -234,8 +254,8 @@ const TRANS_CLEAR = 47;
 
 /** Puts glass, trans-clear unless told otherwise, in every window frame the build adds. */
 export function glazeWindows(add: ExampleBrickAdder, glassColor = TRANS_CLEAR): ExampleBrickAdder {
-  return (partId, color, x, y, z, rotation = 0, facing, upsideDown, tilt) => {
-    add(partId, color, x, y, z, rotation, facing, upsideDown, tilt);
+  return (partId, color, x, y, z, rotation = 0, facing, upsideDown, tilt, strung) => {
+    add(partId, color, x, y, z, rotation, facing, upsideDown, tilt, strung);
     const glass = WINDOW_GLASS[partId];
     if (glass) add(glass, glassColor, x, y, z, rotation);
   };
@@ -447,7 +467,15 @@ function siteKey(piece: Omit<Brick, 'id'>, reflectDepth?: number) {
  * Side-mounted pieces facing along z face the other way; check them in a render.
  */
 export function reflectToFront(add: ExampleBrickAdder, buildArea = BUILD_AREA): ExampleBrickAdder {
-  return (partId, color, x, y, z, rotation = 0, facing, upsideDown, tilt) => {
+  return (partId, color, x, y, z, rotation = 0, facing, upsideDown, tilt, strung) => {
+    if (strung) {
+      // Both end studs mirror across the board; the cord follows them.
+      add(partId, color, x, y, buildArea - z - 1, 0, undefined, undefined, undefined, {
+        ...strung,
+        z: buildArea - strung.z - 1,
+      });
+      return;
+    }
     const piece = { partId, color, x, y, z, rotation, ...(facing ? { facing } : {}) };
     const { depth } = footprint({ id: '', ...piece });
     const round = (value: number) => Math.round(value * 10) / 10;

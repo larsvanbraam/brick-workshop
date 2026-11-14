@@ -24,10 +24,14 @@ export type PatchOperation =
   | {
       type: 'update';
       id: string;
-      /** `facing: null` stands a piece mounted on its side back upright; `tilt: null` levels it. */
-      changes: Partial<Omit<Brick, 'id' | 'facing' | 'tilt'>> & {
+      /**
+       * `facing: null` stands a piece mounted on its side back upright, `tilt: null` levels it
+       * and `strung: null` lays a strung string straight.
+       */
+      changes: Partial<Omit<Brick, 'id' | 'facing' | 'tilt' | 'strung'>> & {
         facing?: Brick['facing'] | null;
         tilt?: Brick['tilt'] | null;
+        strung?: Brick['strung'] | null;
       };
     };
 
@@ -242,10 +246,12 @@ const brickFields = [
   'facing',
   'upsideDown',
   'tilt',
+  'strung',
 ] as const;
 /** Fields complete bricks may leave out: upright pieces have no facing or tilt, most no flip. */
-const optionalFields: readonly string[] = ['facing', 'upsideDown', 'tilt'];
+const optionalFields: readonly string[] = ['facing', 'upsideDown', 'tilt', 'strung'];
 const tiltFields = ['toward', 'angle', 'y', 'at'];
+const strungFields = ['x', 'y', 'z'];
 function validChanges(value: unknown, complete: boolean): boolean {
   if (
     !object(value) ||
@@ -273,6 +279,16 @@ function validChanges(value: unknown, complete: boolean): boolean {
         !['angle', 'y', 'at'].every(
           (key) => typeof tilt[key] === 'number' && Number.isFinite(tilt[key]),
         )
+      )
+        return false;
+    } else if (field === 'strung') {
+      // An update may clear it to lay the string straight; validation checks the rest.
+      const end = value[field];
+      if (end === null && !complete) continue;
+      if (
+        !object(end) ||
+        !fields(end, strungFields) ||
+        !strungFields.every((key) => typeof end[key] === 'number' && Number.isFinite(end[key]))
       )
         return false;
     } else if (field === 'upsideDown') {
@@ -467,15 +483,17 @@ function applyOperations(
       if (!brick) return fail('piece_not_found', `Piece ${id} not found.`);
       if (operation.type === 'remove') bricks.delete(id);
       else {
-        const { facing, tilt, ...changes } = operation.changes;
-        const { facing: current, tilt: currentTilt, ...rest } = brick;
+        const { facing, tilt, strung, ...changes } = operation.changes;
+        const { facing: current, tilt: currentTilt, strung: currentEnd, ...rest } = brick;
         const side = facing === undefined ? current : (facing ?? undefined);
         const lean = tilt === undefined ? currentTilt : (tilt ?? undefined);
+        const end = strung === undefined ? currentEnd : (strung ?? undefined);
         bricks.set(id, {
           ...rest,
           ...changes,
           ...(side ? { facing: side } : {}),
           ...(lean ? { tilt: { ...lean } } : {}),
+          ...(end ? { strung: { ...end } } : {}),
         });
       }
     }

@@ -52,7 +52,7 @@ export function createExampleRegistry(definitions: readonly ExampleDefinition[])
         ...(definition.buildArea === undefined ? {} : { buildArea: definition.buildArea }),
       };
       const bricks: Brick[] = [];
-      definition.build((partId, color, x, y, z, rotation = 0, facing, upsideDown, tilt) => {
+      definition.build((partId, color, x, y, z, rotation = 0, facing, upsideDown, tilt, strung) => {
         bricks.push({
           id: `${definition.brickIdPrefix ?? definition.name}-${bricks.length + 1}`,
           partId,
@@ -64,6 +64,7 @@ export function createExampleRegistry(definitions: readonly ExampleDefinition[])
           ...(facing ? { facing } : {}),
           ...(upsideDown ? { upsideDown: true as const } : {}),
           ...(tilt ? { tilt } : {}),
+          ...(strung ? { strung } : {}),
         });
       });
       // Checking the finished build once keeps large examples linear; only a failing build is

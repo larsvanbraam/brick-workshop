@@ -1,10 +1,4 @@
-import {
-  footprint,
-  getHingeTilt,
-  getPart,
-  isMatchingInsertFrame,
-  seatOnSideStuds,
-} from '../core.ts';
+import { footprint, getPart, isMatchingInsertFrame, seatOnSideStuds } from '../core.ts';
 import type { Brick, Facing, Rotation } from '../core.ts';
 import { addAreaMap, addBondedMap, addRun, bottomUp, glazeWindows } from './layout.ts';
 import type { RunKind } from './layout.ts';
@@ -18,8 +12,9 @@ import type { ExampleBrickAdder, ExampleDefinition } from './types.ts';
 // down both sides of the square and across its front; rows of shops line them, the Essex
 // theatre with its corner turret and marquee on the left, a filling station and a three-storey
 // brick block across the front. Fifties cars stand at the kerbs, drive the streets and wait at
-// the pumps, and townsfolk stroll the pavements and the square. A cable runs from the clock
-// tower down to a lamp at the front of the square and across the street to another.
+// the pumps, and townsfolk stroll the pavements and the square. A cable runs from the top of the
+// clock tower down to a lamp by the street on the left, and from there straight across the
+// street to the lamp opposite.
 // Nothing on the board carries lettering, so the plan needs no mirroring.
 const SIZE = 128;
 /** Every wall starts here: two base plates, then a plate under the pavement's tiles. */
@@ -1136,22 +1131,37 @@ function courtWindows(
 }
 
 /**
- * The cable from the clock tower: a long cord drops from a hinge under the clock to a lamp at the
- * square's front edge, and a shorter one crosses the street from that lamp to one on the far
- * pavement, strung taut between the lamps' tops. Both lamps stand by their corner cell.
+ * The cable's lamps, by the corner cell each stands on: one on the square's side of the street on
+ * the left, which the cord from the clock tower comes down to, and the one straight across the
+ * street from it.
  */
 const CABLE_LAMPS = [
-  [60, 17],
-  [60, 37],
+  [37, 56],
+  [21, 56],
 ] as const;
-/** The tower course the hinge's ledge sticks out of, by the tower's left corner. */
-const CABLE_COURSE = 4;
-/** Where both cords run, over the lamps' studs. */
-const CABLE_X = CABLE_LAMPS[0][0] + 0.5;
+
+/**
+ * The cell the cord's top end stud takes: on a round plate on the finial at the clock tower top's
+ * front left corner.
+ */
+const CABLE_TOP = [59, 83, 75] as const;
+/** The long cord's lower end stud, on the near lamp's bulb. */
+const CABLE_FOOT = [CABLE_LAMPS[0][0] + 0.5, GROUND + 25, CABLE_LAMPS[0][1] + 0.5] as const;
+/** The cells the long cord passes through, plates above and below, for the trees to grow round. */
+const CABLE_CELLS: Box[] = (() => {
+  const [from, to] = [CABLE_FOOT, CABLE_TOP].map(([x, y, z]) => [x + 0.5, y + 1, z + 0.5]);
+  const cells = new Map<string, Box>();
+  for (let step = 0; step <= 400; step++) {
+    const [x, y, z] = from.map((value, axis) => value + ((to[axis] - value) * step) / 400);
+    const [u, v, h] = [Math.floor(x), Math.floor(z), Math.floor(y)];
+    cells.set(`${u}:${h}:${v}`, { u0: u, u1: u + 1, v0: v, v1: v + 1, y0: h - 1, y1: h + 1 });
+  }
+  return [...cells.values()];
+})();
 
 /** Lamps, hydrants and poles on the pavement, by the corner cell they stand on. */
 const LAMPS: readonly (readonly [number, number])[] = [
-  ...CABLE_LAMPS,
+  CABLE_LAMPS[1],
   ...[6, 48, 68, 90, 112].map((z) => [21, z] as const),
   ...[6, 30, 52, 76, 98, 118].map((z) => [105, z] as const),
   ...[38, 56, 92, 108].flatMap((z) => [[37, z] as const, [89, z] as const]),
@@ -1159,6 +1169,7 @@ const LAMPS: readonly (readonly [number, number])[] = [
   [89, 76],
   [50, 33],
   [76, 33],
+  [62, 17],
   [80, 17],
 ];
 const HYDRANTS: readonly (readonly [number, number])[] = [
@@ -1485,7 +1496,7 @@ const FIGURES: readonly Figure[] = [
   { x: 20, z: 52, turn: 0, torso: DARK_STONE, legs: DARK_STONE, hair: FEDORA(BROWN) },
   { x: 104, z: 40, turn: 0, torso: SAND_BLUE, legs: SAND_BLUE, hair: BOB(DARK_BROWN) },
   { x: 104, z: 72, turn: 180, torso: TAN, legs: BROWN, hair: FEDORA(DARK_TAN) },
-  { x: 55, z: 18, turn: 180, torso: WHITE, legs: DARK_BLUE, hair: QUIFF(BLACK) },
+  { x: 57, z: 18, turn: 180, torso: WHITE, legs: DARK_BLUE, hair: QUIFF(BLACK) },
   { x: 84, z: 17, turn: 180, torso: DARK_RED, legs: DARK_RED, hair: BOB(BLACK) },
   // The attendant at the pumps, and a policeman at the courthouse steps.
   { x: 44, z: 14, turn: 0, torso: WHITE, legs: DARK_GREEN, hair: CAP(RED) },
@@ -1548,7 +1559,7 @@ export const hillValley: ExampleDefinition = {
     'minifigures',
     'cable',
   ],
-  expectedPieceCount: 11814,
+  expectedPieceCount: 11808,
   buildArea: SIZE,
   build(add) {
     const order = bottomUp(add);
@@ -1563,6 +1574,7 @@ export const hillValley: ExampleDefinition = {
       facing,
       upsideDown,
       tilt,
+      strung,
     ) => {
       const size = footprint({
         id: '',
@@ -1582,7 +1594,7 @@ export const hillValley: ExampleDefinition = {
         y0: y,
         y1: y + size.height,
       });
-      order.add(partId, color, x, y, z, rotation, facing, upsideDown, tilt);
+      order.add(partId, color, x, y, z, rotation, facing, upsideDown, tilt, strung);
     };
     const put = glazeWindows(record);
     const board: Rect = { x0: 0, z0: 0, x1: SIZE - 1, z1: SIZE - 1 };
@@ -1780,9 +1792,7 @@ export const hillValley: ExampleDefinition = {
         roofY + 3 * c,
         c,
         (x, z) =>
-          !onRing(x, z, CLOCK_TOWER) ||
-          (c === CLOCK_COURSE && x === clockX && z === CLOCK_TOWER.z0) ||
-          (c === CABLE_COURSE && x === CLOCK_TOWER.x0 && z === CLOCK_TOWER.z0)
+          !onRing(x, z, CLOCK_TOWER) || (c === CLOCK_COURSE && x === clockX && z === CLOCK_TOWER.z0)
             ? ' '
             : c === TOWER_COURSES - 1 || c === 2
               ? 't'
@@ -1796,37 +1806,6 @@ export const hillValley: ExampleDefinition = {
         { w: ['brick', WHITE], t: ['brick', PALE], g: ['brick', DARK_STONE] },
       );
     const towerTop = roofY + 3 * TOWER_COURSES;
-    // The cable's anchor: a brick standing a stud proud of the tower's left corner carries a
-    // jumper, a hinge on the jumper's stud, and the long cord on the hinge, tilted down to the
-    // lamp at the front of the square. Its lower end comes to rest just above the lamp's bulb.
-    const ledgeY = roofY + 3 * CABLE_COURSE;
-    put('3004', WHITE, CLOCK_TOWER.x0, ledgeY, CLOCK_TOWER.z0 - 1, lie('3004', 1, 2));
-    put('3794b', BLACK, CLOCK_TOWER.x0, ledgeY + 3, CLOCK_TOWER.z0 - 1, lie('3794b', 2, 1));
-    const hinge: Brick = {
-      id: 'hinge',
-      partId: '3937',
-      color: BLACK,
-      x: CABLE_X - 1,
-      y: ledgeY + 4,
-      z: CLOCK_TOWER.z0 - 1,
-      rotation: 0,
-    };
-    put(hinge.partId, hinge.color, hinge.x, hinge.y, hinge.z, hinge.rotation);
-    const tilt = getHingeTilt(hinge, '-z', 22.5);
-    if (!tilt) throw new Error('hill-valley: the cable hinge does not tilt.');
-    put('3938', BLACK, hinge.x, hinge.y + 1, hinge.z, 0, undefined, undefined, tilt);
-    const long = footprint({ id: '', partId: '71149', color: 0, x: 0, y: 0, z: 0, rotation: 90 });
-    put(
-      '71149',
-      BLACK,
-      CABLE_X,
-      hinge.y + 3,
-      hinge.z + 1 - long.depth,
-      90,
-      undefined,
-      undefined,
-      tilt,
-    );
     const towerSlab: Rect = {
       x0: CLOCK_TOWER.x0 - 1,
       z0: CLOCK_TOWER.z0 - 1,
@@ -1841,6 +1820,7 @@ export const hillValley: ExampleDefinition = {
       [towerSlab.x1, towerSlab.z1],
     ];
     for (const [x, z] of corners) put('4589', WHITE, x, towerTop + 1, z);
+    put('6141', BLACK, CABLE_TOP[0], CABLE_TOP[1] - 1, CABLE_TOP[2]);
     const domeX = 63;
     const domeZ = 77;
     paint(
@@ -1854,6 +1834,7 @@ export const hillValley: ExampleDefinition = {
           : 't',
       { t: ['tile', WHITE] },
     );
+
     put('3942c', DARK_STONE, domeX, towerTop + 1, domeZ);
     put('3957a', DARK_STONE, domeX + 0.5, towerTop + 7, domeZ + 0.5);
     put('2335', RED, domeX + 0.5, towerTop + 13, domeZ + 0.5, 90);
@@ -2033,19 +2014,27 @@ export const hillValley: ExampleDefinition = {
 
     // ----------------------------------------------------------------------------------------
     // Street furniture.
-    // Each lamp's lantern holds a white bulb under a black cap. The two cable lamps carry the
-    // street cord's end studs under their bulbs, and the near one a taller cap that the long
-    // cord from the tower comes down onto.
-    for (const [x, z] of LAMPS) put('2039', BLACK, x, GROUND, z);
-    const [[, farZ], nearLamp] = CABLE_LAMPS;
-    put('75924', BLACK, CABLE_X, GROUND + 21, farZ + 0.5, 90);
+    // Each lamp's lantern holds a white bulb under a black cap. On the cable's lamps the bulb
+    // sits on the end studs of a short cord strung straight across the street between the two
+    // lamps' tops. The long cord is made fast to the finial on the clock tower's front left
+    // corner and comes down onto the near lamp's bulb, under its cap.
+    const [nearEnd, farEnd] = CABLE_LAMPS.map(([x, z]) => [x + 0.5, GROUND + 21, z + 0.5] as const);
+    put('75924', BLACK, ...nearEnd, 0, undefined, undefined, undefined, {
+      x: farEnd[0],
+      y: farEnd[1],
+      z: farEnd[2],
+    });
+    put('71149', BLACK, ...CABLE_FOOT, 0, undefined, undefined, undefined, {
+      x: CABLE_TOP[0],
+      y: CABLE_TOP[1],
+      z: CABLE_TOP[2],
+    });
     for (const [x, z] of LAMPS) {
-      const cable = CABLE_LAMPS.some(([cx, cz]) => cx === x && cz === z);
-      const tall = x === nearLamp[0] && z === nearLamp[1];
-      const y = GROUND + (cable ? 22 : 21);
-      put('3062b', WHITE, x + 0.5, y, z + 0.5);
-      if (tall) put('6141', BLACK, x + 0.5, y + 3, z + 0.5);
-      put('98138', BLACK, x + 0.5, y + (tall ? 4 : 3), z + 0.5);
+      const cable = CABLE_LAMPS.findIndex(([cx, cz]) => cx === x && cz === z);
+      const bulb = GROUND + (cable < 0 ? 21 : 22);
+      put('2039', BLACK, x, GROUND, z);
+      put('3062b', WHITE, x + 0.5, bulb, z + 0.5);
+      put('98138', BLACK, x + 0.5, bulb + (cable === 0 ? 4 : 3), z + 0.5);
     }
     for (const [x, z] of HYDRANTS) {
       put('3062b', RED, x, GROUND, z);
@@ -2120,17 +2109,10 @@ export const hillValley: ExampleDefinition = {
           box.u1 > x - reach && box.u0 < x + reach && box.v1 > z - reach && box.v0 < z + reach,
       );
     for (const [x, z, trunk, seed] of TREES)
-      addTree(
-        put,
-        x,
-        z,
-        GROUND,
-        [DARK_GREEN, GREEN, BRIGHT_GREEN],
-        BROWN,
-        trunk,
-        seed,
-        near(x, z, 12),
-      );
+      addTree(put, x, z, GROUND, [DARK_GREEN, GREEN, BRIGHT_GREEN], BROWN, trunk, seed, [
+        ...near(x, z, 12),
+        ...CABLE_CELLS,
+      ]);
     for (const [x, z] of PIT_TREES) {
       put('3062b', BROWN, x, GROUND, z);
       put('3062b', BROWN, x, GROUND + 3, z);

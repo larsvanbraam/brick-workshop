@@ -98,6 +98,18 @@ const placementProperties = {
     required: ['toward', 'angle', 'y', 'at'],
     additionalProperties: false,
   },
+  strung: {
+    type: 'object',
+    description:
+      "Omit unless stringing a braided string (75924, 71149) between two studs. x, y, z (rotation 0) are the cell of its first end stud and this is the cell of its last: each end is a 1 x 1 round plug, a plate high, with a hollow below and a stud on top, and the cord runs straight between them. The ends may sit at different heights and in any direction, at least a stud apart across the board and no further apart than the cord (20 or 40 studs, measured between the plugs' tops, a plate being 0.4 studs). Nothing may cross the cord.",
+    properties: {
+      x: { type: 'number', multipleOf: 0.5, minimum: 0, maximum: MAX_BUILD_AREA - 1 },
+      y: { type: 'number', multipleOf: 0.5, minimum: 0, maximum: MAX_HEIGHT - 1 },
+      z: { type: 'number', multipleOf: 0.5, minimum: 0, maximum: MAX_BUILD_AREA - 1 },
+    },
+    required: ['x', 'y', 'z'],
+    additionalProperties: false,
+  },
 };
 function objectSchema(
   properties: Record<string, unknown> = {},
@@ -117,6 +129,7 @@ const BRICK_COLUMNS = [
   'facing',
   'upsideDown',
   'tilt',
+  'strung',
 ] as const;
 /**
  * Catalogue overview columns; one row per part instead of repeated keys. connectorFit is left
@@ -156,8 +169,8 @@ function changedBricks(before: Assembly, after: Assembly) {
     return (
       old &&
       BRICK_COLUMNS.some((column) =>
-        column === 'tilt'
-          ? JSON.stringify(old.tilt) !== JSON.stringify(brick.tilt)
+        column === 'tilt' || column === 'strung'
+          ? JSON.stringify(old[column]) !== JSON.stringify(brick[column])
           : old[column] !== brick[column],
       )
     );
