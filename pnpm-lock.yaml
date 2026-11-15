@@ -200,6 +200,9 @@ importers:
       '@brick-workshop/studlands':
         specifier: workspace:*
         version: link:../studlands
+      '@brick-workshop/vehicles':
+        specifier: workspace:*
+        version: link:../../packages/brick-vehicles
       '@brick-workshop/walk':
         specifier: workspace:*
         version: link:../../packages/brick-walk
@@ -258,6 +261,9 @@ importers:
       '@brick-workshop/render':
         specifier: workspace:*
         version: link:../../packages/brick-render
+      '@brick-workshop/vehicles':
+        specifier: workspace:*
+        version: link:../../packages/brick-vehicles
       '@brick-workshop/walk':
         specifier: workspace:*
         version: link:../../packages/brick-walk
@@ -461,6 +467,37 @@ importers:
       postprocessing:
         specifier: ^6.39.6
         version: 6.39.6(three@0.183.2)
+      react:
+        specifier: ^19.3.1
+        version: 19.3.1
+      three:
+        specifier: ^0.183.0
+        version: 0.183.2
+      vite-plus:
+        specifier: 1.4.0
+        version: 1.4.0(@opentelemetry/api@1.10.0)(@types/node@24.19.2)(@vitest/ui@5.0.5)(typescript@7.0.2)
+
+  packages/brick-vehicles:
+    dependencies:
+      '@brick-workshop/engine':
+        specifier: workspace:*
+        version: link:../brick-engine
+      '@brick-workshop/render':
+        specifier: workspace:*
+        version: link:../brick-render
+      '@brick-workshop/walk':
+        specifier: workspace:*
+        version: link:../brick-walk
+    devDependencies:
+      '@react-three/fiber':
+        specifier: ^9.8.2
+        version: 9.8.2(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(three@0.183.2)
+      '@types/react':
+        specifier: ^19.3.0
+        version: 19.3.0
+      '@types/three':
+        specifier: ^0.183.0
+        version: 0.183.1
       react:
         specifier: ^19.3.1
         version: 19.3.1

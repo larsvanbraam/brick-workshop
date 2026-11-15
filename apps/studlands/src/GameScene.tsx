@@ -16,6 +16,8 @@ import { NPC_RADIUS, residentsOf, wanderRules } from './npcs.ts';
 import { animalRules, farmAnimals, wildlifeOf } from './animals.ts';
 import type { Animal } from './animals.ts';
 import { FARM } from './world/island/map.ts';
+import { Vehicles } from '@brick-workshop/vehicles/drive-view';
+import type { Vehicle, VehicleKind } from '@brick-workshop/vehicles/vehicle';
 import type { WalkWorld } from '@brick-workshop/walk/walk';
 import type { Chunks } from './chunks.ts';
 import { chunkAt } from './streaming.ts';
@@ -98,6 +100,13 @@ export interface GameSceneProps {
   terrain: Terrain;
   /** The walker's chunk: people live in the chunks round it. */
   centre: readonly [number, number];
+  /** The vehicles round the world, which the scene moves (see `Vehicles`). */
+  vehicles: readonly Vehicle[];
+  /** The one being driven, by ID. */
+  driving: string | null;
+  onDrive: (id: string | null, flying?: boolean) => void;
+  /** The vehicle the walker could get in. */
+  onNear: (kind: VehicleKind | null) => void;
 }
 
 /** The debug window's probes inside the canvas; drawn only while the window is open. */
@@ -172,6 +181,7 @@ export function GameScene(props: GameSceneProps) {
         gamepad={props.gamepad}
         start={start}
         probe={probe}
+        riding={props.driving !== null}
       />
       <People
         chunks={chunks}
@@ -181,6 +191,19 @@ export function GameScene(props: GameSceneProps) {
         buildArea={buildArea}
         probe={probe}
       />
+      {props.vehicles.length > 0 && (
+        <Vehicles
+          vehicles={props.vehicles}
+          world={props.walkWorld}
+          probe={probe}
+          driving={props.driving}
+          onDrive={props.onDrive}
+          onNear={props.onNear}
+          view={props.view}
+          onViewChange={props.onViewChange}
+          active={props.playing}
+        />
+      )}
       <EdgeDimmer drawings={drawings} clock={props.clock} />
       <ChunkWatcher probe={probe} buildArea={buildArea} onChunk={props.onChunk} />
       {props.map && <MapProbe probe={probe} store={props.map} buildArea={buildArea} />}

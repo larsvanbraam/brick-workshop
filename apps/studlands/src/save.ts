@@ -230,15 +230,35 @@ export interface Place {
   view: 'first' | 'third';
 }
 
+/** Where a vehicle was left: world studs, its wheels' height in scene units and its heading. */
+export interface ParkedVehicle {
+  id: string;
+  x: number;
+  z: number;
+  y: number;
+  yaw: number;
+}
+
 /** One save game: a slot's player, where it was and how long it has played. */
 export interface SaveGame {
   place: Place;
+  /** Where each vehicle was left, and the one being driven. Missing in older saves. */
+  vehicles?: ParkedVehicle[];
+  driving?: string | null;
   /** Seconds spent playing, summed over every visit. */
   playSeconds: number;
   /** When it was first and last played, as ISO dates. */
   startedAt: string;
   playedAt: string;
 }
+
+/** Whether a saved vehicle is whole enough to put back. */
+export const isParkedVehicle = (value: unknown): value is ParkedVehicle =>
+  isRecord(value) &&
+  typeof value.id === 'string' &&
+  ['x', 'y', 'z', 'yaw'].every(
+    (key) => typeof value[key] === 'number' && Number.isFinite(value[key]),
+  );
 
 /** How many save games a game with slots keeps. */
 export const SAVE_SLOTS = 3;

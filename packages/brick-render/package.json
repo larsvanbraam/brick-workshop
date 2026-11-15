@@ -67,6 +67,10 @@
     "./splash-plugin": {
       "types": "./src/splash-plugin.ts",
       "import": "./src/splash-plugin.ts"
+    },
+    "./vehicle-parts": {
+      "types": "./src/vehicle-parts.ts",
+      "import": "./src/vehicle-parts.ts"
     }
   },
   "scripts": {

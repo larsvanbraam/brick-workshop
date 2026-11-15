@@ -7,6 +7,7 @@ import type { LibraryCatalog } from './ldraw-library';
 import { COLOR_CONFIG, cloneLDrawModel } from './ldraw-materials';
 import { ANIMAL_PARTS } from './animal-parts';
 import { MINIFIG_PARTS } from './minifig-parts';
+import { VEHICLE_PARTS } from './vehicle-parts';
 
 const modelLoaders = new WeakMap<Group, LDrawLoader>();
 const pendingPartModels = new Map<string, Promise<Group>>();
@@ -122,6 +123,7 @@ export function loadLDrawModels(
     (id) =>
       MINIFIG_PARTS.includes(id) ||
       ANIMAL_PARTS.includes(id) ||
+      VEHICLE_PARTS.includes(id) ||
       PARTS.some((part) => part.id === id),
   );
   if (supported.length) {

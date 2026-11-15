@@ -13,6 +13,7 @@
     "@brick-workshop/engine": "workspace:*",
     "@brick-workshop/render": "workspace:*",
     "@brick-workshop/studlands": "workspace:*",
+    "@brick-workshop/vehicles": "workspace:*",
     "@brick-workshop/walk": "workspace:*",
     "@react-three/fiber": "^9.8.2",
     "@react-three/postprocessing": "^3.2.2",

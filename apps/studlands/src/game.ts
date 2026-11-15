@@ -1,4 +1,6 @@
 import type { WorldKind } from './world/terrain.ts';
+import { VEHICLE_SPAWNS } from './world/island/map.ts';
+import type { VehicleSpawn } from './world/island/map.ts';
 
 /**
  * Which game this is. Studlands and Brick Island share every system (streaming, building,
@@ -27,6 +29,8 @@ export interface GameConfig {
    * game picks up where it was left. Studlands keeps worlds instead, each with its building.
    */
   saveSlots: boolean;
+  /** The vehicles parked round the world for the player to drive, and where. */
+  vehicles: readonly VehicleSpawn[];
 }
 
 export const STUDLANDS: GameConfig = {
@@ -38,6 +42,7 @@ export const STUDLANDS: GameConfig = {
   building: true,
   minimap: false,
   saveSlots: false,
+  vehicles: [],
 };
 
 export const BRICK_ISLAND: GameConfig = {
@@ -52,6 +57,7 @@ export const BRICK_ISLAND: GameConfig = {
   fixedTime: 0.42,
   minimap: true,
   saveSlots: true,
+  vehicles: VEHICLE_SPAWNS,
 };
 
 let current: GameConfig = STUDLANDS;

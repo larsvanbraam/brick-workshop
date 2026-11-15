@@ -130,6 +130,16 @@ export class WalkWorld {
     if (indices.length) this.groups.set(key, indices);
   }
 
+  /**
+   * Replaces a group's boxes with these, already in scene space: for things that are not pieces
+   * on the grid, such as a parked vehicle.
+   */
+  setBoxes(key: string, boxes: Iterable<WalkBox>) {
+    this.removeGroup(key);
+    const indices = [...boxes].map((box) => this.add({ ...box }));
+    if (indices.length) this.groups.set(key, indices);
+  }
+
   removeGroup(key: string) {
     const indices = this.groups.get(key);
     if (!indices) return;

@@ -5,6 +5,8 @@
  * is layer 3). The island is about 600 by 480 studs; `column.ts` turns this plan into ground.
  */
 
+import type { VehicleKind } from '@brick-workshop/vehicles/vehicle';
+
 /** A point on a road, with the road's height there in brick layers. */
 export type RoadPoint = readonly [x: number, z: number, layer: number];
 
@@ -352,4 +354,30 @@ export const LANDMARKS: readonly Landmark[] = [
   { name: 'Farm', x: 150, z: 312, icon: '🚜' },
   { name: 'Sunset Bay', x: 168, z: 440, icon: '🏖️' },
   { name: 'River Bridge', x: 452, z: 393, icon: '🌉' },
+];
+
+/** Which way a parked vehicle faces, by the compass: north is -z. */
+export type Heading = 'north' | 'east' | 'south' | 'west';
+
+/** A vehicle waiting at its spot, in world studs, for the player to find and drive. */
+export interface VehicleSpawn {
+  id: string;
+  kind: VehicleKind;
+  x: number;
+  z: number;
+  heading: Heading;
+}
+
+/**
+ * Where the vehicles are parked when a game starts: the car, the motorcycle and the bike in
+ * Harbour Town near the start, the helicopter in the town square, and the race car on the
+ * speedway's start line with the airplane on the lawn inside the track, its runway.
+ */
+export const VEHICLE_SPAWNS: readonly VehicleSpawn[] = [
+  { id: 'car', kind: 'car', x: 342, z: 396, heading: 'east' },
+  { id: 'motorcycle', kind: 'motorcycle', x: 300, z: 393, heading: 'west' },
+  { id: 'bike', kind: 'bike', x: 322, z: 378, heading: 'north' },
+  { id: 'helicopter', kind: 'helicopter', x: 370, z: 420, heading: 'north' },
+  { id: 'racecar', kind: 'racecar', x: 530, z: 196, heading: 'east' },
+  { id: 'airplane', kind: 'airplane', x: 476, z: 232, heading: 'east' },
 ];

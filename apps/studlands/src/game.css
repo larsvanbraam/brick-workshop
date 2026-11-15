@@ -781,3 +781,31 @@ kbd {
     height: 120px !important;
   }
 }
+
+/* Getting in a vehicle, and its controls while driving. */
+.vehicle-hint {
+  position: fixed;
+  left: 50%;
+  bottom: 40px;
+  transform: translateX(-50%);
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px 16px;
+  max-width: calc(100vw - 32px);
+  padding: 8px 14px;
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--ink);
+  font-size: 14px;
+  pointer-events: none;
+}
+
+.vehicle-hint.driving {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.vehicle-hint kbd + kbd {
+  margin-left: 3px;
+}

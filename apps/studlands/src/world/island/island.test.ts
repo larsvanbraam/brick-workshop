@@ -6,7 +6,8 @@ import { MAX_LAYERS } from '../terrain.ts';
 import { createTerrain } from '../worlds.ts';
 import { islandColumn } from './column.ts';
 import { buildHouse, turnPieces } from './houses.ts';
-import { ROADS } from './map.ts';
+import { VEHICLES } from '@brick-workshop/vehicles/vehicle';
+import { ROADS, VEHICLE_SPAWNS } from './map.ts';
 import { islandStructures } from './structures.ts';
 
 const SEED = 7;
@@ -29,6 +30,34 @@ describe('Brick Island', () => {
       }
     // Most of the 160 by 130 samples are dry land.
     expect(land).toBeGreaterThan(160 * 130 * 0.55);
+  });
+
+  it('parks every vehicle on level, open ground, clear of every building', () => {
+    const structures = islandStructures(SEED);
+    for (const spawn of VEHICLE_SPAWNS) {
+      const spec = VEHICLES[spawn.kind];
+      const alongX = spawn.heading === 'east' || spawn.heading === 'west';
+      const halfX = (alongX ? spec.length : spec.width) / 2;
+      const halfZ = (alongX ? spec.width : spec.length) / 2;
+      const x0 = Math.floor(spawn.x - halfX);
+      const x1 = Math.ceil(spawn.x + halfX);
+      const z0 = Math.floor(spawn.z - halfZ);
+      const z1 = Math.ceil(spawn.z + halfZ);
+      const heights = new Set<number>();
+      for (let z = z0; z < z1; z++)
+        for (let x = x0; x < x1; x++) {
+          const column = islandColumn(SEED, x, z);
+          expect(column.water, `${spawn.id} at ${x},${z}`).toBe(0);
+          expect(['road', 'pavement', 'yard'], `${spawn.id} at ${x},${z}`).toContain(column.biome);
+          heights.add(column.height);
+        }
+      expect([...heights], spawn.id).toHaveLength(1);
+      for (const structure of structures) {
+        const { bounds } = structure;
+        const clear = bounds.x1 <= x0 || bounds.x0 >= x1 || bounds.z1 <= z0 || bounds.z0 >= z1;
+        expect(clear, `${spawn.id} and ${structure.id}`).toBe(true);
+      }
+    }
   });
 
   it('lays every road it draws, so every place is joined up', () => {

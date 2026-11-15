@@ -6,6 +6,7 @@ import { dismissSplash, setSplashMessage } from '@brick-workshop/render/splash';
 import { useLDrawLibrary } from '@brick-workshop/render/ldraw';
 import type { WalkCamera, WalkProbe } from '@brick-workshop/walk/walk-view';
 import { WalkWorld } from '@brick-workshop/walk/walk';
+import type { VehicleKind } from '@brick-workshop/vehicles/vehicle';
 import { AmbientMusic } from '@brick-workshop/audio/music';
 import { placementFor } from './build.ts';
 import {
@@ -69,6 +70,7 @@ import { game } from './game.ts';
 import type { ChunkMessage, FarMessage } from './world/worker.ts';
 import { FarStore } from './FarView.tsx';
 import { MapStore, Minimap } from './Minimap.tsx';
+import { createVehicles, parkedVehicles, vehicleAction } from './vehicles.ts';
 import { DEFAULT_MUSIC, MENU_SHARE, MUSIC_LEVELS, isMusicLevel } from './music.ts';
 import type { MusicLevel } from './music.ts';
 
@@ -381,6 +383,22 @@ function Game({
   const [aim, setAim] = useState<Aim | null>(null);
   const [view, setView] = useState<WalkCamera>(() => saved?.place.view ?? 'first');
   const [flying, setFlying] = useState(() => saved?.place.flying ?? false);
+  /** The vehicles round the world, where they were parked or where the save left them. */
+  const [vehicles] = useState(() => createVehicles(game().vehicles, FRAME, saved));
+  /** The vehicle being driven, by ID, and the one the walker stands beside. */
+  const [driving, setDriving] = useState<string | null>(() => {
+    const id = saved?.driving ?? null;
+    return vehicles.some((vehicle) => vehicle.id === id) ? id : null;
+  });
+  const [nearVehicle, setNearVehicle] = useState<VehicleKind | null>(null);
+  const drivingRef = useRef(driving);
+  useEffect(() => {
+    drivingRef.current = driving;
+  }, [driving]);
+  const onDrive = useCallback((id: string | null, out?: boolean) => {
+    setDriving(id);
+    if (id === null) setFlying(Boolean(out));
+  }, []);
   /** Whether the game has been played yet, so the menu offers to resume rather than to play. */
   const [started, setStarted] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
@@ -444,13 +462,16 @@ function Game({
         flying: walker.flying ?? false,
         view: viewRef.current,
       },
+      ...(vehicles.length
+        ? { vehicles: parkedVehicles(vehicles, FRAME), driving: drivingRef.current }
+        : {}),
       playSeconds: (previous?.playSeconds ?? 0) + played,
       startedAt: previous?.startedAt ?? new Date(now).toISOString(),
       playedAt: new Date(now).toISOString(),
     };
     lastSave.current = next;
     storeSave(slot, next);
-  }, [slot]);
+  }, [slot, vehicles]);
   useEffect(() => {
     if (!playing || !game().saveSlots) return;
     playClock.current = Date.now();
@@ -847,6 +868,7 @@ function Game({
     />
   );
   if (booting) return <div className="game">{loading}</div>;
+  const drivingKind = vehicles.find((vehicle) => vehicle.id === driving)?.kind ?? null;
   // Pieces of the player's still standing, not every one ever put down.
   const built = placedCount;
   let pieceCount = 0;
@@ -881,6 +903,10 @@ function Game({
         glows={glows}
         terrain={terrain}
         centre={centre}
+        vehicles={vehicles}
+        driving={driving}
+        onDrive={onDrive}
+        onNear={setNearVehicle}
         debug={{
           options: debugOptions,
           store: debugStore,
@@ -918,6 +944,12 @@ function Game({
       {playing && game().building && ghostCheck && !ghostCheck.ok && (
         <div className="hint">{ghostCheck.reason}</div>
       )}
+      {playing && !driving && nearVehicle && (
+        <div className="vehicle-hint">
+          <kbd>E</kbd> {vehicleAction(nearVehicle)}
+        </div>
+      )}
+      {playing && drivingKind && <DriveHint kind={drivingKind} />}
       <div className="status">
         <strong>
           {game().seed === undefined ? `World ${seed}` : game().title}
@@ -925,7 +957,7 @@ function Game({
         </strong>
         <span>
           {pieceCount.toLocaleString()} pieces{game().building ? ` · ${built} placed` : ''}
-          {flying ? ' · flying' : ''}
+          {drivingKind ? ` · ${vehicleAction(drivingKind, true)}` : flying ? ' · flying' : ''}
         </span>
       </div>
       {toast && <div className="toast">{toast}</div>}
@@ -1003,6 +1035,41 @@ function Game({
         />
       )}
       {loading}
+    </div>
+  );
+}
+
+/** The controls for the vehicle being driven, along the bottom of the screen. */
+function DriveHint({ kind }: { kind: VehicleKind }) {
+  const air = kind === 'helicopter' || kind === 'airplane';
+  return (
+    <div className="vehicle-hint driving">
+      <span>
+        <kbd>W</kbd>
+        <kbd>S</kbd> {kind === 'airplane' ? 'faster, slower' : air ? 'forward, back' : 'go, brake'}
+      </span>
+      <span>
+        <kbd>A</kbd>
+        <kbd>D</kbd> {kind === 'helicopter' ? 'turn' : 'steer'}
+      </span>
+      {air ? (
+        <span>
+          <kbd>Space</kbd>
+          <kbd>Shift</kbd> {kind === 'airplane' ? 'climb, dive' : 'up, down'}
+        </span>
+      ) : (
+        <span>
+          <kbd>Space</kbd> handbrake
+        </span>
+      )}
+      {kind !== 'bike' && (
+        <span>
+          <kbd>H</kbd> horn
+        </span>
+      )}
+      <span>
+        <kbd>E</kbd> get out
+      </span>
     </div>
   );
 }

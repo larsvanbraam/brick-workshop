@@ -126,6 +126,7 @@ export function WalkMode({
   probe,
   world: given,
   revision = 0,
+  riding = false,
 }: {
   bricks: Iterable<Brick>;
   buildArea: number;
@@ -152,6 +153,12 @@ export function WalkMode({
    */
   world?: WalkWorld;
   revision?: number;
+  /**
+   * The minifigure is in a vehicle: it hides, and walking leaves the keys, the mouse and the
+   * camera alone. Whoever drives keeps the walker at the vehicle (through `probe`), so it gets
+   * out where the vehicle stopped.
+   */
+  riding?: boolean;
 }) {
   const { camera, gl, invalidate } = useThree();
   const built = useMemo(
@@ -193,6 +200,15 @@ export function WalkMode({
     viewRef.current = view;
     invalidate();
   }, [view, invalidate]);
+  const ridingRef = useRef(riding);
+  useEffect(() => {
+    ridingRef.current = riding;
+    held.current.clear();
+    if (riding) return;
+    // Out of the vehicle, the eyes start where the walker was set down.
+    eyeY.current = walker.current.y + MINIFIG.eye;
+    follow.current.distance = 0;
+  }, [riding]);
   const fly = useRef<FlyState>({
     flying,
     onFlyingChange,
@@ -270,7 +286,7 @@ export function WalkMode({
   useEffect(() => {
     const element = gl.domElement;
     const keydown = (event: KeyboardEvent) => {
-      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      if (event.metaKey || event.ctrlKey || event.altKey || ridingRef.current) return;
       if (!HANDLED.has(event.code) || isTyping(event.target)) return;
       event.preventDefault();
       // Keeps the workshop's own shortcuts (Space pans, F frames) out of it.
@@ -310,6 +326,7 @@ export function WalkMode({
       dragging = false;
     };
     const move = (event: MouseEvent) => {
+      if (ridingRef.current) return;
       if (document.pointerLockElement !== element && !dragging) return;
       look.current.yaw -= event.movementX * LOOK_SPEED;
       look.current.pitch = clampPitch(look.current.pitch - event.movementY * LOOK_SPEED);
@@ -339,6 +356,13 @@ export function WalkMode({
   /** The follow camera's distance last frame, and whether the figure is hidden for being too close. */
   const follow = useRef({ distance: FOLLOW_DISTANCE, hideFigure: false });
   useFrame(({ clock }, delta) => {
+    if (ridingRef.current) {
+      if (figure.current.root) figure.current.root.visible = false;
+      // Still read, so a button held while getting out is not taken as a press.
+      const pads = typeof navigator !== 'undefined' ? navigator.getGamepads?.() : undefined;
+      if (pads) readGamepads(pads, pad.current.held, 'walk');
+      return;
+    }
     const keys = held.current;
     const pressed = (codes: string[]) => codes.some((code) => keys.has(code));
     const current = walker.current;

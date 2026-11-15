@@ -65,14 +65,16 @@ const LEFT_HAND = ldrawMatrix([
 ]);
 
 /**
- * The minifigure from its LDraw parts, feet at the origin and facing -z, with legs swinging from
- * the hips, arms from the shoulders and the head turning on the neck. A head or headgear part
- * missing from `models` falls back to the plain head and no headgear.
+ * The minifigure in LDraw space and units: the top of its torso at the origin, y pointing down and
+ * its face toward -z, as a seated driver needs it. Each leg turns about its hip, each arm about
+ * its shoulder carrying its hand along, and the head on the neck; turning a limb about x by a
+ * negative angle swings it forward. A head or headgear part missing from `models` falls back to
+ * the plain head and no headgear.
  */
-export function assembleMinifig(
+export function buildMinifig(
   models: Record<string, Group>,
   outfit: MinifigOutfit = CLASSIC_OUTFIT,
-): MinifigRig & { root: Group } {
+) {
   const part = (id: string, color: number) => coloredLDrawModel(models[id], color);
   const body = new Group();
   body.add(part('973', outfit.torso));
@@ -91,7 +93,6 @@ export function assembleMinifig(
     body.add(pivot);
     return pivot;
   };
-  // Each arm turns about its shoulder and carries its hand along.
   const arm = (id: string, armMatrix: Matrix4, handMatrix: Matrix4) => {
     const shoulder = new Vector3().setFromMatrixPosition(armMatrix);
     const pivot = new Group();
@@ -102,12 +103,25 @@ export function assembleMinifig(
     body.add(pivot);
     return pivot;
   };
-  const rig = {
+  return {
+    body,
+    head: neck,
     rightLeg: leg('3816'),
     leftLeg: leg('3817'),
     rightArm: arm('3818', RIGHT_ARM, RIGHT_HAND),
     leftArm: arm('3819', LEFT_ARM, LEFT_HAND),
   };
+}
+
+/**
+ * The minifigure in the scene, feet at the origin and facing -z, with legs swinging from the
+ * hips, arms from the shoulders and the head turning on the neck.
+ */
+export function assembleMinifig(
+  models: Record<string, Group>,
+  outfit: MinifigOutfit = CLASSIC_OUTFIT,
+): MinifigRig & { root: Group } {
+  const { body, ...rig } = buildMinifig(models, outfit);
   // LDraw's y points down and its front faces -z; the scene stands it upright (see LDRAW_SCALE),
   // which turns its front to +z, so it is turned round to face the way the walker looks.
   body.scale.set(...LDRAW_SCALE);
@@ -121,7 +135,7 @@ export function assembleMinifig(
     object.castShadow = false;
   });
   // LDraw's limbs hang down its +y and face -z, so a positive turn swings them back.
-  return { forward: -1, root, head: neck, ...rig };
+  return { forward: -1, root, ...rig };
 }
 
 /** How a minifigure moves this frame, for `poseMinifig`. */

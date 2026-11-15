@@ -6,6 +6,7 @@ import type { Plugin, ViteDevServer } from 'vite-plus';
 import { PARTS } from '@brick-workshop/engine';
 import { ANIMAL_PARTS } from './animal-parts.ts';
 import { MINIFIG_BODY, MINIFIG_PARTS } from './minifig-parts.ts';
+import { VEHICLE_PARTS } from './vehicle-parts.ts';
 
 export interface LibraryManifest {
   available: boolean;
@@ -138,8 +139,16 @@ async function findFile(root: string, reference: string): Promise<string> {
   throw Object.assign(new Error(`Missing LDraw dependency: ${reference}`), { code: 'ENOENT' });
 }
 
-/** Everything the games draw from the library: the catalogue's parts, minifigures and animals. */
-const SHIPPED_PARTS = [...PARTS.map((part) => part.id), ...MINIFIG_PARTS, ...ANIMAL_PARTS];
+/**
+ * Everything the games draw from the library: the catalogue's parts, minifigures, animals and
+ * vehicles.
+ */
+const SHIPPED_PARTS = [
+  ...PARTS.map((part) => part.id),
+  ...MINIFIG_PARTS,
+  ...ANIMAL_PARTS,
+  ...VEHICLE_PARTS,
+];
 /** The catalogue and the walker's figure alone, for a library without the people and animals. */
 const BODY_PARTS = [...PARTS.map((part) => part.id), ...MINIFIG_BODY];
 
@@ -188,8 +197,9 @@ export async function collectLibrary(
 
 export function ldrawLibraryPlugin(libraryPath: string): Plugin {
   let library: ReturnType<typeof collectLibrary> | undefined;
-  // A library without the faces, hair, hats and animals still serves the walker's figure, and one without
-  // the minifigure's parts still serves the catalogue; the walker then draws a stand-in figure.
+  // A library without the faces, hair, hats, animals and vehicles still serves the walker's
+  // figure, and one without the minifigure's parts still serves the catalogue; the walker then
+  // draws a stand-in figure.
   const loadLibrary = () =>
     (library ??= collectLibrary(libraryPath, SHIPPED_PARTS)
       .catch(() => collectLibrary(libraryPath, BODY_PARTS))

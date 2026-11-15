@@ -124,6 +124,12 @@ function Controls({ edits, onReset, onNewWorld }: MenuProps) {
         <dd>WASD, Space to jump, Shift to run</dd>
         <dt>Fly</dt>
         <dd>F or double Space; Space up, C down</dd>
+        {game().vehicles.length > 0 && (
+          <>
+            <dt>Vehicles</dt>
+            <dd>E gets in and out; WASD drives, Space brakes or climbs, Shift sinks, H honks</dd>
+          </>
+        )}
         {game().building && (
           <>
             <dt>Build</dt>
@@ -151,6 +157,12 @@ function Controls({ edits, onReset, onNewWorld }: MenuProps) {
         <dd>Left stick, click it in to sprint; right stick looks</dd>
         <dt>Fly</dt>
         <dd>A jumps, Y or double A flies; A up, B down</dd>
+        {game().vehicles.length > 0 && (
+          <>
+            <dt>Vehicles</dt>
+            <dd>X gets in and out; left stick or triggers drive, A up, B down, Y honks</dd>
+          </>
+        )}
         {game().building && (
           <>
             <dt>Build</dt>
