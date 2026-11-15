@@ -3,7 +3,7 @@ import { MAX_PIECES, getWorldBounds, validateAssembly } from '@brick-workshop/en
 import { CHUNK, chunkOf } from '../chunks.ts';
 import { WATER_LAYERS, WORLD_SIZE, generateChunk, generateWorld } from './generate.ts';
 import { isPlant } from './plants.ts';
-import { LAND_BIOMES, START, Terrain, volcanoAt } from './terrain.ts';
+import { LAND_BIOMES, START, Terrain, landformIn, volcanoAt } from './terrain.ts';
 import type { Biome } from './terrain.ts';
 
 /** Every column of the board, as the terrain gives it. */
@@ -124,6 +124,51 @@ describe('world generation', () => {
     );
     expect(flows.length).toBeGreaterThan(10);
     expect(volcanoAt(2, START.x, START.z)).toBeNull();
+  });
+
+  it('keeps volcanoes rare, and raises mountains, plateaus and canyons more often', () => {
+    const counts: Record<string, number> = {};
+    for (let seed = 0; seed < 10; seed++)
+      for (let rx = -10; rx < 10; rx++)
+        for (let rz = -10; rz < 10; rz++) {
+          const kind = landformIn(seed, rx, rz)?.kind ?? 'none';
+          counts[kind] = (counts[kind] ?? 0) + 1;
+        }
+    expect(counts.volcano / 4000).toBeLessThan(0.05);
+    for (const kind of ['mountain', 'plateau', 'canyon'])
+      expect(counts[kind]).toBeGreaterThan(counts.volcano * 3);
+  });
+
+  it('raises a mountain whose summit is snowy, above the tallest hills', () => {
+    const mountain = landformIn(4, 0, 0)!;
+    expect(mountain.kind).toBe('mountain');
+    const columns = board(4);
+    expect(Math.max(...columns.map((column) => column.height))).toBeGreaterThan(15);
+    expect(columns.filter((column) => column.biome === 'snow').length).toBeGreaterThan(100);
+    expect(volcanoAt(4, START.x, START.z)).toBeNull();
+  });
+
+  it('rings a plateau with cliffs: a sheer drop of several layers at its edge', () => {
+    expect(landformIn(2, 0, 0)!.kind).toBe('plateau');
+    const terrain = new Terrain(2);
+    let faces = 0;
+    for (const column of board(2)) {
+      const east = terrain.column(column.x + 1, column.z);
+      if (!column.water && !east.water && Math.abs(east.height - column.height) >= 4) faces++;
+    }
+    expect(faces).toBeGreaterThan(20);
+  });
+
+  it('cuts a canyon: a river at the floor between stepped walls', () => {
+    const canyon = landformIn(3, 0, 0)!;
+    expect(canyon.kind).toBe('canyon');
+    const columns = board(3).filter(
+      (column) => Math.hypot(column.x - canyon.x, column.z - canyon.z) < canyon.radius * 0.6,
+    );
+    const river = columns.filter((column) => column.biome === 'river');
+    expect(river.length).toBeGreaterThan(50);
+    for (const column of river) expect(column.height).toBe(WATER_LAYERS);
+    expect(columns.filter((column) => column.height === canyon.top).length).toBeGreaterThan(500);
   });
 
   it('lets some coasts rise straight out of the sea as cliffs', () => {

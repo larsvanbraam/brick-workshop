@@ -7,7 +7,7 @@ import { fbm, hash2 } from './noise.ts';
  * their shared edges.
  */
 
-/** Brick layers (three plates each) of the tallest mountain; a volcano rises higher. */
+/** Brick layers (three plates each) of the tallest hill; mountains and volcanoes rise higher. */
 const PEAK_LAYERS = 15;
 /** Brick layers of the tallest thing anywhere: a volcano's rim. */
 export const MAX_LAYERS = 22;
@@ -63,12 +63,137 @@ export interface Volcano {
   lake: number;
 }
 
-/** Volcanoes stand one to a region at most, well inside it. */
+/**
+ * The world is cut into regions, and each region holds at most one landform, well inside it, so
+ * a landform never reaches into the next region and any column can tell which one it belongs to.
+ */
 export const REGION = 128;
-/** Roughly one region in this many has a volcano. */
-const VOLCANO_ODDS = 8;
-/** Studs from the crater's middle to its rim. */
+/** Studs from a volcano's crater middle to its rim. */
 const CRATER = 6;
+
+/** What stands in a region besides its rolling hills. */
+export type LandformKind = 'volcano' | 'mountain' | 'plateau' | 'canyon';
+
+/**
+ * How often each landform turns up, as a share of regions: volcanoes are the rare sight, and
+ * the rest of the time it is a mountain, a table of land ringed by cliffs, a canyon, or nothing.
+ */
+const LANDFORM_ODDS: readonly [LandformKind, number][] = [
+  ['volcano', 1 / 30],
+  ['mountain', 0.2],
+  ['plateau', 0.14],
+  ['canyon', 0.14],
+];
+
+export interface Landform {
+  kind: LandformKind;
+  /** Its middle, in studs. */
+  x: number;
+  z: number;
+  /** Studs from the middle to its foot. */
+  radius: number;
+  /** Brick layers up to its top: a mountain's summit, a plateau's or canyon's table. */
+  top: number;
+  /** 0 to 1, a seeded number for the landform's own variation: a canyon's heading, say. */
+  turn: number;
+}
+
+/** The region's landform, if it has one: near the region's middle, so it stays inside. */
+export function landformIn(seed: number, rx: number, rz: number): Landform | null {
+  let roll = hash2(seed + rx * 7919, 11, 5 + rz * 104729);
+  let kind: LandformKind | null = null;
+  for (const [candidate, odds] of LANDFORM_ODDS) {
+    if (roll < odds) {
+      kind = candidate;
+      break;
+    }
+    roll -= odds;
+  }
+  if (!kind) return null;
+  const pick = hash2(seed + rx, 11, 8 + rz);
+  const shape = {
+    volcano: { radius: 30, top: MAX_LAYERS - 1 },
+    mountain: { radius: 40 + Math.round(pick * 10), top: 16 + Math.round(pick * 4) },
+    plateau: { radius: 30 + Math.round(pick * 12), top: WATER_LAYERS + 5 + Math.round(pick * 2) },
+    canyon: { radius: 44 + Math.round(pick * 6), top: WATER_LAYERS + 7 + Math.round(pick * 2) },
+  }[kind];
+  return {
+    kind,
+    x: Math.round(rx * REGION + REGION / 2 + (hash2(seed + rx, 11, 6 + rz) - 0.5) * 24),
+    z: Math.round(rz * REGION + REGION / 2 + (hash2(seed + rx, 11, 7 + rz) - 0.5) * 24),
+    ...shape,
+    turn: hash2(seed + rx, 11, 9 + rz),
+  };
+}
+
+/** The landform whose region holds this column. */
+export function landformAt(seed: number, x: number, z: number) {
+  return landformIn(seed, Math.floor(x / REGION), Math.floor(z / REGION));
+}
+
+/** The region's volcano, if it has one. */
+export function volcanoIn(seed: number, rx: number, rz: number): Volcano | null {
+  const landform = landformIn(seed, rx, rz);
+  if (landform?.kind !== 'volcano') return null;
+  return { x: landform.x, z: landform.z, radius: landform.radius, lake: landform.top - 3 };
+}
+
+/** The volcano whose region holds this column. */
+export function volcanoAt(seed: number, x: number, z: number) {
+  return volcanoIn(seed, Math.floor(x / REGION), Math.floor(z / REGION));
+}
+
+/**
+ * A mountain: a broad massif whose slopes climb in shelves two layers tall, with ridges running
+ * out from the summit and gullies between them, snow on top by the climate's own rules.
+ */
+function mountainHeight(seed: number, landform: Landform, x: number, z: number) {
+  const wobble = (fbm(seed + 93, x, z, 18, 2) - 0.5) * 14;
+  const distance = Math.hypot(x - landform.x, z - landform.z) + wobble;
+  if (distance >= landform.radius) return 0;
+  const rise = (1 - distance / landform.radius) ** 1.35;
+  // Ridges: where a noise crosses its middle, folded so the crossings stand up as crests.
+  const ridge = 1 - Math.abs(fbm(seed + 95, x, z, 22, 3) - 0.5) * 2;
+  const layers = WATER_LAYERS + (landform.top - WATER_LAYERS) * rise * (0.7 + ridge * 0.3);
+  const jitter = (fbm(seed + 97, x, z, 7, 2) - 0.5) * 1.6;
+  return Math.min(landform.top, Math.round((layers + jitter) / 2) * 2);
+}
+
+/**
+ * A table of land with sheer cliffs round it, its outline wandering into bays and headlands,
+ * and a second, smaller tier on top of the bigger ones.
+ */
+function plateauHeight(seed: number, landform: Landform, x: number, z: number) {
+  const distance = Math.hypot(x - landform.x, z - landform.z);
+  const edge = landform.radius * (0.72 + fbm(seed + 99, x, z, 16, 3) * 0.5);
+  if (distance >= edge) return 0;
+  const tier = landform.radius > 36 && distance < edge * 0.45 ? 3 : 0;
+  return landform.top + tier;
+}
+
+/**
+ * A canyon: a high table of land, like a plateau, cut through by a winding gorge whose walls
+ * step down in shelves three layers tall to a river on the floor. Returns the ground's height and
+ * whether the column is the river.
+ */
+function canyonHeight(seed: number, landform: Landform, x: number, z: number) {
+  const distance = Math.hypot(x - landform.x, z - landform.z);
+  const edge = landform.radius * (0.75 + fbm(seed + 103, x, z, 18, 3) * 0.4);
+  if (distance >= edge) return { height: 0, river: false };
+  // Along and across the canyon's course, which meanders to either side as it goes.
+  const heading = landform.turn * Math.PI;
+  const dx = x - landform.x;
+  const dz = z - landform.z;
+  const along = dx * Math.cos(heading) + dz * Math.sin(heading);
+  const across = -dx * Math.sin(heading) + dz * Math.cos(heading);
+  const course =
+    Math.sin(along * 0.07 + landform.turn * 9) * 7 + (fbm(seed + 105, x, z, 24, 2) - 0.5) * 10;
+  const off = Math.abs(across - course) + (fbm(seed + 107, x, z, 5, 2) - 0.5) * 1.5;
+  const floor = WATER_LAYERS;
+  if (off < 2.5) return { height: floor, river: true };
+  const shelves = Math.floor((off - 2.5) / 2.2) + 1;
+  return { height: Math.min(landform.top, floor + 1 + (shelves - 1) * 3), river: false };
+}
 
 /**
  * Rivers follow where a broad noise crosses its middle: within `CHANNEL` of it the channel, within
@@ -82,22 +207,6 @@ const smoothstep = (edge0: number, edge1: number, value: number) => {
   const t = Math.max(0, Math.min(1, (value - edge0) / (edge1 - edge0)));
   return t * t * (3 - 2 * t);
 };
-
-/** The region's volcano, if it has one: near the region's middle, so its cone stays inside. */
-export function volcanoIn(seed: number, rx: number, rz: number): Volcano | null {
-  if (hash2(seed + rx * 7919, 11, 5 + rz * 104729) * VOLCANO_ODDS >= 1) return null;
-  return {
-    x: Math.round(rx * REGION + REGION / 2 + (hash2(seed + rx, 11, 6 + rz) - 0.5) * 24),
-    z: Math.round(rz * REGION + REGION / 2 + (hash2(seed + rx, 11, 7 + rz) - 0.5) * 24),
-    radius: 30,
-    lake: MAX_LAYERS - 4,
-  };
-}
-
-/** The volcano whose region holds this column. */
-export function volcanoAt(seed: number, x: number, z: number) {
-  return volcanoIn(seed, Math.floor(x / REGION), Math.floor(z / REGION));
-}
 
 /**
  * Lava flows: one or two tongues per volcano that spill through a notch in the rim and wind down
@@ -136,7 +245,7 @@ function biomeFor(height: number, peak: number, warmth: number, moisture: number
 
 /**
  * A column before trees level the ground round them: continents and their coasts, rolling hills
- * with terraced peaks, sea cliffs, volcanoes, the climate and its biomes, flat marshes with pools,
+ * with terraced peaks, sea cliffs, each region's landform (mountain, plateau, canyon or volcano), the climate and its biomes, flat marshes with pools,
  * and rivers in valleys.
  */
 export function baseColumn(seed: number, x: number, z: number): Column {
@@ -162,8 +271,24 @@ export function baseColumn(seed: number, x: number, z: number): Column {
     layers = Math.max(layers, WATER_LAYERS + 3 + (cliffs > 0.7 ? 1 : 0));
   let height = Math.max(1, Math.min(PEAK_LAYERS, Math.round(layers)));
 
+  // The region's landform: a mountain, a plateau, a canyon or, rarely, a volcano.
+  const landform = landformAt(seed, x, z);
+  let gorge = false;
+  if (landform?.kind === 'mountain')
+    height = Math.max(height, mountainHeight(seed, landform, x, z));
+  else if (landform?.kind === 'plateau') {
+    // Only on land: out at sea the table would stand on nothing.
+    if (land > 0.5) height = Math.max(height, plateauHeight(seed, landform, x, z));
+  } else if (landform?.kind === 'canyon' && land > 0.5) {
+    const canyon = canyonHeight(seed, landform, x, z);
+    if (canyon.height) {
+      height = canyon.height;
+      gorge = canyon.river;
+    }
+  }
+
   // A volcano's steep cone, its rim highest round the crater and its lake three layers down.
-  const volcano = volcanoAt(seed, x, z);
+  const volcano = landform?.kind === 'volcano' ? volcanoAt(seed, x, z) : null;
   let crater = Infinity;
   if (volcano) {
     crater = Math.hypot(x - volcano.x, z - volcano.z) + (fbm(seed + 91, x, z, 8, 2) - 0.5) * 5;
@@ -187,7 +312,11 @@ export function baseColumn(seed: number, x: number, z: number): Column {
   let biome = biomeFor(height, peak, warmth, moisture);
   let water = 0;
 
-  if (volcano && crater < volcano.radius) {
+  if (gorge) {
+    // The canyon's floor carries a river, a layer under the shelves either side.
+    water = height + 1;
+    biome = 'river';
+  } else if (volcano && crater < volcano.radius) {
     // The cone is bare black rock whatever the climate, with lava in its crater and its flows.
     if (crater < CRATER) biome = 'lava';
     else if (onLavaFlow(seed, volcano, x, z) && height > WATER_LAYERS) {
