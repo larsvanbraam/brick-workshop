@@ -10,6 +10,7 @@ import {
   START_RADIUS,
   UNLOAD_RADIUS,
   chunkAt,
+  FAR_DROP,
   chunkDistance,
   chunksAround,
   plan,
@@ -43,13 +44,20 @@ import {
 import { WORLD_SIZE, findSpawn } from './world/generate.ts';
 import { isPlant } from './world/plants.ts';
 import { REGION, Terrain, volcanoIn } from './world/terrain.ts';
-import type { ChunkMessage } from './world/worker.ts';
+import type { ChunkMessage, FarMessage } from './world/worker.ts';
+import { FarStore } from './FarView.tsx';
 
 function newSeed() {
   return Math.floor(Math.random() * 1_000_000);
 }
 
-/** The scene's frame: positions are shown centred on a board this size, wherever they are. */
+/**
+ * The scene's frame: positions are shown centred on a board this size, wherever they are. The
+ * scene's origin never moves with the walker. The GPU holds positions as 32-bit floats, which at
+ * 16,000 studs from the start still place a piece to about 0.002 of a stud; jitter would only show
+ * near a million studs, some 25 hours of running from the start, so re-centring the scene on the
+ * walker is not worth what it would cost.
+ */
 const FRAME = WORLD_SIZE;
 
 /** Keys typed into a field are text, not game controls. */
@@ -126,17 +134,60 @@ function Game({
     saveEdits(seed, edits);
   }, [seed, edits]);
   const [chunks, setChunks] = useState<Chunks>(() => new Map());
+  /** The player's pieces still standing, from the edits: put down and not taken off again. */
+  const placedCount = useMemo(() => {
+    const standing = new Set<string>();
+    for (const edit of edits)
+      if (edit.op === 'add') standing.add(edit.brick.id);
+      else standing.delete(edit.id);
+    return standing.size;
+  }, [edits]);
   const chunksRef = useRef<Chunks>(chunks);
   const [revision, setRevision] = useState(0);
   const [centre, setCentre] = useState(() => chunkAt(spawn.x, spawn.z));
   const centreRef = useRef(centre);
   /** How long the last few chunks took to build, for the debug window. */
   const [chunkTimes, setChunkTimes] = useState<number[]>([]);
+  /**
+   * What is in front: the menu, the game, or the brick box over the game. The mouse is locked
+   * while playing where the page allows it; losing the lock (Esc in the browser) does not leave
+   * the game, only M does.
+   */
+  const [screen, setScreen] = useState<'menu' | 'playing' | 'box'>('menu');
+  const playing = screen === 'playing';
+  // Every loaded piece in one list is only needed by the menu (its export) and the debug window.
+  const [debugOptions, setDebugOptions] = useDebugOptions('brick-island-debug-v1');
+  const listAll = screen === 'menu' || debugOptions.enabled;
   const assembly = useMemo<Assembly>(
-    () => ({ name: `World ${seed}`, bricks: allBricks(chunks) }),
-    [chunks, seed],
+    () => ({ name: `World ${seed}`, bricks: listAll ? allBricks(chunks) : [] }),
+    [chunks, seed, listAll],
   );
+  /** Parts of every chunk loaded so far, gathered as chunks arrive rather than counted afresh. */
+  const [partsSeen, setPartsSeen] = useState<ReadonlySet<string>>(() => new Set());
 
+  /**
+   * Chunks from the loader wait here and go into the world one per frame, so a burst of them
+   * arriving together is spread over several frames instead of landing in one.
+   */
+  const arrived = useRef<ChunkMessage[]>([]);
+  const receive = useCallback((chunk: ChunkMessage) => {
+    arrived.current.push(chunk);
+  }, []);
+  /** The ring of chunks past those loaded in full, drawn plainly from afar. */
+  const [farStore] = useState(() => new FarStore());
+  const farArrived = useRef<FarMessage[]>([]);
+  const receiveFar = useCallback((chunk: FarMessage) => {
+    farArrived.current.push(chunk);
+  }, []);
+  /** A far chunk put in the ring, unless the walker has gone on too far for it meanwhile. */
+  const addFar = useCallback(
+    (chunk: FarMessage) => {
+      const [cx, cz] = centreRef.current;
+      if (chunkDistance(chunk.key, cx, cz) > FAR_DROP) return;
+      farStore.set(new Map(farStore.current).set(chunk.key, chunk));
+    },
+    [farStore],
+  );
   /** A chunk from the loader, with the player's edits to it laid over, put into the world. */
   const addChunk = useCallback(
     (chunk: ChunkMessage) => {
@@ -149,6 +200,13 @@ function Game({
       const next = new Map(chunksRef.current).set(chunk.key, bricks);
       chunksRef.current = next;
       setChunkTimes((current) => [...current.slice(-15), chunk.ms]);
+      setPartsSeen((current) => {
+        const fresh = bricks.filter((brick) => !current.has(brick.partId));
+        if (!fresh.length) return current;
+        const next = new Set(current);
+        for (const brick of fresh) next.add(brick.partId);
+        return next;
+      });
       setChunks(next);
       setRevision((current) => current + 1);
     },
@@ -169,30 +227,56 @@ function Game({
   // The loader lasts as long as the game; it is made before the planning below first runs.
   const loader = useRef<ChunkLoader | null>(null);
   useEffect(() => {
-    const created = new ChunkLoader(seed, addChunk);
+    // One arrival a frame: a full chunk if one is waiting, else a far one.
+    let frame = requestAnimationFrame(function next() {
+      const chunk = arrived.current.shift();
+      if (chunk) addChunk(chunk);
+      else {
+        const far = farArrived.current.shift();
+        if (far) addFar(far);
+      }
+      frame = requestAnimationFrame(next);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [addChunk, addFar]);
+  useEffect(() => {
+    const created = new ChunkLoader(seed, receive, receiveFar);
     loader.current = created;
     return () => {
       created.dispose();
       loader.current = null;
     };
-  }, [seed, addChunk]);
+  }, [seed, receive, receiveFar]);
   // As the walker crosses into another chunk: build the chunks round it, nearest first, and drop
   // those now far away.
   useEffect(() => {
     if (!loader.current) return;
     centreRef.current = centre;
     const [cx, cz] = centre;
-    const { request, unload } = plan(cx, cz, new Set(chunksRef.current.keys()));
+    const { request, unload, farRequest, farUnload } = plan(
+      cx,
+      cz,
+      new Set(chunksRef.current.keys()),
+      new Set(farStore.current.keys()),
+    );
     for (const key of unload) dropChunk(key);
-    loader.current.want(request);
-  }, [centre, dropChunk]);
+    if (farUnload.length) {
+      const next = new Map(farStore.current);
+      for (const key of farUnload) next.delete(key);
+      farStore.set(next);
+    }
+    loader.current.want(request, farRequest);
+  }, [centre, dropChunk, farStore]);
   const onChunk = useCallback((cx: number, cz: number) => setCentre([cx, cz]), []);
   /** The chunks that must be there before the game starts: those round the start. */
   const startChunks = useMemo(
     () => chunksAround(...chunkAt(spawn.x, spawn.z), START_RADIUS),
     [spawn],
   );
-  const ready = startChunks.every((key) => chunks.has(key));
+  // Ready once the chunks round the start are in, and from then on: walking away later drops
+  // them, which must not send the game back to the loading screen.
+  const [ready, setReady] = useState(false);
+  if (!ready && startChunks.every((key) => chunks.has(key))) setReady(true);
   /** The volcano of the region the walker is in, if it has one, for the glow over its crater. */
   const regionX = Math.floor((centre[0] * CHUNK) / REGION);
   const regionZ = Math.floor((centre[1] * CHUNK) / REGION);
@@ -207,20 +291,12 @@ function Game({
   const [aim, setAim] = useState<Aim | null>(null);
   const [view, setView] = useState<WalkCamera>('first');
   const [flying, setFlying] = useState(false);
-  /**
-   * What is in front: the menu, the game, or the brick box over the game. The mouse is locked
-   * while playing where the page allows it; losing the lock (Esc in the browser) does not leave
-   * the game, only M does.
-   */
-  const [screen, setScreen] = useState<'menu' | 'playing' | 'box'>('menu');
-  const playing = screen === 'playing';
   /** Whether the game has been played yet, so the menu offers to resume rather than to play. */
   const [started, setStarted] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const nextId = useRef(0);
 
   // The debug window (` or ?debug): the renderer's figures, and the game's own below them.
-  const [debugOptions, setDebugOptions] = useDebugOptions('brick-island-debug-v1');
   const [debugStore] = useState(() => new DebugStore());
   useEffect(() => () => debugStore.dispose(), [debugStore]);
   const [playerStore] = useState(() => new PlayerStore());
@@ -246,10 +322,12 @@ function Game({
   );
 
   const required = useMemo(() => {
-    const ids = new Set(assembly.bricks.map((brick) => brick.partId));
+    const ids = new Set(partsSeen);
     for (const slot of slots) ids.add(slot.partId);
+    // Pieces the player put down that no chunk had yet.
+    for (const edit of edits) if (edit.op === 'add') ids.add(edit.brick.partId);
     return [...ids];
-  }, [assembly, slots]);
+  }, [partsSeen, slots, edits]);
   const library = useLDrawLibrary(required);
 
   const ghost = useMemo(
@@ -468,11 +546,14 @@ function Game({
   }
   if (library.status === 'loading') return <Splash message="Loading parts…" />;
   // Pieces of the player's still standing, not every one ever put down.
-  const built = worldInfo.player;
+  const built = placedCount;
+  let pieceCount = 0;
+  for (const pieces of chunks.values()) pieceCount += pieces.length;
   return (
     <div className="game">
       <GameScene
         chunks={chunks}
+        farChunks={farStore}
         bricks={index.bricks}
         walkWorld={walk}
         revision={revision}
@@ -528,7 +609,7 @@ function Game({
           <ClockLabel clock={clock} />
         </strong>
         <span>
-          {assembly.bricks.length.toLocaleString()} pieces · {built} placed
+          {pieceCount.toLocaleString()} pieces · {built} placed
           {flying ? ' · flying' : ''}
         </span>
       </div>

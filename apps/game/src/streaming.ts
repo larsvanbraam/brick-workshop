@@ -1,11 +1,15 @@
 import { CHUNK, chunkKey } from './chunks.ts';
-import type { ChunkMessage, ChunkRequest } from './world/worker.ts';
+import type { ChunkMessage, ChunkRequest, FarMessage } from './world/worker.ts';
 
 /** Chunks this many away from the walker's, in any direction, are kept loaded. */
 export const LOAD_RADIUS = 2;
 /** Chunks further than this are dropped: a margin over the load radius, so a walker going back
  * and forth over a chunk edge does not drop and rebuild the same chunks. */
 export const UNLOAD_RADIUS = 3;
+/** Past the chunks loaded in full, chunks this far away are drawn plainly, from afar. */
+export const FAR_RADIUS = 4;
+/** Far chunks further than this are dropped. */
+export const FAR_DROP = 5;
 /** Chunks round the start that must be there before the game begins. */
 export const START_RADIUS = 1;
 
@@ -32,18 +36,29 @@ export function chunksAround(cx: number, cz: number, radius: number): string[] {
 
 /**
  * What to do as the walker moves: the chunks round it not yet loaded, nearest first (some may be
- * on their way already), and the loaded chunks now far enough away to drop.
+ * on their way already), and the loaded chunks now far enough away to drop. Likewise for the ring
+ * of far chunks past them.
  */
 export function plan(
   cx: number,
   cz: number,
   loaded: ReadonlySet<string>,
-): { request: string[]; unload: string[] } {
+  far: ReadonlySet<string> = new Set(),
+): { request: string[]; unload: string[]; farRequest: string[]; farUnload: string[] } {
+  const near = new Set(chunksAround(cx, cz, LOAD_RADIUS));
   return {
     request: chunksAround(cx, cz, LOAD_RADIUS).filter((key) => !loaded.has(key)),
     unload: [...loaded].filter((key) => chunkDistance(key, cx, cz) > UNLOAD_RADIUS),
+    farRequest: chunksAround(cx, cz, FAR_RADIUS).filter((key) => !near.has(key) && !far.has(key)),
+    farUnload: [...far].filter((key) => chunkDistance(key, cx, cz) > FAR_DROP),
   };
 }
+
+/** The scene's frame (see `GameScene`): far chunks are built straight into its coordinates. */
+const FRAME = 128;
+
+/** A chunk takes a fraction of a second to build; a worker this slow is taken to be stuck. */
+const STALLED_MS = 10_000;
 
 /** Background threads that build chunks: a few, so chunks are built side by side. */
 const WORKERS = Math.max(
@@ -57,53 +72,99 @@ const WORKERS = Math.max(
  * a chunk no longer wanted when its turn comes is skipped.
  */
 export class ChunkLoader {
-  private readonly workers: Worker[] = [];
+  private readonly workers = new Set<Worker>();
   private readonly idle: Worker[] = [];
+  /** The job each busy worker is on, and since when. Far jobs are keyed `far:` and the chunk. */
+  private readonly busy = new Map<Worker, { job: string; since: number }>();
+  /** Jobs waiting: full chunks first, then far ones. */
   private queue: string[] = [];
-  /** Chunks asked for or being built. */
+  /** Jobs asked for or under way. */
   readonly pending = new Set<string>();
   private readonly seed: number;
   private readonly onChunk: (chunk: ChunkMessage) => void;
+  private readonly onFar: (chunk: FarMessage) => void;
+  private readonly watchdog: ReturnType<typeof setInterval>;
 
-  constructor(seed: number, onChunk: (chunk: ChunkMessage) => void) {
+  constructor(
+    seed: number,
+    onChunk: (chunk: ChunkMessage) => void,
+    onFar: (chunk: FarMessage) => void = () => {},
+  ) {
     this.seed = seed;
     this.onChunk = onChunk;
-    for (let index = 0; index < WORKERS; index++) {
-      const worker = new Worker(new URL('./world/worker.ts', import.meta.url), { type: 'module' });
-      worker.onmessage = (event: MessageEvent<ChunkMessage>) => {
-        this.pending.delete(event.data.key);
-        this.idle.push(worker);
-        this.onChunk(event.data);
-        this.pump();
-      };
-      this.workers.push(worker);
-      this.idle.push(worker);
-    }
+    this.onFar = onFar;
+    for (let index = 0; index < WORKERS; index++) this.hire();
+    // A worker that never answers (it failed to load, or hangs) would hold its job back for
+    // good: one taking far longer than a chunk ever should is replaced and its job asked again.
+    this.watchdog = setInterval(() => {
+      const now = performance.now();
+      for (const [worker, busy] of this.busy)
+        if (now - busy.since > STALLED_MS) this.replace(worker);
+    }, 1000);
   }
 
-  /** The chunks to build, nearest first: replaces whatever was still waiting. */
-  want(keys: readonly string[]) {
-    const building = new Set(this.pending);
-    for (const key of this.queue) building.delete(key);
-    this.queue = keys.filter((key) => !building.has(key));
+  private hire() {
+    const worker = new Worker(new URL('./world/worker.ts', import.meta.url), { type: 'module' });
+    worker.onmessage = (event: MessageEvent<ChunkMessage | FarMessage>) => {
+      const job = this.busy.get(worker)?.job;
+      this.busy.delete(worker);
+      if (job) this.pending.delete(job);
+      this.idle.push(worker);
+      if (event.data.kind === 'far') this.onFar(event.data);
+      else this.onChunk(event.data);
+      this.pump();
+    };
+    worker.onerror = (event) => {
+      event.preventDefault();
+      this.replace(worker);
+    };
+    this.workers.add(worker);
+    this.idle.push(worker);
+  }
+
+  /** Lets a worker go and hires another, putting its job back at the front of the queue. */
+  private replace(worker: Worker) {
+    const busy = this.busy.get(worker);
+    worker.terminate();
+    this.workers.delete(worker);
+    this.busy.delete(worker);
+    const at = this.idle.indexOf(worker);
+    if (at !== -1) this.idle.splice(at, 1);
+    if (busy && this.pending.has(busy.job)) this.queue.unshift(busy.job);
+    this.hire();
+    this.pump();
+  }
+
+  /**
+   * The chunks to build in full and those to build only from afar, each nearest first: replaces
+   * whatever was still waiting.
+   */
+  want(keys: readonly string[], far: readonly string[] = []) {
+    const underway = new Set([...this.busy.values()].map((busy) => busy.job));
+    this.queue = [...keys, ...far.map((key) => `far:${key}`)].filter((job) => !underway.has(job));
     this.pending.clear();
-    for (const key of building) this.pending.add(key);
-    for (const key of this.queue) this.pending.add(key);
+    for (const job of underway) this.pending.add(job);
+    for (const job of this.queue) this.pending.add(job);
     this.pump();
   }
 
   private pump() {
     while (this.idle.length && this.queue.length) {
-      const key = this.queue.shift()!;
-      const [cx, cz] = parse(key);
-      this.idle.pop()!.postMessage({ seed: this.seed, cx, cz } satisfies ChunkRequest);
+      const job = this.queue.shift()!;
+      const far = job.startsWith('far:');
+      const [cx, cz] = parse(far ? job.slice(4) : job);
+      const worker = this.idle.pop()!;
+      this.busy.set(worker, { job, since: performance.now() });
+      worker.postMessage({ seed: this.seed, cx, cz, far, frame: FRAME } satisfies ChunkRequest);
     }
   }
 
   dispose() {
+    clearInterval(this.watchdog);
     for (const worker of this.workers) worker.terminate();
-    this.workers.length = 0;
+    this.workers.clear();
     this.idle.length = 0;
+    this.busy.clear();
     this.queue = [];
     this.pending.clear();
   }

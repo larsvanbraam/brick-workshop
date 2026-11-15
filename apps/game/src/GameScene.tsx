@@ -1,16 +1,19 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { BoxGeometry, EdgesGeometry, Raycaster, Vector2 } from 'three';
 import type { Color, Group, Object3D } from 'three';
 import { PLATE_HEIGHT, footprint } from '@brick-workshop/engine';
 import type { Brick } from '@brick-workshop/engine';
+import { getCinematicDpr } from '@brick-workshop/render/cinematic-look';
 import { FallbackBatch } from '@brick-workshop/render/fallback-batch';
 import { LDrawBatch, canBatchLDrawModel } from '@brick-workshop/render/ldraw-batches';
 import { displayHex } from '@brick-workshop/render/ldraw-materials';
 import { WalkMode } from '@brick-workshop/walk/walk-view';
 import type { WalkWorld } from '@brick-workshop/walk/walk';
 import type { Chunks } from './chunks.ts';
-import { LOAD_RADIUS, chunkAt } from './streaming.ts';
+import { FAR_RADIUS, LOAD_RADIUS, chunkAt } from './streaming.ts';
+import { FarLayer } from './FarView.tsx';
+import type { FarStore } from './FarView.tsx';
 import { CHUNK } from './chunks.ts';
 import type { WalkCamera, WalkProbe } from '@brick-workshop/walk/walk-view';
 import { DebugHelpers, DebugProbe } from '@brick-workshop/render/scene-debug';
@@ -19,6 +22,7 @@ import { CollisionBoxes, PlayerProbe } from './debug.tsx';
 import type { PlayerStore } from './debug.tsx';
 import { COLORS } from '@brick-workshop/engine';
 import { aimAt, aimKey } from './build.ts';
+import { requestShadows } from './shadows.ts';
 import { GameStage } from './GameStage.tsx';
 import { skyAt } from './sky.ts';
 import type { DayClock } from './sky.ts';
@@ -33,6 +37,8 @@ export type MouseAction = 'break' | 'place' | 'pick';
 export interface GameSceneProps {
   /** The world's pieces by chunk; each chunk is drawn as a batch of its own. */
   chunks: Chunks;
+  /** The ring past them, drawn plainly from afar until a chunk is loaded in full. */
+  farChunks: FarStore;
   /** Every piece by ID, for what the crosshair hits. */
   bricks: ReadonlyMap<string, Brick>;
   /** The walker's collision world, kept up to date chunk by chunk. */
@@ -88,18 +94,20 @@ export function GameScene(props: GameSceneProps) {
   const batchRef = useRef<LDrawBatch | null>(null);
   const probe = useRef<WalkProbe | null>(null);
   const { debug } = props;
+  const dpr = useCappedDpr();
   return (
     <Canvas
       shadows
       frameloop="demand"
       camera={{ position: [0, 30, 60], fov: 70, near: 0.05, far: 600 }}
       gl={{ antialias: false }}
-      dpr={[1, 2]}
+      dpr={dpr}
       aria-label="Brick island"
     >
       <GameStage
         size={buildArea}
-        view={(LOAD_RADIUS + 0.5) * CHUNK}
+        view={(FAR_RADIUS + 0.5) * CHUNK}
+        shadowView={(LOAD_RADIUS + 0.5) * CHUNK}
         clock={props.clock}
         volcano={props.volcano}
       />
@@ -114,6 +122,7 @@ export function GameScene(props: GameSceneProps) {
           batchRef={batchRef}
         />
       ))}
+      <FarLayer store={props.farChunks} loaded={chunks} />
       <WalkMode
         bricks={EMPTY}
         world={props.walkWorld}
@@ -155,12 +164,36 @@ export function GameScene(props: GameSceneProps) {
 }
 
 const EMPTY: readonly Brick[] = [];
+/** The most pixels the canvas draws: about a 1080p screen's worth. */
+const MAX_PIXELS = 2_000_000;
+
+/**
+ * The canvas's pixel ratio: the screen's, but capped. At a high-density screen's full ratio the
+ * canvas holds millions of pixels, each lit, shadowed and shaded for ambient occlusion every
+ * frame; capping them keeps walking smooth.
+ */
+function useCappedDpr() {
+  const measure = () =>
+    getCinematicDpr(
+      window.innerWidth,
+      window.innerHeight,
+      window.devicePixelRatio || 1,
+      MAX_PIXELS,
+    );
+  const [dpr, setDpr] = useState(measure);
+  useEffect(() => {
+    const resize = () => setDpr(measure());
+    window.addEventListener('resize', resize);
+    return () => window.removeEventListener('resize', resize);
+  }, []);
+  return dpr;
+}
 
 /**
  * One chunk's pieces: those with an LDraw model in a batch of their own, the rest from simple
  * shapes. A change to the chunk redraws only this chunk.
  */
-function ChunkView({
+const ChunkView = memo(function ChunkView({
   chunk,
   pieces,
   models,
@@ -176,15 +209,30 @@ function ChunkView({
   /** The debug window shows the statistics of one batch: the first chunk's. */
   batchRef: { current: LDrawBatch | null };
 }) {
-  const split = useMemo(() => {
-    const batched: Brick[] = [];
-    const fallback: Brick[] = [];
+  // The library hands over a new set of models whenever any part loads; the chunk is redrawn
+  // only when one of the models its own pieces use has changed, not on every load elsewhere.
+  const own = useMemo(() => {
+    const used: Record<string, Group> = {};
     for (const brick of pieces) {
       const model = models[brick.partId];
-      (model && batchable(model) ? batched : fallback).push(brick);
+      if (model) used[brick.partId] = model;
+    }
+    return used;
+  }, [pieces, models]);
+  const ownKey = Object.keys(own).sort().join(',');
+  const split = useMemo(() => {
+    const used = own;
+    const batched: { brick: Brick; model: Group }[] = [];
+    const fallback: Brick[] = [];
+    for (const brick of pieces) {
+      const model = used[brick.partId];
+      if (model && batchable(model)) batched.push({ brick, model });
+      else fallback.push(brick);
     }
     return { batched, fallback };
-  }, [pieces, models]);
+    // A part's model never changes once loaded, so the loaded parts' IDs stand for the models:
+    // the key changes exactly when a model this chunk uses arrives.
+  }, [pieces, ownKey]); // eslint-disable-line react-hooks/exhaustive-deps
   const [native] = useState(
     () => new LDrawBatch(undefined, { fadeEdges: true, solidGround: true }),
   );
@@ -198,25 +246,29 @@ function ChunkView({
     };
   }, [chunk, drawings, native, simple, batchRef]);
   const invalidate = useThree((state) => state.invalidate);
-  const shadows = useThree((state) => state.gl.shadowMap);
+  /** Whether the batch has been filled once: a new chunk is built later, edits at once. */
+  const filled = useRef(false);
   useLayoutEffect(() => {
-    const entries = split.batched.map((brick) => ({ brick, model: models[brick.partId] }));
-    // Edits touch a piece or two and land in the same frame; a new chunk is placed in slices.
-    if (native.changes(entries, buildArea) < 200) {
+    const entries = split.batched;
+    const done = (complete: boolean) => {
+      if (!complete) return;
+      requestShadows();
+      invalidate();
+    };
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    if (!filled.current) {
+      // A chunk just arrived: it is built a frame later and then in slices, so the work of
+      // building it does not land in the same frame as the work of adding it to the world.
+      filled.current = true;
+      timer = setTimeout(() => void native.updateInSlices(entries, buildArea, false).then(done));
+    } else if (native.changes(entries, buildArea) < 200) {
+      // An edit touches a piece or two and shows in the same frame.
       native.update(entries, buildArea);
-      shadows.needsUpdate = true;
-      invalidate();
-    } else
-      void native.updateInSlices(entries, buildArea, false).then((complete) => {
-        if (!complete) return;
-        shadows.needsUpdate = true;
-        invalidate();
-      });
-    if (simple.update(split.fallback, buildArea)) {
-      shadows.needsUpdate = true;
-      invalidate();
-    }
-  }, [native, simple, split, models, buildArea, invalidate, shadows]);
+      done(true);
+    } else void native.updateInSlices(entries, buildArea, false).then(done);
+    if (simple.update(split.fallback, buildArea)) done(true);
+    return () => clearTimeout(timer);
+  }, [native, simple, split, buildArea, invalidate]);
   useEffect(
     () => () => {
       native.dispose();
@@ -230,7 +282,7 @@ function ChunkView({
       <primitive object={simple.object} dispose={null} />
     </>
   );
-}
+});
 
 /** Watches the walker each frame and says when it crosses into another chunk. */
 function ChunkWatcher({

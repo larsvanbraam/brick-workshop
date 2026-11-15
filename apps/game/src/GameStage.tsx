@@ -22,6 +22,7 @@ import {
 import { AMBIENT_OCCLUSION, createStudioEnvironment } from '@brick-workshop/render/cinematic-look';
 import { random } from './world/noise.ts';
 import { PLATE_HEIGHT } from '@brick-workshop/engine';
+import { SHADOW_INTERVAL, requestShadows, takeShadowRequest } from './shadows.ts';
 import { skyAt } from './sky.ts';
 import type { DayClock } from './sky.ts';
 import type { Volcano } from './world/terrain.ts';
@@ -116,13 +117,16 @@ function createStars() {
 export function GameStage({
   size,
   view,
+  shadowView,
   clock,
   volcano,
 }: {
   /** The scene's frame: positions are centred on a board this size. */
   size: number;
-  /** How far round the walker the world is loaded, in studs: the fog closes in before it. */
+  /** How far round the walker the world is drawn, in studs: the fog closes in before it. */
   view: number;
+  /** How far round the walker the world is loaded in full: the shadows cover that. */
+  shadowView: number;
   clock: DayClock;
   volcano: Volcano | null;
 }) {
@@ -131,15 +135,16 @@ export function GameStage({
     const key = new DirectionalLight('#fff1dc', 2.6);
     key.castShadow = true;
     const camera = key.shadow.camera;
-    // The shadows cover what the fog lets through round the walker, and follow it.
-    const reach = view * 0.9;
+    // The shadows cover the ground near the walker, where they show, and follow it; further out
+    // the fog softens everything anyway. Every redraw draws all of it, so it is kept small.
+    const reach = shadowView * 0.6;
     camera.left = -reach;
     camera.right = reach;
     camera.top = reach;
     camera.bottom = -reach;
     camera.near = 1;
-    camera.far = view * 4;
-    key.shadow.mapSize.set(4096, 4096);
+    camera.far = shadowView * 4;
+    key.shadow.mapSize.set(2048, 2048);
     key.shadow.bias = -0.0004;
     key.shadow.normalBias = 0.02;
     const target = new Object3D();
@@ -168,7 +173,7 @@ export function GameStage({
     stars.renderOrder = -9;
     stars.frustumCulled = false;
     stars.raycast = () => {};
-    const fog = new Fog('#bcd7ec', view * 0.45, view);
+    const fog = new Fog('#bcd7ec', view * 0.4, view);
     // A warm light just over the crater's lava, lighting the rim and the slopes round it.
     const glow = new PointLight('#ff6a24', 0, 26, 2);
     if (volcano)
@@ -178,7 +183,7 @@ export function GameStage({
         size / 2 - volcano.z - 0.5,
       );
     return { key, target, fill, dome, stars, fog, glow };
-  }, [size, view, volcano]);
+  }, [size, view, shadowView, volcano]);
 
   useEffect(
     () => () => {
@@ -222,24 +227,25 @@ export function GameStage({
   /** Where the shadow-casting light pointed, and where it was centred, when shadows were drawn. */
   const shadowed = useRef(new Vector3());
   const followed = useRef(new Vector3(Infinity, 0, Infinity));
+  const lastShadows = useRef(0);
   useFrame(({ camera }, delta) => {
     clock.advance(delta);
     const sky = skyAt(clock.time);
     const { key, target, fill, dome, stars, fog } = rig;
     // The light's shadows are centred on the walker in steps of a few studs, so they do not
     // shimmer as it walks and are redrawn only when it has moved on.
-    const step = 8;
+    const step = 16;
     const centreX = Math.round(camera.position.x / step) * step;
     const centreZ = Math.round(camera.position.z / step) * step;
     if (centreX !== followed.current.x || centreZ !== followed.current.z) {
       followed.current.set(centreX, 0, centreZ);
       target.position.set(centreX, 0, centreZ);
       target.updateMatrixWorld();
-      gl.shadowMap.needsUpdate = true;
+      requestShadows();
     }
     key.position
       .copy(sky.key.direction)
-      .multiplyScalar(view * 1.5)
+      .multiplyScalar(shadowView * 1.5)
       .add(followed.current);
     key.color.copy(sky.key.color);
     key.intensity = sky.key.intensity;
@@ -266,8 +272,14 @@ export function GameStage({
     // Shadows follow the light once it has turned about half a degree.
     if (shadowed.current.angleTo(sky.key.direction) > 0.008) {
       shadowed.current.copy(sky.key.direction);
-      gl.shadowMap.needsUpdate = true;
+      requestShadows();
     }
+    // Every request since the last redraw is served by one, at most every half second.
+    if (performance.now() - lastShadows.current > SHADOW_INTERVAL * 1000)
+      if (takeShadowRequest()) {
+        gl.shadowMap.needsUpdate = true;
+        lastShadows.current = performance.now();
+      }
   });
 
   return (
