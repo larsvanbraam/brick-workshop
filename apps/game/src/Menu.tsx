@@ -149,6 +149,9 @@ function Islands({ seed, onOpenIsland }: MenuProps) {
                 <strong>Island {island.seed}</strong>
                 <span>
                   {island.placed} placed
+                  {island.placed && island.chunks
+                    ? ` in ${island.chunks} chunk${island.chunks === 1 ? '' : 's'}`
+                    : ''}
                   {island.removed ? ` · ${island.removed} taken off` : ''} ·{' '}
                   {playedAgo(island.playedAt)}
                 </span>

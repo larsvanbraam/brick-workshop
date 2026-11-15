@@ -24,7 +24,7 @@ import { Menu } from './Menu.tsx';
 import type { MouseAction } from './GameScene.tsx';
 import { PLAYER_PREFIX, isPlayerPiece } from './export.ts';
 import { GameDebugPanel, PlayerStore } from './debug.tsx';
-import type { EditTiming } from './debug.tsx';
+import type { EditTiming, StreamingInfo } from './debug.tsx';
 import { DebugOverlay, DebugStore, useDebugOptions } from '@brick-workshop/render/scene-debug';
 import { DayClock, START_TIME, clockTime, isDaytime } from './sky.ts';
 import { STARTER_HOTBAR } from './hotbar.ts';
@@ -116,7 +116,9 @@ function Game({
   onNewWorld: () => void;
   onOpenIsland: (seed: number) => void;
 }) {
-  const [spawn] = useState(() => findSpawn(new Terrain(seed)));
+  /** The terrain on the main thread: for the start, and for the debug window's chunk borders. */
+  const [terrain] = useState(() => new Terrain(seed));
+  const [spawn] = useState(() => findSpawn(terrain));
   /**
    * The live world, streamed in chunk by chunk round the walker: the pieces by chunk, an index for
    * placing and breaking, and the walker's collision world, all kept up to date together. Chunks
@@ -301,6 +303,7 @@ function Game({
   useEffect(() => () => debugStore.dispose(), [debugStore]);
   const [playerStore] = useState(() => new PlayerStore());
   const [collision, setCollision] = useState(false);
+  const [borders, setBorders] = useState(false);
   const [lastEdit, setLastEdit] = useState<EditTiming | null>(null);
 
   // The island's day: carries on from the last visit, kept every few seconds.
@@ -533,6 +536,23 @@ function Game({
       total: assembly.bricks.length,
     };
   }, [assembly, chunks, chunkTimes, seed]);
+  /** How the world streams in, for the debug window, which reads it a couple of times a second. */
+  const readStreaming = (): StreamingInfo => {
+    let pieces = 0;
+    for (const chunk of chunksRef.current.values()) pieces += chunk.length;
+    const activity = loader.current?.activity;
+    return {
+      chunk: `${centreRef.current[0]},${centreRef.current[1]}`,
+      loaded: chunksRef.current.size,
+      far: farStore.current.size,
+      waiting: activity?.waiting ?? 0,
+      waitingFar: activity?.waitingFar ?? 0,
+      building: activity?.building ?? 0,
+      workers: activity?.workers ?? 0,
+      times: chunkTimes,
+      pieces,
+    };
+  };
   const debugCounts = useMemo(() => {
     let fallback = 0;
     for (const brick of assembly.bricks) if (!library.models[brick.partId]) fallback++;
@@ -577,6 +597,7 @@ function Game({
           store: debugStore,
           player: playerStore,
           collision,
+          borders: borders ? terrain : null,
         }}
       />
       {debugOptions.enabled && (
@@ -597,6 +618,9 @@ function Game({
             world={worldInfo}
             collision={collision}
             onCollision={setCollision}
+            borders={borders}
+            onBorders={setBorders}
+            streaming={readStreaming}
             clock={clock}
           />
         </DebugOverlay>

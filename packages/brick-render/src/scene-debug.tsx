@@ -163,7 +163,8 @@ export function DebugProbe({
 }: {
   store: DebugStore;
   options: DebugOptions;
-  batch: RefObject<LDrawBatch | null>;
+  /** Anything with batch statistics: one batch, or a sum of several. */
+  batch: RefObject<Pick<LDrawBatch, 'stats'> | null>;
 }) {
   const get = useThree((state) => state.get);
   const invalidate = useThree((state) => state.invalidate);

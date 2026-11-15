@@ -62,7 +62,7 @@ describe('saved edits', () => {
       new Set(edits.map((edit) => JSON.stringify(edit))),
     );
     // A piece put down and taken off again is not counted as placed.
-    expect(listIslands()[0]).toMatchObject({ seed: 7, placed: 1, removed: 1 });
+    expect(listIslands()[0]).toMatchObject({ seed: 7, placed: 1, removed: 1, chunks: 1 });
   });
 
   it('forgets chunks whose edits are gone, and whole islands', () => {

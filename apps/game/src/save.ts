@@ -44,6 +44,8 @@ export interface IslandSummary {
   /** Pieces placed and taken off, counted from the edits. */
   placed: number;
   removed: number;
+  /** Chunks the pieces placed stand in: how spread out the building is. Missing in older saves. */
+  chunks?: number;
   /** When it was last played, as an ISO date. */
   playedAt: string;
 }
@@ -55,14 +57,20 @@ export function listIslands(): IslandSummary[] {
 
 function summarise(seed: number, edits: readonly Edit[]): IslandSummary {
   // Only pieces still standing count as placed: one put down and taken off again is gone.
-  const added = new Set<string>();
+  const added = new Map<string, string>();
   let removed = 0;
   for (const edit of edits) {
-    if (edit.op === 'add') added.add(edit.brick.id);
+    if (edit.op === 'add') added.set(edit.brick.id, chunkOf(edit.brick));
     else if (added.has(edit.id)) added.delete(edit.id);
     else removed++;
   }
-  return { seed, placed: added.size, removed, playedAt: new Date().toISOString() };
+  return {
+    seed,
+    placed: added.size,
+    removed,
+    chunks: new Set(added.values()).size,
+    playedAt: new Date().toISOString(),
+  };
 }
 
 /** The chunk an edit belongs to: the chunk of the piece put down or taken off. */

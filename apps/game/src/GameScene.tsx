@@ -7,6 +7,7 @@ import type { Brick } from '@brick-workshop/engine';
 import { getCinematicDpr } from '@brick-workshop/render/cinematic-look';
 import { FallbackBatch } from '@brick-workshop/render/fallback-batch';
 import { LDrawBatch, canBatchLDrawModel } from '@brick-workshop/render/ldraw-batches';
+import type { BatchLayerStats, BatchStats } from '@brick-workshop/render/ldraw-batches';
 import { displayHex } from '@brick-workshop/render/ldraw-materials';
 import { WalkMode } from '@brick-workshop/walk/walk-view';
 import type { WalkWorld } from '@brick-workshop/walk/walk';
@@ -26,6 +27,8 @@ import { requestShadows } from './shadows.ts';
 import { GameStage } from './GameStage.tsx';
 import { skyAt } from './sky.ts';
 import type { DayClock } from './sky.ts';
+import type { Terrain } from './world/terrain.ts';
+import { ChunkBorders } from './debug.tsx';
 import type { Volcano } from './world/terrain.ts';
 import type { Aim } from './build.ts';
 
@@ -74,6 +77,8 @@ export interface GameSceneDebug {
   store: DebugStore;
   player: PlayerStore;
   collision: boolean;
+  /** The terrain to outline the loaded chunks' edges on, or null to leave them out. */
+  borders: Terrain | null;
 }
 
 /** What each chunk draws: its batches, for the crosshair to hit and the outlines to dim. */
@@ -91,7 +96,8 @@ export function GameScene(props: GameSceneProps) {
   );
   // One map for the scene's lifetime: chunks register their batches in it as they mount.
   const [drawings] = useState(() => new Map<string, ChunkDrawing>());
-  const batchRef = useRef<LDrawBatch | null>(null);
+  // The debug window's batch figures, summed over every chunk's batch.
+  const [summed] = useState(() => ({ current: new SummedBatches(drawings) }));
   const probe = useRef<WalkProbe | null>(null);
   const { debug } = props;
   const dpr = useCappedDpr();
@@ -119,7 +125,6 @@ export function GameScene(props: GameSceneProps) {
           models={models}
           buildArea={buildArea}
           drawings={drawings}
-          batchRef={batchRef}
         />
       ))}
       <FarLayer store={props.farChunks} loaded={chunks} />
@@ -139,7 +144,7 @@ export function GameScene(props: GameSceneProps) {
       <ChunkWatcher probe={probe} buildArea={buildArea} onChunk={props.onChunk} />
       {debug.options.enabled && (
         <>
-          <DebugProbe store={debug.store} options={debug.options} batch={batchRef} />
+          <DebugProbe store={debug.store} options={debug.options} batch={summed} />
           <DebugHelpers
             options={debug.options}
             bounds={null}
@@ -148,6 +153,9 @@ export function GameScene(props: GameSceneProps) {
           />
           <PlayerProbe probe={probe} store={debug.player} buildArea={buildArea} />
           {debug.collision && <CollisionBoxes probe={probe} />}
+          {debug.borders && (
+            <ChunkBorders terrain={debug.borders} chunks={chunks} buildArea={buildArea} />
+          )}
         </>
       )}
       <Aimer
@@ -199,15 +207,12 @@ const ChunkView = memo(function ChunkView({
   models,
   buildArea,
   drawings,
-  batchRef,
 }: {
   chunk: string;
   pieces: readonly Brick[];
   models: Record<string, Group>;
   buildArea: number;
   drawings: Map<string, ChunkDrawing>;
-  /** The debug window shows the statistics of one batch: the first chunk's. */
-  batchRef: { current: LDrawBatch | null };
 }) {
   // The library hands over a new set of models whenever any part loads; the chunk is redrawn
   // only when one of the models its own pieces use has changed, not on every load elsewhere.
@@ -239,12 +244,10 @@ const ChunkView = memo(function ChunkView({
   const [simple] = useState(() => new FallbackBatch());
   useEffect(() => {
     drawings.set(chunk, { native, objects: [native.object, simple.object] });
-    if (!batchRef.current) batchRef.current = native;
     return () => {
       drawings.delete(chunk);
-      if (batchRef.current === native) batchRef.current = null;
     };
-  }, [chunk, drawings, native, simple, batchRef]);
+  }, [chunk, drawings, native, simple]);
   const invalidate = useThree((state) => state.invalidate);
   /** Whether the batch has been filled once: a new chunk is built later, edits at once. */
   const filled = useRef(false);
@@ -283,6 +286,66 @@ const ChunkView = memo(function ChunkView({
     </>
   );
 });
+
+/**
+ * The batch figures of every chunk added up, for the debug window. Worked out at most twice a
+ * second: the window reads them every frame, and summing a few dozen batches each time would cost
+ * more than what it measures.
+ */
+class SummedBatches {
+  private readonly drawings: ReadonlyMap<string, ChunkDrawing>;
+  private last = 0;
+  private cached: BatchStats | null = null;
+
+  constructor(drawings: ReadonlyMap<string, ChunkDrawing>) {
+    this.drawings = drawings;
+  }
+
+  stats(): BatchStats {
+    const now = performance.now();
+    if (this.cached && now - this.last < 500) return this.cached;
+    this.last = now;
+    const sum: BatchStats = {
+      bricks: 0,
+      looks: 0,
+      coveredStuds: 0,
+      closedUndersides: 0,
+      edgeSegments: 0,
+      conditionalSegments: 0,
+      layers: [],
+    };
+    const layers = new Map<string, BatchLayerStats>();
+    for (const { native } of this.drawings.values()) {
+      if (!native) continue;
+      const stats = native.stats();
+      sum.bricks += stats.bricks;
+      sum.looks += stats.looks;
+      sum.coveredStuds += stats.coveredStuds;
+      sum.closedUndersides += stats.closedUndersides;
+      sum.edgeSegments += stats.edgeSegments;
+      sum.conditionalSegments += stats.conditionalSegments;
+      for (const layer of stats.layers) {
+        const total = layers.get(layer.finish);
+        if (!total) layers.set(layer.finish, { ...layer });
+        else
+          for (const field of [
+            'instances',
+            'free',
+            'maxInstances',
+            'geometries',
+            'vertices',
+            'maxVertices',
+            'indices',
+            'maxIndices',
+          ] as const)
+            total[field] += layer[field];
+      }
+    }
+    sum.layers = [...layers.values()];
+    this.cached = sum;
+    return sum;
+  }
+}
 
 /** Watches the walker each frame and says when it crosses into another chunk. */
 function ChunkWatcher({

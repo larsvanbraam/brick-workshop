@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useSyncExternalStore } from 'react';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { BufferAttribute, BufferGeometry, LineBasicMaterial, LineSegments } from 'three';
 import { PLATE_HEIGHT } from '@brick-workshop/engine';
@@ -7,6 +7,8 @@ import { MINIFIG } from '@brick-workshop/walk/walk';
 import type { WalkBox } from '@brick-workshop/walk/walk';
 import type { WalkProbe } from '@brick-workshop/walk/walk-view';
 import type { Aim } from './build.ts';
+import { CHUNK } from './chunks.ts';
+import type { Terrain } from './world/terrain.ts';
 import { DAY_SECONDS, clockTime } from './sky.ts';
 import type { DayClock } from './sky.ts';
 
@@ -161,6 +163,34 @@ export interface EditTiming {
   ok: boolean;
 }
 
+/** How the world is streaming in round the walker, read a couple of times a second. */
+export interface StreamingInfo {
+  /** The walker's chunk. */
+  chunk: string;
+  loaded: number;
+  far: number;
+  waiting: number;
+  waitingFar: number;
+  building: number;
+  workers: number;
+  /** Build times of the last few chunks, in ms. */
+  times: readonly number[];
+  pieces: number;
+}
+
+function useStreaming(read: () => StreamingInfo) {
+  const reader = useRef(read);
+  useEffect(() => {
+    reader.current = read;
+  });
+  const [info, setInfo] = useState(read);
+  useEffect(() => {
+    const timer = setInterval(() => setInfo(reader.current()), 500);
+    return () => clearInterval(timer);
+  }, []);
+  return info;
+}
+
 export interface WorldInfo {
   seed: number;
   version: number;
@@ -183,6 +213,9 @@ export function GameDebugPanel({
   world,
   collision,
   onCollision,
+  borders,
+  onBorders,
+  streaming,
   clock,
 }: {
   player: PlayerStore;
@@ -193,8 +226,17 @@ export function GameDebugPanel({
   world: WorldInfo;
   collision: boolean;
   onCollision: (on: boolean) => void;
+  /** Whether chunk edges are outlined on the ground. */
+  borders: boolean;
+  onBorders: (on: boolean) => void;
+  streaming: () => StreamingInfo;
   clock: DayClock;
 }) {
+  const stream = useStreaming(streaming);
+  const average = stream.times.length
+    ? stream.times.reduce((sum, ms) => sum + ms, 0) / stream.times.length
+    : 0;
+  const slowest = stream.times.length ? Math.max(...stream.times) : 0;
   const live = useSyncExternalStore(player.subscribe, player.getSnapshot);
   useSyncExternalStore(clock.subscribe, clock.getSnapshot);
   const speeds: [string, number][] = [
@@ -239,12 +281,27 @@ export function GameDebugPanel({
         </dd>
         <dt>Island</dt>
         <dd>
-          {world.seed} · generator v{world.version} · {Math.round(world.generationMs)} ms
+          {world.seed} · generator v{world.version}
         </dd>
         <dt>Pieces</dt>
         <dd>
           {world.ground.toLocaleString('en-US')} ground · {world.trees.toLocaleString('en-US')}{' '}
           plants · {world.player} yours
+        </dd>
+        <dt>Chunk</dt>
+        <dd>{stream.chunk}</dd>
+        <dt>Loaded</dt>
+        <dd>
+          {stream.loaded} full · {stream.far} far · {stream.pieces.toLocaleString('en-US')} pieces
+        </dd>
+        <dt>Streaming</dt>
+        <dd>
+          {stream.building} building on {stream.workers} · {stream.waiting} waiting ·{' '}
+          {stream.waitingFar} far waiting
+        </dd>
+        <dt>Chunk build</dt>
+        <dd>
+          {stream.times.length ? `${fixed(average, 0)} ms · slowest ${fixed(slowest, 0)}` : '—'}
         </dd>
         <dt>Collision</dt>
         <dd>{live ? `${live.boxes.toLocaleString('en-US')} boxes` : '—'}</dd>
@@ -287,7 +344,91 @@ export function GameDebugPanel({
           />
           Collision boxes
         </label>
+        <label>
+          <input
+            type="checkbox"
+            checked={borders}
+            onChange={(event) => onBorders(event.target.checked)}
+          />
+          Chunk borders
+        </label>
       </fieldset>
     </>
   );
+}
+
+/** A stud's surface in scene units: three plates a layer. */
+const LAYER = 3 * PLATE_HEIGHT;
+
+/**
+ * The loaded chunks' edges, traced along the ground a little above it, so seams between chunks
+ * are easy to find. Follows the terrain's surface, water included, stud by stud.
+ */
+export function ChunkBorders({
+  terrain,
+  chunks,
+  buildArea,
+}: {
+  terrain: Terrain;
+  chunks: ReadonlyMap<string, unknown>;
+  buildArea: number;
+}) {
+  const keys = [...chunks.keys()].sort().join(' ');
+  const lines = useMemo(() => {
+    const half = buildArea / 2;
+    const points: number[] = [];
+    const surface = (x: number, z: number) => {
+      const column = terrain.column(Math.floor(x), Math.floor(z));
+      return Math.max(column.height, column.water) * LAYER + 0.15;
+    };
+    // Each chunk's west and north edges, and the east and south edges where no chunk is next door.
+    const edge = (ax: number, az: number, bx: number, bz: number) => {
+      const steps = Math.max(Math.abs(bx - ax), Math.abs(bz - az));
+      for (let step = 0; step < steps; step++) {
+        const x0 = ax + ((bx - ax) * step) / steps;
+        const z0 = az + ((bz - az) * step) / steps;
+        const x1 = ax + ((bx - ax) * (step + 1)) / steps;
+        const z1 = az + ((bz - az) * (step + 1)) / steps;
+        // The higher of the two sides, so the line shows on a step.
+        const y = Math.max(
+          surface(x0, z0),
+          surface(x0 - (bz - az ? 1 : 0), z0 - (bx - ax ? 1 : 0)),
+        );
+        points.push(x0 - half, y, half - z0, x1 - half, y, half - z1);
+      }
+    };
+    for (const key of keys ? keys.split(' ') : []) {
+      const [cx, cz] = key.split(',').map(Number);
+      const x0 = cx * CHUNK;
+      const z0 = cz * CHUNK;
+      edge(x0, z0, x0 + CHUNK, z0);
+      edge(x0, z0, x0, z0 + CHUNK);
+      if (!chunks.has(`${cx + 1},${cz}`)) edge(x0 + CHUNK, z0, x0 + CHUNK, z0 + CHUNK);
+      if (!chunks.has(`${cx},${cz + 1}`)) edge(x0, z0 + CHUNK, x0 + CHUNK, z0 + CHUNK);
+    }
+    const geometry = new BufferGeometry();
+    geometry.setAttribute('position', new BufferAttribute(new Float32Array(points), 3));
+    const segments = new LineSegments(
+      geometry,
+      new LineBasicMaterial({
+        color: '#ff375f',
+        depthTest: false,
+        transparent: true,
+        opacity: 0.9,
+      }),
+    );
+    segments.renderOrder = 11;
+    segments.userData.debug = true;
+    segments.raycast = () => {};
+    return segments;
+    // keys stands for the chunks: it changes exactly when one comes or goes.
+  }, [keys, terrain, buildArea]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(
+    () => () => {
+      lines.geometry.dispose();
+      (lines.material as LineBasicMaterial).dispose();
+    },
+    [lines],
+  );
+  return <primitive object={lines} />;
 }

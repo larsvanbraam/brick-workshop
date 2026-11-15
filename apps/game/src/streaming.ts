@@ -54,6 +54,15 @@ export function plan(
   };
 }
 
+export interface LoaderActivity {
+  /** Chunks waiting to be built in full, and from afar. */
+  waiting: number;
+  waitingFar: number;
+  /** Chunks being built right now. */
+  building: number;
+  workers: number;
+}
+
 /** The scene's frame (see `GameScene`): far chunks are built straight into its coordinates. */
 const FRAME = 128;
 
@@ -157,6 +166,17 @@ export class ChunkLoader {
       this.busy.set(worker, { job, since: performance.now() });
       worker.postMessage({ seed: this.seed, cx, cz, far, frame: FRAME } satisfies ChunkRequest);
     }
+  }
+
+  /** What the loader is doing, for the debug window. */
+  get activity(): LoaderActivity {
+    const far = this.queue.filter((job) => job.startsWith('far:')).length;
+    return {
+      waiting: this.queue.length - far,
+      waitingFar: far,
+      building: this.busy.size,
+      workers: this.workers.size,
+    };
   }
 
   dispose() {
