@@ -1,4 +1,5 @@
 import { seeded } from '@brick-workshop/audio/voice';
+import type { Figure } from './npcs.ts';
 import type { Biome } from './world/terrain.ts';
 
 /**
@@ -8,32 +9,24 @@ import type { Biome } from './world/terrain.ts';
  * voiced in Simlish babble or the device's speech.
  */
 
-const NAMES = [
-  'Pim',
-  'Ada',
-  'Bram',
-  'Noor',
-  'Otto',
-  'Fenna',
-  'Rik',
-  'Lotte',
-  'Sem',
-  'Juul',
-  'Mo',
-  'Ilse',
-  'Teun',
-  'Saar',
-  'Gus',
-  'Wren',
-  'Hugo',
-  'Mira',
-  'Joost',
-  'Elin',
-  'Kai',
-  'Tess',
-  'Floor',
-  'Ruben',
-];
+/** Names for women and for men, so a name always suits the figure. */
+const NAMES: Record<Figure, readonly string[]> = {
+  woman: [
+    'Ada',
+    'Noor',
+    'Fenna',
+    'Lotte',
+    'Ilse',
+    'Saar',
+    'Mira',
+    'Elin',
+    'Tess',
+    'Floor',
+    'Juul',
+    'Wren',
+  ],
+  man: ['Pim', 'Bram', 'Otto', 'Rik', 'Sem', 'Teun', 'Gus', 'Hugo', 'Joost', 'Kai', 'Ruben', 'Mo'],
+};
 
 /** How someone talks: a cheery one exclaims, a gruff one keeps it short, a dreamy one wonders. */
 export type Manner = 'cheery' | 'gruff' | 'dreamy';
@@ -129,12 +122,20 @@ const ISLAND = [
 export interface Talker {
   seed: number;
   biome: Biome;
+  figure: Figure;
 }
 
-/** Who someone is: their name and manner, the same every time from their seed. */
-export function personality(seed: number): { name: string; manner: Manner } {
+/**
+ * Who someone is: their name, to suit a woman or a man, and manner, the same every time from
+ * their seed.
+ */
+export function personality({ seed, figure }: Pick<Talker, 'seed' | 'figure'>): {
+  name: string;
+  manner: Manner;
+} {
   const next = seeded(seed ^ 0xa11ce);
-  const name = NAMES[Math.floor(next() * NAMES.length)];
+  const names = NAMES[figure];
+  const name = names[Math.floor(next() * names.length)];
   const roll = next();
   const manner: Manner = roll < 0.5 ? 'cheery' : roll < 0.75 ? 'gruff' : 'dreamy';
   return { name, manner };
@@ -152,7 +153,7 @@ export interface TalkContext {
  */
 export function conversation(talker: Talker, context: TalkContext): string[] {
   const next = seeded(talker.seed ^ 0xc4a7);
-  const { manner } = personality(talker.seed);
+  const { manner } = personality(talker);
   const pick = (list: readonly string[]) => list[Math.floor(next() * list.length)];
   const topics = [
     ...(LOCAL[talker.biome] ?? DAY),

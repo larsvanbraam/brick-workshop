@@ -35,6 +35,22 @@ describe('the people of Studlands', () => {
     expect(everyone.some((person) => person.outfit.headgear)).toBe(true);
   });
 
+  it('are women and men, with faces and hair to suit', () => {
+    const women = everyone.filter((person) => person.figure === 'woman');
+    const men = everyone.filter((person) => person.figure === 'man');
+    expect(women.length).toBeGreaterThan(0);
+    expect(men.length).toBeGreaterThan(0);
+    const womensFaces = ['3626bp02', '3626bp08', '3626bp09'];
+    const womensHair = ['62696', '3625', '85974', '92083', '87990'];
+    for (const person of everyone) {
+      const woman = person.figure === 'woman';
+      expect(womensFaces.includes(person.outfit.head)).toBe(woman);
+      const hair = person.outfit.headgear?.part;
+      if (hair && !['3624', '3878', '3833', '3629', '86035'].includes(hair))
+        expect(womensHair.includes(hair)).toBe(woman);
+    }
+  });
+
   it('keep out of unloaded chunks and off cliffs', () => {
     const rules = wanderRules(terrain, 128, () => false);
     expect(rules.canWalk({ x: 0, z: 0 }, { x: 1, z: 0 })).toBe(false);

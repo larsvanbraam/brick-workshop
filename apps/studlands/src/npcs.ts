@@ -45,18 +45,31 @@ export interface Resident {
   z: number;
   /** Brick layers of ground under their home. */
   ground: number;
+  /** Whether they are a woman or a man: their face, hair, name and voice all follow it. */
+  figure: Figure;
   outfit: MinifigOutfit;
   seed: number;
   /** The ground they live on, for what they talk about. */
   biome: Biome;
 }
 
+/** A woman or a man. */
+export type Figure = 'woman' | 'man';
+
 /** LDraw colours: everyday shirts, trousers, and faces, hair and hats. */
 const SHIRTS = [4, 1, 2, 15, 14, 25, 272, 320, 378, 379, 73, 70, 19, 0, 5, 288];
 const TROUSERS = [1, 0, 72, 70, 19, 272, 308, 28, 71, 15];
 const HAIR_COLORS = [70, 308, 0, 19, 14, 25, 72];
-const FACES = ['3626cp01', '3626cp01', '3626bp03', '3626bp04', '3626bp05', '3626bp02'];
-const HAIR = ['3901', '62696', '92081', '40233', '3625', '62810'];
+/** Faces: a grin, a moustache, sunglasses or eyebrows for a man, lips and lashes for a woman. */
+const FACES: Record<Figure, readonly string[]> = {
+  man: ['3626cp01', '3626cp01', '3626bp03', '3626bp04', '3626bp05'],
+  woman: ['3626bp02', '3626bp08', '3626bp09'],
+};
+/** Hair: short cuts for a man; a ponytail, pigtails or long hair for a woman. */
+const HAIR: Record<Figure, readonly string[]> = {
+  man: ['3901', '92081', '40233', '62810'],
+  woman: ['62696', '3625', '85974', '92083', '87990'],
+};
 /** Hats: police, top hat, construction helmet, cowboy hat, cap. */
 const HATS: Record<string, readonly { part: string; color: number }[]> = {
   any: [
@@ -79,8 +92,11 @@ const HATS: Record<string, readonly { part: string; color: number }[]> = {
 
 const pick = <T>(next: () => number, list: readonly T[]) => list[Math.floor(next() * list.length)];
 
-/** What someone living on this ground wears: a hat to suit it now and then, else hair. */
-export function outfitFor(next: () => number, biome: Biome): MinifigOutfit {
+/**
+ * What someone living on this ground wears: a hat to suit it now and then, else hair, with a
+ * face and hair to suit a woman or a man.
+ */
+export function outfitFor(next: () => number, biome: Biome, figure: Figure): MinifigOutfit {
   const torso = pick(next, SHIRTS);
   const legs = pick(next, TROUSERS);
   const local = HATS[biome];
@@ -88,9 +104,9 @@ export function outfitFor(next: () => number, biome: Biome): MinifigOutfit {
   const headgear =
     next() < hatChance
       ? pick(next, local && next() < 0.8 ? local : HATS.any)
-      : { part: pick(next, HAIR), color: pick(next, HAIR_COLORS) };
+      : { part: pick(next, HAIR[figure]), color: pick(next, HAIR_COLORS) };
   return {
-    head: pick(next, FACES),
+    head: pick(next, FACES[figure]),
     skin: 14,
     torso,
     // Now and then bare arms in the skin colour, or sleeves of another shade.
@@ -136,12 +152,15 @@ export function residentsOf(terrain: Terrain, cx: number, cz: number): Resident[
           open = false;
       }
     if (!open) continue;
+    // From the spot rather than the chunk's stream, so where people live stays as it was.
+    const figure: Figure = hash2(seed + 703, x, z) < 0.5 ? 'woman' : 'man';
     found.push({
       id: `npc${cx},${cz}:${found.length}`,
       x: x + 0.5,
       z: z + 0.5,
       ground: here.height,
-      outfit: outfitFor(next, here.biome),
+      figure,
+      outfit: outfitFor(next, here.biome, figure),
       seed: Math.floor(next() * 2 ** 31),
       biome: here.biome,
     });

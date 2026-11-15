@@ -585,7 +585,7 @@ function Game({
   const lineNumber = useRef(0);
   const nearbyName = useMemo(() => {
     const resident = nearbyPerson ? residentById(terrain, nearbyPerson) : null;
-    return resident ? personality(resident.seed).name : null;
+    return resident ? personality(resident).name : null;
   }, [nearbyPerson, terrain]);
   const talkTo = () => {
     const id = talk.nearby;
@@ -597,11 +597,18 @@ function Game({
     const context = { daytime: isDaytime(clock.time), island: game().world === 'island' };
     const text = lineFor(resident, context, count);
     const line = ++lineNumber.current;
-    setSpeech({ id, name: personality(resident.seed).name, text });
+    setSpeech({ id, name: personality(resident).name, text });
     talk.say(id);
     // The bubble stays while the line is said, and long enough to read it.
     const reading = new Promise((resolve) => setTimeout(resolve, 1600 + text.length * 50));
-    void Promise.all([voices.speak(text, voiceFor(resident.seed), voiceMode), reading]).then(() => {
+    void Promise.all([
+      voices.speak(
+        text,
+        voiceFor(resident.seed, resident.figure === 'woman' ? 'high' : 'low'),
+        voiceMode,
+      ),
+      reading,
+    ]).then(() => {
       if (lineNumber.current === line) talk.say(null);
     });
   };

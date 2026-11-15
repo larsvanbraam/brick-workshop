@@ -17,6 +17,8 @@ export interface VoiceTraits {
   formants: number;
   /** Picks among the device's voices, 0 to 1. */
   pick: number;
+  /** High or low, so the device speaks in a voice to match. */
+  register: VoiceRegister;
 }
 
 export type VoiceMode = 'simlish' | 'device' | 'off';
@@ -39,19 +41,47 @@ function hashText(text: string) {
   return hash >>> 0;
 }
 
+/** Whether a voice is high (a woman's, say) or low (a man's). */
+export type VoiceRegister = 'high' | 'low';
+
 /**
- * The voice someone with this seed speaks in: low or high, quick or slow. About half are low
- * voices and half high, with a few in between.
+ * The voice someone with this seed speaks in: low or high, quick or slow. Pass `register` to
+ * match the voice to who is speaking; otherwise about half are low voices and half high.
  */
-export function voiceFor(seed: number): VoiceTraits {
+export function voiceFor(seed: number, register?: VoiceRegister): VoiceTraits {
   const next = seeded(seed ^ 0x5eed);
-  const high = next() < 0.5;
+  const roll = next();
+  const high = register ? register === 'high' : roll < 0.5;
   return {
     pitch: high ? 190 + next() * 70 : 95 + next() * 50,
     rate: 0.85 + next() * 0.35,
     formants: high ? 1.05 + next() * 0.15 : 0.88 + next() * 0.12,
     pick: next(),
+    register: high ? 'high' : 'low',
   };
+}
+
+/**
+ * Device voices whose names say they are women's or men's. Browsers do not say which a voice is,
+ * so this goes by the names of common system voices.
+ */
+const HIGH_VOICES =
+  /female|woman|samantha|victoria|karen|moira|tessa|fiona|veena|zira|hazel|susan|ellen|claire|flo|sandy|shelley|grandma|kathy|amélie|amelie|anna|alice|joana|paulina|monica|sara|helena|nora|zuzana|yuna|ting-ting|mei-jia|sin-ji|kyoko|aria|jenny|libby|sonia|natasha/i;
+const LOW_VOICES =
+  /\bmale|\bman\b|daniel|alex|fred|rishi|david|mark|george|james|xander|thomas|reed|eddy|rocko|grandpa|ralph|albert|junior|aaron|arthur|gordon|oliver|guy|ryan|william|diego|jorge|juan|luca|yannick|maged|tarik|yuri/i;
+
+/**
+ * The device voices to speak in a register: those named as such, or every voice when the names
+ * say nothing either way.
+ */
+export function deviceVoicesFor<T extends { name: string }>(voices: T[], register: VoiceRegister) {
+  const match = register === 'high' ? HIGH_VOICES : LOW_VOICES;
+  const other = register === 'high' ? LOW_VOICES : HIGH_VOICES;
+  const named = voices.filter((entry) => match.test(entry.name) && !other.test(entry.name));
+  if (named.length) return named;
+  // Nothing named for this register: at least keep clear of the other one.
+  const unnamed = voices.filter((entry) => !other.test(entry.name));
+  return unnamed.length ? unnamed : voices;
 }
 
 /** Vowel formants, F1 and F2 in hertz: a, e, i, o, u and the "uh" of "but". */
@@ -205,7 +235,10 @@ export class Voices {
   private speakDevice(text: string, voice: VoiceTraits) {
     const utterance = new SpeechSynthesisUtterance(text);
     const language = (navigator.language || 'en').slice(0, 2);
-    const voices = speechSynthesis.getVoices().filter((entry) => entry.lang.startsWith(language));
+    const voices = deviceVoicesFor(
+      speechSynthesis.getVoices().filter((entry) => entry.lang.startsWith(language)),
+      voice.register,
+    );
     if (voices.length) utterance.voice = voices[Math.floor(voice.pick * voices.length)];
     // The babble's pitch, 95 to 260 Hz, onto the device's 0 to 2 around 1.
     utterance.pitch = Math.max(0.3, Math.min(1.8, 0.5 + (voice.pitch - 95) / 165));

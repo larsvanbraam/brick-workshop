@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vite-plus/test';
-import { babble, voiceFor } from './voice.ts';
+import { babble, deviceVoicesFor, voiceFor } from './voice.ts';
 
 describe('voices', () => {
   it('gives each seed its own voice, the same every time', () => {
@@ -10,6 +10,33 @@ describe('voices', () => {
       expect(voice.pitch).toBeGreaterThanOrEqual(95);
       expect(voice.pitch).toBeLessThanOrEqual(260);
     }
+  });
+
+  it('speaks high or low when asked, to suit who is speaking', () => {
+    for (let seed = 0; seed < 50; seed++) {
+      const high = voiceFor(seed, 'high');
+      const low = voiceFor(seed, 'low');
+      expect(high.register).toBe('high');
+      expect(low.register).toBe('low');
+      expect(high.pitch).toBeGreaterThanOrEqual(190);
+      expect(low.pitch).toBeLessThan(150);
+    }
+  });
+
+  it("picks the device's voices by register where their names tell", () => {
+    const voices = [
+      { name: 'Samantha' },
+      { name: 'Daniel' },
+      { name: 'Xander' },
+      { name: 'Robot' },
+    ];
+    expect(deviceVoicesFor(voices, 'high')).toEqual([{ name: 'Samantha' }]);
+    expect(deviceVoicesFor(voices, 'low')).toEqual([{ name: 'Daniel' }, { name: 'Xander' }]);
+    const unnamed = [{ name: 'Robot' }, { name: 'Daniel' }];
+    expect(deviceVoicesFor(unnamed, 'high')).toEqual([{ name: 'Robot' }]);
+    expect(deviceVoicesFor([{ name: 'Google UK English Female' }], 'low')).toEqual([
+      { name: 'Google UK English Female' },
+    ]);
   });
 
   it('babbles a syllable for each of the line, longer for longer lines', () => {

@@ -16,11 +16,28 @@ export const MINIFIG_BODY = Object.freeze([
   '3817',
 ]);
 
-/** Heads with other faces: a moustache, sunglasses, eyebrows, a woman's face. */
-export const MINIFIG_HEADS = Object.freeze(['3626bp03', '3626bp04', '3626bp05', '3626bp02']);
+/** Heads with other faces: a moustache, sunglasses, eyebrows, and three women's faces. */
+export const MINIFIG_HEADS = Object.freeze([
+  '3626bp03',
+  '3626bp04',
+  '3626bp05',
+  '3626bp02',
+  '3626bp08',
+  '3626bp09',
+]);
 
 /** Hair and hats. */
-export const MINIFIG_HAIR = Object.freeze(['3901', '62696', '92081', '40233', '3625', '62810']);
+export const MINIFIG_HAIR = Object.freeze([
+  '3901',
+  '92081',
+  '40233',
+  '62810',
+  '62696',
+  '3625',
+  '85974',
+  '92083',
+  '87990',
+]);
 export const MINIFIG_HATS = Object.freeze(['3624', '3878', '3833', '3629', '86035']);
 
 /** Every minifigure part the library ships. */
