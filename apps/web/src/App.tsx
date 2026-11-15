@@ -98,7 +98,7 @@ import type {
   SceneMode,
   SceneStability,
 } from './Scene';
-import { ViewportLoader } from './ViewportLoader';
+import { Loader } from '@brick-workshop/render/loader';
 import { useLDrawLibrary } from '@brick-workshop/render/ldraw';
 import { displayHex } from '@brick-workshop/render/ldraw-materials';
 import { PartBrowser } from './PartBrowser';
@@ -1699,17 +1699,17 @@ export default function App() {
               stability={cinematic ? null : stability}
             />
           )}
-          <ViewportLoader
-            stage={
+          <Loader
+            label={
               preparing
-                ? 'preparing'
+                ? 'Preparing build…'
                 : library.pending.length
-                  ? 'parts'
+                  ? 'Loading parts…'
                   : buildProgress
-                    ? 'placing'
+                    ? 'Placing bricks…'
                     : null
             }
-            progress={buildProgress}
+            progress={preparing || library.pending.length ? null : buildProgress}
           />
 
           {cinematic && walk && (

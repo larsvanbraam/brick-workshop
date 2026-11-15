@@ -4,9 +4,9 @@ import type { Edit } from './build.ts';
 import { cutOutArea, cutOutBuild, download, ldrawDocument, workshopDocument } from './export.ts';
 import {
   createSaveFile,
-  deleteIsland,
+  deleteWorld,
   importSaveFile,
-  listIslands,
+  listWorlds,
   loadEdits,
   readSaveFile,
 } from './save.ts';
@@ -14,7 +14,7 @@ import type { SaveFile } from './save.ts';
 import { DISTANCES } from './streaming.ts';
 import type { DistanceName } from './streaming.ts';
 
-type Tab = 'play' | 'islands' | 'export' | 'settings';
+type Tab = 'play' | 'worlds' | 'export' | 'settings';
 
 export interface MenuProps {
   /** Where the walker stands, in world studs: the area export is centred on it. */
@@ -29,9 +29,9 @@ export interface MenuProps {
   hasBuild: boolean;
   onPlay: () => void;
   onReset: () => void;
-  onNewIsland: () => void;
-  /** Opens an island, again from its saved edits even when it is the one being played. */
-  onOpenIsland: (seed: number) => void;
+  onNewWorld: () => void;
+  /** Opens a world, again from its saved edits even when it is the one being played. */
+  onOpenWorld: (seed: number) => void;
   /** How far the world reaches round the walker. */
   distance: DistanceName;
   onDistance: (name: DistanceName) => void;
@@ -56,13 +56,13 @@ export function Menu(props: MenuProps) {
   return (
     <div className="menu">
       <div className="panel">
-        <h1>Brick Island</h1>
-        <p>Island {props.seed}</p>
+        <h1>Studlands</h1>
+        <p>World {props.seed}</p>
         <button type="button" className="play" onClick={props.onPlay}>
           {props.started ? 'Resume' : 'Play'} <kbd>Esc</kbd>
         </button>
         <div className="tabs" role="tablist">
-          {(['play', 'islands', 'export', 'settings'] as const).map((name) => (
+          {(['play', 'worlds', 'export', 'settings'] as const).map((name) => (
             <button
               key={name}
               type="button"
@@ -71,16 +71,12 @@ export function Menu(props: MenuProps) {
               className={tab === name ? 'tab selected' : 'tab'}
               onClick={() => setTab(name)}
             >
-              {
-                { play: 'Controls', islands: 'Islands', export: 'Export', settings: 'Settings' }[
-                  name
-                ]
-              }
+              {{ play: 'Controls', worlds: 'Worlds', export: 'Export', settings: 'Settings' }[name]}
             </button>
           ))}
         </div>
         {tab === 'play' && <Controls {...props} />}
-        {tab === 'islands' && <Islands {...props} />}
+        {tab === 'worlds' && <Worlds {...props} />}
         {tab === 'export' && <Export {...props} />}
         {tab === 'settings' && <Settings {...props} />}
       </div>
@@ -88,7 +84,7 @@ export function Menu(props: MenuProps) {
   );
 }
 
-function Controls({ edits, onReset, onNewIsland }: MenuProps) {
+function Controls({ edits, onReset, onNewWorld }: MenuProps) {
   return (
     <>
       <dl>
@@ -109,10 +105,10 @@ function Controls({ edits, onReset, onNewIsland }: MenuProps) {
       </dl>
       <div className="actions">
         <button type="button" onClick={onReset} disabled={!edits.length}>
-          Reset island
+          Reset world
         </button>
-        <button type="button" onClick={onNewIsland}>
-          New island
+        <button type="button" onClick={onNewWorld}>
+          New world
         </button>
       </div>
     </>
@@ -159,9 +155,9 @@ function Settings({ distance, onDistance }: MenuProps) {
   );
 }
 
-function Islands({ seed, onOpenIsland }: MenuProps) {
+function Worlds({ seed, onOpenWorld }: MenuProps) {
   // Read when the menu opens, and again after a delete.
-  const [islands, setIslands] = useState(listIslands);
+  const [worlds, setWorlds] = useState(listWorlds);
   const [confirming, setConfirming] = useState<number | null>(null);
   const [goTo, setGoTo] = useState('');
   const target = Number(goTo);
@@ -172,10 +168,10 @@ function Islands({ seed, onOpenIsland }: MenuProps) {
         className="seed"
         onSubmit={(event) => {
           event.preventDefault();
-          if (valid) onOpenIsland(target);
+          if (valid) onOpenWorld(target);
         }}
       >
-        <label htmlFor="seed">Island number</label>
+        <label htmlFor="seed">World number</label>
         <input
           id="seed"
           inputMode="numeric"
@@ -187,32 +183,32 @@ function Islands({ seed, onOpenIsland }: MenuProps) {
           Go
         </button>
       </form>
-      {islands.length ? (
-        <ul className="islands">
-          {islands.map((island) => (
-            <li key={island.seed} className={island.seed === seed ? 'current' : undefined}>
+      {worlds.length ? (
+        <ul className="worlds">
+          {worlds.map((world) => (
+            <li key={world.seed} className={world.seed === seed ? 'current' : undefined}>
               <div>
-                <strong>Island {island.seed}</strong>
+                <strong>World {world.seed}</strong>
                 <span>
-                  {island.placed} placed
-                  {island.placed && island.chunks
-                    ? ` in ${island.chunks} chunk${island.chunks === 1 ? '' : 's'}`
+                  {world.placed} placed
+                  {world.placed && world.chunks
+                    ? ` in ${world.chunks} chunk${world.chunks === 1 ? '' : 's'}`
                     : ''}
-                  {island.removed ? ` · ${island.removed} taken off` : ''} ·{' '}
-                  {playedAgo(island.playedAt)}
+                  {world.removed ? ` · ${world.removed} taken off` : ''} ·{' '}
+                  {playedAgo(world.playedAt)}
                 </span>
               </div>
-              {island.seed === seed ? (
+              {world.seed === seed ? (
                 <em>Playing</em>
-              ) : confirming === island.seed ? (
+              ) : confirming === world.seed ? (
                 <span className="confirm">
                   <button
                     type="button"
                     className="danger"
                     onClick={() => {
-                      deleteIsland(island.seed);
+                      deleteWorld(world.seed);
                       setConfirming(null);
-                      setIslands(listIslands());
+                      setWorlds(listWorlds());
                     }}
                   >
                     Delete
@@ -223,13 +219,13 @@ function Islands({ seed, onOpenIsland }: MenuProps) {
                 </span>
               ) : (
                 <span className="confirm">
-                  <button type="button" onClick={() => onOpenIsland(island.seed)}>
+                  <button type="button" onClick={() => onOpenWorld(world.seed)}>
                     Open
                   </button>
                   <button
                     type="button"
-                    aria-label={`Delete island ${island.seed}`}
-                    onClick={() => setConfirming(island.seed)}
+                    aria-label={`Delete world ${world.seed}`}
+                    onClick={() => setConfirming(world.seed)}
                   >
                     Delete
                   </button>
@@ -239,34 +235,32 @@ function Islands({ seed, onOpenIsland }: MenuProps) {
           ))}
         </ul>
       ) : (
-        <p className="empty">Islands you play show up here.</p>
+        <p className="empty">Worlds you play show up here.</p>
       )}
       {confirming !== null && (
-        <p className="note">
-          Deleting forgets everything built on that island. It can’t be undone.
-        </p>
+        <p className="note">Deleting forgets everything built in that world. It can’t be undone.</p>
       )}
     </>
   );
 }
 
-type Scope = 'island' | 'build';
+type Scope = 'world' | 'build';
 type Format = 'ldr' | 'workshop';
 
-function Export({ seed, edits, getAssembly, hasBuild, position, onOpenIsland }: MenuProps) {
-  const [scope, setScope] = useState<Scope>(hasBuild ? 'build' : 'island');
+function Export({ seed, edits, getAssembly, hasBuild, position, onOpenWorld }: MenuProps) {
+  const [scope, setScope] = useState<Scope>(hasBuild ? 'build' : 'world');
   const [format, setFormat] = useState<Format>('ldr');
   const [message, setMessage] = useState<{ text: string; bad?: boolean } | null>(null);
   const [pending, setPending] = useState<SaveFile | null>(null);
   const input = useRef<HTMLInputElement>(null);
 
   const exportModel = () => {
-    const name = scope === 'build' ? `My build on island ${seed}` : `Island ${seed}`;
+    const name = scope === 'build' ? `My build in world ${seed}` : `World ${seed}`;
     const assembly = getAssembly();
     const model =
       scope === 'build' ? cutOutBuild(assembly, name) : cutOutArea(assembly, position, name);
     if (!model) return setMessage({ text: 'Nothing built yet to export.', bad: true });
-    const base = `brick-island-${seed}${scope === 'build' ? '-build' : ''}`;
+    const base = `studlands-${seed}${scope === 'build' ? '-build' : ''}`;
     try {
       if (format === 'ldr') download(ldrawDocument(model), `${base}.ldr`, 'text/plain');
       else download(workshopDocument(model), `${base}.json`, 'application/json');
@@ -280,7 +274,7 @@ function Export({ seed, edits, getAssembly, hasBuild, position, onOpenIsland }: 
     if (!file) return;
     try {
       const save = readSaveFile(JSON.parse(await file.text()));
-      // Loading over an island with its own changes asks first; those changes would be lost.
+      // Loading over a world with its own changes asks first; those changes would be lost.
       const existing = loadEdits(save.seed);
       if (existing.length && JSON.stringify(existing) !== JSON.stringify(save.edits))
         setPending(save);
@@ -298,7 +292,7 @@ function Export({ seed, edits, getAssembly, hasBuild, position, onOpenIsland }: 
   const apply = (save: SaveFile) => {
     importSaveFile(save);
     setPending(null);
-    onOpenIsland(save.seed);
+    onOpenWorld(save.seed);
   };
 
   return (
@@ -314,14 +308,14 @@ function Export({ seed, edits, getAssembly, hasBuild, position, onOpenIsland }: 
               disabled={!hasBuild}
               onChange={() => setScope('build')}
             />
-            My build, on its patch of island
+            My build, on its patch of ground
           </label>
           <label>
             <input
               type="radio"
               name="scope"
-              checked={scope === 'island'}
-              onChange={() => setScope('island')}
+              checked={scope === 'world'}
+              onChange={() => setScope('world')}
             />
             The area round you, 128 studs across
           </label>
@@ -352,14 +346,14 @@ function Export({ seed, edits, getAssembly, hasBuild, position, onOpenIsland }: 
       </fieldset>
       <fieldset>
         <legend>Save file</legend>
-        <p className="note">The island number and your changes, to back up or open elsewhere.</p>
+        <p className="note">The world number and your changes, to back up or open elsewhere.</p>
         <div className="actions">
           <button
             type="button"
             onClick={() =>
               download(
                 JSON.stringify(createSaveFile(seed, edits)),
-                `brick-island-${seed}.save.json`,
+                `studlands-${seed}.save.json`,
                 'application/json',
               )
             }
@@ -383,7 +377,7 @@ function Export({ seed, edits, getAssembly, hasBuild, position, onOpenIsland }: 
       </fieldset>
       {pending && (
         <div className="replace">
-          <p>Island {pending.seed} already has changes here. Loading the save replaces them.</p>
+          <p>World {pending.seed} already has changes here. Loading the save replaces them.</p>
           <div className="actions">
             <button type="button" className="danger" onClick={() => apply(pending)}>
               Replace

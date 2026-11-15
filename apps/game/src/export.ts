@@ -7,12 +7,12 @@ import {
 } from '@brick-workshop/engine';
 import type { Assembly, Brick } from '@brick-workshop/engine';
 
-/** Pieces a player put down carry this prefix; everything else came with the island. */
+/** Pieces a player put down carry this prefix; everything else came with the world. */
 export const PLAYER_PREFIX = 'p-';
 
 export const isPlayerPiece = (brick: Brick) => brick.id.startsWith(PLAYER_PREFIX);
 
-/** Studs of island kept round a build when it is cut out, so it stands on a patch of ground. */
+/** Studs of ground kept round a build when it is cut out, so it stands on a patch of ground. */
 const MARGIN = 3;
 
 /** A box of studs, `[minX, maxX)` by `[minZ, maxZ)`. */

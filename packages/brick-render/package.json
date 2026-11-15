@@ -36,6 +36,10 @@
       "types": "./src/ldraw-materials.ts",
       "import": "./src/ldraw-materials.ts"
     },
+    "./loader": {
+      "types": "./src/loader.tsx",
+      "import": "./src/loader.tsx"
+    },
     "./minifig-parts": {
       "types": "./src/minifig-parts.ts",
       "import": "./src/minifig-parts.ts"

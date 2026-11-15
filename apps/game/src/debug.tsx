@@ -279,7 +279,7 @@ export function GameDebugPanel({
             ? `${edit.action} ${edit.ok ? `${edit.pieces} piece${edit.pieces === 1 ? '' : 's'}` : 'refused'} · ${fixed(edit.ms)} ms`
             : '—'}
         </dd>
-        <dt>Island</dt>
+        <dt>World</dt>
         <dd>
           {world.seed} · generator v{world.version}
         </dd>

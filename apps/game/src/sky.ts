@@ -6,10 +6,10 @@ import { Color, Vector3 } from 'three';
  */
 export type TimeOfDay = number;
 
-/** Real seconds one day on the island lasts. */
+/** Real seconds one day in the world lasts. */
 export const DAY_SECONDS = 600;
 
-/** A new island starts on a bright morning. */
+/** A new world starts on a bright morning. */
 export const START_TIME: TimeOfDay = 0.3;
 
 /** The clock face for a time of day, as 24-hour hours and minutes. */
@@ -112,7 +112,7 @@ export function skyAt(time: TimeOfDay): SkyState {
 }
 
 /**
- * The island's clock: runs at `speed` days per real second unless paused, and can be set. Read
+ * The world's clock: runs at `speed` days per real second unless paused, and can be set. Read
  * every frame without React; the HUD subscribes for a once-a-second update.
  */
 export class DayClock {

@@ -15,17 +15,17 @@ const piece = (id: string, partId: string, x: number, y: number, z: number): Bri
 });
 
 /** A 32-stud board covered in 2 x 4 bricks, with a player's tower standing on it. */
-function island(): Assembly {
+function world(): Assembly {
   const bricks: Brick[] = [];
   for (let x = 0; x < 32; x += 2)
     for (let z = 0; z < 32; z += 4) bricks.push(piece(`g-${x}-${z}`, '3001', x, 0, z));
   bricks.push(piece('p-a', '3003', 20, 3, 20), piece('p-b', '3003', 20, 6, 20));
-  return { name: 'island', bricks, buildArea: 32 };
+  return { name: 'world', bricks, buildArea: 32 };
 }
 
 describe('exporting a build', () => {
   it('cuts the build out with the ground under it, onto a board of its own', () => {
-    const cut = cutOutBuild(island(), 'My build');
+    const cut = cutOutBuild(world(), 'My build');
     expect(cut).not.toBeNull();
     if (!cut) return;
     expect(validateAssembly(cut)).toEqual([]);
@@ -34,12 +34,12 @@ describe('exporting a build', () => {
     expect(ids).toEqual(expect.arrayContaining(['p-a', 'p-b', 'g-20-20']));
     // Only ground within a few studs of the build comes along.
     expect(ids).not.toContain('g-0-0');
-    expect(cut.bricks.length).toBeLessThan(island().bricks.length / 4);
+    expect(cut.bricks.length).toBeLessThan(world().bricks.length / 4);
     expect(exportLDraw(cut)).toContain('3003.dat');
   });
 
   it('has nothing to cut out before anything is built', () => {
-    const untouched = island();
+    const untouched = world();
     expect(
       cutOutBuild(
         { ...untouched, bricks: untouched.bricks.filter((b) => !b.id.startsWith('p-')) },
@@ -49,14 +49,14 @@ describe('exporting a build', () => {
   });
 
   it('writes the workshop’s build file', () => {
-    const document = JSON.parse(workshopDocument(island()));
+    const document = JSON.parse(workshopDocument(world()));
     expect(document).toMatchObject({ version: 1, parts: [] });
-    expect(document.assembly.bricks).toHaveLength(island().bricks.length);
+    expect(document.assembly.bricks).toHaveLength(world().bricks.length);
   });
 });
 
 describe('save files', () => {
-  it('round-trips an island’s changes', () => {
+  it('round-trips a world’s changes', () => {
     const save = createSaveFile(42, [
       { op: 'add', brick: piece('p-a', '3003', 1, 3, 1) },
       { op: 'remove', id: 'g-0-0' },
@@ -65,9 +65,9 @@ describe('save files', () => {
   });
 
   it('refuses files that are not saves, or are damaged', () => {
-    expect(() => readSaveFile({ assembly: {} })).toThrow('not a Brick Island save');
+    expect(() => readSaveFile({ assembly: {} })).toThrow('not a Studlands save');
     const save = createSaveFile(42, []);
-    expect(() => readSaveFile({ ...save, seed: 'x' })).toThrow('no island seed');
+    expect(() => readSaveFile({ ...save, seed: 'x' })).toThrow('no world seed');
     expect(() => readSaveFile({ ...save, edits: [{ op: 'add', brick: { id: 1 } }] })).toThrow(
       'damaged',
     );

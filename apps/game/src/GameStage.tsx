@@ -108,7 +108,7 @@ function createStars() {
 }
 
 /**
- * The island under a moving sky: a dome whose colours run from dawn through noon and dusk to
+ * The world under a moving sky: a dome whose colours run from dawn through noon and dusk to
  * night, with the sun and moon on it and stars coming out after dark. One light casts shadows,
  * the sun by day and the moon by night, with a sky and ground fill, plastic reflections and a
  * little ambient occlusion in the joints. Shadows are redrawn as the light moves, a few times a

@@ -10,7 +10,7 @@ describe('the sky', () => {
     expect(noon.unlit).toBe(1);
   });
 
-  it('lights the island by a dim moon at midnight, under the stars', () => {
+  it('lights the world by a dim moon at midnight, under the stars', () => {
     const midnight = skyAt(0);
     expect(midnight.elevation).toBeLessThan(-0.8);
     expect(midnight.key.direction.y).toBeGreaterThan(0);

@@ -70,7 +70,7 @@ export interface GameSceneProps {
   debug: GameSceneDebug;
   /** The time of day the sky and the light follow. */
   clock: DayClock;
-  /** The island's volcano, whose crater glows. */
+  /** The volcano, whose crater glows. */
   volcano: Volcano | null;
 }
 
@@ -111,7 +111,7 @@ export function GameScene(props: GameSceneProps) {
       camera={{ position: [0, 30, 60], fov: 70, near: 0.05, far: 600 }}
       gl={{ antialias: false }}
       dpr={dpr}
-      aria-label="Brick island"
+      aria-label="Studlands"
     >
       <GameStage
         size={buildArea}

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vite-plus/test';
 import type { Brick } from '@brick-workshop/engine';
 import type { Edit } from './build.ts';
-import { WORLD_VERSION, deleteIsland, listIslands, loadEdits, saveEdits } from './save.ts';
+import { WORLD_VERSION, deleteWorld, listWorlds, loadEdits, saveEdits } from './save.ts';
 
 /** Browser storage for the tests, which run without a browser. */
 class MemoryStorage {
@@ -62,14 +62,14 @@ describe('saved edits', () => {
       new Set(edits.map((edit) => JSON.stringify(edit))),
     );
     // A piece put down and taken off again is not counted as placed.
-    expect(listIslands()[0]).toMatchObject({ seed: 7, placed: 1, removed: 1, chunks: 1 });
+    expect(listWorlds()[0]).toMatchObject({ seed: 7, placed: 1, removed: 1, chunks: 1 });
   });
 
-  it('forgets chunks whose edits are gone, and whole islands', () => {
+  it('forgets chunks whose edits are gone, and whole worlds', () => {
     saveEdits(7, edits);
     saveEdits(7, edits.slice(0, 1));
     expect(storage.items.has(`brick-island:edits:v${WORLD_VERSION}:7:2,1`)).toBe(false);
-    deleteIsland(7);
+    deleteWorld(7);
     expect([...storage.items.keys()].some((key) => key.includes(':7'))).toBe(false);
     expect(loadEdits(7)).toEqual([]);
   });

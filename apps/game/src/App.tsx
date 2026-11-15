@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { getPart } from '@brick-workshop/engine';
 import type { Assembly, Brick } from '@brick-workshop/engine';
+import { Loader } from '@brick-workshop/render/loader';
 import { useLDrawLibrary } from '@brick-workshop/render/ldraw';
 import type { WalkCamera } from '@brick-workshop/walk/walk-view';
 import { WalkWorld } from '@brick-workshop/walk/walk';
@@ -100,7 +101,7 @@ const isTyping = (target: EventTarget | null) =>
 
 export function App() {
   const [seed, setSeed] = useState(() => loadSeed() ?? newSeed());
-  // Bumped to open an island afresh from its saved edits, even the one being played.
+  // Bumped to open a world afresh from its saved edits, even the one being played.
   const [opened, setOpened] = useState(0);
   useEffect(() => saveSeed(seed), [seed]);
   const open = (next: number) => {
@@ -112,7 +113,7 @@ export function App() {
       key={`${seed}:${opened}`}
       seed={seed}
       onNewWorld={() => open(newSeed())}
-      onOpenIsland={open}
+      onOpenWorld={open}
     />
   );
 }
@@ -127,28 +128,14 @@ function ClockLabel({ clock }: { clock: DayClock }) {
   );
 }
 
-function Splash({ message }: { message: string }) {
-  return (
-    <div className="splash" role="status">
-      <h1>Brick Island</h1>
-      <div className="splash-bricks" aria-hidden>
-        <span style={{ background: '#c91a09' }} />
-        <span style={{ background: '#0055bf' }} />
-        <span style={{ background: '#f2cd37' }} />
-      </div>
-      <p>{message}</p>
-    </div>
-  );
-}
-
 function Game({
   seed,
   onNewWorld,
-  onOpenIsland,
+  onOpenWorld,
 }: {
   seed: number;
   onNewWorld: () => void;
-  onOpenIsland: (seed: number) => void;
+  onOpenWorld: (seed: number) => void;
 }) {
   /** The terrain on the main thread: for the start, and for the debug window's chunk borders. */
   const [terrain] = useState(() => new Terrain(seed));
@@ -352,7 +339,7 @@ function Game({
   const [borders, setBorders] = useState(false);
   const [lastEdit, setLastEdit] = useState<EditTiming | null>(null);
 
-  // The island's day: carries on from the last visit, kept every few seconds.
+  // The world's day: carries on from the last visit, kept every few seconds.
   const [clock] = useState(() => new DayClock(loadTime() ?? START_TIME));
   useEffect(() => {
     let saved = 0;
@@ -558,10 +545,10 @@ function Game({
     setSelected(slot);
   };
 
-  /** Forgets every change and opens the island again as it was made. */
+  /** Forgets every change and opens the world again as it was made. */
   const resetWorld = () => {
     saveEdits(seed, []);
-    onOpenIsland(seed);
+    onOpenWorld(seed);
   };
 
   /** Pieces by kind over every loaded chunk, from counts kept per chunk. */
@@ -613,11 +600,25 @@ function Game({
     return { visible: total, batched: total - fallback, separate: 0, fallback, total };
   }, [chunks, kinds, library.models, debugOptions.enabled]);
 
-  if (!ready) {
-    const done = startChunks.filter((key) => chunks.has(key)).length;
-    return <Splash message={`Shaping island ${seed}… ${done} of ${startChunks.length}`} />;
-  }
-  if (library.status === 'loading') return <Splash message="Loading parts…" />;
+  // One loader, kept by its key from the first chunks through the parts to the open world, so
+  // it fades out over the world instead of vanishing.
+  const loading = (
+    <Loader
+      key="loader"
+      label={
+        !ready ? `Shaping world ${seed}…` : library.status === 'loading' ? 'Loading parts…' : null
+      }
+      progress={
+        ready
+          ? null
+          : {
+              done: startChunks.filter((key) => chunks.has(key)).length,
+              total: startChunks.length,
+            }
+      }
+    />
+  );
+  if (!ready || library.status === 'loading') return <div className="game">{loading}</div>;
   // Pieces of the player's still standing, not every one ever put down.
   const built = placedCount;
   let pieceCount = 0;
@@ -656,7 +657,7 @@ function Game({
       />
       {debugOptions.enabled && (
         <DebugOverlay
-          title="Brick Island debug"
+          title="Studlands debug"
           store={debugStore}
           options={debugOptions}
           onChange={setDebugOptions}
@@ -683,7 +684,7 @@ function Game({
       {playing && ghostCheck && !ghostCheck.ok && <div className="hint">{ghostCheck.reason}</div>}
       <div className="status">
         <strong>
-          Island {seed}
+          World {seed}
           <ClockLabel clock={clock} />
         </strong>
         <span>
@@ -747,12 +748,13 @@ function Game({
           position={position}
           onPlay={play}
           onReset={resetWorld}
-          onNewIsland={onNewWorld}
-          onOpenIsland={onOpenIsland}
+          onNewWorld={onNewWorld}
+          onOpenWorld={onOpenWorld}
           distance={distanceName}
           onDistance={setDistanceName}
         />
       )}
+      {loading}
     </div>
   );
 }

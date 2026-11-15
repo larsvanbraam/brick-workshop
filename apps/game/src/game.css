@@ -32,59 +32,8 @@ button {
 .game {
   position: fixed;
   inset: 0;
-}
-
-.splash {
-  position: fixed;
-  inset: 0;
-  display: grid;
-  place-content: center;
-  justify-items: center;
-  gap: 16px;
-  text-align: center;
-}
-
-.splash h1 {
-  margin: 0;
-  font-size: 28px;
-  font-weight: 600;
-}
-
-.splash p {
-  margin: 0;
-  color: var(--muted);
-  font-size: 14px;
-}
-
-.splash-bricks {
-  display: flex;
-  gap: 4px;
-}
-
-.splash-bricks span {
-  width: 40px;
-  height: 18px;
-  border-radius: 2px;
-  animation: hop 1.2s ease-in-out infinite;
-}
-
-.splash-bricks span:nth-child(2) {
-  animation-delay: 0.15s;
-}
-
-.splash-bricks span:nth-child(3) {
-  animation-delay: 0.3s;
-}
-
-@keyframes hop {
-  0%,
-  60%,
-  100% {
-    transform: translateY(0);
-  }
-  30% {
-    transform: translateY(-10px);
-  }
+  /* The shared loader's wash, in the game's dark instead of the workshop's light grey. */
+  --loader-wash: rgb(27 25 21 / 0.55);
 }
 
 .crosshair {
@@ -373,7 +322,7 @@ button {
   cursor: default;
 }
 
-.islands {
+.worlds {
   display: grid;
   gap: 4px;
   max-height: 240px;
@@ -383,7 +332,7 @@ button {
   list-style: none;
 }
 
-.islands li {
+.worlds li {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -394,22 +343,22 @@ button {
   font-size: 13px;
 }
 
-.islands li.current {
+.worlds li.current {
   outline: 1px solid var(--accent);
 }
 
-.islands li div {
+.worlds li div {
   display: grid;
   gap: 2px;
 }
 
-.islands li span,
-.islands li em {
+.worlds li span,
+.worlds li em {
   color: var(--muted);
   font-size: 12px;
 }
 
-.islands li em {
+.worlds li em {
   font-style: normal;
   color: var(--accent);
 }

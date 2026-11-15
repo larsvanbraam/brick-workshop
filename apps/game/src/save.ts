@@ -2,6 +2,7 @@ import type { Brick } from '@brick-workshop/engine';
 import type { Edit, Held } from './build.ts';
 import { chunkOf } from './chunks.ts';
 
+/** Keys keep the game's first name, Brick Island, so saves from before the rename still load. */
 const PREFIX = 'brick-island';
 
 /** Storage may be missing or blocked (private windows, previews); the game then just forgets. */
@@ -31,15 +32,16 @@ function forget(key: string) {
 }
 
 /**
- * Edits are kept per island and per version of the generator: a changed generator shapes a
- * different island from the same seed, which old edits would not fit.
+ * Edits are kept per world and per version of the generator: a changed generator shapes a
+ * different world from the same seed, which old edits would not fit.
  */
 export const WORLD_VERSION = 5;
 const editsKey = (seed: number) => `edits:v${WORLD_VERSION}:${seed}`;
-const ISLANDS_KEY = `islands:v${WORLD_VERSION}`;
+// Saved under the game's old name, so worlds played before the rename are still found.
+const WORLDS_KEY = `islands:v${WORLD_VERSION}`;
 
-/** An island played before, for the menu's list. */
-export interface IslandSummary {
+/** A world played before, for the menu's list. */
+export interface WorldSummary {
   seed: number;
   /** Pieces placed and taken off, counted from the edits. */
   placed: number;
@@ -50,12 +52,12 @@ export interface IslandSummary {
   playedAt: string;
 }
 
-export function listIslands(): IslandSummary[] {
-  const islands = read<IslandSummary[]>(ISLANDS_KEY) ?? [];
-  return islands.toSorted((a, b) => b.playedAt.localeCompare(a.playedAt));
+export function listWorlds(): WorldSummary[] {
+  const worlds = read<WorldSummary[]>(WORLDS_KEY) ?? [];
+  return worlds.toSorted((a, b) => b.playedAt.localeCompare(a.playedAt));
 }
 
-function summarise(seed: number, edits: readonly Edit[]): IslandSummary {
+function summarise(seed: number, edits: readonly Edit[]): WorldSummary {
   // Only pieces still standing count as placed: one put down and taken off again is gone.
   const added = new Map<string, string>();
   let removed = 0;
@@ -78,7 +80,7 @@ export const editChunk = (edit: Edit) =>
   edit.op === 'add' ? chunkOf(edit.brick) : (edit.chunk ?? 'unknown');
 const chunkEditsKey = (seed: number, chunk: string) => `${editsKey(seed)}:${chunk}`;
 
-/** The chunks of an island that have edits, or the edits themselves in an older save. */
+/** The chunks of a world that have edits, or the edits themselves in an older save. */
 function storedChunks(seed: number): { chunks: string[]; legacy: Edit[] | null } {
   const stored = read<unknown[]>(editsKey(seed)) ?? [];
   if (stored.some((entry) => typeof entry !== 'string'))
@@ -87,7 +89,7 @@ function storedChunks(seed: number): { chunks: string[]; legacy: Edit[] | null }
 }
 
 /**
- * An island's edits. They are kept per chunk, so a world too big to load at once can read just
+ * A world's edits. They are kept per chunk, so a world too big to load at once can read just
  * the chunks it shows; older saves kept one list, which is read as it is and split on the next
  * save.
  */
@@ -99,7 +101,7 @@ export function loadEdits(seed: number): Edit[] {
 /** What was last written per key, so saving after an edit only rewrites the chunks it changed. */
 const written = new Map<string, string>();
 
-/** Keeps an island's edits, chunk by chunk, and marks it as just played. */
+/** Keeps a world's edits, chunk by chunk, and marks it as just played. */
 export function saveEdits(seed: number, edits: readonly Edit[]) {
   const byChunk = new Map<string, Edit[]>();
   for (const edit of edits) {
@@ -121,29 +123,27 @@ export function saveEdits(seed: number, edits: readonly Edit[]) {
     write(key, list);
   }
   write(editsKey(seed), [...byChunk.keys()].sort());
-  const islands = (read<IslandSummary[]>(ISLANDS_KEY) ?? []).filter(
-    (island) => island.seed !== seed,
-  );
-  write(ISLANDS_KEY, [...islands, summarise(seed, edits)]);
+  const worlds = (read<WorldSummary[]>(WORLDS_KEY) ?? []).filter((world) => world.seed !== seed);
+  write(WORLDS_KEY, [...worlds, summarise(seed, edits)]);
 }
 
-/** Forgets an island and everything built on it. */
-export function deleteIsland(seed: number) {
+/** Forgets a world and everything built on it. */
+export function deleteWorld(seed: number) {
   for (const chunk of storedChunks(seed).chunks) {
     forget(chunkEditsKey(seed, chunk));
     written.delete(chunkEditsKey(seed, chunk));
   }
   forget(editsKey(seed));
   write(
-    ISLANDS_KEY,
-    (read<IslandSummary[]>(ISLANDS_KEY) ?? []).filter((island) => island.seed !== seed),
+    WORLDS_KEY,
+    (read<WorldSummary[]>(WORLDS_KEY) ?? []).filter((world) => world.seed !== seed),
   );
 }
 
 export const loadSeed = () => read<number>('seed');
 export const saveSeed = (seed: number) => write('seed', seed);
 
-/** The time of day, kept across visits so the island's day carries on. */
+/** The time of day, kept across visits so the world's day carries on. */
 export const loadTime = () => read<number>('time');
 export const saveTime = (time: number) => write('time', time);
 
@@ -153,7 +153,7 @@ export const saveDistance = (name: string) => write('distance', name);
 export const loadHotbar = () => read<Held[]>('hotbar');
 export const saveHotbar = (slots: readonly Held[]) => write('hotbar', slots);
 
-/** A save file: one island's seed and what was changed on it, to back up or move elsewhere. */
+/** A save file: one world's seed and what was changed on it, to back up or move elsewhere. */
 export interface SaveFile {
   format: 'brick-island-save';
   version: 1;
@@ -195,18 +195,18 @@ function isEdit(value: unknown): value is Edit {
 /** Reads a save file, or throws with a reason a player can act on. */
 export function readSaveFile(value: unknown): SaveFile {
   if (!isRecord(value) || value.format !== 'brick-island-save')
-    throw new Error('This is not a Brick Island save file.');
+    throw new Error('This is not a Studlands save file.');
   if (value.version !== 1) throw new Error('This save file is from a newer version of the game.');
   if (value.worldVersion !== WORLD_VERSION)
-    throw new Error('This save is from another version of the island generator.');
+    throw new Error('This save is from another version of the world generator.');
   if (typeof value.seed !== 'number' || !Number.isInteger(value.seed))
-    throw new Error('The save file has no island seed.');
+    throw new Error('The save file has no world seed.');
   if (!Array.isArray(value.edits) || !value.edits.every(isEdit))
     throw new Error('The save file’s changes are damaged.');
   return value as unknown as SaveFile;
 }
 
-/** Writes an imported save over that island's own edits. */
+/** Writes an imported save over that world's own edits. */
 export function importSaveFile(save: SaveFile) {
   saveEdits(save.seed, save.edits);
 }
