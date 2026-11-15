@@ -308,6 +308,32 @@ button {
   color: var(--ink);
 }
 
+.settings {
+  margin: 14px 0 6px;
+}
+
+.setting {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.setting .choices {
+  display: flex;
+  gap: 4px;
+  padding: 3px;
+  border-radius: 10px;
+  background: rgb(255 255 255 / 0.06);
+}
+
+.settings .note {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .seed {
   display: flex;
   align-items: center;

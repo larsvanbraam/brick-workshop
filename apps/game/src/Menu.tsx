@@ -18,8 +18,10 @@ import {
   readSaveFile,
 } from './save.ts';
 import type { SaveFile } from './save.ts';
+import { DISTANCES } from './streaming.ts';
+import type { DistanceName } from './streaming.ts';
 
-type Tab = 'play' | 'islands' | 'export';
+type Tab = 'play' | 'islands' | 'export' | 'settings';
 
 export interface MenuProps {
   /** Where the walker stands, in world studs: the area export is centred on it. */
@@ -34,6 +36,9 @@ export interface MenuProps {
   onNewIsland: () => void;
   /** Opens an island, again from its saved edits even when it is the one being played. */
   onOpenIsland: (seed: number) => void;
+  /** How far the world reaches round the walker. */
+  distance: DistanceName;
+  onDistance: (name: DistanceName) => void;
 }
 
 const ago = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' });
@@ -61,7 +66,7 @@ export function Menu(props: MenuProps) {
           {props.started ? 'Resume' : 'Play'} <kbd>Esc</kbd>
         </button>
         <div className="tabs" role="tablist">
-          {(['play', 'islands', 'export'] as const).map((name) => (
+          {(['play', 'islands', 'export', 'settings'] as const).map((name) => (
             <button
               key={name}
               type="button"
@@ -70,13 +75,18 @@ export function Menu(props: MenuProps) {
               className={tab === name ? 'tab selected' : 'tab'}
               onClick={() => setTab(name)}
             >
-              {{ play: 'Controls', islands: 'Islands', export: 'Export' }[name]}
+              {
+                { play: 'Controls', islands: 'Islands', export: 'Export', settings: 'Settings' }[
+                  name
+                ]
+              }
             </button>
           ))}
         </div>
         {tab === 'play' && <Controls {...props} />}
         {tab === 'islands' && <Islands {...props} />}
         {tab === 'export' && <Export {...props} />}
+        {tab === 'settings' && <Settings {...props} />}
       </div>
     </div>
   );
@@ -110,6 +120,46 @@ function Controls({ edits, onReset, onNewIsland }: MenuProps) {
         </button>
       </div>
     </>
+  );
+}
+
+const DISTANCE_LABELS: Record<DistanceName, string> = {
+  short: 'Short',
+  normal: 'Normal',
+  far: 'Far',
+  farthest: 'Very far',
+};
+
+/** How many studs a reach of chunks covers, out from the walker's own chunk. */
+const studs = (chunks: number) => (chunks * 2 + 1) * 32;
+
+function Settings({ distance, onDistance }: MenuProps) {
+  const reach = DISTANCES[distance];
+  return (
+    <div className="settings">
+      <div className="setting">
+        <span id="distance-label">Render distance</span>
+        <div className="choices" role="radiogroup" aria-labelledby="distance-label">
+          {(Object.keys(DISTANCES) as DistanceName[]).map((name) => (
+            <button
+              key={name}
+              type="button"
+              role="radio"
+              aria-checked={distance === name}
+              className={distance === name ? 'tab selected' : 'tab'}
+              onClick={() => onDistance(name)}
+            >
+              {DISTANCE_LABELS[name]}
+            </button>
+          ))}
+        </div>
+      </div>
+      <p className="note">
+        Pieces you can build on {studs(reach.load)} studs across, the land beyond out to{' '}
+        {studs(reach.far)}. Further reaches more but asks more of your computer; Very far builds
+        twice the pieces of Normal.
+      </p>
+    </div>
   );
 }
 

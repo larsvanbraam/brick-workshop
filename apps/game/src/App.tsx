@@ -7,14 +7,18 @@ import { WalkWorld } from '@brick-workshop/walk/walk';
 import { placementFor } from './build.ts';
 import {
   ChunkLoader,
+  DEFAULT_DISTANCE,
+  DISTANCES,
   START_RADIUS,
-  UNLOAD_RADIUS,
   chunkAt,
-  FAR_DROP,
   chunkDistance,
   chunksAround,
+  farDrop,
+  isDistanceName,
   plan,
+  unloadRadius,
 } from './streaming.ts';
+import type { DistanceName } from './streaming.ts';
 import { CHUNK, allBricks, applyToChunks, chunkOf, withEdits } from './chunks.ts';
 import type { Chunks } from './chunks.ts';
 import { WorldIndex } from './world-index.ts';
@@ -33,10 +37,12 @@ import { colorsFor, getSnap, nextRotation } from './catalog.ts';
 import {
   WORLD_VERSION,
   loadEdits,
+  loadDistance,
   loadHotbar,
   loadSeed,
   loadTime,
   saveEdits,
+  saveDistance,
   saveHotbar,
   saveSeed,
   saveTime,
@@ -148,6 +154,14 @@ function Game({
   const [revision, setRevision] = useState(0);
   const [centre, setCentre] = useState(() => chunkAt(spawn.x, spawn.z));
   const centreRef = useRef(centre);
+  /** How far the world reaches round the walker, as picked in the menu's settings. */
+  const [distanceName, setDistanceName] = useState<DistanceName>(() => {
+    const saved = loadDistance();
+    return isDistanceName(saved) ? saved : DEFAULT_DISTANCE;
+  });
+  useEffect(() => saveDistance(distanceName), [distanceName]);
+  const distance = DISTANCES[distanceName];
+  const distanceRef = useRef(distance);
   /** How long the last few chunks took to build, for the debug window. */
   const [chunkTimes, setChunkTimes] = useState<number[]>([]);
   /**
@@ -185,7 +199,7 @@ function Game({
   const addFar = useCallback(
     (chunk: FarMessage) => {
       const [cx, cz] = centreRef.current;
-      if (chunkDistance(chunk.key, cx, cz) > FAR_DROP) return;
+      if (chunkDistance(chunk.key, cx, cz) > farDrop(distanceRef.current)) return;
       farStore.set(new Map(farStore.current).set(chunk.key, chunk));
     },
     [farStore],
@@ -194,7 +208,10 @@ function Game({
   const addChunk = useCallback(
     (chunk: ChunkMessage) => {
       const [cx, cz] = centreRef.current;
-      if (chunksRef.current.has(chunk.key) || chunkDistance(chunk.key, cx, cz) > UNLOAD_RADIUS)
+      if (
+        chunksRef.current.has(chunk.key) ||
+        chunkDistance(chunk.key, cx, cz) > unloadRadius(distanceRef.current)
+      )
         return;
       const bricks = withEdits(chunk.key, chunk.bricks, editsRef.current);
       for (const brick of bricks) index.add(brick);
@@ -254,12 +271,17 @@ function Game({
   useEffect(() => {
     if (!loader.current) return;
     centreRef.current = centre;
+    // A new render distance takes effect at once: a shorter one drops all that is now past it.
+    const changed = distanceRef.current !== distance;
+    distanceRef.current = distance;
     const [cx, cz] = centre;
     const { request, unload, farRequest, farUnload } = plan(
       cx,
       cz,
       new Set(chunksRef.current.keys()),
       new Set(farStore.current.keys()),
+      distance,
+      changed,
     );
     for (const key of unload) dropChunk(key);
     if (farUnload.length) {
@@ -268,7 +290,7 @@ function Game({
       farStore.set(next);
     }
     loader.current.want(request, farRequest);
-  }, [centre, dropChunk, farStore]);
+  }, [centre, distance, dropChunk, farStore]);
   const onChunk = useCallback((cx: number, cz: number) => setCentre([cx, cz]), []);
   /** The chunks that must be there before the game starts: those round the start. */
   const startChunks = useMemo(
@@ -579,6 +601,7 @@ function Game({
         revision={revision}
         models={library.models}
         buildArea={FRAME}
+        distance={distance}
         spawn={spawn}
         onChunk={onChunk}
         view={view}
@@ -694,6 +717,8 @@ function Game({
           onReset={resetWorld}
           onNewIsland={onNewWorld}
           onOpenIsland={onOpenIsland}
+          distance={distanceName}
+          onDistance={setDistanceName}
         />
       )}
     </div>

@@ -147,6 +147,9 @@ export const saveSeed = (seed: number) => write('seed', seed);
 export const loadTime = () => read<number>('time');
 export const saveTime = (time: number) => write('time', time);
 
+export const loadDistance = () => read<string>('distance');
+export const saveDistance = (name: string) => write('distance', name);
+
 export const loadHotbar = () => read<Held[]>('hotbar');
 export const saveHotbar = (slots: readonly Held[]) => write('hotbar', slots);
 

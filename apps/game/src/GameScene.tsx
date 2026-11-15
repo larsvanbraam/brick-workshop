@@ -12,7 +12,8 @@ import { displayHex } from '@brick-workshop/render/ldraw-materials';
 import { WalkMode } from '@brick-workshop/walk/walk-view';
 import type { WalkWorld } from '@brick-workshop/walk/walk';
 import type { Chunks } from './chunks.ts';
-import { FAR_RADIUS, LOAD_RADIUS, chunkAt } from './streaming.ts';
+import { chunkAt } from './streaming.ts';
+import type { RenderDistance } from './streaming.ts';
 import { FarLayer } from './FarView.tsx';
 import type { FarStore } from './FarView.tsx';
 import { CHUNK } from './chunks.ts';
@@ -62,6 +63,8 @@ export interface GameSceneProps {
   ghostValid: boolean;
   onAim: (aim: Aim | null) => void;
   onMouse: (action: MouseAction) => void;
+  /** How far the world reaches: the fog closes in at its edge and the shadows cover the near part. */
+  distance: RenderDistance;
   /** Off while the menu is up, so clicks there do not build. */
   playing: boolean;
   debug: GameSceneDebug;
@@ -112,8 +115,9 @@ export function GameScene(props: GameSceneProps) {
     >
       <GameStage
         size={buildArea}
-        view={(FAR_RADIUS + 0.5) * CHUNK}
-        shadowView={(LOAD_RADIUS + 0.5) * CHUNK}
+        view={(props.distance.far + 0.5) * CHUNK}
+        // Shadows stop two chunks out whatever the reach: wider, the same shadow map blurs.
+        shadowView={(Math.min(props.distance.load, 2) + 0.5) * CHUNK}
         clock={props.clock}
         volcano={props.volcano}
       />

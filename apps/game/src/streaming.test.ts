@@ -3,12 +3,14 @@ import { validateAssembly } from '@brick-workshop/engine';
 import type { Brick } from '@brick-workshop/engine';
 import { CHUNK, withEdits } from './chunks.ts';
 import {
+  DISTANCES,
   FAR_RADIUS,
   LOAD_RADIUS,
   UNLOAD_RADIUS,
   chunkAt,
   chunkDistance,
   chunksAround,
+  isDistanceName,
   plan,
 } from './streaming.ts';
 import { farChunk } from './world/far.ts';
@@ -50,6 +52,26 @@ describe('far chunks', () => {
     }
     expect(farRequest).not.toContain('3,0');
     expect(farUnload).toEqual(['9,0']);
+  });
+
+  it('reaches as far as the render distance picked', () => {
+    for (const distance of Object.values(DISTANCES)) {
+      const { request, farRequest } = plan(0, 0, new Set(), new Set(), distance);
+      expect(request).toHaveLength((distance.load * 2 + 1) ** 2);
+      expect(farRequest).toHaveLength((distance.far * 2 + 1) ** 2 - request.length);
+    }
+    // Shortening the reach drops what is now too far, a chunk past the new edge.
+    const loaded = new Set(['0,0', '2,0', '3,0']);
+    const far = new Set(['4,0', '5,0']);
+    const { unload, farUnload } = plan(0, 0, loaded, far, DISTANCES.short);
+    expect(unload).toEqual(['3,0']);
+    expect(farUnload).toEqual(['5,0']);
+    // Switching to it trims to the reach itself, without the margin.
+    const trimmed = plan(0, 0, loaded, far, DISTANCES.short, true);
+    expect(trimmed.unload).toEqual(['2,0', '3,0']);
+    expect(trimmed.farUnload).toEqual(['4,0', '5,0']);
+    expect(isDistanceName('far')).toBe(true);
+    expect(isDistanceName('toString')).toBe(false);
   });
 
   it('draws the same ground the full chunk is built from', () => {

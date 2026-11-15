@@ -1,15 +1,37 @@
 import { CHUNK, chunkKey } from './chunks.ts';
 import type { ChunkMessage, ChunkRequest, FarMessage } from './world/worker.ts';
 
-/** Chunks this many away from the walker's, in any direction, are kept loaded. */
-export const LOAD_RADIUS = 2;
-/** Chunks further than this are dropped: a margin over the load radius, so a walker going back
- * and forth over a chunk edge does not drop and rebuild the same chunks. */
-export const UNLOAD_RADIUS = 3;
-/** Past the chunks loaded in full, chunks this far away are drawn plainly, from afar. */
-export const FAR_RADIUS = 4;
+/**
+ * How far the world reaches round the walker, in chunks: `load` chunks away in any direction are
+ * built in full, and past them, out to `far`, chunks are drawn plainly from afar. Each is dropped
+ * one chunk further out than it is loaded, so a walker going back and forth over a chunk edge
+ * does not drop and rebuild the same chunks.
+ */
+export interface RenderDistance {
+  load: number;
+  far: number;
+}
+
+export const DISTANCES = {
+  short: { load: 1, far: 3 },
+  normal: { load: 2, far: 4 },
+  far: { load: 2, far: 6 },
+  farthest: { load: 3, far: 8 },
+} as const satisfies Record<string, RenderDistance>;
+export type DistanceName = keyof typeof DISTANCES;
+export const DEFAULT_DISTANCE: DistanceName = 'normal';
+export const isDistanceName = (name: unknown): name is DistanceName =>
+  typeof name === 'string' && Object.hasOwn(DISTANCES, name);
+
+/** Chunks further than this are dropped. */
+export const unloadRadius = (distance: RenderDistance) => distance.load + 1;
 /** Far chunks further than this are dropped. */
-export const FAR_DROP = 5;
+export const farDrop = (distance: RenderDistance) => distance.far + 1;
+
+/** The default reach, as the tests and the rest of the game assume it when none is given. */
+export const LOAD_RADIUS = DISTANCES.normal.load;
+export const UNLOAD_RADIUS = unloadRadius(DISTANCES.normal);
+export const FAR_RADIUS = DISTANCES.normal.far;
 /** Chunks round the start that must be there before the game begins. */
 export const START_RADIUS = 1;
 
@@ -44,13 +66,22 @@ export function plan(
   cz: number,
   loaded: ReadonlySet<string>,
   far: ReadonlySet<string> = new Set(),
+  distance: RenderDistance = DISTANCES[DEFAULT_DISTANCE],
+  /** Drop everything past the reach itself, without the margin: for when the reach shrinks. */
+  trim = false,
 ): { request: string[]; unload: string[]; farRequest: string[]; farUnload: string[] } {
-  const near = new Set(chunksAround(cx, cz, LOAD_RADIUS));
+  const nearby = chunksAround(cx, cz, distance.load);
+  const near = new Set(nearby);
   return {
-    request: chunksAround(cx, cz, LOAD_RADIUS).filter((key) => !loaded.has(key)),
-    unload: [...loaded].filter((key) => chunkDistance(key, cx, cz) > UNLOAD_RADIUS),
-    farRequest: chunksAround(cx, cz, FAR_RADIUS).filter((key) => !near.has(key) && !far.has(key)),
-    farUnload: [...far].filter((key) => chunkDistance(key, cx, cz) > FAR_DROP),
+    request: nearby.filter((key) => !loaded.has(key)),
+    unload: [...loaded].filter(
+      (key) => chunkDistance(key, cx, cz) > (trim ? distance.load : unloadRadius(distance)),
+    ),
+    farRequest: chunksAround(cx, cz, distance.far).filter((key) => !near.has(key) && !far.has(key)),
+    // A far chunk inside the full ring stays: it fills the gap until the full chunk arrives.
+    farUnload: [...far].filter(
+      (key) => chunkDistance(key, cx, cz) > (trim ? distance.far : farDrop(distance)),
+    ),
   };
 }
 
