@@ -35,6 +35,9 @@ import { DayClock, START_TIME, clockTime, isDaytime } from './sky.ts';
 import { STARTER_HOTBAR } from './hotbar.ts';
 import { BrickBox, PART_DRAG, PartImage, colorHex, colorName } from './BrickBox.tsx';
 import { colorsFor, getSnap, nextRotation } from './catalog.ts';
+import { PadPresses, readPads } from './gamepad.ts';
+import type { PadButton, PadState } from './gamepad.ts';
+import { PAD_CLASS, moveFocus, pressFocused, scrollPanel, switchTab } from './pad-ui.ts';
 import {
   WORLD_VERSION,
   loadEdits,
@@ -98,6 +101,11 @@ const FRAME = WORLD_SIZE;
 /** Keys typed into a field are text, not game controls. */
 const isTyping = (target: EventTarget | null) =>
   target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement;
+
+/** Controller buttons that repeat while held: building while playing, moving round in a panel. */
+const PLAY_REPEAT = new Set<PadButton>(['lt', 'rt']);
+const PANEL_REPEAT = new Set<PadButton>(['up', 'down', 'left', 'right', 'lt', 'rt']);
+const DIRECTIONS = ['up', 'down', 'left', 'right'] as const;
 
 export function App() {
   const [seed, setSeed] = useState(() => loadSeed() ?? newSeed());
@@ -472,11 +480,22 @@ function Game({
   useEffect(() => {
     keys.current = { screen, selected };
   });
+  const updateHeld = (change: (slot: Held) => Held) =>
+    setSlots((current) =>
+      current.map((slot, index) => (index === keys.current.selected ? change(slot) : slot)),
+    );
+  /** Steps the held part through the colours it comes in. */
+  const stepColor = (step: number) =>
+    updateHeld((slot) => {
+      const colors = colorsFor(slot.partId);
+      const at = colors.indexOf(slot.color);
+      const next = (Math.max(0, at) + step + colors.length) % colors.length;
+      return { ...slot, color: colors[next] };
+    });
+  const turnHeld = () =>
+    updateHeld((slot) => ({ ...slot, rotation: nextRotation(slot.partId, slot.rotation) }));
+  const stepSlot = (step: number) => setSelected((current) => (current + step + 9) % 9);
   useEffect(() => {
-    const updateHeld = (change: (slot: Held) => Held) =>
-      setSlots((current) =>
-        current.map((slot, index) => (index === keys.current.selected ? change(slot) : slot)),
-      );
     const keydown = (event: KeyboardEvent) => {
       if (event.metaKey || event.ctrlKey || event.altKey) return;
       const { screen } = keys.current;
@@ -497,16 +516,9 @@ function Game({
       }
       if (typing) return;
       if (/^Digit[1-9]$/.test(event.code)) setSelected(Number(event.code.slice(5)) - 1);
-      else if (event.code === 'KeyQ' || event.code === 'KeyE') {
-        const step = event.code === 'KeyE' ? 1 : -1;
-        updateHeld((slot) => {
-          const colors = colorsFor(slot.partId);
-          const at = colors.indexOf(slot.color);
-          const next = (Math.max(0, at) + step + colors.length) % colors.length;
-          return { ...slot, color: colors[next] };
-        });
-      } else if (event.code === 'KeyR')
-        updateHeld((slot) => ({ ...slot, rotation: nextRotation(slot.partId, slot.rotation) }));
+      else if (event.code === 'KeyQ' || event.code === 'KeyE')
+        stepColor(event.code === 'KeyE' ? 1 : -1);
+      else if (event.code === 'KeyR') turnHeld();
       else if (event.code === 'KeyV')
         setView((current) => (current === 'first' ? 'third' : 'first'));
       else if (event.code === 'KeyB') show('box');
@@ -515,7 +527,7 @@ function Game({
     const wheel = (event: WheelEvent) => {
       // Over the brick box and the menu the wheel scrolls them instead.
       if (keys.current.screen !== 'playing') return;
-      setSelected((current) => (current + (event.deltaY > 0 ? 1 : -1) + 9) % 9);
+      stepSlot(event.deltaY > 0 ? 1 : -1);
     };
     window.addEventListener('keydown', keydown);
     window.addEventListener('wheel', wheel, { passive: true });
@@ -523,8 +535,65 @@ function Game({
       window.removeEventListener('keydown', keydown);
       window.removeEventListener('wheel', wheel);
     };
-    // play and show only set state and touch the pointer, so the first ones serve throughout.
+    // play, show and the slot helpers only set state and touch the pointer, so the first ones
+    // serve throughout.
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // A controller, read every frame (walking reads its own buttons in the scene; see `gamepad.ts`
+  // for what each does here). The handler is replaced every render, so it always sees the latest
+  // aim and screen.
+  const onPad = (state: PadState, pressed: Set<PadButton>, seconds: number) => {
+    if (screen === 'playing') {
+      if (pressed.has('rt')) onMouse('place');
+      if (pressed.has('lt')) onMouse('break');
+      if (pressed.has('x')) onMouse('pick');
+      if (pressed.has('lb')) stepSlot(-1);
+      if (pressed.has('rb')) stepSlot(1);
+      if (pressed.has('left')) stepColor(-1);
+      if (pressed.has('right')) stepColor(1);
+      if (pressed.has('up')) turnHeld();
+      if (pressed.has('down')) show('box');
+      if (pressed.has('menu')) show('menu');
+      return;
+    }
+    const root = document.querySelector<HTMLElement>(screen === 'box' ? '.box' : '.menu .panel');
+    if (!root) return;
+    for (const direction of DIRECTIONS) if (pressed.has(direction)) moveFocus(root, direction);
+    if (pressed.has('a')) pressFocused(root);
+    if (pressed.has('lb')) switchTab(root, -1);
+    if (pressed.has('rb')) switchTab(root, 1);
+    if (screen === 'box') {
+      if (pressed.has('lt')) stepSlot(-1);
+      if (pressed.has('rt')) stepSlot(1);
+    }
+    scrollPanel(root, state.scroll.x, state.scroll.y, seconds);
+    if (pressed.has('b') || (screen === 'menu' && pressed.has('menu'))) play();
+  };
+  const padHandler = useRef(onPad);
+  useEffect(() => {
+    padHandler.current = onPad;
+  });
+  useEffect(() => {
+    const presses = new PadPresses();
+    let last = performance.now();
+    let frame = requestAnimationFrame(function tick(now) {
+      frame = requestAnimationFrame(tick);
+      const seconds = Math.min(0.1, (now - last) / 1000);
+      last = now;
+      const pads = navigator.getGamepads?.();
+      const state = pads ? readPads(pads) : null;
+      if (!state) return;
+      const repeating = keys.current.screen === 'playing' ? PLAY_REPEAT : PANEL_REPEAT;
+      padHandler.current(state, presses.update(state.down, now, repeating), seconds);
+    });
+    // The focus ring shows only while the controller is in use.
+    const mouse = () => document.documentElement.classList.remove(PAD_CLASS);
+    window.addEventListener('mousemove', mouse);
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener('mousemove', mouse);
+    };
+  }, []);
 
   /** Puts a part in a slot, keeping its colour and turn where the part allows them. */
   const assign = (slot: number, partId: string) => {
@@ -640,6 +709,7 @@ function Game({
         flying={flying}
         onFlyingChange={setFlying}
         onViewChange={setView}
+        gamepad={playing ? 'build' : 'off'}
         ghost={playing ? ghost : null}
         ghostValid={ghostValid}
         onAim={onAim}

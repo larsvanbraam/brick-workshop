@@ -58,10 +58,10 @@ export function Menu(props: MenuProps) {
       <div className="panel">
         <h1>Studlands</h1>
         <p>World {props.seed}</p>
-        <button type="button" className="play" onClick={props.onPlay}>
+        <button type="button" className="play" onClick={props.onPlay} data-pad-start>
           {props.started ? 'Resume' : 'Play'} <kbd>Esc</kbd>
         </button>
-        <div className="tabs" role="tablist">
+        <div className="tabs" role="tablist" data-pad-tabs>
           {(['play', 'worlds', 'export', 'settings'] as const).map((name) => (
             <button
               key={name}
@@ -102,6 +102,21 @@ function Controls({ edits, onReset, onNewWorld }: MenuProps) {
         <dd>V for over the shoulder</dd>
         <dt>Menu</dt>
         <dd>M opens this menu, Esc closes it</dd>
+      </dl>
+      <h2 className="controls-heading">Controller</h2>
+      <dl>
+        <dt>Move</dt>
+        <dd>Left stick, click it in to sprint; right stick looks</dd>
+        <dt>Fly</dt>
+        <dd>A jumps, Y or double A flies; A up, B down</dd>
+        <dt>Build</dt>
+        <dd>RT places, LT takes a piece off, X copies</dd>
+        <dt>Pieces</dt>
+        <dd>LB/RB pick; d-pad ◀ ▶ colour, ▲ turn, ▼ brick box</dd>
+        <dt>Camera</dt>
+        <dd>View for over the shoulder</dd>
+        <dt>Menu</dt>
+        <dd>Menu opens it; stick moves, A presses, LB/RB tabs, B closes</dd>
       </dl>
       <div className="actions">
         <button type="button" onClick={onReset} disabled={!edits.length}>

@@ -10,6 +10,10 @@
  *   climbs and B or LT sinks.
  * - View (Back) switches between first and third person; Menu (Start) stops walking.
  *
+ * A game that builds (Studlands) reads the `build` layout instead, which leaves the d-pad, the
+ * bumpers and the triggers to the game: the left stick alone moves, clicking it in is the only
+ * sprint, and in the air only A climbs and B sinks.
+ *
  * A browser hides a controller from the page until one of its buttons is pressed while the page
  * is open.
  */
@@ -36,6 +40,12 @@ const BUTTON = {
   left: 14,
   right: 15,
 } as const;
+
+/**
+ * Which buttons walking takes: all of them (`walk`), or only the sticks and the face buttons, with
+ * the d-pad, bumpers and triggers left for the game (`build`).
+ */
+export type GamepadLayout = 'walk' | 'build';
 
 /** The buttons whose presses, not just their holding, mean something. */
 const EDGES = ['a', 'y', 'view', 'menu', 'leftStick'] as const;
@@ -93,7 +103,9 @@ export function shapeStick(x: number | undefined, y: number | undefined) {
 export function readGamepads(
   pads: readonly (PadLike | null)[],
   held: Partial<Record<Edge, boolean>>,
+  layout: GamepadLayout = 'walk',
 ): GamepadFrame | null {
+  const all = layout === 'walk';
   const frame: GamepadFrame = {
     forward: 0,
     strafe: 0,
@@ -121,15 +133,15 @@ export function readGamepads(
     const move = shapeStick(pad.axes[0], pad.axes[1]);
     const look = shapeStick(pad.axes[2], pad.axes[3]);
     // Sticks report up as negative.
-    const dpadForward = (button(BUTTON.up) ? 1 : 0) - (button(BUTTON.down) ? 1 : 0);
-    const dpadStrafe = (button(BUTTON.right) ? 1 : 0) - (button(BUTTON.left) ? 1 : 0);
+    const dpadForward = all ? (button(BUTTON.up) ? 1 : 0) - (button(BUTTON.down) ? 1 : 0) : 0;
+    const dpadStrafe = all ? (button(BUTTON.right) ? 1 : 0) - (button(BUTTON.left) ? 1 : 0) : 0;
     frame.forward = strongest(frame.forward, -move.y, dpadForward);
     frame.strafe = strongest(frame.strafe, move.x, dpadStrafe);
     frame.lookX = strongest(frame.lookX, look.x);
     frame.lookY = strongest(frame.lookY, -look.y);
-    if (button(BUTTON.lb)) frame.run = true;
-    const climb = button(BUTTON.a) || button(BUTTON.rt, TRIGGER_THRESHOLD) ? 1 : 0;
-    const sink = button(BUTTON.b) || button(BUTTON.lt, TRIGGER_THRESHOLD) ? 1 : 0;
+    if (all && button(BUTTON.lb)) frame.run = true;
+    const climb = button(BUTTON.a) || (all && button(BUTTON.rt, TRIGGER_THRESHOLD)) ? 1 : 0;
+    const sink = button(BUTTON.b) || (all && button(BUTTON.lt, TRIGGER_THRESHOLD)) ? 1 : 0;
     frame.rise = strongest(frame.rise, climb - sink);
     for (const edge of EDGES) if (button(BUTTON[edge])) down[edge] = true;
   }

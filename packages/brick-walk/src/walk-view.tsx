@@ -9,6 +9,7 @@ import { LDRAW_SCALE } from '@brick-workshop/render/scene-frame';
 import { MINIFIG, WalkWorld, spawnWalker, stepWalker } from './walk';
 import type { Walker } from './walk';
 import { LOOK_RATE, readGamepads } from './walk-gamepad';
+import type { GamepadLayout } from './walk-gamepad';
 import { WalkSounds } from './walk-sounds';
 
 export type WalkCamera = 'first' | 'third';
@@ -88,6 +89,7 @@ export function WalkMode({
   onFlyingChange,
   onViewChange,
   onExit,
+  gamepad = 'walk',
   sound = true,
   start,
   probe,
@@ -103,6 +105,11 @@ export function WalkMode({
   onViewChange?: (view: WalkCamera) => void;
   /** A controller's Menu button stops walking. */
   onExit?: () => void;
+  /**
+   * Which controller buttons walking takes (see `walk-gamepad.ts`), or `off` to leave the
+   * controller alone, as while a game's menu is open over the scene.
+   */
+  gamepad?: GamepadLayout | 'off';
   sound?: boolean;
   /** Where the minifigure starts, in scene x and z; the front of the board when left out. */
   start?: { x: number; z: number };
@@ -179,11 +186,13 @@ export function WalkMode({
     sprint: false,
     onViewChange,
     onExit,
+    gamepad,
   });
   useEffect(() => {
     pad.current.onViewChange = onViewChange;
     pad.current.onExit = onExit;
-  }, [onViewChange, onExit]);
+    pad.current.gamepad = gamepad;
+  }, [onViewChange, onExit, gamepad]);
   // The real minifigure from the LDraw library; a stand-in walks until it has loaded, or for good
   // when the library has no minifigure parts.
   const [models, setModels] = useState<Record<string, Group> | null>(null);
@@ -309,7 +318,12 @@ export function WalkMode({
     let run = fly.current.sprint || (!airborne && pressed(KEYS.run));
 
     const pads = typeof navigator !== 'undefined' ? navigator.getGamepads?.() : undefined;
-    const gamepad = pads ? readGamepads(pads, pad.current.held) : null;
+    const layout = pad.current.gamepad;
+    // Read even while off, so a button still held when walking resumes is not taken as a press.
+    const read = pads
+      ? readGamepads(pads, pad.current.held, layout === 'off' ? 'walk' : layout)
+      : null;
+    const gamepad = layout === 'off' ? null : read;
     if (gamepad) {
       // The keyboard wins where both are pushed; a half-tilted stick walks slowly.
       if (forward === 0) forward = gamepad.forward;

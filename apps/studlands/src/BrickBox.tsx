@@ -81,6 +81,8 @@ export function BrickBox({ slots, selected, onAssign, onColor, onClose }: BrickB
   }, []);
 
   const held = slots[selected];
+  // A controller's focus starts on the held part, or the first shown.
+  const start = shown.some((part) => part.id === held.partId) ? held.partId : shown[0]?.id;
   const colors = useMemo(() => colorsFor(held.partId), [held.partId]);
   return (
     <div className="box-backdrop" onClick={onClose}>
@@ -103,7 +105,7 @@ export function BrickBox({ slots, selected, onAssign, onColor, onClose }: BrickB
             <kbd>B</kbd>
           </button>
         </header>
-        <nav className="categories">
+        <nav className="categories" data-pad-tabs>
           <button
             type="button"
             className={category === 'all' ? 'selected' : undefined}
@@ -122,7 +124,7 @@ export function BrickBox({ slots, selected, onAssign, onColor, onClose }: BrickB
             </button>
           ))}
         </nav>
-        <div className="parts" role="list">
+        <div className="parts" role="list" data-pad-scroll>
           {shown.map((part) => (
             <button
               key={part.id}
@@ -130,6 +132,7 @@ export function BrickBox({ slots, selected, onAssign, onColor, onClose }: BrickB
               role="listitem"
               className={part.id === held.partId ? 'part selected' : 'part'}
               title={`${part.name} (${part.id})`}
+              data-pad-start={part.id === start || undefined}
               draggable
               onDragStart={(event) => {
                 event.dataTransfer.setData(PART_DRAG, part.id);
@@ -174,7 +177,7 @@ export function BrickBox({ slots, selected, onAssign, onColor, onClose }: BrickB
           </div>
           <p className="tip">
             Click a part for slot {selected + 1}, or point at one and press 1–9. Drag parts onto the
-            bar below.
+            bar below. Controller: A picks, LT/RT the slot, LB/RB the kind, B closes.
           </p>
         </footer>
       </div>

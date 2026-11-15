@@ -60,6 +60,8 @@ export interface GameSceneProps {
   flying: boolean;
   onFlyingChange: (flying: boolean) => void;
   onViewChange: (view: WalkCamera) => void;
+  /** Which controller buttons walking takes: off while a panel is open over the game. */
+  gamepad: 'build' | 'off';
   ghost: Brick | null;
   ghostValid: boolean;
   onAim: (aim: Aim | null) => void;
@@ -142,6 +144,7 @@ export function GameScene(props: GameSceneProps) {
         flying={props.flying}
         onFlyingChange={props.onFlyingChange}
         onViewChange={props.onViewChange}
+        gamepad={props.gamepad}
         start={start}
         probe={probe}
       />

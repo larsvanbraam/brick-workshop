@@ -57,6 +57,17 @@ describe('walk gamepad', () => {
     expect(readGamepads([pad([0, 0, 0, 0], [4])], {})!.run).toBe(true);
   });
 
+  it('leaves the d-pad, bumpers and triggers to the game in the build layout', () => {
+    const read = (down: number[], values: Record<number, number> = {}) =>
+      readGamepads([pad([0, 0, 0, 0], down, values)], {}, 'build')!;
+    expect(read([12, 15])).toMatchObject({ forward: 0, strafe: 0 });
+    expect(read([4]).run).toBe(false);
+    expect(read([], { 6: 1, 7: 1 }).rise).toBe(0);
+    expect(read([0]).rise).toBe(1);
+    expect(read([1]).rise).toBe(-1);
+    expect(readGamepads([pad([0, -1, 0, 0])], {}, 'build')!.forward).toBe(1);
+  });
+
   it('reports a press once, not every frame it is held', () => {
     const held = {};
     expect(readGamepads([pad([0, 0, 0, 0], [0, 8])], held)!.pressed).toMatchObject({
