@@ -53,6 +53,34 @@ import { REGION, Terrain, volcanoIn } from './world/terrain.ts';
 import type { ChunkMessage, FarMessage } from './world/worker.ts';
 import { FarStore } from './FarView.tsx';
 
+/**
+ * Counts per chunk, kept until the chunk changes: a chunk's list is replaced whenever its pieces
+ * change, so its counts can be looked up by the list itself instead of counted afresh over the
+ * whole world every time a chunk arrives.
+ */
+const kindCounts = new WeakMap<readonly Brick[], { trees: number; player: number }>();
+function countKinds(pieces: readonly Brick[]) {
+  let counts = kindCounts.get(pieces);
+  if (!counts) {
+    counts = { trees: 0, player: 0 };
+    for (const brick of pieces)
+      if (isPlant(brick)) counts.trees++;
+      else if (isPlayerPiece(brick)) counts.player++;
+    kindCounts.set(pieces, counts);
+  }
+  return counts;
+}
+const fallbackCounts = new WeakMap<readonly Brick[], { models: object; count: number }>();
+/** Pieces of a chunk with no model loaded yet, drawn from simple shapes. */
+function countFallback(pieces: readonly Brick[], models: Record<string, unknown>) {
+  const cached = fallbackCounts.get(pieces);
+  if (cached?.models === models) return cached.count;
+  let count = 0;
+  for (const brick of pieces) if (!models[brick.partId]) count++;
+  fallbackCounts.set(pieces, { models, count });
+  return count;
+}
+
 function newSeed() {
   return Math.floor(Math.random() * 1_000_000);
 }
@@ -173,11 +201,7 @@ function Game({
   const playing = screen === 'playing';
   // Every loaded piece in one list is only needed by the menu (its export) and the debug window.
   const [debugOptions, setDebugOptions] = useDebugOptions('brick-island-debug-v1');
-  const listAll = screen === 'menu' || debugOptions.enabled;
-  const assembly = useMemo<Assembly>(
-    () => ({ name: `World ${seed}`, bricks: listAll ? allBricks(chunks) : [] }),
-    [chunks, seed, listAll],
-  );
+  const getAssembly = (): Assembly => ({ name: `World ${seed}`, bricks: allBricks(chunks) });
   /** Parts of every chunk loaded so far, gathered as chunks arrive rather than counted afresh. */
   const [partsSeen, setPartsSeen] = useState<ReadonlySet<string>>(() => new Set());
 
@@ -540,24 +564,30 @@ function Game({
     onOpenIsland(seed);
   };
 
+  /** Pieces by kind over every loaded chunk, from counts kept per chunk. */
+  const kinds = useMemo(() => {
+    const sum = { total: 0, trees: 0, player: 0 };
+    for (const pieces of chunks.values()) {
+      const counts = countKinds(pieces);
+      sum.total += pieces.length;
+      sum.trees += counts.trees;
+      sum.player += counts.player;
+    }
+    return sum;
+  }, [chunks]);
   const worldInfo = useMemo(() => {
-    let trees = 0;
-    let player = 0;
-    for (const brick of assembly.bricks)
-      if (isPlant(brick)) trees++;
-      else if (isPlayerPiece(brick)) player++;
     const times = chunkTimes;
     return {
       seed,
       version: WORLD_VERSION,
       generationMs: times.length ? times.reduce((sum, ms) => sum + ms, 0) / times.length : 0,
       chunks: chunks.size,
-      ground: assembly.bricks.length - trees - player,
-      trees,
-      player,
-      total: assembly.bricks.length,
+      ground: kinds.total - kinds.trees - kinds.player,
+      trees: kinds.trees,
+      player: kinds.player,
+      total: kinds.total,
     };
-  }, [assembly, chunks, chunkTimes, seed]);
+  }, [kinds, chunks, chunkTimes, seed]);
   /** How the world streams in, for the debug window, which reads it a couple of times a second. */
   const readStreaming = (): StreamingInfo => {
     let pieces = 0;
@@ -577,10 +607,11 @@ function Game({
   };
   const debugCounts = useMemo(() => {
     let fallback = 0;
-    for (const brick of assembly.bricks) if (!library.models[brick.partId]) fallback++;
-    const total = assembly.bricks.length;
+    if (debugOptions.enabled)
+      for (const pieces of chunks.values()) fallback += countFallback(pieces, library.models);
+    const total = kinds.total;
     return { visible: total, batched: total - fallback, separate: 0, fallback, total };
-  }, [assembly, library.models]);
+  }, [chunks, kinds, library.models, debugOptions.enabled]);
 
   if (!ready) {
     const done = startChunks.filter((key) => chunks.has(key)).length;
@@ -711,7 +742,8 @@ function Game({
           started={started}
           seed={seed}
           edits={edits}
-          assembly={assembly}
+          getAssembly={getAssembly}
+          hasBuild={kinds.player > 0}
           position={position}
           onPlay={play}
           onReset={resetWorld}

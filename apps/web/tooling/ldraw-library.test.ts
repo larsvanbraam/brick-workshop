@@ -23,7 +23,7 @@ import {
   Vector3,
 } from 'three';
 import type { Material, ShaderMaterial } from 'three';
-import { LDrawBatch, canBatchLDrawModel } from '@brick-workshop/render/ldraw-batches';
+import { LDrawBatch, LookCache, canBatchLDrawModel } from '@brick-workshop/render/ldraw-batches';
 import { createFallbackGeometry } from '@brick-workshop/render/fallback-geometry';
 import {
   LDRAW_SCALE,
@@ -171,6 +171,31 @@ describe('local LDraw assets', () => {
     batch.dispose();
     expect(dispose).not.toHaveBeenCalled();
     geometry.dispose();
+  });
+  it('bakes a part once for batches that share a look cache, and keeps it while one holds it', () => {
+    const geometry = new BoxGeometry(20, 24, 20).translate(0, 12, 0);
+    const model = new Group().add(new Mesh(geometry, new MeshStandardMaterial()));
+    const colorize = vi.fn((part: Group) => part);
+    const cache = new LookCache();
+    const brick = { id: 'a', partId: '3005', color: 4, x: 2, y: 0, z: 2, rotation: 0 as const };
+    const first = new LDrawBatch(colorize, { cache, cullEach: false });
+    const second = new LDrawBatch(colorize, { cache, cullEach: false });
+    first.update([{ brick, model }], 16);
+    second.update([{ brick: { ...brick, x: 9 }, model }], 16);
+    expect(colorize).toHaveBeenCalledTimes(1);
+    expect(second.meshes[0].perObjectFrustumCulled).toBe(false);
+    first.dispose();
+    second.object.updateMatrixWorld(true);
+    const hit = new Raycaster(new Vector3(9.5 - 8, 4, 5.5), new Vector3(0, -1, 0)).intersectObject(
+      second.object,
+    )[0];
+    expect(hit?.point.y).toBeCloseTo(1.2);
+    // Once no batch holds the look, the part is baked afresh.
+    second.dispose();
+    const third = new LDrawBatch(colorize, { cache });
+    third.update([{ brick, model }], 16);
+    expect(colorize).toHaveBeenCalledTimes(2);
+    third.dispose();
   });
   it('leaves out studs that an opaque brick sits on', () => {
     // A 1 x 1 brick: a 24 LDU body below the top (LDraw y = 0) and a stud standing on it.

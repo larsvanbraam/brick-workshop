@@ -1,14 +1,7 @@
-import { useMemo, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import type { Assembly } from '@brick-workshop/engine';
 import type { Edit } from './build.ts';
-import {
-  cutOutArea,
-  cutOutBuild,
-  download,
-  isPlayerPiece,
-  ldrawDocument,
-  workshopDocument,
-} from './export.ts';
+import { cutOutArea, cutOutBuild, download, ldrawDocument, workshopDocument } from './export.ts';
 import {
   createSaveFile,
   deleteIsland,
@@ -30,7 +23,10 @@ export interface MenuProps {
   /** Whether the game has been played since it loaded: the button then resumes it. */
   started: boolean;
   edits: readonly Edit[];
-  assembly: Assembly;
+  /** Every loaded piece in one list, built when asked for: only an export needs it. */
+  getAssembly: () => Assembly;
+  /** Whether any of the player's pieces stand in the loaded chunks. */
+  hasBuild: boolean;
   onPlay: () => void;
   onReset: () => void;
   onNewIsland: () => void;
@@ -257,8 +253,7 @@ function Islands({ seed, onOpenIsland }: MenuProps) {
 type Scope = 'island' | 'build';
 type Format = 'ldr' | 'workshop';
 
-function Export({ seed, edits, assembly, position, onOpenIsland }: MenuProps) {
-  const hasBuild = useMemo(() => assembly.bricks.some(isPlayerPiece), [assembly]);
+function Export({ seed, edits, getAssembly, hasBuild, position, onOpenIsland }: MenuProps) {
   const [scope, setScope] = useState<Scope>(hasBuild ? 'build' : 'island');
   const [format, setFormat] = useState<Format>('ldr');
   const [message, setMessage] = useState<{ text: string; bad?: boolean } | null>(null);
@@ -267,6 +262,7 @@ function Export({ seed, edits, assembly, position, onOpenIsland }: MenuProps) {
 
   const exportModel = () => {
     const name = scope === 'build' ? `My build on island ${seed}` : `Island ${seed}`;
+    const assembly = getAssembly();
     const model =
       scope === 'build' ? cutOutBuild(assembly, name) : cutOutArea(assembly, position, name);
     if (!model) return setMessage({ text: 'Nothing built yet to export.', bad: true });

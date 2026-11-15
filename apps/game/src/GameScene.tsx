@@ -6,7 +6,7 @@ import { PLATE_HEIGHT, footprint } from '@brick-workshop/engine';
 import type { Brick } from '@brick-workshop/engine';
 import { getCinematicDpr } from '@brick-workshop/render/cinematic-look';
 import { FallbackBatch } from '@brick-workshop/render/fallback-batch';
-import { LDrawBatch, canBatchLDrawModel } from '@brick-workshop/render/ldraw-batches';
+import { LDrawBatch, LookCache, canBatchLDrawModel } from '@brick-workshop/render/ldraw-batches';
 import type { BatchLayerStats, BatchStats } from '@brick-workshop/render/ldraw-batches';
 import { displayHex } from '@brick-workshop/render/ldraw-materials';
 import { WalkMode } from '@brick-workshop/walk/walk-view';
@@ -16,7 +16,7 @@ import { chunkAt } from './streaming.ts';
 import type { RenderDistance } from './streaming.ts';
 import { FarLayer } from './FarView.tsx';
 import type { FarStore } from './FarView.tsx';
-import { CHUNK } from './chunks.ts';
+import { CHUNK, chunkKey } from './chunks.ts';
 import type { WalkCamera, WalkProbe } from '@brick-workshop/walk/walk-view';
 import { DebugHelpers, DebugProbe } from '@brick-workshop/render/scene-debug';
 import type { DebugOptions, DebugStore } from '@brick-workshop/render/scene-debug';
@@ -202,6 +202,24 @@ function useCappedDpr() {
 }
 
 /**
+ * Chunks are built one at a time, nearest first as they arrive, a few milliseconds a frame: a
+ * burst of arrivals (crossing into a new chunk, a longer render distance) then costs a steady
+ * slice of each frame rather than a run of long ones.
+ */
+let buildQueue: Promise<unknown> = Promise.resolve();
+function queueBuild<T>(job: () => Promise<T>): Promise<T> {
+  const next = buildQueue.then(job, job);
+  buildQueue = next.catch(() => {});
+  return next;
+}
+const nextFrame = () => new Promise((resolve) => requestAnimationFrame(resolve));
+const BUILD_SLICES = { budget: 6, pause: nextFrame };
+/** Room for a typical chunk, about a thousand pieces and 110,000 vertices, so it seldom grows. */
+const CHUNK_RESERVE = { instances: 2048, vertices: 131_072, indices: 262_144 };
+/** Parts baked once for every chunk: the same few dozen parts and colors fill them all. */
+const CHUNK_LOOKS = new LookCache();
+
+/**
  * One chunk's pieces: those with an LDraw model in a batch of their own, the rest from simple
  * shapes. A change to the chunk redraws only this chunk.
  */
@@ -243,7 +261,14 @@ const ChunkView = memo(function ChunkView({
     // the key changes exactly when a model this chunk uses arrives.
   }, [pieces, ownKey]); // eslint-disable-line react-hooks/exhaustive-deps
   const [native] = useState(
-    () => new LDrawBatch(undefined, { fadeEdges: true, solidGround: true }),
+    () =>
+      new LDrawBatch(undefined, {
+        fadeEdges: true,
+        solidGround: true,
+        cullEach: false,
+        reserve: CHUNK_RESERVE,
+        cache: CHUNK_LOOKS,
+      }),
   );
   const [simple] = useState(() => new FallbackBatch());
   useEffect(() => {
@@ -262,19 +287,27 @@ const ChunkView = memo(function ChunkView({
       requestShadows();
       invalidate();
     };
-    let timer: ReturnType<typeof setTimeout> | undefined;
+    let cancelled = false;
+    const build = () =>
+      queueBuild(() =>
+        cancelled
+          ? Promise.resolve(false)
+          : native.updateInSlices(entries, buildArea, false, BUILD_SLICES),
+      ).then(done);
     if (!filled.current) {
-      // A chunk just arrived: it is built a frame later and then in slices, so the work of
-      // building it does not land in the same frame as the work of adding it to the world.
+      // A chunk just arrived: it waits its turn and is built a slice a frame, so building it
+      // never lands in the frame that adds it to the world, nor alongside other chunks.
       filled.current = true;
-      timer = setTimeout(() => void native.updateInSlices(entries, buildArea, false).then(done));
+      void build();
     } else if (native.changes(entries, buildArea) < 200) {
       // An edit touches a piece or two and shows in the same frame.
       native.update(entries, buildArea);
       done(true);
-    } else void native.updateInSlices(entries, buildArea, false).then(done);
+    } else void build();
     if (simple.update(split.fallback, buildArea)) done(true);
-    return () => clearTimeout(timer);
+    return () => {
+      cancelled = true;
+    };
   }, [native, simple, split, buildArea, invalidate]);
   useEffect(
     () => () => {
@@ -435,8 +468,18 @@ function Aimer({
     raycaster.setFromCamera(centre, camera);
     raycaster.far = reach;
     let aim: Aim | null = null;
+    // Only the chunks the ray can reach: the camera's and those within reach of it, rather than
+    // every piece loaded.
+    const x = camera.position.x + buildArea / 2;
+    const z = buildArea / 2 - camera.position.z;
+    const [x0, z0] = chunkAt(x - reach, z - reach);
+    const [x1, z1] = chunkAt(x + reach, z + reach);
     const targets: Object3D[] = [];
-    for (const drawing of drawings.values()) targets.push(...drawing.objects);
+    for (let cz = z0; cz <= z1; cz++)
+      for (let cx = x0; cx <= x1; cx++) {
+        const drawing = drawings.get(chunkKey(cx, cz));
+        if (drawing) targets.push(...drawing.objects);
+      }
     const hits = raycaster.intersectObjects(targets, true);
     for (const hit of hits) {
       const id = hitBrickId(hit.object, hit.batchId ?? hit.instanceId);

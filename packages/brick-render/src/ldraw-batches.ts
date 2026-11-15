@@ -58,14 +58,15 @@ type LineKind = (typeof LINE_KINDS)[number];
 const INDEXED_LINES: ReadonlySet<LineKind> = new Set(['edge', 'glassEdge']);
 /**
  * A part in one color with some regions left out, ready to place: faces per finish, and each
- * kind of edge it has. `users` counts the placements drawing it, so it can go once none do.
+ * kind of edge it has. `holders` counts the batches drawing it (see `LookCache`), so it can go
+ * once none do.
  */
 type Look = {
   key: string;
   baked: Baked;
   surfaces: Surface[];
   lines: Record<LineKind, BufferGeometry | null>;
-  users: number;
+  holders: number;
 };
 /** Faces that share a finish share one batched mesh, and so one draw call. */
 type Layer = {
@@ -507,8 +508,45 @@ function bakeLook(baked: Baked, covered: ReadonlySet<string>, key: string): Look
       LineKind,
       BufferGeometry | null
     >,
-    users: 0,
+    holders: 0,
   };
+}
+
+/**
+ * Parts baked in a color and the looks cut from them, which several batches can share: a world
+ * drawn in chunks, each its own batch, then bakes a part once rather than once a chunk. Share one
+ * only between batches that color parts the same way (the same `colorize`); a look goes once no
+ * batch holds it.
+ */
+export class LookCache {
+  private readonly baked = new Map<string, Baked>();
+  private readonly looks = new Map<string, Look>();
+
+  /** The look for `key`, made with `bake` and `cut` if no batch holds it yet, now held once more. */
+  take(key: string, partKey: string, bake: () => Baked, cut: (baked: Baked) => Look): Look {
+    let look = this.looks.get(key);
+    if (!look) {
+      let baked = this.baked.get(partKey);
+      if (!baked) {
+        baked = bake();
+        this.baked.set(partKey, baked);
+      }
+      look = cut(baked);
+      baked.looks++;
+      this.looks.set(key, look);
+    }
+    look.holders++;
+    return look;
+  }
+
+  /** A batch lets go of a look; the last one to let go frees it, and its part with its last look. */
+  release(look: Look) {
+    if (--look.holders > 0) return;
+    for (const surface of look.surfaces) surface.geometry.dispose();
+    for (const geometry of Object.values(look.lines)) geometry?.dispose();
+    this.looks.delete(look.key);
+    if (--look.baked.looks === 0) this.baked.delete(look.baked.key);
+  }
 }
 
 /**
@@ -701,6 +739,8 @@ function removeFrom(map: Map<string, Set<string>>, key: string, id: string) {
   if (!ids.size) map.delete(key);
 }
 
+const nextTask = () => new Promise((resolve) => setTimeout(resolve, 0));
+
 const probe = new Mesh();
 const probeSphere = new Sphere();
 
@@ -723,6 +763,35 @@ function raycastLayer(layer: Layer, raycaster: Raycaster, intersects: Intersecti
     for (const hit of hits) intersects.push({ ...hit, object: mesh, batchId: id });
     hits.length = 0;
   }
+}
+
+/**
+ * Culls each brick for the shadow pass only. A shadow covers a small area round the camera and
+ * is redrawn now and then, so culling there saves drawing the whole batch into it for little
+ * work; the main pass then rebuilds its full draw list once, as three would after a change.
+ */
+function cullForShadows(mesh: BatchedMesh) {
+  mesh.onBeforeShadow = function (
+    this: BatchedMesh,
+    renderer,
+    _object,
+    _camera,
+    shadowCamera,
+    geometry,
+    depthMaterial,
+  ) {
+    this.perObjectFrustumCulled = true;
+    this.onBeforeRender(
+      renderer,
+      null as never,
+      shadowCamera,
+      geometry,
+      depthMaterial,
+      null as never,
+    );
+    this.perObjectFrustumCulled = false;
+    (this as unknown as { _visibilityChanged: boolean })._visibilityChanged = true;
+  };
 }
 
 /**
@@ -841,8 +910,10 @@ const drawingBuffer = new Vector2();
 export class LDrawBatch {
   readonly object = new Group();
   private readonly layers = new Map<string, Layer>();
-  private readonly baked = new Map<string, Baked>();
+  private readonly cache: LookCache;
+  /** The looks this batch holds, and how many of its placements draw each. */
   private readonly looks = new Map<string, Look>();
+  private readonly users = new Map<Look, number>();
   /** Looks no placement uses since the last update, freed when it finishes. */
   private readonly idle = new Set<Look>();
   private readonly shapes = new WeakMap<Group, PartShape>();
@@ -862,6 +933,8 @@ export class LDrawBatch {
   private readonly hideCovered: boolean;
   private readonly solidGround: boolean;
   private readonly gap: number;
+  private readonly cullEach: boolean;
+  private readonly reserve: { instances: number; vertices: number; indices: number } | undefined;
 
   /**
    * `fadeEdges` fades edges out as the camera pulls back, for the interactive view; renders at
@@ -870,7 +943,13 @@ export class LDrawBatch {
    * whose bottom is closed off. `solidGround` says the build stands on something opaque, so the
    * undersides of bricks on the ground are closed off too. `gap` opens a hairline joint of that
    * many LDraw units between neighbouring bricks, for photo-like renders; it shows into what
-   * `hideCovered` would leave out, so the two are best not combined.
+   * `hideCovered` would leave out, so the two are best not combined. `cullEach: false` skips
+   * culling and sorting each brick on the CPU every frame and culls the batch as a whole: much
+   * cheaper for many small batches with many bricks each (a world in chunks), where most of a
+   * batch is in view anyway. See-through faces are still sorted, so they blend right.
+   * `reserve` sizes each opaque layer up front: a batch that grows from small re-creates and
+   * re-uploads its buffers each time it doubles, which shows as a hitch while it fills.
+   * `cache` shares baked parts with other batches (see `LookCache`).
    */
   constructor(
     colorize: Colorize = coloredLDrawModel,
@@ -879,8 +958,22 @@ export class LDrawBatch {
       hideCovered = true,
       solidGround = false,
       gap = 0,
-    }: { fadeEdges?: boolean; hideCovered?: boolean; solidGround?: boolean; gap?: number } = {},
+      cullEach = true,
+      reserve,
+      cache = new LookCache(),
+    }: {
+      fadeEdges?: boolean;
+      hideCovered?: boolean;
+      solidGround?: boolean;
+      gap?: number;
+      cullEach?: boolean;
+      reserve?: { instances: number; vertices: number; indices: number };
+      cache?: LookCache;
+    } = {},
   ) {
+    this.cache = cache;
+    this.cullEach = cullEach;
+    this.reserve = reserve;
     this.colorize = colorize;
     this.hideCovered = hideCovered;
     this.solidGround = solidGround;
@@ -913,6 +1006,7 @@ export class LDrawBatch {
           INDEXED_LINES.has(kind),
         ) as unknown as BatchedMesh;
         mesh.visible = false;
+        mesh.perObjectFrustumCulled = cullEach;
         if (fadeEdges) {
           // Faded edges blend, so they join the transparent queue: ahead of glass, which draws
           // over them, as the opaque edges they are.
@@ -959,6 +1053,8 @@ export class LDrawBatch {
    * The same as `update`, in slices of about `budget` ms between frames, so swapping in a big
    * build keeps the page responsive. A newer update or `dispose` cancels it; it resolves to
    * whether it ran to the end. `onProgress` hears how many changed bricks are placed so far.
+   * `pause` is how it waits between slices: the next task by default, the next frame for a
+   * steady share of every frame.
    */
   async updateInSlices(
     entries: readonly BatchEntry[],
@@ -967,7 +1063,12 @@ export class LDrawBatch {
     {
       budget = 12,
       onProgress,
-    }: { budget?: number; onProgress?: (done: number, total: number) => void } = {},
+      pause = nextTask,
+    }: {
+      budget?: number;
+      onProgress?: (done: number, total: number) => void;
+      pause?: () => Promise<unknown>;
+    } = {},
   ): Promise<boolean> {
     const run = ++this.run;
     const progress = { done: 0, total: 0 };
@@ -984,7 +1085,7 @@ export class LDrawBatch {
       // Bricks placed so far may sit outside the old bounds, which would cull them.
       this.refreshBounds();
       onProgress?.(progress.done, progress.total);
-      await new Promise((resolve) => setTimeout(resolve, 0));
+      await pause();
       if (run !== this.run) return false;
     }
   }
@@ -1208,16 +1309,11 @@ export class LDrawBatch {
       for (const surface of look.surfaces) {
         const layer = this.layers.get(surface.finish);
         if (layer) drop(layer, surface.key);
-        surface.geometry.dispose();
       }
-      for (const kind of LINE_KINDS) {
-        const geometry = look.lines[kind];
-        if (!geometry) continue;
-        drop(this.lineLayers[kind], look.key);
-        geometry.dispose();
-      }
+      for (const kind of LINE_KINDS) if (look.lines[kind]) drop(this.lineLayers[kind], look.key);
       this.looks.delete(look.key);
-      if (--look.baked.looks === 0) this.baked.delete(look.baked.key);
+      this.users.delete(look);
+      this.cache.release(look);
     }
     this.idle.clear();
     for (const [layer, ids] of gone) {
@@ -1301,6 +1397,7 @@ export class LDrawBatch {
       Object.assign(mesh, {
         renderOrder: layer.mesh.renderOrder,
         onBeforeRender: layer.mesh.onBeforeRender,
+        perObjectFrustumCulled: layer.mesh.perObjectFrustumCulled,
         userData: { ...layer.mesh.userData },
       });
       mesh.layers.mask = layer.mesh.layers.mask;
@@ -1317,13 +1414,10 @@ export class LDrawBatch {
         dead: 0,
       });
     }
-    for (const look of this.looks.values()) {
-      for (const surface of look.surfaces) surface.geometry.dispose();
-      for (const geometry of Object.values(look.lines)) geometry?.dispose();
-    }
+    for (const look of this.looks.values()) this.cache.release(look);
     this.layers.clear();
-    this.baked.clear();
     this.looks.clear();
+    this.users.clear();
     this.idle.clear();
     this.placements.clear();
     this.tracked.clear();
@@ -1337,13 +1431,12 @@ export class LDrawBatch {
     const key = `${partKey}|${hidden}`;
     let look = this.looks.get(key);
     if (!look) {
-      let baked = this.baked.get(partKey);
-      if (!baked) {
-        baked = bakePart(model, brick.color, this.colorize, partKey, this.shapeOf(model));
-        this.baked.set(partKey, baked);
-      }
-      look = bakeLook(baked, new Set(hidden ? hidden.split(',') : []), key);
-      baked.looks++;
+      look = this.cache.take(
+        key,
+        partKey,
+        () => bakePart(model, brick.color, this.colorize, partKey, this.shapeOf(model)),
+        (baked) => bakeLook(baked, new Set(hidden ? hidden.split(',') : []), key),
+      );
       this.looks.set(key, look);
     }
     return look;
@@ -1363,7 +1456,15 @@ export class LDrawBatch {
       polygonOffset: true,
       polygonOffsetFactor: 1,
     });
-    const mesh = new BatchedMesh(64, 8192, 8192, material);
+    const room = !glass && this.reserve;
+    const mesh = room
+      ? new BatchedMesh(room.instances, room.vertices, room.indices, material)
+      : new BatchedMesh(64, 8192, 8192, material);
+    if (!this.cullEach) {
+      mesh.perObjectFrustumCulled = false;
+      mesh.sortObjects = glass;
+      cullForShadows(mesh);
+    }
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     layer = {
@@ -1442,7 +1543,7 @@ export class LDrawBatch {
     hidden: string,
   ): Placement {
     const look = this.look(brick, model, hidden);
-    look.users++;
+    this.users.set(look, (this.users.get(look) ?? 0) + 1);
     this.idle.delete(look);
     const matrix = brickMatrix(brick, buildArea, explode, this.gap);
     const slots: Placement['slots'] = [];
@@ -1462,7 +1563,9 @@ export class LDrawBatch {
   }
 
   private release(placement: Placement) {
-    if (--placement.look.users === 0) this.idle.add(placement.look);
+    const users = this.users.get(placement.look)! - 1;
+    this.users.set(placement.look, users);
+    if (users === 0) this.idle.add(placement.look);
     // Slots are hidden and reused rather than deleted, so ids stay dense and stable.
     for (const { layer, id } of placement.slots) {
       layer.mesh.setVisibleAt(id, false);
