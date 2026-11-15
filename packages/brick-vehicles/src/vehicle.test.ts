@@ -104,10 +104,10 @@ describe('vehicles', () => {
       for (let y = 1; y < 7; y += 3) wall.push(brick('3010', x, y, 70, 90));
     const ground = world([...step, ...wall]);
     const vehicle = car('car', ground, 0, sceneZ(30));
-    drive(ground, vehicle, { throttle: 1 }, 1.8);
+    drive(ground, vehicle, { throttle: 1 }, 2.4);
     expect(vehicle.z).toBeLessThan(sceneZ(42));
     expect(vehicle.y).toBeCloseTo(1.6);
-    drive(ground, vehicle, { throttle: 1 }, 4);
+    drive(ground, vehicle, { throttle: 1 }, 5);
     // Off the step and stopped short of the wall, which starts at scene z sceneZ(71).
     expect(vehicle.y).toBeCloseTo(0.4);
     expect(vehicle.z - VEHICLES.car.length / 2).toBeGreaterThan(sceneZ(71) - 0.6);
