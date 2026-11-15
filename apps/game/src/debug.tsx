@@ -63,7 +63,7 @@ export function PlayerProbe({
       z: buildArea / 2 - walker.z,
       grounded: walker.grounded,
       flying: walker.flying ?? false,
-      boxes: world.boxes.length,
+      boxes: world.count,
     });
   });
   return null;

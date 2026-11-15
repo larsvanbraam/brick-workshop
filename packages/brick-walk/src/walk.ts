@@ -75,7 +75,11 @@ function isSolid(brick: Brick) {
   return family !== 'foliage' && family !== 'door';
 }
 
-/** The pieces as boxes in scene space, hashed by the stud columns they cover for quick lookup. */
+/**
+ * The pieces as boxes in scene space, hashed by the stud columns they cover for quick lookup.
+ * Boxes come in groups (a world split into chunks gives each chunk one) that can be replaced on
+ * their own, so a change to one chunk does not rebuild the rest.
+ */
 export class WalkWorld {
   readonly boxes: WalkBox[] = [];
   /** How far from the board's centre the walker may roam. */
@@ -85,53 +89,103 @@ export class WalkWorld {
   private readonly cells = new Map<string, number[]>();
   private readonly marks: number[] = [];
   private mark = 0;
+  private readonly half: number;
+  private readonly groups = new Map<string, number[]>();
+  /** Slots of boxes whose group was replaced, to be filled again. */
+  private readonly free: number[] = [];
+  private live = 0;
 
   constructor(bricks: Iterable<Brick>, buildArea: number) {
     this.limit = buildArea / 2 + 12;
-    const half = buildArea / 2;
+    this.half = buildArea / 2;
+    this.setGroup('', bricks);
+  }
+
+  /** How many boxes stand in the world. */
+  get count() {
+    return this.live;
+  }
+
+  /** Replaces a group's boxes with boxes for these pieces. */
+  setGroup(key: string, bricks: Iterable<Brick>) {
+    this.removeGroup(key);
+    const indices: number[] = [];
     for (const brick of bricks) {
       if (!isSolid(brick)) continue;
-      const bounds = getWorldBounds(brick);
-      // The scene centres the board and runs z the other way (see `worldZ`).
-      this.add({
-        minX: bounds.minX - half,
-        maxX: bounds.maxX - half,
-        minY: bounds.minY * PLATE_HEIGHT,
-        maxY: bounds.maxY * PLATE_HEIGHT,
-        minZ: half - bounds.maxZ,
-        maxZ: half - bounds.minZ,
-      });
+      indices.push(this.add(this.boxOf(brick)));
     }
+    if (indices.length) this.groups.set(key, indices);
+  }
+
+  removeGroup(key: string) {
+    const indices = this.groups.get(key);
+    if (!indices) return;
+    for (const index of indices) {
+      const box = this.boxes[index];
+      for (const cell of this.cellsOf(box)) {
+        const list = this.cells.get(cell);
+        if (!list) continue;
+        const at = list.indexOf(index);
+        if (at !== -1) list.splice(at, 1);
+        if (!list.length) this.cells.delete(cell);
+      }
+      this.free.push(index);
+      this.live--;
+    }
+    this.groups.delete(key);
+  }
+
+  private boxOf(brick: Brick): WalkBox {
+    const bounds = getWorldBounds(brick);
+    const half = this.half;
+    // The scene centres the board and runs z the other way (see `worldZ`).
+    return {
+      minX: bounds.minX - half,
+      maxX: bounds.maxX - half,
+      minY: bounds.minY * PLATE_HEIGHT,
+      maxY: bounds.maxY * PLATE_HEIGHT,
+      minZ: half - bounds.maxZ,
+      maxZ: half - bounds.minZ,
+    };
+  }
+
+  /** The stud columns a box covers: at least one, so a point on a column's edge finds it. */
+  private *cellsOf(box: WalkBox) {
+    const toX = Math.max(Math.ceil(box.maxX), Math.floor(box.minX) + 1);
+    const toZ = Math.max(Math.ceil(box.maxZ), Math.floor(box.minZ) + 1);
+    for (let x = Math.floor(box.minX); x < toX; x++)
+      for (let z = Math.floor(box.minZ); z < toZ; z++) yield `${x},${z}`;
   }
 
   private add(box: WalkBox) {
-    const index = this.boxes.push(box) - 1;
+    const reused = this.free.pop();
+    const index = reused ?? this.boxes.length;
+    this.boxes[index] = box;
+    if (reused === undefined) this.marks.push(0);
+    this.live++;
     this.ceiling = Math.max(this.ceiling, box.maxY + 30);
-    this.marks.push(0);
-    for (let x = Math.floor(box.minX); x < Math.ceil(box.maxX); x++)
-      for (let z = Math.floor(box.minZ); z < Math.ceil(box.maxZ); z++) {
-        const key = `${x},${z}`;
-        const cell = this.cells.get(key);
-        if (cell) cell.push(index);
-        else this.cells.set(key, [index]);
-      }
+    for (const cell of this.cellsOf(box)) {
+      const list = this.cells.get(cell);
+      if (list) list.push(index);
+      else this.cells.set(cell, [index]);
+    }
+    return index;
   }
 
   /** The boxes overlapping the given region, each once. */
   query(region: WalkBox): WalkBox[] {
     const found: WalkBox[] = [];
     const mark = ++this.mark;
-    for (let x = Math.floor(region.minX); x < Math.ceil(region.maxX); x++)
-      for (let z = Math.floor(region.minZ); z < Math.ceil(region.maxZ); z++) {
-        const cell = this.cells.get(`${x},${z}`);
-        if (!cell) continue;
-        for (const index of cell) {
-          if (this.marks[index] === mark) continue;
-          this.marks[index] = mark;
-          const box = this.boxes[index];
-          if (overlaps(box, region)) found.push(box);
-        }
+    for (const key of this.cellsOf(region)) {
+      const cell = this.cells.get(key);
+      if (!cell) continue;
+      for (const index of cell) {
+        if (this.marks[index] === mark) continue;
+        this.marks[index] = mark;
+        const box = this.boxes[index];
+        if (overlaps(box, region)) found.push(box);
       }
+    }
     return found;
   }
 

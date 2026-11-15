@@ -139,3 +139,32 @@ describe('walking a minifigure', () => {
     expect(drifted).toBeGreaterThan(walker.z - 10);
   });
 });
+
+describe('WalkWorld groups', () => {
+  const brick = (id: string, x: number, z: number) => ({
+    id,
+    partId: '3001',
+    color: 4,
+    x,
+    y: 0,
+    z,
+    rotation: 0 as const,
+  });
+
+  it('replaces one group of boxes without touching the others', () => {
+    const world = new WalkWorld([], 32);
+    world.setGroup('a', [brick('a1', 0, 0)]);
+    world.setGroup('b', [brick('b1', 20, 20)]);
+    expect(world.count).toBe(2);
+    // Scene coordinates centre the board and run z the other way.
+    expect(world.contains(-15, 0.5, 14)).toBe(true);
+    world.setGroup('a', [brick('a2', 8, 8)]);
+    expect(world.count).toBe(2);
+    expect(world.contains(-15, 0.5, 14)).toBe(false);
+    expect(world.contains(-7, 0.5, 6)).toBe(true);
+    expect(world.contains(5, 0.5, -6)).toBe(true);
+    world.removeGroup('b');
+    expect(world.count).toBe(1);
+    expect(world.contains(5, 0.5, -6)).toBe(false);
+  });
+});

@@ -71,21 +71,29 @@ function counter(prefix: string) {
   return () => `${prefix}-${next++}`;
 }
 
-/** The dry stud closest to the middle of the island, on open ground rather than rock or water. */
+/**
+ * The dry stud closest to the middle of the island, on open ground rather than rock, water or
+ * the volcano, and clear of the trees, so the walker does not start up in a crown.
+ */
 function findSpawn(map: WorldMap): { x: number; z: number } {
-  const { size, biomes, water } = map;
+  const { size, biomes, water, trees } = map;
   const centre = Math.floor(size / 2);
-  const open = (index: number) =>
-    LAND_BIOMES.has(biomes[index]) &&
-    !['rock', 'volcanic', 'lava'].includes(biomes[index]) &&
-    !water[index];
+  const open = (x: number, z: number) => {
+    const index = z * size + x;
+    return (
+      LAND_BIOMES.has(biomes[index]) &&
+      !['rock', 'volcanic', 'lava'].includes(biomes[index]) &&
+      !water[index] &&
+      trees.every((tree) => Math.hypot(tree.x - x, tree.z - z) > 8)
+    );
+  };
   for (let radius = 0; radius < size / 2; radius++)
     for (let dz = -radius; dz <= radius; dz++)
       for (let dx = -radius; dx <= radius; dx++) {
         if (Math.max(Math.abs(dx), Math.abs(dz)) !== radius) continue;
         const x = centre + dx;
         const z = centre + dz;
-        if (open(z * size + x)) return { x: x + 0.5, z: z + 0.5 };
+        if (open(x, z)) return { x: x + 0.5, z: z + 0.5 };
       }
   return { x: centre, z: centre };
 }

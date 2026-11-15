@@ -3,7 +3,11 @@ import { getPart } from '@brick-workshop/engine';
 import type { Assembly, Brick } from '@brick-workshop/engine';
 import { useLDrawLibrary } from '@brick-workshop/render/ldraw';
 import type { WalkCamera } from '@brick-workshop/walk/walk-view';
-import { placementFor, replayEdits, tryPlace, tryRemove } from './build.ts';
+import { WalkWorld } from '@brick-workshop/walk/walk';
+import { placementFor, replayEdits } from './build.ts';
+import { allBricks, applyToChunks, chunkOf, splitIntoChunks } from './chunks.ts';
+import type { Chunks } from './chunks.ts';
+import { WorldIndex } from './world-index.ts';
 import type { Aim, Edit, Held } from './build.ts';
 import { GameScene } from './GameScene.tsx';
 import { Menu } from './Menu.tsx';
@@ -119,9 +123,28 @@ function Game({
   onNewWorld: () => void;
   onOpenIsland: (seed: number) => void;
 }) {
-  const [edits, setEdits] = useState<Edit[]>(() => loadEdits(world.seed));
-  const [assembly, setAssembly] = useState(() => replayEdits(world.assembly, edits));
+  /**
+   * The live world, built once from the island and its saved edits: the pieces by chunk, an index
+   * for placing and breaking, and the walker's collision world, all kept up to date together.
+   */
+  const [initial] = useState(() => {
+    const saved = loadEdits(world.seed);
+    const bricks = replayEdits(world.assembly, saved).bricks;
+    const chunks = splitIntoChunks(bricks);
+    const walk = new WalkWorld([], WORLD_SIZE);
+    for (const [key, pieces] of chunks) walk.setGroup(key, pieces);
+    return { saved, chunks, walk, index: new WorldIndex(bricks, WORLD_SIZE) };
+  });
+  const { index, walk } = initial;
+  const [edits, setEdits] = useState<Edit[]>(initial.saved);
   useEffect(() => saveEdits(world.seed, edits), [world.seed, edits]);
+  const [chunks, setChunks] = useState<Chunks>(initial.chunks);
+  const chunksRef = useRef<Chunks>(initial.chunks);
+  const [revision, setRevision] = useState(0);
+  const assembly = useMemo<Assembly>(
+    () => ({ name: world.assembly.name, bricks: allBricks(chunks), buildArea: WORLD_SIZE }),
+    [chunks, world.assembly.name],
+  );
   const [slots, setSlots] = useState<Held[]>(() => loadHotbar() ?? [...STARTER_HOTBAR]);
   useEffect(() => saveHotbar(slots), [slots]);
   const [selected, setSelected] = useState(0);
@@ -187,13 +210,27 @@ function Game({
         : null,
     [aim, held],
   );
-  const ghostCheck = useMemo(() => (ghost ? tryPlace(assembly, ghost) : null), [assembly, ghost]);
+  const ghostCheck = useMemo(() => {
+    void revision; // The index changes in place; the revision says when.
+    return ghost ? index.check(ghost) : null;
+  }, [ghost, index, revision]);
   const ghostValid = ghostCheck?.ok ?? false;
 
-  const commit = useCallback((next: Assembly, ...made: Edit[]) => {
-    setEdits((current) => [...current, ...made]);
-    setAssembly(next);
-  }, []);
+  /** Adds and takes off pieces everywhere at once: the index, the chunks and the walker's world. */
+  const commit = useCallback(
+    (added: readonly Brick[], removedIds: readonly string[], made: readonly Edit[]) => {
+      const removed = removedIds.flatMap((id) => index.bricks.get(id) ?? []);
+      for (const id of removedIds) index.remove(id);
+      for (const brick of added) index.add(brick);
+      const { chunks: next, changed } = applyToChunks(chunksRef.current, added, removed);
+      chunksRef.current = next;
+      for (const key of changed) walk.setGroup(key, next.get(key) ?? []);
+      setChunks(next);
+      setRevision((current) => current + 1);
+      setEdits((current) => [...current, ...made]);
+    },
+    [index, walk],
+  );
 
   const say = useCallback((message: string) => setToast(message), []);
   useEffect(() => {
@@ -216,10 +253,17 @@ function Game({
       const timed = (action: EditTiming['action'], ok: boolean, pieces: number) =>
         setLastEdit({ action, ok, pieces, ms: performance.now() - start });
       if (action === 'break') {
-        const result = tryRemove(assembly, aim.brick.id);
+        const result = index.breakAt(aim.brick.id);
         timed('break', result.ok, result.ok ? result.removed.length : 0);
         if (!result.ok) return say(result.reason);
-        commit(result.assembly, ...result.removed.map((id): Edit => ({ op: 'remove', id })));
+        commit(
+          [],
+          result.removed,
+          result.removed.map((id): Edit => {
+            const brick = index.bricks.get(id)!;
+            return { op: 'remove', id, chunk: chunkOf(brick) };
+          }),
+        );
         return;
       }
       if (!ghost) return;
@@ -227,12 +271,12 @@ function Game({
         ...ghost,
         id: `${PLAYER_PREFIX}${Date.now().toString(36)}-${nextId.current++}`,
       };
-      const result = tryPlace(assembly, brick);
+      const result = index.check(brick);
       timed('place', result.ok, 1);
       if (!result.ok) return say(result.reason);
-      commit(result.assembly, { op: 'add', brick });
+      commit([brick], [], [{ op: 'add', brick }]);
     },
-    [aim, assembly, commit, ghost, say, selected],
+    [aim, commit, ghost, index, say, selected],
   );
 
   const lockPointer = () =>
@@ -332,9 +376,10 @@ function Game({
     setSelected(slot);
   };
 
+  /** Forgets every change and opens the island again as it was made. */
   const resetWorld = () => {
-    setEdits([]);
-    setAssembly(world.assembly);
+    saveEdits(world.seed, []);
+    onOpenIsland(world.seed);
   };
 
   const worldInfo = useMemo(() => {
@@ -361,11 +406,15 @@ function Game({
   }, [assembly, library.models]);
 
   if (library.status === 'loading') return <Splash message="Loading parts…" />;
-  const built = edits.filter((edit) => edit.op === 'add').length;
+  // Pieces of the player's still standing, not every one ever put down.
+  const built = worldInfo.player;
   return (
     <div className="game">
       <GameScene
-        bricks={assembly.bricks}
+        chunks={chunks}
+        bricks={index.bricks}
+        walkWorld={walk}
+        revision={revision}
         models={library.models}
         buildArea={WORLD_SIZE}
         spawn={world.spawn}

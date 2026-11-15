@@ -98,7 +98,10 @@ export function placementFor(
 }
 
 /** One change a player made, replayed over the generated world when it loads again. */
-export type Edit = { op: 'add'; brick: Brick } | { op: 'remove'; id: string };
+export type Edit =
+  | { op: 'add'; brick: Brick }
+  /** `chunk` says which chunk the piece taken off belonged to, so edits are kept by chunk. */
+  | { op: 'remove'; id: string; chunk?: string };
 
 export type EditResult = { ok: true; assembly: Assembly } | { ok: false; reason: string };
 

@@ -91,6 +91,8 @@ export function WalkMode({
   sound = true,
   start,
   probe,
+  world: given,
+  revision = 0,
 }: {
   bricks: Iterable<Brick>;
   buildArea: number;
@@ -106,9 +108,19 @@ export function WalkMode({
   start?: { x: number; z: number };
   /** Filled with the live walker and the boxes it collides with, for a debug view. */
   probe?: { current: WalkProbe | null };
+  /**
+   * A collision world the caller keeps up to date itself, chunk by chunk, instead of one built
+   * from `bricks`; bump `revision` after changing it so the walker is lifted out of new pieces.
+   */
+  world?: WalkWorld;
+  revision?: number;
 }) {
   const { camera, gl, invalidate } = useThree();
-  const world = useMemo(() => new WalkWorld(bricks, buildArea), [bricks, buildArea]);
+  const built = useMemo(
+    () => (given ? null : new WalkWorld(bricks, buildArea)),
+    [given, bricks, buildArea],
+  );
+  const world = given ?? built!;
   const [spawn] = useState(() => spawnWalker(world, buildArea, start));
   const walker = useRef(spawn);
   useEffect(() => {
@@ -200,7 +212,7 @@ export function WalkMode({
   useEffect(() => {
     const current = walker.current;
     current.y = world.standingHeight(current.x, current.z, current.y);
-  }, [world]);
+  }, [world, revision]);
 
   useEffect(() => {
     if (!(camera instanceof PerspectiveCamera)) return;

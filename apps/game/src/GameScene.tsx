@@ -8,6 +8,8 @@ import { FallbackBatch } from '@brick-workshop/render/fallback-batch';
 import { LDrawBatch, canBatchLDrawModel } from '@brick-workshop/render/ldraw-batches';
 import { displayHex } from '@brick-workshop/render/ldraw-materials';
 import { WalkMode } from '@brick-workshop/walk/walk-view';
+import type { WalkWorld } from '@brick-workshop/walk/walk';
+import type { Chunks } from './chunks.ts';
 import type { WalkCamera, WalkProbe } from '@brick-workshop/walk/walk-view';
 import { DebugHelpers, DebugProbe } from '@brick-workshop/render/scene-debug';
 import type { DebugOptions, DebugStore } from '@brick-workshop/render/scene-debug';
@@ -27,7 +29,14 @@ const REACH = { first: 14, third: 22 } as const;
 export type MouseAction = 'break' | 'place' | 'pick';
 
 export interface GameSceneProps {
-  bricks: readonly Brick[];
+  /** The world's pieces by chunk; each chunk is drawn as a batch of its own. */
+  chunks: Chunks;
+  /** Every piece by ID, for what the crosshair hits. */
+  bricks: ReadonlyMap<string, Brick>;
+  /** The walker's collision world, kept up to date chunk by chunk. */
+  walkWorld: WalkWorld;
+  /** Bumped whenever the world changes. */
+  revision: number;
   models: Record<string, Group>;
   buildArea: number;
   /** Where the minifigure starts, in build-grid studs. */
@@ -57,31 +66,24 @@ export interface GameSceneDebug {
   collision: boolean;
 }
 
+/** What each chunk draws: its batches, for the crosshair to hit and the outlines to dim. */
+interface ChunkDrawing {
+  native: LDrawBatch | null;
+  objects: Object3D[];
+}
+
 export function GameScene(props: GameSceneProps) {
-  const { bricks, models, buildArea } = props;
+  const { chunks, models, buildArea } = props;
   const half = buildArea / 2;
-  const split = useMemo(() => {
-    const batched: Brick[] = [];
-    const fallback: Brick[] = [];
-    const batchable = new Map<string, boolean>();
-    for (const brick of bricks) {
-      const model = models[brick.partId];
-      let ok = batchable.get(brick.partId);
-      if (ok === undefined)
-        batchable.set(brick.partId, (ok = !!model && canBatchLDrawModel(model)));
-      (ok ? batched : fallback).push(brick);
-    }
-    return { batched, fallback };
-  }, [bricks, models]);
   const start = useMemo(
     () => ({ x: props.spawn.x - half, z: half - props.spawn.z }),
     [props.spawn, half],
   );
-  const targets = useRef<Object3D[]>([]);
+  // One map for the scene's lifetime: chunks register their batches in it as they mount.
+  const [drawings] = useState(() => new Map<string, ChunkDrawing>());
   const batchRef = useRef<LDrawBatch | null>(null);
   const probe = useRef<WalkProbe | null>(null);
   const { debug } = props;
-  const byId = useMemo(() => new Map(bricks.map((brick) => [brick.id, brick])), [bricks]);
   return (
     <Canvas
       shadows
@@ -92,24 +94,21 @@ export function GameScene(props: GameSceneProps) {
       aria-label="Brick island"
     >
       <GameStage size={buildArea} clock={props.clock} volcano={props.volcano} />
-      <NativeBatch
-        bricks={split.batched}
-        models={models}
-        buildArea={buildArea}
-        batchRef={batchRef}
-        onObject={(object) => {
-          targets.current[0] = object;
-        }}
-      />
-      <FallbackBatchView
-        bricks={split.fallback}
-        buildArea={buildArea}
-        onObject={(object) => {
-          targets.current[1] = object;
-        }}
-      />
+      {[...chunks].map(([key, pieces]) => (
+        <ChunkView
+          key={key}
+          chunk={key}
+          pieces={pieces}
+          models={models}
+          buildArea={buildArea}
+          drawings={drawings}
+          batchRef={batchRef}
+        />
+      ))}
       <WalkMode
-        bricks={bricks}
+        bricks={EMPTY}
+        world={props.walkWorld}
+        revision={props.revision}
         buildArea={buildArea}
         view={props.view}
         flying={props.flying}
@@ -118,7 +117,7 @@ export function GameScene(props: GameSceneProps) {
         start={start}
         probe={probe}
       />
-      <EdgeDimmer batch={batchRef} clock={props.clock} />
+      <EdgeDimmer drawings={drawings} clock={props.clock} />
       {debug.options.enabled && (
         <>
           <DebugProbe store={debug.store} options={debug.options} batch={batchRef} />
@@ -133,8 +132,8 @@ export function GameScene(props: GameSceneProps) {
         </>
       )}
       <Aimer
-        targets={targets}
-        bricks={byId}
+        drawings={drawings}
+        bricks={props.bricks}
         buildArea={buildArea}
         reach={REACH[props.view]}
         onAim={props.onAim}
@@ -145,90 +144,113 @@ export function GameScene(props: GameSceneProps) {
   );
 }
 
-function NativeBatch({
-  bricks,
+const EMPTY: readonly Brick[] = [];
+
+/**
+ * One chunk's pieces: those with an LDraw model in a batch of their own, the rest from simple
+ * shapes. A change to the chunk redraws only this chunk.
+ */
+function ChunkView({
+  chunk,
+  pieces,
   models,
   buildArea,
+  drawings,
   batchRef,
-  onObject,
 }: {
-  bricks: readonly Brick[];
+  chunk: string;
+  pieces: readonly Brick[];
   models: Record<string, Group>;
   buildArea: number;
-  /** Hands the batch to the debug window for its statistics. */
+  drawings: Map<string, ChunkDrawing>;
+  /** The debug window shows the statistics of one batch: the first chunk's. */
   batchRef: { current: LDrawBatch | null };
-  onObject: (object: Object3D) => void;
 }) {
-  const [batch] = useState(() => new LDrawBatch(undefined, { fadeEdges: true, solidGround: true }));
+  const split = useMemo(() => {
+    const batched: Brick[] = [];
+    const fallback: Brick[] = [];
+    for (const brick of pieces) {
+      const model = models[brick.partId];
+      (model && batchable(model) ? batched : fallback).push(brick);
+    }
+    return { batched, fallback };
+  }, [pieces, models]);
+  const [native] = useState(
+    () => new LDrawBatch(undefined, { fadeEdges: true, solidGround: true }),
+  );
+  const [simple] = useState(() => new FallbackBatch());
   useEffect(() => {
-    batchRef.current = batch;
+    drawings.set(chunk, { native, objects: [native.object, simple.object] });
+    if (!batchRef.current) batchRef.current = native;
     return () => {
-      batchRef.current = null;
+      drawings.delete(chunk);
+      if (batchRef.current === native) batchRef.current = null;
     };
-  }, [batch, batchRef]);
+  }, [chunk, drawings, native, simple, batchRef]);
   const invalidate = useThree((state) => state.invalidate);
   const shadows = useThree((state) => state.gl.shadowMap);
-  useEffect(() => {
-    onObject(batch.object);
-  }, [batch, onObject]);
   useLayoutEffect(() => {
-    const entries = bricks.map((brick) => ({ brick, model: models[brick.partId] }));
-    // Edits touch a piece or two and land in the same frame; a new world is placed in slices.
-    if (batch.changes(entries, buildArea) < 200) {
-      batch.update(entries, buildArea);
+    const entries = split.batched.map((brick) => ({ brick, model: models[brick.partId] }));
+    // Edits touch a piece or two and land in the same frame; a new chunk is placed in slices.
+    if (native.changes(entries, buildArea) < 200) {
+      native.update(entries, buildArea);
       shadows.needsUpdate = true;
       invalidate();
-      return;
+    } else
+      void native.updateInSlices(entries, buildArea, false).then((complete) => {
+        if (!complete) return;
+        shadows.needsUpdate = true;
+        invalidate();
+      });
+    if (simple.update(split.fallback, buildArea)) {
+      shadows.needsUpdate = true;
+      invalidate();
     }
-    void batch.updateInSlices(entries, buildArea, false).then((complete) => {
-      if (!complete) return;
-      shadows.needsUpdate = true;
-      invalidate();
-    });
-  }, [batch, bricks, models, buildArea, invalidate, shadows]);
-  useEffect(() => () => batch.dispose(), [batch]);
-  return <primitive object={batch.object} dispose={null} />;
+  }, [native, simple, split, models, buildArea, invalidate, shadows]);
+  useEffect(
+    () => () => {
+      native.dispose();
+      simple.dispose();
+    },
+    [native, simple],
+  );
+  return (
+    <>
+      <primitive object={native.object} dispose={null} />
+      <primitive object={simple.object} dispose={null} />
+    </>
+  );
 }
 
-function FallbackBatchView({
-  bricks,
-  buildArea,
-  onObject,
-}: {
-  bricks: readonly Brick[];
-  buildArea: number;
-  onObject: (object: Object3D) => void;
-}) {
-  const [batch] = useState(() => new FallbackBatch());
-  const invalidate = useThree((state) => state.invalidate);
-  const shadows = useThree((state) => state.gl.shadowMap);
-  useEffect(() => {
-    onObject(batch.object);
-  }, [batch, onObject]);
-  useLayoutEffect(() => {
-    if (!batch.update(bricks, buildArea)) return;
-    shadows.needsUpdate = true;
-    invalidate();
-  }, [batch, bricks, buildArea, invalidate, shadows]);
-  useEffect(() => () => batch.dispose(), [batch]);
-  return <primitive object={batch.object} dispose={null} />;
+/** Whether a part's model can go in a batch, remembered per model. */
+const batchableModels = new WeakMap<Group, boolean>();
+function batchable(model: Group) {
+  let ok = batchableModels.get(model);
+  if (ok === undefined) batchableModels.set(model, (ok = canBatchLDrawModel(model)));
+  return ok;
 }
 
 /**
  * Brick outlines are drawn without lighting; dims them with the daylight so they do not glow at
  * night.
  */
-function EdgeDimmer({ batch, clock }: { batch: { current: LDrawBatch | null }; clock: DayClock }) {
+function EdgeDimmer({
+  drawings,
+  clock,
+}: {
+  drawings: ReadonlyMap<string, ChunkDrawing>;
+  clock: DayClock;
+}) {
   useFrame(() => {
-    const lines = batch.current?.lines;
-    if (!lines) return;
-    // Checked per material: the batch makes new line meshes as it grows.
     const level = Math.round(skyAt(clock.time).unlit * 50) / 50;
-    for (const line of lines)
-      for (const material of Array.isArray(line.material) ? line.material : [line.material]) {
-        const { color } = material as unknown as { color: Color };
-        if (color.r !== level) color.setScalar(level);
-      }
+    for (const { native } of drawings.values()) {
+      // Checked per material: a batch makes new line meshes as it grows.
+      for (const line of native?.lines ?? [])
+        for (const material of Array.isArray(line.material) ? line.material : [line.material]) {
+          const { color } = material as unknown as { color: Color };
+          if (color.r !== level) color.setScalar(level);
+        }
+    }
   });
   return null;
 }
@@ -241,13 +263,13 @@ function hitBrickId(object: Object3D, index: number | undefined) {
 
 /** Casts from the middle of the screen every frame and reports the aim when it moves. */
 function Aimer({
-  targets,
+  drawings,
   bricks,
   buildArea,
   reach,
   onAim,
 }: {
-  targets: { current: Object3D[] };
+  drawings: ReadonlyMap<string, ChunkDrawing>;
   bricks: ReadonlyMap<string, Brick>;
   buildArea: number;
   reach: number;
@@ -260,7 +282,9 @@ function Aimer({
     raycaster.setFromCamera(centre, camera);
     raycaster.far = reach;
     let aim: Aim | null = null;
-    const hits = raycaster.intersectObjects(targets.current.filter(Boolean), true);
+    const targets: Object3D[] = [];
+    for (const drawing of drawings.values()) targets.push(...drawing.objects);
+    const hits = raycaster.intersectObjects(targets, true);
     for (const hit of hits) {
       const id = hitBrickId(hit.object, hit.batchId ?? hit.instanceId);
       const brick = id === undefined ? undefined : bricks.get(id);
