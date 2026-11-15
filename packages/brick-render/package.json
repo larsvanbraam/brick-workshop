@@ -52,6 +52,14 @@
       "types": "./src/scene-debug.tsx",
       "import": "./src/scene-debug.tsx"
     },
+    "./splash": {
+      "types": "./src/splash.ts",
+      "import": "./src/splash.ts"
+    },
+    "./splash-plugin": {
+      "types": "./src/splash-plugin.ts",
+      "import": "./src/splash-plugin.ts"
+    },
     "./scene-frame": {
       "types": "./src/scene-frame.ts",
       "import": "./src/scene-frame.ts"

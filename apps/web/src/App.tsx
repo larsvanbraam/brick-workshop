@@ -99,6 +99,7 @@ import type {
   SceneStability,
 } from './Scene';
 import { Loader } from '@brick-workshop/render/loader';
+import { dismissSplash, setSplashMessage } from '@brick-workshop/render/splash';
 import { useLDrawLibrary } from '@brick-workshop/render/ldraw';
 import { displayHex } from '@brick-workshop/render/ldraw-materials';
 import { PartBrowser } from './PartBrowser';
@@ -634,18 +635,8 @@ export default function App() {
   const loading = library.status === 'loading' || !sceneReady;
   const hasNativeModels = Object.keys(library.models).length > 0;
   useEffect(() => {
-    const overlay = document.getElementById('workshop-loading');
-    if (!overlay) return;
-    if (!loading) {
-      overlay.dataset.done = '';
-      overlay.addEventListener('transitionend', () => overlay.remove(), { once: true });
-      // Fallback for when the transition never runs (reduced motion, hidden tab).
-      setTimeout(() => overlay.remove(), 400);
-      return;
-    }
-    const label = overlay.querySelector('[data-loading-message]');
-    if (label)
-      label.textContent = library.status === 'loading' ? 'Loading parts...' : 'Preparing scene...';
+    if (!loading) dismissSplash();
+    else setSplashMessage(library.status === 'loading' ? 'Loading parts...' : 'Preparing scene...');
   }, [loading, library.status]);
   useEffect(() => {
     if (!message) return;

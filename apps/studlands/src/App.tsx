@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import { getPart } from '@brick-workshop/engine';
 import type { Assembly, Brick } from '@brick-workshop/engine';
 import { Loader } from '@brick-workshop/render/loader';
+import { dismissSplash, setSplashMessage } from '@brick-workshop/render/splash';
 import { useLDrawLibrary } from '@brick-workshop/render/ldraw';
 import type { WalkCamera } from '@brick-workshop/walk/walk-view';
 import { WalkWorld } from '@brick-workshop/walk/walk';
@@ -669,6 +670,17 @@ function Game({
     return { visible: total, batched: total - fallback, separate: 0, fallback, total };
   }, [chunks, kinds, library.models, debugOptions.enabled]);
 
+  // The boot splash (stacking bricks, from index.html) covers the first world and parts; the
+  // loader card below it takes over for anything that loads later.
+  const startDone = startChunks.filter((key) => chunks.has(key)).length;
+  const booting = !ready || library.status === 'loading';
+  useEffect(() => {
+    if (!booting) dismissSplash();
+    else if (!ready)
+      setSplashMessage(`Shaping world ${seed}… ${startDone} of ${startChunks.length}`);
+    else setSplashMessage('Loading parts…');
+  }, [booting, ready, seed, startDone, startChunks.length]);
+
   // One loader, kept by its key from the first chunks through the parts to the open world, so
   // it fades out over the world instead of vanishing.
   const loading = (
@@ -681,13 +693,13 @@ function Game({
         ready
           ? null
           : {
-              done: startChunks.filter((key) => chunks.has(key)).length,
+              done: startDone,
               total: startChunks.length,
             }
       }
     />
   );
-  if (!ready || library.status === 'loading') return <div className="game">{loading}</div>;
+  if (booting) return <div className="game">{loading}</div>;
   // Pieces of the player's still standing, not every one ever put down.
   const built = placedCount;
   let pieceCount = 0;

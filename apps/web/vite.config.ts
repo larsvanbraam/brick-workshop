@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 import { defineConfig, loadEnv } from 'vite-plus';
 import { ldrawLibraryPlugin } from '@brick-workshop/render/ldraw-library';
+import { splashPlugin } from '@brick-workshop/render/splash-plugin';
 import { savedBuildsPlugin } from './tooling/saved-builds.ts';
 
 export default defineConfig(({ mode }) => {
@@ -30,6 +31,10 @@ export default defineConfig(({ mode }) => {
     },
     plugins: [
       react(),
+      splashPlugin({
+        title: 'Brick Workshop',
+        message: 'Loading parts...',
+      }),
       ldrawLibraryPlugin(resolve(workspaceRoot, env.LDRAW_LIBRARY_PATH || 'data/ldraw')),
       savedBuildsPlugin(
         resolve(workspaceRoot, env.WORKSHOP_BUILDS_PATH || 'builds'),

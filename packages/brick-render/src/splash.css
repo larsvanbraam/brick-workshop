@@ -1,0 +1,136 @@
+/* The boot splash, shared by the workshop and Studlands. An app sets its colours with
+   --splash-bg, --splash-ink, --splash-muted and --splash-shadow (splashPlugin passes them). */
+#app-splash {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-content: center;
+  gap: 18px;
+  padding: 24px;
+  background: var(--splash-bg, #f8f9f7);
+  color: var(--splash-ink, #303832);
+  font-family: 'IBM Plex Sans', sans-serif;
+  text-align: center;
+  transition: opacity 240ms ease-out;
+}
+#app-splash[data-done] {
+  opacity: 0;
+  pointer-events: none;
+}
+#app-splash h1 {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 600;
+}
+#app-splash p {
+  margin: 0;
+  font-size: 14px;
+  color: var(--splash-muted, #7b847e);
+}
+/* Bricks drop in and stack, then lift away and start over. Transform and opacity only, so it
+   stays on the compositor and keeps moving while part parsing and shader compilation block the
+   main thread. */
+/* Real brick proportions on a 16px stud pitch: a brick is 1.2 pitches tall, a stud 0.6 wide and
+   about 0.2 high. Every brick sits on studs: two 1 x 4s, a 1 x 4 across their joint and a 1 x 2
+   on its middle two studs. */
+#app-splash .splash-bricks {
+  position: relative;
+  width: 128px;
+  height: 62px;
+  margin: 36px auto 4px;
+}
+#app-splash .splash-bricks::after {
+  content: '';
+  position: absolute;
+  left: -8px;
+  right: -8px;
+  bottom: -7px;
+  height: 10px;
+  border-radius: 50%;
+  background: radial-gradient(
+    closest-side,
+    var(--splash-shadow, rgb(48 56 50 / 0.16)),
+    transparent
+  );
+}
+#app-splash .splash-bricks span {
+  --light: color-mix(in srgb, var(--c), white 28%);
+  --dark: color-mix(in srgb, var(--c), black 22%);
+  position: absolute;
+  z-index: 1;
+  bottom: calc(var(--row) * 19px);
+  left: calc(var(--at) * 16px);
+  width: calc(var(--studs) * 16px);
+  height: 19px;
+  border-radius: 1.5px;
+  background: linear-gradient(
+    var(--light) 0 2px,
+    var(--c) 2px calc(100% - 5px),
+    var(--dark) calc(100% - 5px)
+  );
+  box-shadow:
+    inset 1px 0 rgb(255 255 255 / 0.18),
+    inset -1px 0 rgb(0 0 0 / 0.18);
+  opacity: 0;
+  will-change: transform, opacity;
+  animation: splash-brick-drop 2.8s cubic-bezier(0.5, 0, 0.75, 0) var(--d) infinite both;
+}
+/* Studs, one per 16px cell, shaded like a cylinder lit from the left. */
+#app-splash .splash-bricks span::before {
+  content: '';
+  position: absolute;
+  inset: -3px 0 auto;
+  height: 3px;
+  background: repeating-linear-gradient(
+    90deg,
+    transparent 0 3px,
+    var(--light) 3px 6px,
+    var(--c) 6px 10px,
+    var(--dark) 10px 13px,
+    transparent 13px 16px
+  );
+}
+@keyframes splash-brick-drop {
+  0% {
+    opacity: 0;
+    transform: translateY(-44px);
+  }
+  7% {
+    opacity: 1;
+  }
+  13% {
+    transform: translateY(0);
+    animation-timing-function: ease-out;
+  }
+  17% {
+    transform: translateY(-4px);
+    animation-timing-function: ease-in;
+  }
+  21%,
+  68% {
+    opacity: 1;
+    transform: translateY(0);
+    animation-timing-function: ease-in;
+  }
+  80%,
+  100% {
+    opacity: 0;
+    transform: translateY(-14px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  #app-splash .splash-bricks span {
+    animation: splash-brick-fade 2.8s ease-in-out var(--d) infinite both;
+  }
+  @keyframes splash-brick-fade {
+    0%,
+    100% {
+      opacity: 0.25;
+    }
+    30%,
+    60% {
+      opacity: 1;
+    }
+  }
+}
