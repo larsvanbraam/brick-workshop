@@ -83,7 +83,15 @@ type Layer = {
 };
 type Placement = { key: string; look: Look; slots: { layer: Layer; id: number }[] };
 
-export type BatchEntry = { brick: Brick; model: Group };
+export type BatchEntry = {
+  brick: Brick;
+  model: Group;
+  /**
+   * Not drawn, but still covering the studs and undersides it meets, as if it were: for pieces
+   * boxed in where no camera reaches, such as the inside of a hill.
+   */
+  hidden?: boolean;
+};
 export type BatchLayerStats = {
   finish: string;
   /** Visible instances; `free` hidden slots wait to be reused. */
@@ -722,6 +730,8 @@ type Tracked = {
   closable: boolean;
   covered: string;
   key: string;
+  /** Tracked as cover only, never placed (`BatchEntry.hidden`). */
+  hidden: boolean;
 };
 
 const samePlacement = (first: Brick, second: Brick) =>
@@ -1094,8 +1104,13 @@ export class LDrawBatch {
   changes(entries: readonly BatchEntry[], buildArea: number, explode = false) {
     const tracked = this.track(entries, buildArea, explode);
     let count = 0;
-    for (const { brick } of entries)
-      if (this.placements.get(brick.id)?.key !== tracked.get(brick.id)!.key) count++;
+    for (const { brick, hidden } of entries)
+      if (
+        hidden
+          ? this.placements.has(brick.id)
+          : this.placements.get(brick.id)?.key !== tracked.get(brick.id)!.key
+      )
+        count++;
     return count;
   }
 
@@ -1136,6 +1151,7 @@ export class LDrawBatch {
       if (current) kept++;
       if (!current || current.model !== entry.model || !samePlacement(current.brick, entry.brick))
         changed.push(entry);
+      else current.hidden = !!entry.hidden;
     }
     // Sites where an opaque receiver or stud came or went: what meets them may change.
     const receiversMoved = new Set<string>();
@@ -1160,7 +1176,7 @@ export class LDrawBatch {
           tracked.delete(id);
         }
     const coverable = this.hideCovered && !explode;
-    for (const { brick, model } of changed) {
+    for (const { brick, model, hidden } of changed) {
       const current = tracked.get(brick.id);
       if (current) forget(brick.id, current);
       const opaque = OPAQUE_COLORS.has(brick.color);
@@ -1196,6 +1212,7 @@ export class LDrawBatch {
         closable,
         covered: '',
         key: '',
+        hidden: !!hidden,
       };
       for (const key of next.receivers) {
         addTo(this.receiverSites, key, brick.id);
@@ -1262,11 +1279,14 @@ export class LDrawBatch {
     const tracked = this.track(entries, buildArea, explode);
     const changed: BatchEntry[] = [];
     for (const entry of entries)
-      if (this.placements.get(entry.brick.id)?.key !== tracked.get(entry.brick.id)!.key)
+      if (
+        !entry.hidden &&
+        this.placements.get(entry.brick.id)?.key !== tracked.get(entry.brick.id)!.key
+      )
         changed.push(entry);
     let removed = false;
     for (const [id, placement] of this.placements)
-      if (!tracked.has(id)) {
+      if (!tracked.has(id) || tracked.get(id)!.hidden) {
         this.release(placement);
         this.placements.delete(id);
         removed = true;

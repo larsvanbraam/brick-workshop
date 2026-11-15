@@ -242,6 +242,24 @@ describe('local LDraw assets', () => {
     batch.update(stacked, 16);
     batch.update([{ brick: lower, model }], 16);
     expect(batch.stats().coveredStuds).toBe(0);
+
+    // A hidden brick is not drawn but still covers the stud under it (the lower brick is the one
+    // change); shown again, it is drawn.
+    const covering = [
+      { brick: lower, model },
+      { brick: brick('upper', 3), model, hidden: true },
+    ];
+    expect(batch.changes(covering, 16)).toBe(1);
+    const drawn = () => batch.stats().layers[0].instances;
+    batch.update(covering, 16);
+    expect(batch.stats()).toMatchObject({ bricks: 1, looks: 1, coveredStuds: 1 });
+    expect(drawn()).toBe(1);
+    batch.update(stacked, 16);
+    expect(batch.stats()).toMatchObject({ bricks: 2, looks: 2, coveredStuds: 1 });
+    expect(drawn()).toBe(2);
+    batch.update(covering, 16);
+    expect(batch.stats()).toMatchObject({ bricks: 1, looks: 1, coveredStuds: 1 });
+    expect(drawn()).toBe(1);
     batch.dispose();
   });
 

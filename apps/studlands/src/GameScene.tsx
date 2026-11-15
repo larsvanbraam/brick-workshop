@@ -7,7 +7,7 @@ import type { Brick } from '@brick-workshop/engine';
 import { getCinematicDpr } from '@brick-workshop/render/cinematic-look';
 import { FallbackBatch } from '@brick-workshop/render/fallback-batch';
 import { LDrawBatch, LookCache, canBatchLDrawModel } from '@brick-workshop/render/ldraw-batches';
-import type { BatchLayerStats, BatchStats } from '@brick-workshop/render/ldraw-batches';
+import type { BatchEntry, BatchLayerStats, BatchStats } from '@brick-workshop/render/ldraw-batches';
 import { displayHex } from '@brick-workshop/render/ldraw-materials';
 import { WalkMode } from '@brick-workshop/walk/walk-view';
 import type { WalkWorld } from '@brick-workshop/walk/walk';
@@ -24,6 +24,7 @@ import { CollisionBoxes, PlayerProbe } from './debug.tsx';
 import type { PlayerStore } from './debug.tsx';
 import { COLORS } from '@brick-workshop/engine';
 import { aimAt, aimKey } from './build.ts';
+import { buriedPieces } from './buried.ts';
 import { requestShadows } from './shadows.ts';
 import { GameStage } from './GameStage.tsx';
 import { skyAt } from './sky.ts';
@@ -247,19 +248,25 @@ const ChunkView = memo(function ChunkView({
     return used;
   }, [pieces, models]);
   const ownKey = Object.keys(own).sort().join(',');
+  // Pieces buried in the ground are never seen, so they are left out of the drawing (and the
+  // shadows) but still cover the studs of the pieces round them. They stay in the world for
+  // walking and breaking, and an edit that uncovers one draws it.
+  const buried = useMemo(() => buriedPieces(pieces), [pieces]);
   const split = useMemo(() => {
     const used = own;
-    const batched: { brick: Brick; model: Group }[] = [];
+    const batched: BatchEntry[] = [];
     const fallback: Brick[] = [];
     for (const brick of pieces) {
       const model = used[brick.partId];
-      if (model && batchable(model)) batched.push({ brick, model });
-      else fallback.push(brick);
+      const hidden = buried.has(brick);
+      if (model && batchable(model))
+        batched.push(hidden ? { brick, model, hidden } : { brick, model });
+      else if (!hidden) fallback.push(brick);
     }
     return { batched, fallback };
     // A part's model never changes once loaded, so the loaded parts' IDs stand for the models:
     // the key changes exactly when a model this chunk uses arrives.
-  }, [pieces, ownKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [pieces, buried, ownKey]); // eslint-disable-line react-hooks/exhaustive-deps
   const [native] = useState(
     () =>
       new LDrawBatch(undefined, {
