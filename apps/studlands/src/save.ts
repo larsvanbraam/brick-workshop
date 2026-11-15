@@ -150,6 +150,10 @@ export const saveTime = (time: number) => write('time', time);
 export const loadDistance = () => read<string>('distance');
 export const saveDistance = (name: string) => write('distance', name);
 
+/** How loud the music plays, by the name picked in the settings. */
+export const loadMusic = () => read<string>('music');
+export const saveMusic = (name: string) => write('music', name);
+
 export const loadHotbar = () => read<Held[]>('hotbar');
 export const saveHotbar = (slots: readonly Held[]) => write('hotbar', slots);
 

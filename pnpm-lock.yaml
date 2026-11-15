@@ -188,6 +188,9 @@ importers:
 
   apps/studlands:
     dependencies:
+      '@brick-workshop/audio':
+        specifier: workspace:*
+        version: link:../../packages/brick-audio
       '@brick-workshop/engine':
         specifier: workspace:*
         version: link:../../packages/brick-engine
@@ -240,6 +243,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@brick-workshop/audio':
+        specifier: workspace:*
+        version: link:../../packages/brick-audio
       '@brick-workshop/engine':
         specifier: workspace:*
         version: link:../../packages/brick-engine
@@ -307,6 +313,12 @@ importers:
       typescript:
         specifier: ~7.0.2
         version: 7.0.2
+      vite-plus:
+        specifier: 1.4.0
+        version: 1.4.0(@opentelemetry/api@1.10.0)(@types/node@24.19.2)(@vitest/ui@5.0.5)(typescript@7.0.2)
+
+  packages/brick-audio:
+    devDependencies:
       vite-plus:
         specifier: 1.4.0
         version: 1.4.0(@opentelemetry/api@1.10.0)(@types/node@24.19.2)(@vitest/ui@5.0.5)(typescript@7.0.2)

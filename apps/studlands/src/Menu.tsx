@@ -13,6 +13,8 @@ import {
 import type { SaveFile } from './save.ts';
 import { DISTANCES } from './streaming.ts';
 import type { DistanceName } from './streaming.ts';
+import { MUSIC_LEVELS } from './music.ts';
+import type { MusicLevel } from './music.ts';
 
 type Tab = 'play' | 'worlds' | 'export' | 'settings';
 
@@ -35,6 +37,9 @@ export interface MenuProps {
   /** How far the world reaches round the walker. */
   distance: DistanceName;
   onDistance: (name: DistanceName) => void;
+  /** How loud the background piano plays. */
+  music: MusicLevel;
+  onMusic: (level: MusicLevel) => void;
 }
 
 const ago = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' });
@@ -140,7 +145,9 @@ const DISTANCE_LABELS: Record<DistanceName, string> = {
 /** How many studs a reach of chunks covers, out from the walker's own chunk. */
 const studs = (chunks: number) => (chunks * 2 + 1) * 32;
 
-function Settings({ distance, onDistance }: MenuProps) {
+const MUSIC_LABELS: Record<MusicLevel, string> = { off: 'Off', quiet: 'Quiet', normal: 'Normal' };
+
+function Settings({ distance, onDistance, music, onMusic }: MenuProps) {
   const reach = DISTANCES[distance];
   return (
     <div className="settings">
@@ -166,6 +173,24 @@ function Settings({ distance, onDistance }: MenuProps) {
         {studs(reach.far)}. Further reaches more but asks more of your computer; Very far builds
         twice the pieces of Normal.
       </p>
+      <div className="setting">
+        <span id="music-label">Music</span>
+        <div className="choices" role="radiogroup" aria-labelledby="music-label">
+          {(Object.keys(MUSIC_LEVELS) as MusicLevel[]).map((level) => (
+            <button
+              key={level}
+              type="button"
+              role="radio"
+              aria-checked={music === level}
+              className={music === level ? 'tab selected' : 'tab'}
+              onClick={() => onMusic(level)}
+            >
+              {MUSIC_LABELS[level]}
+            </button>
+          ))}
+        </div>
+      </div>
+      <p className="note">Ambient piano while you play, following the day and the night.</p>
     </div>
   );
 }

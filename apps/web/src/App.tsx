@@ -91,6 +91,7 @@ import { Scene, captureScene } from './Scene';
 import { MOODS } from '@brick-workshop/render/cinematic';
 import type { CinematicMood } from '@brick-workshop/render/cinematic';
 import type { WalkCamera } from '@brick-workshop/walk/walk-view';
+import { AmbientMusic } from '@brick-workshop/audio/music';
 import type {
   BuildProgress,
   PointerDevice,
@@ -589,7 +590,14 @@ export default function App() {
   function toggleWalkSound() {
     writeSetting('brick-workshop-walk-sound', walkSound ? 'off' : 'on');
     setWalkSound(!walkSound);
+    if (!walkSound) music.start();
   }
+  // Ambient piano while walking, under the same mute as the footsteps; it fades out when the
+  // walk ends and turns to its night loop under the night mood.
+  const [music] = useState(() => new AmbientMusic());
+  useEffect(() => () => music.dispose(), [music]);
+  useEffect(() => music.setVolume(walk && walkSound ? 0.6 : 0), [music, walk, walkSound]);
+  useEffect(() => music.setMood(mood === 'night' ? 'night' : 'day'), [music, mood]);
   const cinematicStage = useMemo(
     () =>
       cinematic
@@ -611,6 +619,8 @@ export default function App() {
   );
   function toggleWalk() {
     setWalk(walk ? null : 'first');
+    // Browsers only start sound from a click or key, which this is.
+    if (!walk) music.start();
     setFlying(false);
   }
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -1771,8 +1781,8 @@ export default function App() {
               {walk && (
                 <button
                   className="icon-button"
-                  title={walkSound ? 'Mute footsteps (M)' : 'Unmute footsteps (M)'}
-                  aria-label="Footstep sounds"
+                  title={walkSound ? 'Mute sound (M)' : 'Unmute sound (M)'}
+                  aria-label="Footsteps and music"
                   aria-pressed={walkSound}
                   onClick={toggleWalkSound}
                 >

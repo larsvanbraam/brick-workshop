@@ -291,6 +291,10 @@ button {
   background: rgb(255 255 255 / 0.06);
 }
 
+.settings .note + .setting {
+  margin-top: 18px;
+}
+
 .settings .note {
   margin: 10px 0 0;
   color: var(--muted);

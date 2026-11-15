@@ -1,0 +1,23 @@
+{
+  "name": "@brick-workshop/audio",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./music": {
+      "types": "./src/music.ts",
+      "import": "./src/music.ts"
+    },
+    "./composer": {
+      "types": "./src/composer.ts",
+      "import": "./src/composer.ts"
+    }
+  },
+  "scripts": {
+    "test": "vp test",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "devDependencies": {
+    "vite-plus": "1.4.0"
+  }
+}

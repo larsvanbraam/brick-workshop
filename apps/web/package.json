@@ -9,6 +9,7 @@
     "preview": "vp preview"
   },
   "dependencies": {
+    "@brick-workshop/audio": "workspace:*",
     "@brick-workshop/engine": "workspace:*",
     "@brick-workshop/render": "workspace:*",
     "@brick-workshop/walk": "workspace:*",

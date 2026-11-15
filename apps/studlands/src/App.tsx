@@ -6,6 +6,7 @@ import { dismissSplash, setSplashMessage } from '@brick-workshop/render/splash';
 import { useLDrawLibrary } from '@brick-workshop/render/ldraw';
 import type { WalkCamera } from '@brick-workshop/walk/walk-view';
 import { WalkWorld } from '@brick-workshop/walk/walk';
+import { AmbientMusic } from '@brick-workshop/audio/music';
 import { placementFor } from './build.ts';
 import {
   ChunkLoader,
@@ -44,11 +45,13 @@ import {
   loadEdits,
   loadDistance,
   loadHotbar,
+  loadMusic,
   loadSeed,
   loadTime,
   saveEdits,
   saveDistance,
   saveHotbar,
+  saveMusic,
   saveSeed,
   saveTime,
 } from './save.ts';
@@ -58,6 +61,8 @@ import { isPlant } from './world/plants.ts';
 import { REGION, Terrain, volcanoIn } from './world/terrain.ts';
 import type { ChunkMessage, FarMessage } from './world/worker.ts';
 import { FarStore } from './FarView.tsx';
+import { DEFAULT_MUSIC, MENU_SHARE, MUSIC_LEVELS, isMusicLevel } from './music.ts';
+import type { MusicLevel } from './music.ts';
 
 /**
  * Counts per chunk, kept until the chunk changes: a chunk's list is replaced whenever its pieces
@@ -114,6 +119,9 @@ export function App() {
   // Bumped to open a world afresh from its saved edits, even the one being played.
   const [opened, setOpened] = useState(0);
   useEffect(() => saveSeed(seed), [seed]);
+  // The music lasts across worlds, so opening another one does not cut it off.
+  const [music] = useState(() => new AmbientMusic());
+  useEffect(() => () => music.dispose(), [music]);
   const open = (next: number) => {
     setSeed(next);
     setOpened((current) => current + 1);
@@ -122,6 +130,7 @@ export function App() {
     <Game
       key={`${seed}:${opened}`}
       seed={seed}
+      music={music}
       onNewWorld={() => open(newSeed())}
       onOpenWorld={open}
     />
@@ -140,10 +149,12 @@ function ClockLabel({ clock }: { clock: DayClock }) {
 
 function Game({
   seed,
+  music,
   onNewWorld,
   onOpenWorld,
 }: {
   seed: number;
+  music: AmbientMusic;
   onNewWorld: () => void;
   onOpenWorld: (seed: number) => void;
 }) {
@@ -361,6 +372,22 @@ function Game({
       saveTime(clock.time);
     });
   }, [clock]);
+  // Ambient piano: starts with the first Play (browsers need a click or key for sound), softer
+  // in the menu, and turns to its night loop after sunset.
+  const [musicLevel, setMusicLevel] = useState<MusicLevel>(() => {
+    const saved = loadMusic();
+    return isMusicLevel(saved) ? saved : DEFAULT_MUSIC;
+  });
+  useEffect(() => saveMusic(musicLevel), [musicLevel]);
+  useEffect(
+    () => music.setVolume(MUSIC_LEVELS[musicLevel] * (screen === 'menu' ? MENU_SHARE : 1)),
+    [music, musicLevel, screen],
+  );
+  useEffect(() => {
+    const mood = () => music.setMood(isDaytime(clock.time) ? 'day' : 'night');
+    mood();
+    return clock.subscribe(mood);
+  }, [music, clock]);
   const onAim = useCallback(
     (next: Aim | null) => {
       setAim(next);
@@ -469,6 +496,7 @@ function Game({
   const play = () => {
     setScreen('playing');
     setStarted(true);
+    music.start();
     void lockPointer();
   };
   /** The menu or the brick box, with the mouse let go so their buttons can be clicked. */
@@ -840,6 +868,8 @@ function Game({
           onOpenWorld={onOpenWorld}
           distance={distanceName}
           onDistance={setDistanceName}
+          music={musicLevel}
+          onMusic={setMusicLevel}
         />
       )}
       {loading}
