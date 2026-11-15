@@ -45,7 +45,8 @@ export class AmbientMusic {
     if (context && master) {
       master.gain.cancelScheduledValues(context.currentTime);
       master.gain.setValueAtTime(master.gain.value, context.currentTime);
-      master.gain.setTargetAtTime(this.volume, context.currentTime, fade / 3);
+      // A ramp rather than a curve, so a fade out really reaches silence before the pause.
+      master.gain.linearRampToValueAtTime(this.volume, context.currentTime + fade);
     }
     this.update(fade);
   }
@@ -115,7 +116,7 @@ export class AmbientMusic {
     } else
       this.suspendTimer = setTimeout(
         () => void context.suspend().catch(() => {}),
-        document.visibilityState === 'hidden' ? 0 : fade * 1000,
+        document.visibilityState === 'hidden' ? 0 : fade * 1000 + 100,
       );
   }
 

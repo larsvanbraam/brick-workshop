@@ -596,7 +596,11 @@ export default function App() {
   // walk ends and turns to its night loop under the night mood.
   const [music] = useState(() => new AmbientMusic());
   useEffect(() => () => music.dispose(), [music]);
-  useEffect(() => music.setVolume(walk && walkSound ? 0.6 : 0), [music, walk, walkSound]);
+  // Leaving the walk lets the music die away over a few seconds rather than cutting it.
+  useEffect(
+    () => music.setVolume(walk && walkSound ? 0.6 : 0, walk ? 1.5 : 3),
+    [music, walk, walkSound],
+  );
   useEffect(() => music.setMood(mood === 'night' ? 'night' : 'day'), [music, mood]);
   const cinematicStage = useMemo(
     () =>
