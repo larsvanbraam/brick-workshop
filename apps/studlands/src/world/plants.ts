@@ -6,7 +6,7 @@ import { hash2, random } from './noise.ts';
 import { COLOR } from './palette.ts';
 import { caveProps, sightIn } from './sights.ts';
 import type { Taken } from './sights.ts';
-import { LAND_BIOMES } from './terrain.ts';
+import { BUILT_BIOMES, LAND_BIOMES } from './terrain.ts';
 import type { Biome, Terrain, TreeSpot } from './terrain.ts';
 
 /** A plant's pieces, kept or left out together. */
@@ -173,7 +173,7 @@ function smallPlants(
         continue;
       }
       // Scree at the foot of a face three or more layers high.
-      if (!water && biome !== 'lava' && LAND_BIOMES.has(biome)) {
+      if (!water && biome !== 'lava' && LAND_BIOMES.has(biome) && !BUILT_BIOMES.has(biome)) {
         const below = [
           terrain.column(x + 1, z),
           terrain.column(x - 1, z),

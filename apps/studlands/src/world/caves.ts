@@ -1,5 +1,5 @@
 import { fbm, random } from './noise.ts';
-import { LAND_BIOMES, WATER_LAYERS } from './terrain.ts';
+import { BUILT_BIOMES, LAND_BIOMES, WATER_LAYERS } from './terrain.ts';
 import type { Biome, Column, Terrain } from './terrain.ts';
 
 /**
@@ -99,6 +99,7 @@ const DIRECTIONS = [
  */
 function findCave(terrain: Terrain, x0: number, z0: number, size: number): Cave | null {
   const { seed } = terrain;
+  if (!terrain.caves) return null;
   const next = random(seed * 131 + 7 + Math.imul(x0, 83492791) + Math.imul(z0, 2971215073));
   if (next() >= CAVE_CHANCE) return null;
   // Four studs of the chunk kept clear all round: the strip its neighbours look at while they
@@ -118,7 +119,10 @@ function findCave(terrain: Terrain, x0: number, z0: number, size: number): Cave 
         const cx = x + dx * k - dz * a;
         const cz = z + dz * k + dx * a;
         if (!inside(cx, cz, 4)) return null;
-        row.push(terrain.column(cx, cz));
+        const column = terrain.column(cx, cz);
+        // Roads and gardens are never cut open.
+        if (BUILT_BIOMES.has(column.biome)) return null;
+        row.push(column);
       }
       return row;
     };
@@ -162,6 +166,7 @@ function findCave(terrain: Terrain, x0: number, z0: number, size: number): Cave 
           // The dome's middle needs a full roof over it; its rim and walls a layer over their own.
           const need = distance <= DOME[0][0] ? COVER : 4;
           if (!inside(cx, cz, 4) || column.water || column.height < floor + need) return null;
+          if (BUILT_BIOMES.has(column.biome)) return null;
         }
       return middle;
     };

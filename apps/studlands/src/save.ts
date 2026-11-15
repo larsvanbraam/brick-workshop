@@ -1,14 +1,15 @@
 import type { Brick } from '@brick-workshop/engine';
 import type { Edit, Held } from './build.ts';
 import { chunkOf } from './chunks.ts';
+import { game } from './game.ts';
 
-/** Keys keep the game's first name, Brick Island, so saves from before the rename still load. */
-const PREFIX = 'brick-island';
+/** Each game keeps its saves under its own prefix (see `GameConfig`). */
+const prefix = () => game().savePrefix;
 
 /** Storage may be missing or blocked (private windows, previews); the game then just forgets. */
 function read<T>(key: string): T | null {
   try {
-    const value = localStorage.getItem(`${PREFIX}:${key}`);
+    const value = localStorage.getItem(`${prefix()}:${key}`);
     return value ? (JSON.parse(value) as T) : null;
   } catch {
     return null;
@@ -17,7 +18,7 @@ function read<T>(key: string): T | null {
 
 function write(key: string, value: unknown) {
   try {
-    localStorage.setItem(`${PREFIX}:${key}`, JSON.stringify(value));
+    localStorage.setItem(`${prefix()}:${key}`, JSON.stringify(value));
   } catch {
     // Out of space or blocked: the world still plays, it is just not kept.
   }
@@ -25,7 +26,7 @@ function write(key: string, value: unknown) {
 
 function forget(key: string) {
   try {
-    localStorage.removeItem(`${PREFIX}:${key}`);
+    localStorage.removeItem(`${prefix()}:${key}`);
   } catch {
     // Nothing to forget where nothing could be kept.
   }

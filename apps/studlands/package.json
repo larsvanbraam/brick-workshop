@@ -3,6 +3,12 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "exports": {
+    "./start": {
+      "types": "./src/start.tsx",
+      "import": "./src/start.tsx"
+    }
+  },
   "scripts": {
     "dev": "vp dev",
     "build": "tsc -b && vp build",

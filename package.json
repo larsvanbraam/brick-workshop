@@ -6,10 +6,11 @@
   "scripts": {
     "dev": "vp -C apps/web dev",
     "studlands": "vp -C apps/studlands dev",
-    "build": "pnpm typecheck && vp -C apps/web build && vp -C apps/studlands build && vp -C packages/brick-engine pack && vp -C packages/claude-adapter pack",
+    "island": "vp -C apps/brick-island dev",
+    "build": "pnpm typecheck && vp -C apps/web build && vp -C apps/studlands build && vp -C apps/brick-island build && vp -C packages/brick-engine pack && vp -C packages/claude-adapter pack",
     "test": "vp test",
     "check": "vp check && pnpm typecheck",
-    "typecheck": "tsc -p packages/brick-engine/tsconfig.json && tsc -p packages/claude-adapter/tsconfig.json && tsc -p packages/brick-render/tsconfig.json && tsc -p packages/brick-walk/tsconfig.json && tsc -p packages/brick-audio/tsconfig.json && tsc -b apps/web && tsc -b apps/studlands",
+    "typecheck": "tsc -p packages/brick-engine/tsconfig.json && tsc -p packages/claude-adapter/tsconfig.json && tsc -p packages/brick-render/tsconfig.json && tsc -p packages/brick-walk/tsconfig.json && tsc -p packages/brick-audio/tsconfig.json && tsc -b apps/web && tsc -b apps/studlands && tsc -b apps/brick-island",
     "fmt": "vp fmt",
     "preview": "vp -C apps/web preview",
     "ldraw:fetch": "node apps/web/tooling/fetch-ldraw.ts",

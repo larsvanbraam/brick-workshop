@@ -21,6 +21,8 @@ import type { WalkCamera, WalkProbe } from '@brick-workshop/walk/walk-view';
 import { DebugHelpers, DebugProbe } from '@brick-workshop/render/scene-debug';
 import type { DebugOptions, DebugStore } from '@brick-workshop/render/scene-debug';
 import { CollisionBoxes, PlayerProbe } from './debug.tsx';
+import { MapProbe } from './Minimap.tsx';
+import type { MapStore } from './Minimap.tsx';
 import type { PlayerStore } from './debug.tsx';
 import { COLORS } from '@brick-workshop/engine';
 import { aimAt, aimKey } from './build.ts';
@@ -31,6 +33,7 @@ import type { Glows } from './GameStage.tsx';
 import { skyAt } from './sky.ts';
 import type { DayClock } from './sky.ts';
 import type { Terrain } from './world/terrain.ts';
+import { game } from './game.ts';
 import { ChunkBorders } from './debug.tsx';
 import type { Volcano } from './world/terrain.ts';
 import type { Aim } from './build.ts';
@@ -74,6 +77,8 @@ export interface GameSceneProps {
   debug: GameSceneDebug;
   /** The time of day the sky and the light follow. */
   clock: DayClock;
+  /** Where to tell the minimap the walker is, for a game that has one. */
+  map?: MapStore;
   /** The volcano, whose crater glows. */
   volcano: Volcano | null;
   /** The campfire and cave crystals nearest the walker. */
@@ -117,7 +122,7 @@ export function GameScene(props: GameSceneProps) {
       camera={{ position: [0, 30, 60], fov: 70, near: 0.05, far: 600 }}
       gl={{ antialias: false }}
       dpr={dpr}
-      aria-label="Studlands"
+      aria-label={game().title}
     >
       <GameStage
         size={buildArea}
@@ -154,6 +159,7 @@ export function GameScene(props: GameSceneProps) {
       />
       <EdgeDimmer drawings={drawings} clock={props.clock} />
       <ChunkWatcher probe={probe} buildArea={buildArea} onChunk={props.onChunk} />
+      {props.map && <MapProbe probe={probe} store={props.map} buildArea={buildArea} />}
       {debug.options.enabled && (
         <>
           <DebugProbe store={debug.store} options={debug.options} batch={summed} />

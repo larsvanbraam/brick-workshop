@@ -188,6 +188,26 @@ export function farChunk(terrain: Terrain, cx: number, cz: number, frame: number
     box(tree.x, tree.z, tree.x + 1, tree.z + 1, base, base + 6, TRUNK);
     box(tree.x - 4, tree.z - 4, tree.x + 5, tree.z + 5, base + 5, base + 11, CROWN);
   }
+  // Buildings as plain blocks in their main colour, owned like their pieces by their anchor's chunk.
+  for (const structure of terrain.structuresIn(
+    cx * CHUNK,
+    cz * CHUNK,
+    (cx + 1) * CHUNK,
+    (cz + 1) * CHUNK,
+  )) {
+    const { anchor, bounds, color } = structure;
+    if (Math.floor(anchor.x / CHUNK) !== cx || Math.floor(anchor.z / CHUNK) !== cz) continue;
+    const hex = hexOf.get(color) ?? 0x888888;
+    box(
+      bounds.x0,
+      bounds.z0,
+      bounds.x1,
+      bounds.z1,
+      bounds.bottom * PLATE_HEIGHT,
+      bounds.top * PLATE_HEIGHT,
+      hex,
+    );
+  }
   return {
     key: chunkKey(cx, cz),
     cx,

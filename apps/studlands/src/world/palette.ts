@@ -97,8 +97,26 @@ export function cellColor(terrain: Terrain, x: number, z: number, depth: number,
       : layer % 3 === 0
         ? COLOR.darkRock
         : COLOR.black;
+  if (depth === 0 && column.paint !== undefined) return column.paint;
   if (depth >= 2) return dry ? sandstone(seed, x, z, layer) : strata(seed, x, z, layer);
   switch (biome) {
+    case 'road':
+      // Dark asphalt, a lighter patch here and there where it was mended.
+      return depth === 0
+        ? fbm(seed + 21, x, z, 6, 2) > 0.78
+          ? COLOR.rock
+          : COLOR.darkRock
+        : COLOR.darkRock;
+    case 'pavement':
+      return depth === 0
+        ? shade(seed + 22, x, z, COLOR.rock, COLOR.rock, COLOR.lightRock)
+        : COLOR.darkRock;
+    case 'yard':
+      return depth === 0
+        ? shade(seed + 23, x, z, COLOR.grass, COLOR.grass, COLOR.lightGrass)
+        : COLOR.soil;
+    case 'field':
+      return depth === 0 ? COLOR.soil : COLOR.darkSoil;
     case 'beach':
       return depth === 0
         ? shade(seed + 3, x, z, COLOR.sand, COLOR.darkSand, COLOR.sand)

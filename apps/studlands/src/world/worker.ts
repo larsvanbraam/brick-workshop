@@ -2,11 +2,14 @@ import { farChunk } from './far.ts';
 import type { FarChunk } from './far.ts';
 import { generateChunk } from './generate.ts';
 import type { ChunkResult } from './generate.ts';
-import { Terrain } from './terrain.ts';
+import type { Terrain, WorldKind } from './terrain.ts';
+import { createTerrain } from './worlds.ts';
 
 /** Which chunk of which world to build: in full, or only its far-off look. */
 export interface ChunkRequest {
   seed: number;
+  /** What shapes the world: Studlands' endless land or Brick Island. */
+  world?: WorldKind;
   cx: number;
   cz: number;
   far?: boolean;
@@ -28,10 +31,11 @@ export type FarMessage = FarChunk & { kind: 'far' };
 let terrain: Terrain | null = null;
 
 self.onmessage = (event: MessageEvent<ChunkRequest>) => {
-  const { seed, cx, cz, far, frame = 128 } = event.data;
+  const { seed, world = 'studlands', cx, cz, far, frame = 128 } = event.data;
   const start = performance.now();
   // A long walk would remember columns without end; past a point the memory starts afresh.
-  if (terrain?.seed !== seed || terrain.remembered > 400_000) terrain = new Terrain(seed);
+  if (terrain?.seed !== seed || terrain.world !== world || terrain.remembered > 400_000)
+    terrain = createTerrain(seed, world);
   if (far) {
     const message: FarMessage = { ...farChunk(terrain, cx, cz, frame), kind: 'far' };
     // The arrays move across rather than being copied.

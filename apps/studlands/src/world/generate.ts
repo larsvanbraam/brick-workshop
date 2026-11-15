@@ -11,7 +11,7 @@ import { cellColor, waterColor } from './palette.ts';
 import { plantChunk } from './plants.ts';
 import type { Plant } from './plants.ts';
 import { LAND_BIOMES, MAX_LAYERS, START, Terrain, WATER_LAYERS, volcanoAt } from './terrain.ts';
-import type { Volcano } from './terrain.ts';
+import type { Biome, Volcano } from './terrain.ts';
 
 export { WATER_LAYERS };
 
@@ -138,7 +138,29 @@ export function generateChunk(
     });
   let plants: Plant[] = grown.map(tag).filter((pieces) => pieces.length && onBoard(pieces));
   const local = (bricks: readonly Brick[]) => moved(bricks, FRAME - x0, FRAME - z0);
-  const context = local([...ground, ...nearby]);
+
+  // Buildings: the chunk builds those it owns, and keeps its plants and slopes clear of every one
+  // that reaches onto the board it is checked on.
+  const reach = terrain.structuresIn(
+    x0 - FRAME,
+    z0 - FRAME,
+    x0 + CHUNK + FRAME,
+    z0 + CHUNK + FRAME,
+  );
+  const owned = reach
+    .filter(
+      (structure) =>
+        chunkKey(Math.floor(structure.anchor.x / CHUNK), Math.floor(structure.anchor.z / CHUNK)) ===
+        key,
+    )
+    .flatMap((structure) => tag(structure.pieces()));
+  const standing = local(reach.flatMap((structure) => structure.pieces())).filter((brick) => {
+    const bounds = getWorldBounds(brick);
+    return (
+      bounds.minX >= 0 && bounds.minZ >= 0 && bounds.maxX <= FRAME_SIZE && bounds.maxZ <= FRAME_SIZE
+    );
+  });
+  const context = [...local([...ground, ...nearby]), ...standing];
   for (let round = 0; round < 8 && plants.length; round++) {
     const issues = validateAssembly({
       name: 'plants',
@@ -171,7 +193,7 @@ export function generateChunk(
   const smoothed = smoothAssembly(
     {
       name: 'smoothing',
-      bricks: local([...ground, ...margin, ...planted, ...nearby]),
+      bricks: [...local([...ground, ...margin, ...planted, ...nearby]), ...standing],
       buildArea: FRAME_SIZE,
     },
     {
@@ -188,7 +210,98 @@ export function generateChunk(
       groundIds.has(brick.id) ||
       (brick.id.startsWith('ground-') && brick.id.endsWith(suffix) && inChunk(brick, x0, z0)),
   );
-  return { key, bricks: [...kept, ...planted], terrain: kept.map((brick) => brick.id) };
+  const paved = paveChunk(terrain, x0, z0, carving, [...kept, ...planted, ...owned], suffix);
+  const groundPieces = [...kept, ...paved];
+  return {
+    key,
+    bricks: [...groundPieces, ...planted, ...owned],
+    terrain: groundPieces.map((brick) => brick.id),
+  };
+}
+
+/** Ground that gets a smooth top of tiles: roads and pavements, which wheels will run on. */
+const PAVED: ReadonlySet<Biome> = new Set(['road', 'pavement']);
+
+/**
+ * Tiles over the chunk's roads and pavements, in their ground's colours (centre lines and
+ * kerbs included), wherever nothing already stands on the stud: 2 x 2 where four studs of one
+ * colour and height meet, else 1 x 2 or 1 x 1.
+ */
+function paveChunk(
+  terrain: Terrain,
+  x0: number,
+  z0: number,
+  carving: ReturnType<typeof carveChunk>,
+  standing: readonly Brick[],
+  suffix: string,
+): Brick[] {
+  const top = new Map<string, { height: number; color: number }>();
+  for (let z = z0; z < z0 + CHUNK; z++)
+    for (let x = x0; x < x0 + CHUNK; x++) {
+      const column = terrain.column(x, z);
+      if (!PAVED.has(column.biome) || column.water || carving.hollows.has(`${x},${z}`)) continue;
+      top.set(`${x},${z}`, {
+        height: column.height,
+        color: cellColor(terrain, x, z, 0, column.height - 1),
+      });
+    }
+  if (!top.size) return [];
+  // Studs something already stands on: a slope, a plant, a building, a lamppost.
+  for (const brick of standing) {
+    const bounds = getWorldBounds(brick);
+    for (let z = Math.floor(bounds.minZ); z < Math.ceil(bounds.maxZ); z++)
+      for (let x = Math.floor(bounds.minX); x < Math.ceil(bounds.maxX); x++) {
+        const cell = top.get(`${x},${z}`);
+        if (cell && bounds.minY <= cell.height * 3 && bounds.maxY > cell.height * 3)
+          top.delete(`${x},${z}`);
+      }
+  }
+  const tiles: Brick[] = [];
+  const add = (
+    partId: string,
+    x: number,
+    z: number,
+    rotation: 0 | 90,
+    cell: { height: number; color: number },
+  ) =>
+    tiles.push({
+      id: `ground-tile${tiles.length}${suffix}`,
+      partId,
+      color: cell.color,
+      x,
+      y: cell.height * 3,
+      z,
+      rotation,
+    });
+  const same = (
+    a: { height: number; color: number } | undefined,
+    b: { height: number; color: number },
+  ) => a !== undefined && a.height === b.height && a.color === b.color;
+  for (let z = z0; z < z0 + CHUNK; z++)
+    for (let x = x0; x < x0 + CHUNK; x++) {
+      const cell = top.get(`${x},${z}`);
+      if (!cell) continue;
+      const right = top.get(`${x + 1},${z}`);
+      const below = top.get(`${x},${z + 1}`);
+      const corner = top.get(`${x + 1},${z + 1}`);
+      if (same(right, cell) && same(below, cell) && same(corner, cell)) {
+        add('3068b', x, z, 0, cell);
+        for (const key of [`${x},${z}`, `${x + 1},${z}`, `${x},${z + 1}`, `${x + 1},${z + 1}`])
+          top.delete(key);
+      } else if (same(right, cell)) {
+        add('3069b', x, z, 90, cell);
+        top.delete(`${x},${z}`);
+        top.delete(`${x + 1},${z}`);
+      } else if (same(below, cell)) {
+        add('3069b', x, z, 0, cell);
+        top.delete(`${x},${z}`);
+        top.delete(`${x},${z + 1}`);
+      } else {
+        add('3070b', x, z, 0, cell);
+        top.delete(`${x},${z}`);
+      }
+    }
+  return tiles;
 }
 
 /** The chunks the board covers. */
@@ -204,6 +317,7 @@ export function boardChunks(): [number, number][] {
  * clear of trees, so the walker does not begin up in a crown.
  */
 export function findSpawn(terrain: Terrain): { x: number; z: number } {
+  const { start } = terrain;
   const open = (x: number, z: number) => {
     const column = terrain.column(x, z);
     return (
@@ -217,11 +331,11 @@ export function findSpawn(terrain: Terrain): { x: number; z: number } {
     for (let dz = -radius; dz <= radius; dz++)
       for (let dx = -radius; dx <= radius; dx++) {
         if (Math.max(Math.abs(dx), Math.abs(dz)) !== radius) continue;
-        const x = START.x + dx;
-        const z = START.z + dz;
+        const x = start.x + dx;
+        const z = start.z + dz;
         if (open(x, z)) return { x: x + 0.5, z: z + 0.5 };
       }
-  return { x: START.x + 0.5, z: START.z + 0.5 };
+  return { x: start.x + 0.5, z: start.z + 0.5 };
 }
 
 export interface World {

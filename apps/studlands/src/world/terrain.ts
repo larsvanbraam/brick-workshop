@@ -1,3 +1,4 @@
+import type { Brick } from '@brick-workshop/engine';
 import { fbm, hash2 } from './noise.ts';
 
 /**
@@ -27,7 +28,15 @@ export type Biome =
   | 'rock'
   | 'river'
   | 'volcanic'
-  | 'lava';
+  | 'lava'
+  // Brick Island's built ground: roads, pavements and squares, gardens, and ploughed fields.
+  | 'road'
+  | 'pavement'
+  | 'yard'
+  | 'field';
+
+/** Ground people made: no trees, plants, sights or caves on it, and trees keep their crowns off. */
+export const BUILT_BIOMES: ReadonlySet<Biome> = new Set(['road', 'pavement', 'yard', 'field']);
 
 /** Biomes a minifigure can stand in, as opposed to water. */
 export const LAND_BIOMES: ReadonlySet<Biome> = new Set([
@@ -40,6 +49,10 @@ export const LAND_BIOMES: ReadonlySet<Biome> = new Set([
   'rock',
   'volcanic',
   'lava',
+  'road',
+  'pavement',
+  'yard',
+  'field',
 ]);
 
 export interface Column {
@@ -51,6 +64,8 @@ export interface Column {
   /** 0 cold to 1 hot, and 0 dry to 1 wet. */
   warmth: number;
   moisture: number;
+  /** A colour for the top that overrides the biome's own: road markings, crop rows. */
+  paint?: number;
 }
 
 /** A volcano: where its crater is, in studs, and the brick layers of its lava lake. */
@@ -349,6 +364,50 @@ export function baseColumn(seed: number, x: number, z: number): Column {
   return { height, water, biome, warmth, moisture };
 }
 
+/** What shapes a world: Studlands' endless land from noise, or Brick Island's drawn map. */
+export type WorldKind = 'studlands' | 'island';
+
+/**
+ * Something built that stands on the world: a house, a lighthouse, a bridge. Its pieces are in
+ * world studs and plates, and it belongs to the chunk holding its anchor, which builds all of it.
+ */
+export interface Structure {
+  /** Unique in the world, and the start of its pieces' IDs. */
+  id: string;
+  /** The stud whose chunk owns it. */
+  anchor: { x: number; z: number };
+  /** Its footprint, `[x0, x1)` by `[z0, z1)`, and its top, in plates. */
+  bounds: { x0: number; z0: number; x1: number; z1: number; top: number; bottom: number };
+  /** The colour the far view draws it in. */
+  color: number;
+  /** Its pieces. Built on demand: most structures are only ever seen from afar. */
+  pieces: () => readonly Brick[];
+}
+
+export interface WorldSource {
+  kind: WorldKind;
+  column: (seed: number, x: number, z: number) => Column;
+  start: { x: number; z: number };
+  volcanoIn: (seed: number, rx: number, rz: number) => Volcano | null;
+  /** Whether caves and undercut cliffs are carved. */
+  caves: boolean;
+  structuresIn?: (
+    seed: number,
+    x0: number,
+    z0: number,
+    x1: number,
+    z1: number,
+  ) => readonly Structure[];
+}
+
+export const STUDLANDS_SOURCE: WorldSource = {
+  kind: 'studlands',
+  column: baseColumn,
+  start: START,
+  volcanoIn,
+  caves: true,
+};
+
 /** Studs between candidate tree spots: one spot to a cell of this size. */
 const TREE_CELL = 9;
 /**
@@ -384,13 +443,40 @@ export interface TreeSpot {
  */
 export class Terrain {
   readonly seed: number;
+  readonly source: WorldSource;
   private readonly bases = new Map<string, Column>();
   private readonly columns = new Map<string, Column>();
   private readonly candidates = new Map<string, TreeSpot | null>();
   private readonly kept = new Map<string, TreeSpot | null>();
 
-  constructor(seed: number) {
+  constructor(seed: number, source: WorldSource = STUDLANDS_SOURCE) {
     this.seed = seed;
+    this.source = source;
+  }
+
+  /** What shapes this world. */
+  get world(): WorldKind {
+    return this.source.kind;
+  }
+
+  /** Where the walker begins: land is kept round it. */
+  get start(): { x: number; z: number } {
+    return this.source.start;
+  }
+
+  /** The region's volcano, if it has one. */
+  volcanoIn(rx: number, rz: number): Volcano | null {
+    return this.source.volcanoIn(this.seed, rx, rz);
+  }
+
+  /** Whether the ground may be cut into caves and undercut cliffs. */
+  get caves(): boolean {
+    return this.source.caves;
+  }
+
+  /** Structures standing on the world, whose footprint meets this box of studs. */
+  structuresIn(x0: number, z0: number, x1: number, z1: number): readonly Structure[] {
+    return this.source.structuresIn?.(this.seed, x0, z0, x1, z1) ?? [];
   }
 
   /** How many columns and spots are remembered, so a long walk can start afresh. */
@@ -401,7 +487,7 @@ export class Terrain {
   base(x: number, z: number): Column {
     const key = `${x},${z}`;
     let column = this.bases.get(key);
-    if (!column) this.bases.set(key, (column = baseColumn(this.seed, x, z)));
+    if (!column) this.bases.set(key, (column = this.source.column(this.seed, x, z)));
     return column;
   }
 
@@ -431,6 +517,8 @@ export class Terrain {
           const other = this.base(x + dx, z + dz);
           const roots = Math.max(Math.abs(dx), Math.abs(dz)) <= ROOTS;
           if (other.height - here.height > 3) gentle = false;
+          // Trees level the ground round them, which a road or a garden must not be.
+          if (BUILT_BIOMES.has(other.biome)) gentle = false;
           if (
             roots &&
             (other.water || Math.abs(other.height - here.height) > 1 || !GREEN.has(other.biome))

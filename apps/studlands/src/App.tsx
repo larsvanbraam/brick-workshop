@@ -58,9 +58,12 @@ import {
 import { WORLD_SIZE, findSpawn } from './world/generate.ts';
 import { glowsNear } from './world/glows.ts';
 import { isPlant } from './world/plants.ts';
-import { REGION, Terrain, volcanoIn } from './world/terrain.ts';
+import { REGION } from './world/terrain.ts';
+import { createTerrain } from './world/worlds.ts';
+import { game } from './game.ts';
 import type { ChunkMessage, FarMessage } from './world/worker.ts';
 import { FarStore } from './FarView.tsx';
+import { MapStore, Minimap } from './Minimap.tsx';
 import { DEFAULT_MUSIC, MENU_SHARE, MUSIC_LEVELS, isMusicLevel } from './music.ts';
 import type { MusicLevel } from './music.ts';
 
@@ -115,10 +118,13 @@ const PANEL_REPEAT = new Set<PadButton>(['up', 'down', 'left', 'right', 'lt', 'r
 const DIRECTIONS = ['up', 'down', 'left', 'right'] as const;
 
 export function App() {
-  const [seed, setSeed] = useState(() => loadSeed() ?? newSeed());
+  const fixed = game().seed;
+  const [seed, setSeed] = useState(() => fixed ?? loadSeed() ?? newSeed());
   // Bumped to open a world afresh from its saved edits, even the one being played.
   const [opened, setOpened] = useState(0);
-  useEffect(() => saveSeed(seed), [seed]);
+  useEffect(() => {
+    if (fixed === undefined) saveSeed(seed);
+  }, [fixed, seed]);
   // The music lasts across worlds, so opening another one does not cut it off.
   const [music] = useState(() => new AmbientMusic());
   useEffect(() => () => music.dispose(), [music]);
@@ -159,7 +165,7 @@ function Game({
   onOpenWorld: (seed: number) => void;
 }) {
   /** The terrain on the main thread: for the start, and for the debug window's chunk borders. */
-  const [terrain] = useState(() => new Terrain(seed));
+  const [terrain] = useState(() => createTerrain(seed, game().world));
   const [spawn] = useState(() => findSpawn(terrain));
   /**
    * The live world, streamed in chunk by chunk round the walker: the pieces by chunk, an index for
@@ -291,7 +297,7 @@ function Game({
     return () => cancelAnimationFrame(frame);
   }, [addChunk, addFar]);
   useEffect(() => {
-    const created = new ChunkLoader(seed, receive, receiveFar);
+    const created = new ChunkLoader(seed, receive, receiveFar, game().world);
     loader.current = created;
     return () => {
       created.dispose();
@@ -336,7 +342,7 @@ function Game({
   /** The volcano of the region the walker is in, if it has one, for the glow over its crater. */
   const regionX = Math.floor((centre[0] * CHUNK) / REGION);
   const regionZ = Math.floor((centre[1] * CHUNK) / REGION);
-  const volcano = useMemo(() => volcanoIn(seed, regionX, regionZ), [seed, regionX, regionZ]);
+  const volcano = useMemo(() => terrain.volcanoIn(regionX, regionZ), [terrain, regionX, regionZ]);
   /** The campfire and cave crystals nearest the walker's chunk, for their lights. */
   const glows = useMemo(() => glowsNear(terrain, centre[0], centre[1]), [terrain, centre]);
   /** The middle of the walker's chunk: near enough to where it stands for an area export. */
@@ -358,12 +364,20 @@ function Game({
   const [debugStore] = useState(() => new DebugStore());
   useEffect(() => () => debugStore.dispose(), [debugStore]);
   const [playerStore] = useState(() => new PlayerStore());
+  const [mapStore] = useState(() => new MapStore());
+  const [mapOpen, setMapOpen] = useState(false);
+  const closeMap = useCallback(() => setMapOpen(false), []);
   const [collision, setCollision] = useState(false);
   const [borders, setBorders] = useState(false);
   const [lastEdit, setLastEdit] = useState<EditTiming | null>(null);
 
   // The world's day: carries on from the last visit, kept every few seconds.
-  const [clock] = useState(() => new DayClock(loadTime() ?? START_TIME));
+  const [clock] = useState(() => {
+    const fixed = game().fixedTime;
+    const created = new DayClock(fixed ?? loadTime() ?? START_TIME);
+    created.paused = fixed !== undefined;
+    return created;
+  });
   useEffect(() => {
     let saved = 0;
     return clock.subscribe(() => {
@@ -449,7 +463,7 @@ function Game({
 
   const onMouse = useCallback(
     (action: MouseAction) => {
-      if (!aim) return;
+      if (!aim || !game().building) return;
       if (action === 'pick') {
         const { partId, color, rotation } = aim.brick;
         setSlots((current) =>
@@ -547,6 +561,15 @@ function Game({
         return;
       }
       if (typing) return;
+      if (event.code === 'KeyN' && game().minimap) {
+        setMapOpen((current) => !current);
+        return;
+      }
+      if (!game().building) {
+        if (event.code === 'KeyV') setView((current) => (current === 'first' ? 'third' : 'first'));
+        else if (event.code === 'KeyM') show('menu');
+        return;
+      }
       if (/^Digit[1-9]$/.test(event.code)) setSelected(Number(event.code.slice(5)) - 1);
       else if (event.code === 'KeyQ' || event.code === 'KeyE')
         stepColor(event.code === 'KeyE' ? 1 : -1);
@@ -558,7 +581,7 @@ function Game({
     };
     const wheel = (event: WheelEvent) => {
       // Over the brick box and the menu the wheel scrolls them instead.
-      if (keys.current.screen !== 'playing') return;
+      if (keys.current.screen !== 'playing' || !game().building) return;
       stepSlot(event.deltaY > 0 ? 1 : -1);
     };
     window.addEventListener('keydown', keydown);
@@ -575,6 +598,12 @@ function Game({
   // for what each does here). The handler is replaced every render, so it always sees the latest
   // aim and screen.
   const onPad = (state: PadState, pressed: Set<PadButton>, seconds: number) => {
+    if (screen === 'playing' && !game().building) {
+      if (pressed.has('menu')) show('menu');
+      if (game().minimap && pressed.has('down')) setMapOpen((current) => !current);
+      if (game().minimap && pressed.has('b') && mapOpen) setMapOpen(false);
+      return;
+    }
     if (screen === 'playing') {
       if (pressed.has('rt')) onMouse('place');
       if (pressed.has('lt')) onMouse('break');
@@ -705,14 +734,15 @@ function Game({
 
   // The boot splash (stacking bricks, from index.html) covers the first world and parts; the
   // loader card below it takes over for anything that loads later.
+  const worldName = game().seed === undefined ? `world ${seed}` : game().title;
   const startDone = startChunks.filter((key) => chunks.has(key)).length;
   const booting = !ready || library.status === 'loading';
   useEffect(() => {
     if (!booting) dismissSplash();
     else if (!ready)
-      setSplashMessage(`Shaping world ${seed}… ${startDone} of ${startChunks.length}`);
+      setSplashMessage(`Shaping ${worldName}… ${startDone} of ${startChunks.length}`);
     else setSplashMessage('Loading parts…');
-  }, [booting, ready, seed, startDone, startChunks.length]);
+  }, [booting, ready, worldName, startDone, startChunks.length]);
 
   // One loader, kept by its key from the first chunks through the parts to the open world, so
   // it fades out over the world instead of vanishing.
@@ -720,7 +750,7 @@ function Game({
     <Loader
       key="loader"
       label={
-        !ready ? `Shaping world ${seed}…` : library.status === 'loading' ? 'Loading parts…' : null
+        !ready ? `Shaping ${worldName}…` : library.status === 'loading' ? 'Loading parts…' : null
       }
       progress={
         ready
@@ -755,10 +785,11 @@ function Game({
         onFlyingChange={setFlying}
         onViewChange={setView}
         gamepad={playing ? 'build' : 'off'}
-        ghost={playing ? ghost : null}
+        ghost={playing && game().building ? ghost : null}
         ghostValid={ghostValid}
         onAim={onAim}
         onMouse={onMouse}
+        map={game().minimap ? mapStore : undefined}
         playing={playing}
         clock={clock}
         volcano={volcano}
@@ -773,7 +804,7 @@ function Game({
       />
       {debugOptions.enabled && (
         <DebugOverlay
-          title="Studlands debug"
+          title={`${game().title} debug`}
           store={debugStore}
           options={debugOptions}
           onChange={setDebugOptions}
@@ -796,24 +827,28 @@ function Game({
           />
         </DebugOverlay>
       )}
-      <div className="crosshair" aria-hidden />
-      {playing && ghostCheck && !ghostCheck.ok && <div className="hint">{ghostCheck.reason}</div>}
+      {game().building && <div className="crosshair" aria-hidden />}
+      {playing && game().building && ghostCheck && !ghostCheck.ok && (
+        <div className="hint">{ghostCheck.reason}</div>
+      )}
       <div className="status">
         <strong>
-          World {seed}
-          <ClockLabel clock={clock} />
+          {game().seed === undefined ? `World ${seed}` : game().title}
+          {game().fixedTime === undefined && <ClockLabel clock={clock} />}
         </strong>
         <span>
-          {pieceCount.toLocaleString()} pieces · {built} placed
+          {pieceCount.toLocaleString()} pieces{game().building ? ` · ${built} placed` : ''}
           {flying ? ' · flying' : ''}
         </span>
       </div>
       {toast && <div className="toast">{toast}</div>}
       {playing && (
         <div className="top-buttons">
-          <button type="button" onClick={() => show('box')}>
-            Bricks <kbd>B</kbd>
-          </button>
+          {game().building && (
+            <button type="button" onClick={() => show('box')}>
+              Bricks <kbd>B</kbd>
+            </button>
+          )}
           <button type="button" onClick={() => show('menu')}>
             Menu <kbd>M</kbd>
           </button>
@@ -832,28 +867,33 @@ function Game({
           onClose={play}
         />
       )}
-      <div className="hotbar" role="toolbar" aria-label="Pieces">
-        {slots.map((slot, index) => (
-          <button
-            key={index}
-            type="button"
-            className={index === selected ? 'slot selected' : 'slot'}
-            onClick={() => setSelected(index)}
-            onDragOver={(event) => {
-              if (event.dataTransfer.types.includes(PART_DRAG)) event.preventDefault();
-            }}
-            onDrop={(event) => {
-              const partId = event.dataTransfer.getData(PART_DRAG);
-              if (partId) assign(index, partId);
-            }}
-            title={`${getPart(slot.partId).name}, ${colorName(slot.color)}`}
-          >
-            <span className="key">{index + 1}</span>
-            <PartImage partId={slot.partId} />
-            <span className="swatch" style={{ background: colorHex(slot.color) }} />
-          </button>
-        ))}
-      </div>
+      {game().building && (
+        <div className="hotbar" role="toolbar" aria-label="Pieces">
+          {slots.map((slot, index) => (
+            <button
+              key={index}
+              type="button"
+              className={index === selected ? 'slot selected' : 'slot'}
+              onClick={() => setSelected(index)}
+              onDragOver={(event) => {
+                if (event.dataTransfer.types.includes(PART_DRAG)) event.preventDefault();
+              }}
+              onDrop={(event) => {
+                const partId = event.dataTransfer.getData(PART_DRAG);
+                if (partId) assign(index, partId);
+              }}
+              title={`${getPart(slot.partId).name}, ${colorName(slot.color)}`}
+            >
+              <span className="key">{index + 1}</span>
+              <PartImage partId={slot.partId} />
+              <span className="swatch" style={{ background: colorHex(slot.color) }} />
+            </button>
+          ))}
+        </div>
+      )}
+      {game().minimap && playing && (
+        <Minimap seed={seed} store={mapStore} open={mapOpen} onClose={closeMap} />
+      )}
       {screen === 'menu' && (
         <Menu
           started={started}

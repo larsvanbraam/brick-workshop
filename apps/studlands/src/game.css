@@ -723,3 +723,61 @@ kbd {
 .scene-debug fieldset.time button[aria-pressed='true'] {
   background: rgb(255 255 255 / 0.18);
 }
+
+/* Brick Island's map: a small one in the corner, the whole island on N. */
+.minimap {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  border-radius: 50%;
+  border: 3px solid rgb(255 255 255 / 0.85);
+  box-shadow: 0 6px 18px rgb(0 0 0 / 0.35);
+  background: #3a78bd;
+  pointer-events: none;
+}
+
+.island-map {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgb(10 20 35 / 0.55);
+  z-index: 20;
+}
+
+.island-map-panel {
+  display: grid;
+  gap: 10px;
+  width: min(100%, 980px);
+  padding: 16px;
+  border-radius: 14px;
+  background: var(--panel);
+  text-align: center;
+}
+
+.island-map-panel h2 {
+  margin: 0;
+  font-size: 22px;
+}
+
+.island-map-panel p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.island-map-canvas {
+  width: 100%;
+  aspect-ratio: 720 / 600;
+  max-height: calc(100vh - 140px);
+  border-radius: 10px;
+  background: #3a78bd;
+}
+
+@media (max-width: 600px) {
+  .minimap {
+    width: 120px !important;
+    height: 120px !important;
+  }
+}

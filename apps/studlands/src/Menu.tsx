@@ -15,6 +15,7 @@ import { DISTANCES } from './streaming.ts';
 import type { DistanceName } from './streaming.ts';
 import { MUSIC_LEVELS } from './music.ts';
 import type { MusicLevel } from './music.ts';
+import { game } from './game.ts';
 
 type Tab = 'play' | 'worlds' | 'export' | 'settings';
 
@@ -56,18 +57,24 @@ function playedAgo(date: string) {
   return 'just now';
 }
 
+const TABS = ['play', 'worlds', 'export', 'settings'] as const;
+
 export function Menu(props: MenuProps) {
   const [tab, setTab] = useState<Tab>('play');
   return (
     <div className="menu">
       <div className="panel">
-        <h1>Studlands</h1>
-        <p>World {props.seed}</p>
+        <h1>{game().title}</h1>
+        {game().seed === undefined && <p>World {props.seed}</p>}
         <button type="button" className="play" onClick={props.onPlay} data-pad-start>
           {props.started ? 'Resume' : 'Play'} <kbd>Esc</kbd>
         </button>
         <div className="tabs" role="tablist" data-pad-tabs>
-          {(['play', 'worlds', 'export', 'settings'] as const).map((name) => (
+          {TABS.filter(
+            (name) =>
+              (name !== 'worlds' || game().seed === undefined) &&
+              (name !== 'export' || game().building),
+          ).map((name) => (
             <button
               key={name}
               type="button"
@@ -97,12 +104,22 @@ function Controls({ edits, onReset, onNewWorld }: MenuProps) {
         <dd>WASD, Space to jump, Shift to run</dd>
         <dt>Fly</dt>
         <dd>F or double Space; Space up, C down</dd>
-        <dt>Build</dt>
-        <dd>Right click places, left click takes a piece off</dd>
-        <dt>Pieces</dt>
-        <dd>1–9 or wheel; Q/E colour, R turn, middle click copies</dd>
-        <dt>Bricks</dt>
-        <dd>B opens the brick box to fill the bar; B or Esc closes it</dd>
+        {game().building && (
+          <>
+            <dt>Build</dt>
+            <dd>Right click places, left click takes a piece off</dd>
+            <dt>Pieces</dt>
+            <dd>1–9 or wheel; Q/E colour, R turn, middle click copies</dd>
+            <dt>Bricks</dt>
+            <dd>B opens the brick box to fill the bar; B or Esc closes it</dd>
+          </>
+        )}
+        {game().minimap && (
+          <>
+            <dt>Map</dt>
+            <dd>N opens the island map, N or Esc closes it</dd>
+          </>
+        )}
         <dt>Camera</dt>
         <dd>V for over the shoulder</dd>
         <dt>Menu</dt>
@@ -114,23 +131,37 @@ function Controls({ edits, onReset, onNewWorld }: MenuProps) {
         <dd>Left stick, click it in to sprint; right stick looks</dd>
         <dt>Fly</dt>
         <dd>A jumps, Y or double A flies; A up, B down</dd>
-        <dt>Build</dt>
-        <dd>RT places, LT takes a piece off, X copies</dd>
-        <dt>Pieces</dt>
-        <dd>LB/RB pick; d-pad ◀ ▶ colour, ▲ turn, ▼ brick box</dd>
+        {game().building && (
+          <>
+            <dt>Build</dt>
+            <dd>RT places, LT takes a piece off, X copies</dd>
+            <dt>Pieces</dt>
+            <dd>LB/RB pick; d-pad ◀ ▶ colour, ▲ turn, ▼ brick box</dd>
+          </>
+        )}
+        {game().minimap && (
+          <>
+            <dt>Map</dt>
+            <dd>D-pad ▼ opens the island map, B closes it</dd>
+          </>
+        )}
         <dt>Camera</dt>
         <dd>View for over the shoulder</dd>
         <dt>Menu</dt>
         <dd>Menu opens it; stick moves, A presses, LB/RB tabs, B closes</dd>
       </dl>
-      <div className="actions">
-        <button type="button" onClick={onReset} disabled={!edits.length}>
-          Reset world
-        </button>
-        <button type="button" onClick={onNewWorld}>
-          New world
-        </button>
-      </div>
+      {game().building && (
+        <div className="actions">
+          <button type="button" onClick={onReset} disabled={!edits.length}>
+            Reset world
+          </button>
+          {game().seed === undefined && (
+            <button type="button" onClick={onNewWorld}>
+              New world
+            </button>
+          )}
+        </div>
+      )}
     </>
   );
 }
@@ -300,7 +331,7 @@ function Export({ seed, edits, getAssembly, hasBuild, position, onOpenWorld }: M
     const model =
       scope === 'build' ? cutOutBuild(assembly, name) : cutOutArea(assembly, position, name);
     if (!model) return setMessage({ text: 'Nothing built yet to export.', bad: true });
-    const base = `studlands-${seed}${scope === 'build' ? '-build' : ''}`;
+    const base = `${game().slug}-${seed}${scope === 'build' ? '-build' : ''}`;
     try {
       if (format === 'ldr') download(ldrawDocument(model), `${base}.ldr`, 'text/plain');
       else download(workshopDocument(model), `${base}.json`, 'application/json');
@@ -393,7 +424,7 @@ function Export({ seed, edits, getAssembly, hasBuild, position, onOpenWorld }: M
             onClick={() =>
               download(
                 JSON.stringify(createSaveFile(seed, edits)),
-                `studlands-${seed}.save.json`,
+                `${game().slug}-${seed}.save.json`,
                 'application/json',
               )
             }
