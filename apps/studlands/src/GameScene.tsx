@@ -174,7 +174,7 @@ export function GameScene(props: GameSceneProps) {
         onAim={props.onAim}
       />
       <MouseButtons active={props.playing} onMouse={props.onMouse} />
-      {props.ghost && <Ghost brick={props.ghost} valid={props.ghostValid} buildArea={buildArea} />}
+      <Ghost brick={props.ghost} valid={props.ghostValid} buildArea={buildArea} />
     </Canvas>
   );
 }
@@ -555,20 +555,45 @@ function MouseButtons({
 
 const unitBox = new BoxGeometry(1, 1, 1);
 const unitEdges = new EdgesGeometry(unitBox);
+/** What the hidden ghost is sized by while nothing is aimed at. */
+const HIDDEN_GHOST: Brick = {
+  id: 'ghost',
+  partId: '3005',
+  color: 15,
+  x: 0,
+  y: 0,
+  z: 0,
+  rotation: 0,
+};
 
-/** Where the held piece would go: its box, see-through in its colour, red when it cannot. */
-function Ghost({ brick, valid, buildArea }: { brick: Brick; valid: boolean; buildArea: number }) {
-  const size = footprint(brick);
+/**
+ * Where the held piece would go: its box, see-through in its colour, red when it cannot. It stays
+ * in the scene, hidden while nothing is aimed at: taking it out disposes its materials, and three
+ * would then compile their shaders afresh every time the aim came back, stalling the game for
+ * a moment each time.
+ */
+function Ghost({
+  brick,
+  valid,
+  buildArea,
+}: {
+  brick: Brick | null;
+  valid: boolean;
+  buildArea: number;
+}) {
+  const shown = brick ?? HIDDEN_GHOST;
+  const size = footprint(shown);
   const half = buildArea / 2;
-  const color = COLORS.find((entry) => entry.id === brick.color);
+  const color = COLORS.find((entry) => entry.id === shown.color);
   const fill = valid ? (color ? displayHex(color) : '#ffffff') : '#ff453a';
   const height = size.height * PLATE_HEIGHT;
   return (
     <group
+      visible={brick !== null}
       position={[
-        brick.x + size.width / 2 - half,
-        brick.y * PLATE_HEIGHT + height / 2,
-        half - (brick.z + size.depth / 2),
+        shown.x + size.width / 2 - half,
+        shown.y * PLATE_HEIGHT + height / 2,
+        half - (shown.z + size.depth / 2),
       ]}
       scale={[size.width + 0.02, height + 0.02, size.depth + 0.02]}
       raycast={() => null}

@@ -42,6 +42,14 @@ export class WorldIndex {
   private readonly bottoms = new Map<string, Set<string>>();
   private readonly columns = new Map<string, Set<string>>();
   private readonly bounds = new Map<string, Bounds>();
+  /**
+   * The keys each piece is filed under, kept so taking it out only deletes them: working them out
+   * again would cost as much as adding it, and whole chunks of pieces go at once.
+   */
+  private readonly filed = new Map<
+    string,
+    { tops: string[]; bottoms: string[]; columns: string[] }
+  >();
   /** The board's size in studs: nothing may stand outside it. `Infinity` for no board. */
   readonly size: number;
 
@@ -52,21 +60,28 @@ export class WorldIndex {
 
   add(brick: Brick) {
     const { id } = brick;
+    if (this.bricks.has(id)) this.remove(id);
     this.bricks.set(id, brick);
-    for (const site of getConnectionSites(brick, 'top')) addTo(this.tops, siteKey(site), id);
-    for (const site of getConnectionSites(brick, 'bottom')) addTo(this.bottoms, siteKey(site), id);
     const bounds = getWorldBounds(brick);
     this.bounds.set(id, bounds);
-    for (const column of this.columnsOf(bounds)) addTo(this.columns, column, id);
+    const filed = {
+      tops: getConnectionSites(brick, 'top').map(siteKey),
+      bottoms: getConnectionSites(brick, 'bottom').map(siteKey),
+      columns: [...this.columnsOf(bounds)],
+    };
+    this.filed.set(id, filed);
+    for (const key of filed.tops) addTo(this.tops, key, id);
+    for (const key of filed.bottoms) addTo(this.bottoms, key, id);
+    for (const key of filed.columns) addTo(this.columns, key, id);
   }
 
   remove(id: string) {
-    const brick = this.bricks.get(id);
-    if (!brick) return;
-    for (const site of getConnectionSites(brick, 'top')) removeFrom(this.tops, siteKey(site), id);
-    for (const site of getConnectionSites(brick, 'bottom'))
-      removeFrom(this.bottoms, siteKey(site), id);
-    for (const column of this.columnsOf(this.bounds.get(id)!)) removeFrom(this.columns, column, id);
+    const filed = this.filed.get(id);
+    if (!filed) return;
+    for (const key of filed.tops) removeFrom(this.tops, key, id);
+    for (const key of filed.bottoms) removeFrom(this.bottoms, key, id);
+    for (const key of filed.columns) removeFrom(this.columns, key, id);
+    this.filed.delete(id);
     this.bounds.delete(id);
     this.bricks.delete(id);
   }

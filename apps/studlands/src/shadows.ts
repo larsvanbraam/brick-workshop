@@ -4,7 +4,7 @@
  * redraw them several times a second; requests are collected here and served at most every
  * `SHADOW_INTERVAL` seconds (see `GameStage`).
  */
-export const SHADOW_INTERVAL = 0.5;
+export const SHADOW_INTERVAL = 0.25;
 
 let wanted = true;
 

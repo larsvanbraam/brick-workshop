@@ -174,16 +174,23 @@ export function GameStage({
     stars.frustumCulled = false;
     stars.raycast = () => {};
     const fog = new Fog('#bcd7ec', view * 0.4, view);
-    // A warm light just over the crater's lava, lighting the rim and the slopes round it.
-    const glow = new PointLight('#ff6a24', 0, 26, 2);
+    return { key, target, fill, dome, stars, fog };
+  }, [view, shadowView]);
+  /**
+   * A warm light just over the crater's lava, lighting the rim and the slopes round it. It stays
+   * in the scene, dark where there is no volcano: adding or taking out a light changes every lit
+   * material's shader, and three would compile them all again as the walker crosses a region.
+   */
+  const glow = useMemo(() => new PointLight('#ff6a24', 0, 26, 2), []);
+  useEffect(() => {
     if (volcano)
       glow.position.set(
         volcano.x + 0.5 - size / 2,
         (volcano.lake * 3 + 4) * PLATE_HEIGHT,
         size / 2 - volcano.z - 0.5,
       );
-    return { key, target, fill, dome, stars, fog, glow };
-  }, [size, view, shadowView, volcano]);
+    invalidate();
+  }, [glow, volcano, size, invalidate]);
 
   useEffect(
     () => () => {
@@ -192,10 +199,10 @@ export function GameStage({
       rig.stars.geometry.dispose();
       (rig.stars.material as PointsMaterial).dispose();
       rig.key.dispose();
-      rig.glow.dispose();
     },
     [rig],
   );
+  useEffect(() => () => glow.dispose(), [glow]);
 
   useEffect(() => {
     const previous = scene.fog;
@@ -228,6 +235,10 @@ export function GameStage({
   const shadowed = useRef(new Vector3());
   const followed = useRef(new Vector3(Infinity, 0, Infinity));
   const lastShadows = useRef(0);
+  // A new rig's light starts aimed at the origin: centre it on the walker again, wherever it is.
+  useEffect(() => {
+    followed.current.set(Infinity, 0, Infinity);
+  }, [rig]);
   useFrame(({ camera }, delta) => {
     clock.advance(delta);
     const sky = skyAt(clock.time);
@@ -265,16 +276,17 @@ export function GameStage({
     fog.color.copy(sky.horizon);
     scene.environmentIntensity = sky.environment;
     // The lava glows all day; it only shows once the sun is down.
-    rig.glow.intensity = volcano ? 8 + 60 * sky.stars : 0;
+    glow.intensity = volcano ? 8 + 60 * sky.stars : 0;
     // The sky goes wherever the camera does, so it is never reached.
     dome.position.copy(camera.position);
     stars.position.copy(camera.position);
-    // Shadows follow the light once it has turned about half a degree.
-    if (shadowed.current.angleTo(sky.key.direction) > 0.008) {
+    // Shadows follow the light once it has turned about a quarter of a degree: in bigger steps
+    // the long shadows of a low sun visibly jump.
+    if (shadowed.current.angleTo(sky.key.direction) > 0.004) {
       shadowed.current.copy(sky.key.direction);
       requestShadows();
     }
-    // Every request since the last redraw is served by one, at most every half second.
+    // Every request since the last redraw is served by one, at most four times a second.
     if (performance.now() - lastShadows.current > SHADOW_INTERVAL * 1000)
       if (takeShadowRequest()) {
         gl.shadowMap.needsUpdate = true;
@@ -289,7 +301,7 @@ export function GameStage({
       <primitive object={rig.key} />
       <primitive object={rig.target} />
       <primitive object={rig.fill} />
-      {volcano && <primitive object={rig.glow} />}
+      <primitive object={glow} />
       <EffectComposer multisampling={4}>
         <N8AO {...AMBIENT_OCCLUSION} quality="low" halfRes />
         <ToneMapping mode={ToneMappingMode.ACES_FILMIC} />
