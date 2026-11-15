@@ -6,7 +6,7 @@ export default defineConfig({
     include: [
       'packages/**/*.test.ts',
       'apps/web/tooling/**/*.test.ts',
-      'apps/game/src/**/*.test.ts',
+      'apps/studlands/src/**/*.test.ts',
     ],
   },
   lint: { plugins: ['typescript', 'react'] },

@@ -1,7 +1,7 @@
 # Brick Workshop
 
 A LEGO assembly playground: a UI-free engine (`packages/brick-engine`), a Claude adapter
-(`packages/claude-adapter`), the workshop app (`apps/web`) and Studlands (`apps/game`), a
+(`packages/claude-adapter`), the workshop app (`apps/web`) and Studlands (`apps/studlands`), a
 game where a minifigure explores and builds in an endless generated world. Both apps draw with
 `packages/brick-render` (LDraw loading, batched drawing, the cinematic look, the loading card
 and the LDraw library's Vite plugin) and walk with `packages/brick-walk` (the minifigure
@@ -9,11 +9,11 @@ controller). The [README](README.md) covers the engine's rules (coordinates, par
 physics); read it before placing pieces.
 
 ```sh
-pnpm dev     # workshop on http://localhost:5173
-pnpm game    # Studlands on http://localhost:5173 (or the next free port)
-pnpm test    # Vitest
-pnpm check   # format, lint and typecheck; run before every commit
-pnpm fmt     # format the workspace
+pnpm dev       # workshop on http://localhost:5173
+pnpm studlands # Studlands on http://localhost:5173 (or the next free port)
+pnpm test      # Vitest
+pnpm check     # format, lint and typecheck; run before every commit
+pnpm fmt       # format the workspace
 ```
 
 Commit straight to `main`; this repo has no feature branches. Commit only when asked.

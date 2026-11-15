@@ -271,11 +271,12 @@ library, packages only the supported parts with their attribution and licences,
 and sets `VITE_WORKSHOP_GENERATION=false` to hide generation. Saving to
 `builds/` and previews of arbitrary library parts need the local server.
 
-Studlands (the game, first called Brick Island) deploys as a second Vercel project from the same repository: set its
-**Root Directory** to `apps/game` (leave "Include files outside the root directory"
-on) and `apps/game/vercel.json` does the rest. It fetches the same LDraw library,
-builds the game as a static site into `apps/game/dist` and needs no environment
-variables.
+Studlands (the game, first called Brick Island) deploys as a second Vercel
+project from the same repository: set its **Root Directory** to `apps/studlands`
+(leave "Include files outside the root directory" on) and
+`apps/studlands/vercel.json` does the rest. It fetches the same LDraw library,
+builds the game as a static site into `apps/studlands/dist` and needs no
+environment variables.
 
 The LDraw library is community-maintained, not LEGO-authored; keep its
 attribution and licences when redistributing meshes or the palette.
