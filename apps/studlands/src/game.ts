@@ -10,6 +10,8 @@ import type { VehicleSpawn } from './world/island/map.ts';
 export interface GameConfig {
   /** The name on the menu and in the status bar. */
   title: string;
+  /** The line under the name on the title screen. */
+  tagline: string;
   /** What shapes the world. */
   world: WorldKind;
   /** Saves are kept under this prefix, so the two games never read each other's. */
@@ -35,6 +37,7 @@ export interface GameConfig {
 
 export const STUDLANDS: GameConfig = {
   title: 'Studlands',
+  tagline: 'Endless land to wander, and real bricks to build it up with.',
   world: 'studlands',
   // Keys keep the game's first name, so saves from before the rename still load.
   savePrefix: 'brick-island',
@@ -47,6 +50,7 @@ export const STUDLANDS: GameConfig = {
 
 export const BRICK_ISLAND: GameConfig = {
   title: 'Brick Island',
+  tagline: 'A harbour town, a farm, a lake and a mountain, all yours to explore.',
   world: 'island',
   savePrefix: 'brick-island-map',
   seed: 7,

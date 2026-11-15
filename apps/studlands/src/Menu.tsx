@@ -116,7 +116,7 @@ export function Menu(props: MenuProps) {
   );
 }
 
-function Controls({ edits, onReset, onNewWorld }: MenuProps) {
+export function Controls({ edits, onReset, onNewWorld }: MenuProps) {
   return (
     <>
       <dl>
@@ -210,7 +210,7 @@ const studs = (chunks: number) => (chunks * 2 + 1) * 32;
 
 const MUSIC_LABELS: Record<MusicLevel, string> = { off: 'Off', quiet: 'Quiet', normal: 'Normal' };
 
-function Settings({ distance, onDistance, music, onMusic }: MenuProps) {
+export function Settings({ distance, onDistance, music, onMusic }: MenuProps) {
   const reach = DISTANCES[distance];
   return (
     <div className="settings">
@@ -275,13 +275,13 @@ function playTime(seconds: number) {
   return `${Math.floor(minutes / 60)} h${rest ? ` ${rest} min` : ''}`;
 }
 
-function describeSave(save: SaveGame) {
+export function describeSave(save: SaveGame) {
   const landmark = nearestLandmark(save.place);
   return `${landmark.icon} Near ${landmark.name} · ${playTime(save.playSeconds)} played · ${playedAgo(save.playedAt)}`;
 }
 
 /** The save games: each picks up where it was left; an empty slot starts a new game. */
-function Saves({ slot, onOpenSlot }: MenuProps) {
+export function Saves({ slot, onOpenSlot }: MenuProps) {
   // Read when the menu opens, and again after a delete.
   const [saves, setSaves] = useState(listSaves);
   const [confirming, setConfirming] = useState<number | null>(null);
@@ -349,7 +349,7 @@ function Saves({ slot, onOpenSlot }: MenuProps) {
   );
 }
 
-function Worlds({ seed, onOpenWorld }: MenuProps) {
+export function Worlds({ seed, onOpenWorld }: MenuProps) {
   // Read when the menu opens, and again after a delete.
   const [worlds, setWorlds] = useState(listWorlds);
   const [confirming, setConfirming] = useState<number | null>(null);

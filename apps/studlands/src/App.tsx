@@ -29,6 +29,7 @@ import { WorldIndex } from './world-index.ts';
 import type { Aim, Edit, Held } from './build.ts';
 import { GameScene } from './GameScene.tsx';
 import { Menu } from './Menu.tsx';
+import { TitleScreen } from './TitleScreen.tsx';
 import type { MouseAction } from './GameScene.tsx';
 import { PLAYER_PREFIX, isPlayerPiece } from './export.ts';
 import { GameDebugPanel, PlayerStore } from './debug.tsx';
@@ -123,6 +124,9 @@ const isTyping = (target: EventTarget | null) =>
 const PLAY_REPEAT = new Set<PadButton>(['lt', 'rt']);
 const PANEL_REPEAT = new Set<PadButton>(['up', 'down', 'left', 'right', 'lt', 'rt']);
 const DIRECTIONS = ['up', 'down', 'left', 'right'] as const;
+/** How fast the camera turns behind the title screen, in radians a second, and its ease in. */
+const TITLE_TURN = 0.04;
+const TITLE_EASE = 3;
 
 export function App() {
   const fixed = game().seed;
@@ -235,11 +239,15 @@ function Game({
   /** How long the last few chunks took to build, for the debug window. */
   const [chunkTimes, setChunkTimes] = useState<number[]>([]);
   /**
-   * What is in front: the menu, the game, or the brick box over the game. The mouse is locked
+   * What is in front: the title screen (until the first Play), the menu, the game, or the brick
+   * box over the game. The mouse is locked
    * while playing where the page allows it; losing the lock (Esc in the browser) does not leave
    * the game, only M does.
    */
-  const [screen, setScreen] = useState<'menu' | 'playing' | 'box'>('menu');
+  const [screen, setScreen] = useState<'title' | 'menu' | 'playing' | 'box'>('title');
+  /** Whether the title screen is still up, which it stays while it animates away after Play. */
+  const [titleShown, setTitleShown] = useState(true);
+  const hideTitle = useCallback(() => setTitleShown(false), []);
   const playing = screen === 'playing';
   // Every loaded piece in one list is only needed by the menu (its export) and the debug window.
   const [debugOptions, setDebugOptions] = useDebugOptions('brick-island-debug-v1');
@@ -496,8 +504,45 @@ function Game({
     return isMusicLevel(saved) ? saved : DEFAULT_MUSIC;
   });
   useEffect(() => saveMusic(musicLevel), [musicLevel]);
+  // Behind the title screen the camera looks slowly round, and turns back as the title leaves,
+  // so play starts facing the way the save (or the start) did. Applied as a change each frame,
+  // so a mouse moved while it turns back still counts.
+  const onTitle = useRef(true);
+  useEffect(() => {
+    onTitle.current = screen === 'title';
+  }, [screen]);
+  useEffect(() => {
+    if (!titleShown) return;
+    let turned = 0;
+    let frame = 0;
+    let last = performance.now();
+    let spent = 0;
+    /** The camera's look, kept so the cleanup can still put it back. */
+    let look: { yaw: number } | undefined;
+    frame = requestAnimationFrame(function tick(now) {
+      frame = requestAnimationFrame(tick);
+      const seconds = Math.min(0.1, (now - last) / 1000);
+      last = now;
+      look = probe.current?.look ?? look;
+      if (!look) return;
+      spent += seconds;
+      // Eases in over the first seconds rather than starting at full speed.
+      const target = onTitle.current
+        ? TITLE_TURN * (spent - TITLE_EASE * (1 - Math.exp(-spent / TITLE_EASE)))
+        : turned * Math.max(0, 1 - seconds * 6);
+      look.yaw += target - turned;
+      turned = target;
+    });
+    return () => {
+      cancelAnimationFrame(frame);
+      if (look) look.yaw -= turned;
+    };
+  }, [titleShown]);
   useEffect(
-    () => music.setVolume(MUSIC_LEVELS[musicLevel] * (screen === 'menu' ? MENU_SHARE : 1)),
+    () =>
+      music.setVolume(
+        MUSIC_LEVELS[musicLevel] * (screen === 'menu' || screen === 'title' ? MENU_SHARE : 1),
+      ),
     [music, musicLevel, screen],
   );
   useEffect(() => {
@@ -658,6 +703,8 @@ function Game({
         }
         return;
       }
+      // The title screen's buttons take Enter themselves; Esc there only closes its pages.
+      if (screen === 'title') return;
       if (screen === 'menu') {
         if (event.code === 'Escape') {
           event.preventDefault();
@@ -722,7 +769,9 @@ function Game({
       if (pressed.has('menu')) show('menu');
       return;
     }
-    const root = document.querySelector<HTMLElement>(screen === 'box' ? '.box' : '.menu .panel');
+    const root = document.querySelector<HTMLElement>(
+      screen === 'box' ? '.box' : screen === 'title' ? '.title-screen' : '.menu .panel',
+    );
     if (!root) return;
     for (const direction of DIRECTIONS) if (pressed.has(direction)) moveFocus(root, direction);
     if (pressed.has('a')) pressFocused(root);
@@ -733,6 +782,11 @@ function Game({
       if (pressed.has('rt')) stepSlot(1);
     }
     scrollPanel(root, state.scroll.x, state.scroll.y, seconds);
+    if (screen === 'title') {
+      if (pressed.has('b')) root.querySelector<HTMLElement>('[data-pad-back]')?.click();
+      if (pressed.has('menu')) play();
+      return;
+    }
     if (pressed.has('b') || (screen === 'menu' && pressed.has('menu'))) play();
   };
   const padHandler = useRef(onPad);
@@ -873,8 +927,27 @@ function Game({
   const built = placedCount;
   let pieceCount = 0;
   for (const pieces of chunks.values()) pieceCount += pieces.length;
+  const menuProps = {
+    started,
+    seed,
+    slot,
+    resumable: saved !== null,
+    onOpenSlot,
+    edits,
+    getAssembly,
+    hasBuild: kinds.player > 0,
+    position,
+    onPlay: play,
+    onReset: resetWorld,
+    onNewWorld,
+    onOpenWorld,
+    distance: distanceName,
+    onDistance: setDistanceName,
+    music: musicLevel,
+    onMusic: setMusicLevel,
+  };
   return (
-    <div className="game">
+    <div className="game" data-screen={screen}>
       <GameScene
         chunks={chunks}
         farChunks={farStore}
@@ -1013,26 +1086,9 @@ function Game({
       {game().minimap && playing && (
         <Minimap seed={seed} store={mapStore} open={mapOpen} onClose={closeMap} />
       )}
-      {screen === 'menu' && (
-        <Menu
-          started={started}
-          seed={seed}
-          slot={slot}
-          resumable={saved !== null}
-          onOpenSlot={onOpenSlot}
-          edits={edits}
-          getAssembly={getAssembly}
-          hasBuild={kinds.player > 0}
-          position={position}
-          onPlay={play}
-          onReset={resetWorld}
-          onNewWorld={onNewWorld}
-          onOpenWorld={onOpenWorld}
-          distance={distanceName}
-          onDistance={setDistanceName}
-          music={musicLevel}
-          onMusic={setMusicLevel}
-        />
+      {screen === 'menu' && <Menu {...menuProps} />}
+      {titleShown && (
+        <TitleScreen {...menuProps} save={saved} leaving={screen !== 'title'} onGone={hideTitle} />
       )}
       {loading}
     </div>
