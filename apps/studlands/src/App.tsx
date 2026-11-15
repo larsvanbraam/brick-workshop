@@ -8,6 +8,9 @@ import type { WalkCamera, WalkProbe } from '@brick-workshop/walk/walk-view';
 import { WalkWorld } from '@brick-workshop/walk/walk';
 import type { VehicleKind } from '@brick-workshop/vehicles/vehicle';
 import { AmbientMusic } from '@brick-workshop/audio/music';
+import { Voices, voiceFor } from '@brick-workshop/audio/voice';
+import type { VoiceMode } from '@brick-workshop/audio/voice';
+import { TalkLink } from '@brick-workshop/npc/talk';
 import { placementFor } from './build.ts';
 import {
   ChunkLoader,
@@ -48,6 +51,7 @@ import {
   loadDistance,
   loadHotbar,
   loadMusic,
+  loadVoices,
   loadSave,
   loadSeed,
   loadSlot,
@@ -56,6 +60,7 @@ import {
   saveDistance,
   saveHotbar,
   saveMusic,
+  saveVoices,
   saveSeed,
   saveSlot,
   saveTime,
@@ -74,6 +79,9 @@ import { MapStore, Minimap } from './Minimap.tsx';
 import { createVehicles, parkedVehicles, vehicleAction } from './vehicles.ts';
 import { DEFAULT_MUSIC, MENU_SHARE, MUSIC_LEVELS, isMusicLevel } from './music.ts';
 import type { MusicLevel } from './music.ts';
+import { lineFor, personality } from './dialogue.ts';
+import { residentById } from './npcs.ts';
+import { SpeechBubble } from './SpeechBubble.tsx';
 
 /**
  * Counts per chunk, kept until the chunk changes: a chunk's list is replaced whenever its pieces
@@ -141,6 +149,8 @@ export function App() {
   // The music lasts across worlds, so opening another one does not cut it off.
   const [music] = useState(() => new AmbientMusic());
   useEffect(() => () => music.dispose(), [music]);
+  const [voices] = useState(() => new Voices());
+  useEffect(() => () => voices.dispose(), [voices]);
   const open = (next: number) => {
     setSeed(next);
     setOpened((current) => current + 1);
@@ -157,6 +167,7 @@ export function App() {
       seed={seed}
       slot={slot}
       music={music}
+      voices={voices}
       onNewWorld={() => open(newSeed())}
       onOpenWorld={open}
       onOpenSlot={openSlot}
@@ -178,6 +189,7 @@ function Game({
   seed,
   slot,
   music,
+  voices,
   onNewWorld,
   onOpenWorld,
   onOpenSlot,
@@ -185,6 +197,7 @@ function Game({
   seed: number;
   slot: number;
   music: AmbientMusic;
+  voices: Voices;
   onNewWorld: () => void;
   onOpenWorld: (seed: number) => void;
   onOpenSlot: (slot: number) => void;
@@ -550,6 +563,58 @@ function Game({
     mood();
     return clock.subscribe(mood);
   }, [music, clock]);
+
+  // Talking to people: T (B on a controller) beside someone has them say their next line, shown
+  // in a bubble over their head and voiced in Simlish or the device's speech.
+  const [voiceMode, setVoiceMode] = useState<VoiceMode>(() => {
+    const saved = loadVoices();
+    return isVoiceMode(saved) ? saved : 'simlish';
+  });
+  useEffect(() => saveVoices(voiceMode), [voiceMode]);
+  const [talk] = useState(() => new TalkLink());
+  const nearbyPerson = useSyncExternalStore(talk.subscribe, () => talk.nearby);
+  const speaker = useSyncExternalStore(talk.subscribe, () => talk.speaker);
+  const [speech, setSpeech] = useState<{ id: string; name: string; text: string } | null>(null);
+  /** How many lines each person has said, so they carry on from where they left off. */
+  const [talkCounts] = useState(() => new Map<string, number>());
+  const lineNumber = useRef(0);
+  const nearbyName = useMemo(() => {
+    const resident = nearbyPerson ? residentById(terrain, nearbyPerson) : null;
+    return resident ? personality(resident.seed).name : null;
+  }, [nearbyPerson, terrain]);
+  const talkTo = () => {
+    const id = talk.nearby;
+    if (!id || drivingRef.current) return;
+    const resident = residentById(terrain, id);
+    if (!resident) return;
+    const count = talkCounts.get(id) ?? 0;
+    talkCounts.set(id, count + 1);
+    const context = { daytime: isDaytime(clock.time), island: game().world === 'island' };
+    const text = lineFor(resident, context, count);
+    const line = ++lineNumber.current;
+    setSpeech({ id, name: personality(resident.seed).name, text });
+    talk.say(id);
+    // The bubble stays while the line is said, and long enough to read it.
+    const reading = new Promise((resolve) => setTimeout(resolve, 1600 + text.length * 50));
+    void Promise.all([voices.speak(text, voiceFor(resident.seed), voiceMode), reading]).then(() => {
+      if (lineNumber.current === line) talk.say(null);
+    });
+  };
+  const talkRef = useRef(talkTo);
+  useEffect(() => {
+    talkRef.current = talkTo;
+  });
+  // The talk ends when the speaker stops (walked off, finished), the menu opens or a drive starts.
+  useEffect(() => {
+    if (!playing || driving) talk.say(null);
+  }, [playing, driving, talk]);
+  useEffect(() => {
+    if (speaker) return;
+    lineNumber.current++;
+    voices.stop();
+  }, [speaker, voices]);
+  /** What is being said: the last line, while its speaker still speaks. */
+  const saying = speech && speech.id === speaker ? speech : null;
   const onAim = useCallback(
     (next: Aim | null) => {
       setAim(next);
@@ -713,6 +778,10 @@ function Game({
         return;
       }
       if (typing) return;
+      if (event.code === 'KeyT') {
+        if (!event.repeat) talkRef.current();
+        return;
+      }
       if (event.code === 'KeyN' && game().minimap) {
         setMapOpen((current) => !current);
         return;
@@ -754,12 +823,14 @@ function Game({
       if (pressed.has('menu')) show('menu');
       if (game().minimap && pressed.has('down')) setMapOpen((current) => !current);
       if (game().minimap && pressed.has('b') && mapOpen) setMapOpen(false);
+      else if (pressed.has('b')) talkRef.current();
       return;
     }
     if (screen === 'playing') {
       if (pressed.has('rt')) onMouse('place');
       if (pressed.has('lt')) onMouse('break');
       if (pressed.has('x')) onMouse('pick');
+      if (pressed.has('b')) talkRef.current();
       if (pressed.has('lb')) stepSlot(-1);
       if (pressed.has('rb')) stepSlot(1);
       if (pressed.has('left')) stepColor(-1);
@@ -945,6 +1016,8 @@ function Game({
     onDistance: setDistanceName,
     music: musicLevel,
     onMusic: setMusicLevel,
+    voices: voiceMode,
+    onVoices: setVoiceMode,
   };
   return (
     <div className="game" data-screen={screen}>
@@ -980,6 +1053,7 @@ function Game({
         driving={driving}
         onDrive={onDrive}
         onNear={setNearVehicle}
+        talk={talk}
         debug={{
           options: debugOptions,
           store: debugStore,
@@ -1017,10 +1091,27 @@ function Game({
       {playing && game().building && ghostCheck && !ghostCheck.ok && (
         <div className="hint">{ghostCheck.reason}</div>
       )}
-      {playing && !driving && nearVehicle && (
+      {playing && !driving && (nearVehicle || nearbyName) && (
         <div className="vehicle-hint">
-          <kbd>E</kbd> {vehicleAction(nearVehicle)}
+          {nearVehicle && (
+            <span>
+              <kbd>E</kbd> {vehicleAction(nearVehicle)}
+            </span>
+          )}
+          {nearbyName && (
+            <span>
+              <kbd>T</kbd> {saying?.id === nearbyPerson ? 'Carry on' : `Talk to ${nearbyName}`}
+            </span>
+          )}
         </div>
+      )}
+      {playing && saying && (
+        <SpeechBubble
+          key={`${saying.id}:${saying.text}`}
+          anchor={talk.anchor}
+          name={saying.name}
+          text={saying.text}
+        />
       )}
       {playing && drivingKind && <DriveHint kind={drivingKind} />}
       <div className="status">
@@ -1094,6 +1185,9 @@ function Game({
     </div>
   );
 }
+
+const isVoiceMode = (name: unknown): name is VoiceMode =>
+  name === 'simlish' || name === 'device' || name === 'off';
 
 /** The controls for the vehicle being driven, along the bottom of the screen. */
 function DriveHint({ kind }: { kind: VehicleKind }) {

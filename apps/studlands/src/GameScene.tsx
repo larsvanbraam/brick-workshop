@@ -12,6 +12,7 @@ import { displayHex } from '@brick-workshop/render/ldraw-materials';
 import { WalkMode } from '@brick-workshop/walk/walk-view';
 import { Wanderers } from '@brick-workshop/npc/wanderers';
 import type { WandererSpec } from '@brick-workshop/npc/wanderers';
+import type { TalkLink } from '@brick-workshop/npc/talk';
 import { NPC_RADIUS, residentsOf, wanderRules } from './npcs.ts';
 import { animalRules, farmAnimals, wildlifeOf } from './animals.ts';
 import type { Animal } from './animals.ts';
@@ -107,6 +108,8 @@ export interface GameSceneProps {
   onDrive: (id: string | null, flying?: boolean) => void;
   /** The vehicle the walker could get in. */
   onNear: (kind: VehicleKind | null) => void;
+  /** Who the walker can talk to and who is speaking. */
+  talk: TalkLink;
 }
 
 /** The debug window's probes inside the canvas; drawn only while the window is open. */
@@ -190,6 +193,7 @@ export function GameScene(props: GameSceneProps) {
         world={props.walkWorld}
         buildArea={buildArea}
         probe={probe}
+        talk={props.driving === null ? props.talk : undefined}
       />
       {props.vehicles.length > 0 && (
         <Vehicles
@@ -489,6 +493,7 @@ function People({
   world,
   buildArea,
   probe,
+  talk,
 }: {
   chunks: Chunks;
   terrain: Terrain;
@@ -496,6 +501,7 @@ function People({
   world: WalkWorld;
   buildArea: number;
   probe: { current: WalkProbe | null };
+  talk?: TalkLink;
 }) {
   const half = buildArea / 2;
   const [cx, cz] = centre;
@@ -564,7 +570,7 @@ function People({
     [terrain, buildArea, isLoaded],
   );
   const player = () => probe.current?.walker ?? null;
-  return <Wanderers world={world} specs={specs} rules={rules} player={player} />;
+  return <Wanderers world={world} specs={specs} rules={rules} player={player} talk={talk} />;
 }
 
 /** Whether a part's model can go in a batch, remembered per model. */

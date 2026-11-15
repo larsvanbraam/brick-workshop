@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useFrame } from '@react-three/fiber';
-import { Group } from 'three';
+import { useFrame, useThree } from '@react-three/fiber';
+import { Group, Vector3 } from 'three';
 import { loadLDrawModels } from '@brick-workshop/render/ldraw';
 import { ANIMAL_PARTS } from '@brick-workshop/render/animal-parts';
 import { MINIFIG_BODY, MINIFIG_PARTS } from '@brick-workshop/render/minifig-parts';
@@ -12,6 +12,8 @@ import { assembleAnimal, poseAnimal } from './animal';
 import type { AnimalPart, AnimalRig, Gait } from './animal';
 import { WAVE_TIME, createWanderer, stepWanderer } from './wander';
 import type { Temper, WanderRules, Wanderer } from './wander';
+import { TALK_LEAVE, TALK_RANGE } from './talk';
+import type { TalkLink } from './talk';
 
 /** What a wanderer looks like: a minifigure in an outfit, or an animal from its parts. */
 export type WandererLook =
@@ -36,6 +38,8 @@ export interface WandererSpec {
   pace?: number;
   /** Rules of their own (a pen for farm animals) in place of the shared ones. */
   rules?: WanderRules;
+  /** Whether the player can talk to them: people can unless this says otherwise, animals not. */
+  talks?: boolean;
 }
 
 /** Further than this from the player, in studs, they stand still and are not drawn. */
@@ -47,7 +51,13 @@ interface Person {
   rules: WanderRules | undefined;
   /** The height it moved in at. */
   home: number;
+  talks: boolean;
 }
+
+/** How long someone keeps facing the player after a line, in seconds. */
+const LINGER = 0.8;
+/** How high over the feet a speech bubble points, in studs: just over a minifigure's head. */
+const BUBBLE_HEIGHT = MINIFIG.height + 0.6;
 
 /** A small seeded 0 to 1 generator (mulberry32). */
 function seeded(seed: number) {
@@ -70,13 +80,18 @@ export function Wanderers({
   specs,
   rules,
   player,
+  talk,
 }: {
   world: WalkWorld;
   specs: readonly WandererSpec[];
   rules: WanderRules;
   /** Where the player's minifigure stands, in scene units, if anywhere. */
   player: () => { x: number; y: number; z: number } | null;
+  /** Who the player can talk to and who is speaking (see `TalkLink`). */
+  talk?: TalkLink;
 }) {
+  const { camera, size, invalidate } = useThree();
+  const [head] = useState(() => new Vector3());
   const [models, setModels] = useState<Record<string, Group> | null>(null);
   useEffect(() => {
     let cancelled = false;
@@ -128,6 +143,7 @@ export function Wanderers({
         rig,
         rules: spec.rules,
         home: y,
+        talks: spec.talks ?? look.kind === 'minifig',
       });
     }
   }, [models, specs, people, group, world]);
@@ -143,13 +159,19 @@ export function Wanderers({
     const at = player();
     if (at) Object.assign(near, at);
     const walkers = [...people.values()].map((person) => person.npc.walker);
-    for (const person of people.values()) {
+    let nearby: string | null = null;
+    let nearest = TALK_RANGE;
+    let speaking = false;
+    for (const [id, person] of people) {
       const { npc } = person;
       const { walker } = npc;
       const { root } = person.rig.rig;
-      const active = !at || Math.hypot(walker.x - near.x, walker.z - near.z) < ACTIVE_RANGE;
+      const distance = Math.hypot(walker.x - near.x, walker.z - near.z);
+      const active = !at || distance < ACTIVE_RANGE;
       root.visible = active;
       if (!active) continue;
+      const speaker = talk?.speaker === id;
+      if (speaker) npc.talking = LINGER;
       stepWanderer(world, npc, person.rules ?? rules, at, delta, walkers);
       // Lifted out of reach (a piece arrived where it stood, and it landed on top): it leaves.
       if (walker.y > person.home + MINIFIG.height) {
@@ -165,13 +187,45 @@ export function Wanderers({
         time: clock.elapsedTime,
       };
       if (person.rig.kind === 'animal') poseAnimal(person.rig.rig, motion);
-      else
+      else {
         poseMinifig(person.rig.rig, {
           ...motion,
           waving: npc.mode === 'greet' && npc.greeting < WAVE_TIME,
           look: npc.look,
         });
+        // Nods along while speaking, and talks with a hand now and then.
+        if (speaker) {
+          const { rig } = person.rig;
+          const time = clock.elapsedTime;
+          rig.head?.rotation.set(
+            (Math.sin(time * 11) * 0.06 + Math.sin(time * 4.3) * 0.04) * rig.forward,
+            npc.look * -rig.forward,
+            0,
+          );
+          rig.leftArm?.rotation.set((0.5 + Math.sin(time * 2.7) * 0.35) * rig.forward, 0, 0);
+        }
+      }
+      if (!at || !person.talks || Math.abs(at.y - walker.y) > 3) continue;
+      if (distance < nearest) {
+        nearest = distance;
+        nearby = id;
+      }
+      if (speaker && distance < TALK_LEAVE) {
+        speaking = true;
+        head.set(walker.x, walker.y + BUBBLE_HEIGHT, walker.z).project(camera);
+        Object.assign(talk!.anchor, {
+          x: ((head.x + 1) / 2) * size.width,
+          y: ((1 - head.y) / 2) * size.height,
+          // Behind the camera, the projection lands mirrored on screen.
+          visible: head.z < 1,
+        });
+      }
     }
+    if (!talk) return;
+    talk.setNearby(nearby);
+    // The speaker walked off, out of reach or out of the world: the conversation is over.
+    if (talk.speaker && !speaking) talk.say(null);
+    else if (speaking) invalidate();
   });
   return <primitive object={group} />;
 }

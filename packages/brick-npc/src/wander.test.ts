@@ -145,4 +145,22 @@ describe('wanderers', () => {
     expect(calm.mode).not.toBe('greet');
     expect(calm.mode).not.toBe('flee');
   });
+
+  it('stand still and face the player while talking, whatever their temper', () => {
+    const world = new WalkWorld([], SIZE, Infinity);
+    const player = { x: 3, y: 0, z: 0 };
+    const shy = createWanderer({ x: 0, y: 0, z: 0, velocityY: 0, grounded: true }, seeded(3), {
+      temper: 'shy',
+    });
+    for (let t = 0; t < 1; t += 1 / 30) {
+      shy.talking = 0.5;
+      stepWanderer(world, shy, open, player, 1 / 30);
+    }
+    expect(shy.mode).not.toBe('flee');
+    expect(Math.hypot(shy.walker.x, shy.walker.z)).toBeLessThan(0.01);
+    const facing = yawToward(shy.walker, player);
+    expect(
+      Math.abs(Math.atan2(Math.sin(shy.yaw - facing), Math.cos(shy.yaw - facing))),
+    ).toBeLessThan(0.05);
+  });
 });

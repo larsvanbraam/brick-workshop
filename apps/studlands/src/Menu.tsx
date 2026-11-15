@@ -17,6 +17,8 @@ import { DISTANCES } from './streaming.ts';
 import type { DistanceName } from './streaming.ts';
 import { MUSIC_LEVELS } from './music.ts';
 import type { MusicLevel } from './music.ts';
+import { Voices } from '@brick-workshop/audio/voice';
+import type { VoiceMode } from '@brick-workshop/audio/voice';
 import { game } from './game.ts';
 import { LANDMARKS } from './world/island/map.ts';
 
@@ -50,6 +52,8 @@ export interface MenuProps {
   /** How loud the background piano plays. */
   music: MusicLevel;
   onMusic: (level: MusicLevel) => void;
+  voices: VoiceMode;
+  onVoices: (mode: VoiceMode) => void;
 }
 
 const ago = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' });
@@ -146,6 +150,8 @@ export function Controls({ edits, onReset, onNewWorld }: MenuProps) {
             <dd>N opens the island map, N or Esc closes it</dd>
           </>
         )}
+        <dt>Talk</dt>
+        <dd>T beside someone; T again for their next line</dd>
         <dt>Camera</dt>
         <dd>V for over the shoulder</dd>
         <dt>Menu</dt>
@@ -177,6 +183,8 @@ export function Controls({ edits, onReset, onNewWorld }: MenuProps) {
             <dd>D-pad ▼ opens the island map, B closes it</dd>
           </>
         )}
+        <dt>Talk</dt>
+        <dd>B beside someone; B again for their next line</dd>
         <dt>Camera</dt>
         <dd>View for over the shoulder</dd>
         <dt>Menu</dt>
@@ -210,7 +218,16 @@ const studs = (chunks: number) => (chunks * 2 + 1) * 32;
 
 const MUSIC_LABELS: Record<MusicLevel, string> = { off: 'Off', quiet: 'Quiet', normal: 'Normal' };
 
-export function Settings({ distance, onDistance, music, onMusic }: MenuProps) {
+const VOICE_LABELS: Record<VoiceMode, string> = {
+  simlish: 'Simlish',
+  device: 'Spoken',
+  off: 'Off',
+};
+
+export function Settings({ distance, onDistance, music, onMusic, voices, onVoices }: MenuProps) {
+  const voiceModes = (Object.keys(VOICE_LABELS) as VoiceMode[]).filter(
+    (mode) => mode !== 'device' || Voices.deviceSpeech,
+  );
   const reach = DISTANCES[distance];
   return (
     <div className="settings">
@@ -254,6 +271,27 @@ export function Settings({ distance, onDistance, music, onMusic }: MenuProps) {
         </div>
       </div>
       <p className="note">Ambient piano while you play, following the day and the night.</p>
+      <div className="setting">
+        <span id="voices-label">Voices</span>
+        <div className="choices" role="radiogroup" aria-labelledby="voices-label">
+          {voiceModes.map((mode) => (
+            <button
+              key={mode}
+              type="button"
+              role="radio"
+              aria-checked={voices === mode}
+              className={voices === mode ? 'tab selected' : 'tab'}
+              onClick={() => onVoices(mode)}
+            >
+              {VOICE_LABELS[mode]}
+            </button>
+          ))}
+        </div>
+      </div>
+      <p className="note">
+        How people sound when you talk to them (<kbd>T</kbd>): made-up babble, or your device
+        reading their lines aloud.
+      </p>
     </div>
   );
 }

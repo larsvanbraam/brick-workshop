@@ -1216,3 +1216,68 @@ kbd {
     }
   }
 }
+
+/* A speech bubble over whoever is talking; see SpeechBubble.tsx. */
+.speech {
+  --tail: 50%;
+  position: fixed;
+  left: 0;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-width: min(320px, calc(100vw - 32px));
+  margin-top: -14px;
+  padding: 10px 14px;
+  border-radius: 14px;
+  background: #fffdf6;
+  color: #1d1b17;
+  font-size: 15px;
+  line-height: 1.35;
+  box-shadow: 0 4px 16px rgb(0 0 0 / 0.3);
+  pointer-events: none;
+  animation: speech-in 0.18s ease-out;
+}
+
+.speech::after {
+  content: '';
+  position: absolute;
+  left: var(--tail);
+  bottom: -9px;
+  width: 0;
+  height: 0;
+  margin-left: -9px;
+  border: 9px solid transparent;
+  border-top-color: #fffdf6;
+  border-bottom: 0;
+}
+
+.speech strong {
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #8a5a12;
+}
+
+.speech .unsaid {
+  visibility: hidden;
+}
+
+/* The speaker is off screen: the bubble waits above the hints instead. */
+.speech.docked {
+  top: auto;
+  left: 50%;
+  bottom: 96px;
+  margin-top: 0;
+  transform: translateX(-50%);
+}
+
+.speech.docked::after {
+  display: none;
+}
+
+@keyframes speech-in {
+  from {
+    opacity: 0;
+  }
+}

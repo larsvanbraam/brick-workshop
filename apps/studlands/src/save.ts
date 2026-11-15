@@ -155,6 +155,9 @@ export const saveDistance = (name: string) => write('distance', name);
 export const loadMusic = () => read<string>('music');
 export const saveMusic = (name: string) => write('music', name);
 
+export const loadVoices = () => read<string>('voices');
+export const saveVoices = (name: string) => write('voices', name);
+
 export const loadHotbar = () => read<Held[]>('hotbar');
 export const saveHotbar = (slots: readonly Held[]) => write('hotbar', slots);
 

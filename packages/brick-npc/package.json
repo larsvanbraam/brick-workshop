@@ -15,6 +15,10 @@
     "./wanderers": {
       "types": "./src/wanderers.tsx",
       "import": "./src/wanderers.tsx"
+    },
+    "./talk": {
+      "types": "./src/talk.ts",
+      "import": "./src/talk.ts"
     }
   },
   "scripts": {

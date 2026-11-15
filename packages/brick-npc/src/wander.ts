@@ -43,6 +43,11 @@ export interface Wanderer {
   look: number;
   /** Seconds since it began greeting: it waves for the first few. */
   greeting: number;
+  /**
+   * Seconds left talking to the player: it stands, faces them and leaves its temper aside.
+   * Whoever holds the conversation keeps topping it up.
+   */
+  talking: number;
   /** A seeded 0 to 1 generator: its choices are its own. */
   next: () => number;
 }
@@ -94,6 +99,7 @@ export function createWanderer(
     stuck: 0,
     look: 0,
     greeting: 0,
+    talking: 0,
     next,
   };
 }
@@ -136,9 +142,17 @@ export function stepWanderer(
   others: readonly { x: number; z: number }[] = [],
 ) {
   const { walker } = npc;
+  const talking = npc.talking > 0 && player !== null;
+  npc.talking = Math.max(0, npc.talking - delta);
   // What the player's coming near sets off, if its temper reacts at all.
   const reaction = npc.temper === 'friendly' ? 'greet' : npc.temper === 'shy' ? 'flee' : null;
-  if (reaction) {
+  if (talking) {
+    // Stands and listens; a friendly one carries on facing the player afterwards, without
+    // waving again, and the rest go back to strolling a moment after.
+    npc.mode = npc.temper === 'friendly' ? 'greet' : 'idle';
+    npc.greeting = Math.max(npc.greeting, WAVE_TIME);
+    npc.timer = Math.max(npc.timer, 1.5);
+  } else if (reaction) {
     const reacting = npc.mode === reaction;
     const range =
       reaction === 'greet'
@@ -163,7 +177,9 @@ export function stepWanderer(
 
   let forward = 0;
   let jump = false;
-  if (npc.mode === 'greet') {
+  if (talking) {
+    npc.heading = yawToward(walker, player!);
+  } else if (npc.mode === 'greet') {
     npc.heading = yawToward(walker, player!);
     npc.greeting += delta;
   } else if (npc.mode === 'flee') {
@@ -221,7 +237,7 @@ export function stepWanderer(
   npc.yaw += Math.abs(difference) < step ? difference : Math.sign(difference) * step;
   // Looks at the player while greeting, as far as its neck turns.
   const lookTarget =
-    npc.mode === 'greet' ? Math.max(-0.7, Math.min(0.7, turn(npc.yaw, npc.heading))) : 0;
+    npc.mode === 'greet' || talking ? Math.max(-0.7, Math.min(0.7, turn(npc.yaw, npc.heading))) : 0;
   npc.look += (lookTarget - npc.look) * Math.min(1, delta * 6);
 
   const fromX = walker.x;

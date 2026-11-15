@@ -47,6 +47,8 @@ export interface Resident {
   ground: number;
   outfit: MinifigOutfit;
   seed: number;
+  /** The ground they live on, for what they talk about. */
+  biome: Biome;
 }
 
 /** LDraw colours: everyday shirts, trousers, and faces, hair and hats. */
@@ -141,9 +143,19 @@ export function residentsOf(terrain: Terrain, cx: number, cz: number): Resident[
       ground: here.height,
       outfit: outfitFor(next, here.biome),
       seed: Math.floor(next() * 2 ** 31),
+      biome: here.biome,
     });
   }
   return found;
+}
+
+/** The resident with this ID (see `residentsOf`), or null if there is none. */
+export function residentById(terrain: Terrain, id: string): Resident | null {
+  const match = /^npc(-?\d+),(-?\d+):\d+$/.exec(id);
+  if (!match) return null;
+  return (
+    residentsOf(terrain, Number(match[1]), Number(match[2])).find((one) => one.id === id) ?? null
+  );
 }
 
 /**

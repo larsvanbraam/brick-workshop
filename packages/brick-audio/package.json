@@ -11,6 +11,10 @@
     "./composer": {
       "types": "./src/composer.ts",
       "import": "./src/composer.ts"
+    },
+    "./voice": {
+      "types": "./src/voice.ts",
+      "import": "./src/voice.ts"
     }
   },
   "scripts": {
