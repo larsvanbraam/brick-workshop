@@ -7,6 +7,8 @@
  * the bar, d-pad left and right step through the held part's colours, d-pad up turns it, d-pad
  * down opens the brick box and Menu the menu.
  *
+ * While playing the left stick only walks, so pulling it back never opens the box.
+ *
  * In the brick box and the menu: the left stick or d-pad moves between buttons, A presses one, B
  * closes, LB and RB switch tabs (the menu's) or kinds of part (the box's), the right stick
  * scrolls, and in the box LT and RT pick the slot the part goes in.
@@ -38,14 +40,18 @@ const TRIGGER_THRESHOLD = 0.3;
 const STICK_PRESS = 0.6;
 
 export interface PadState {
-  /** Buttons held down on any pad; a left stick pushed well over counts as the d-pad. */
+  /** Buttons held down on any pad; with `stickAsDpad`, a left stick pushed well over counts too. */
   down: Set<PadButton>;
   /** The right stick, each -1 to 1, right and down positive. */
   scroll: { x: number; y: number };
 }
 
-/** Every connected pad's buttons together, or null with none connected. */
-export function readPads(pads: readonly (PadLike | null)[]): PadState | null {
+/**
+ * Every connected pad's buttons together, or null with none connected. `stickAsDpad` lets the left
+ * stick stand in for the d-pad, for moving round a panel; leave it off while playing, where the
+ * stick walks.
+ */
+export function readPads(pads: readonly (PadLike | null)[], stickAsDpad = false): PadState | null {
   const state: PadState = { down: new Set(), scroll: { x: 0, y: 0 } };
   let any = false;
   for (const pad of pads) {
@@ -57,10 +63,10 @@ export function readPads(pads: readonly (PadLike | null)[]): PadState | null {
       if (entry && (entry.pressed || entry.value > threshold)) state.down.add(name);
     }
     const [lx = 0, ly = 0, rx = 0, ry = 0] = pad.axes;
-    if (Math.abs(lx) > Math.abs(ly)) {
+    if (stickAsDpad && Math.abs(lx) > Math.abs(ly)) {
       if (lx > STICK_PRESS) state.down.add('right');
       if (lx < -STICK_PRESS) state.down.add('left');
-    } else {
+    } else if (stickAsDpad) {
       if (ly > STICK_PRESS) state.down.add('down');
       if (ly < -STICK_PRESS) state.down.add('up');
     }

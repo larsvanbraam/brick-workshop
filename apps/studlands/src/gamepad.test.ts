@@ -33,10 +33,15 @@ describe('studlands gamepad', () => {
     expect(state.scroll.y).toBe(1);
   });
 
-  it('counts a left stick pushed well over as the d-pad', () => {
-    expect([...readPads([pad([0.9, 0.2])])!.down]).toEqual(['right']);
-    expect([...readPads([pad([0.1, -0.9])])!.down]).toEqual(['up']);
-    expect(readPads([pad([0.4, 0])])!.down.size).toBe(0);
+  it('counts a left stick pushed well over as the d-pad in panels', () => {
+    expect([...readPads([pad([0.9, 0.2])], true)!.down]).toEqual(['right']);
+    expect([...readPads([pad([0.1, -0.9])], true)!.down]).toEqual(['up']);
+    expect(readPads([pad([0.4, 0])], true)!.down.size).toBe(0);
+  });
+
+  it('leaves the left stick to walking while playing', () => {
+    expect(readPads([pad([0, 0.9])])!.down.size).toBe(0);
+    expect(readPads([pad([-0.9, 0])])!.down.size).toBe(0);
   });
 
   it('presses once on the way down and repeats only repeating buttons', () => {

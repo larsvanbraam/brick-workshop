@@ -585,9 +585,11 @@ function Game({
       const seconds = Math.min(0.1, (now - last) / 1000);
       last = now;
       const pads = navigator.getGamepads?.();
-      const state = pads ? readPads(pads) : null;
+      const playing = keys.current.screen === 'playing';
+      // While playing the left stick walks, so it must not press the d-pad's actions.
+      const state = pads ? readPads(pads, !playing) : null;
       if (!state) return;
-      const repeating = keys.current.screen === 'playing' ? PLAY_REPEAT : PANEL_REPEAT;
+      const repeating = playing ? PLAY_REPEAT : PANEL_REPEAT;
       padHandler.current(state, presses.update(state.down, now, repeating), seconds);
     });
     // The focus ring shows only while the controller is in use.
