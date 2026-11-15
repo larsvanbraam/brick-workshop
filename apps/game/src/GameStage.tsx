@@ -115,10 +115,14 @@ function createStars() {
  */
 export function GameStage({
   size,
+  view,
   clock,
   volcano,
 }: {
+  /** The scene's frame: positions are centred on a board this size. */
   size: number;
+  /** How far round the walker the world is loaded, in studs: the fog closes in before it. */
+  view: number;
   clock: DayClock;
   volcano: Volcano | null;
 }) {
@@ -127,13 +131,14 @@ export function GameStage({
     const key = new DirectionalLight('#fff1dc', 2.6);
     key.castShadow = true;
     const camera = key.shadow.camera;
-    const reach = size * 0.75;
+    // The shadows cover what the fog lets through round the walker, and follow it.
+    const reach = view * 0.9;
     camera.left = -reach;
     camera.right = reach;
     camera.top = reach;
     camera.bottom = -reach;
     camera.near = 1;
-    camera.far = size * 3;
+    camera.far = view * 4;
     key.shadow.mapSize.set(4096, 4096);
     key.shadow.bias = -0.0004;
     key.shadow.normalBias = 0.02;
@@ -163,7 +168,7 @@ export function GameStage({
     stars.renderOrder = -9;
     stars.frustumCulled = false;
     stars.raycast = () => {};
-    const fog = new Fog('#bcd7ec', size * 0.45, size * 1.6);
+    const fog = new Fog('#bcd7ec', view * 0.45, view);
     // A warm light just over the crater's lava, lighting the rim and the slopes round it.
     const glow = new PointLight('#ff6a24', 0, 26, 2);
     if (volcano)
@@ -173,7 +178,7 @@ export function GameStage({
         size / 2 - volcano.z - 0.5,
       );
     return { key, target, fill, dome, stars, fog, glow };
-  }, [size, volcano]);
+  }, [size, view, volcano]);
 
   useEffect(
     () => () => {
@@ -214,13 +219,28 @@ export function GameStage({
     };
   }, [gl, scene]);
 
-  /** Where the shadow-casting light pointed when its shadows were last drawn. */
+  /** Where the shadow-casting light pointed, and where it was centred, when shadows were drawn. */
   const shadowed = useRef(new Vector3());
+  const followed = useRef(new Vector3(Infinity, 0, Infinity));
   useFrame(({ camera }, delta) => {
     clock.advance(delta);
     const sky = skyAt(clock.time);
-    const { key, fill, dome, stars, fog } = rig;
-    key.position.copy(sky.key.direction).multiplyScalar(size);
+    const { key, target, fill, dome, stars, fog } = rig;
+    // The light's shadows are centred on the walker in steps of a few studs, so they do not
+    // shimmer as it walks and are redrawn only when it has moved on.
+    const step = 8;
+    const centreX = Math.round(camera.position.x / step) * step;
+    const centreZ = Math.round(camera.position.z / step) * step;
+    if (centreX !== followed.current.x || centreZ !== followed.current.z) {
+      followed.current.set(centreX, 0, centreZ);
+      target.position.set(centreX, 0, centreZ);
+      target.updateMatrixWorld();
+      gl.shadowMap.needsUpdate = true;
+    }
+    key.position
+      .copy(sky.key.direction)
+      .multiplyScalar(view * 1.5)
+      .add(followed.current);
     key.color.copy(sky.key.color);
     key.intensity = sky.key.intensity;
     fill.color.copy(sky.fill.sky);

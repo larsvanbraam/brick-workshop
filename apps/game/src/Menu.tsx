@@ -1,7 +1,14 @@
 import { useMemo, useRef, useState } from 'react';
 import type { Assembly } from '@brick-workshop/engine';
 import type { Edit } from './build.ts';
-import { cutOutBuild, download, isPlayerPiece, ldrawDocument, workshopDocument } from './export.ts';
+import {
+  cutOutArea,
+  cutOutBuild,
+  download,
+  isPlayerPiece,
+  ldrawDocument,
+  workshopDocument,
+} from './export.ts';
 import {
   createSaveFile,
   deleteIsland,
@@ -15,6 +22,8 @@ import type { SaveFile } from './save.ts';
 type Tab = 'play' | 'islands' | 'export';
 
 export interface MenuProps {
+  /** Where the walker stands, in world studs: the area export is centred on it. */
+  position: { x: number; z: number };
   seed: number;
   /** Whether the game has been played since it loaded: the button then resumes it. */
   started: boolean;
@@ -195,7 +204,7 @@ function Islands({ seed, onOpenIsland }: MenuProps) {
 type Scope = 'island' | 'build';
 type Format = 'ldr' | 'workshop';
 
-function Export({ seed, edits, assembly, onOpenIsland }: MenuProps) {
+function Export({ seed, edits, assembly, position, onOpenIsland }: MenuProps) {
   const hasBuild = useMemo(() => assembly.bricks.some(isPlayerPiece), [assembly]);
   const [scope, setScope] = useState<Scope>(hasBuild ? 'build' : 'island');
   const [format, setFormat] = useState<Format>('ldr');
@@ -205,7 +214,8 @@ function Export({ seed, edits, assembly, onOpenIsland }: MenuProps) {
 
   const exportModel = () => {
     const name = scope === 'build' ? `My build on island ${seed}` : `Island ${seed}`;
-    const model = scope === 'build' ? cutOutBuild(assembly, name) : { ...assembly, name };
+    const model =
+      scope === 'build' ? cutOutBuild(assembly, name) : cutOutArea(assembly, position, name);
     if (!model) return setMessage({ text: 'Nothing built yet to export.', bad: true });
     const base = `brick-island-${seed}${scope === 'build' ? '-build' : ''}`;
     try {
@@ -264,7 +274,7 @@ function Export({ seed, edits, assembly, onOpenIsland }: MenuProps) {
               checked={scope === 'island'}
               onChange={() => setScope('island')}
             />
-            The whole island ({assembly.bricks.length.toLocaleString()} pieces)
+            The area round you, 128 studs across
           </label>
         </div>
         <div className="choices">

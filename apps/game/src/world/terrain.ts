@@ -264,6 +264,11 @@ export class Terrain {
     this.seed = seed;
   }
 
+  /** How many columns and spots are remembered, so a long walk can start afresh. */
+  get remembered() {
+    return this.bases.size + this.columns.size + this.candidates.size;
+  }
+
   base(x: number, z: number): Column {
     const key = `${x},${z}`;
     let column = this.bases.get(key);

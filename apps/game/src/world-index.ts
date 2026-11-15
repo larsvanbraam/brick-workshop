@@ -42,10 +42,10 @@ export class WorldIndex {
   private readonly bottoms = new Map<string, Set<string>>();
   private readonly columns = new Map<string, Set<string>>();
   private readonly bounds = new Map<string, Bounds>();
-  /** The board's size in studs: nothing may stand outside it. */
+  /** The board's size in studs: nothing may stand outside it. `Infinity` for no board. */
   readonly size: number;
 
-  constructor(bricks: Iterable<Brick>, size: number) {
+  constructor(bricks: Iterable<Brick>, size = Infinity) {
     this.size = size;
     for (const brick of bricks) this.add(brick);
   }
@@ -104,12 +104,14 @@ export class WorldIndex {
   check(brick: Brick): CheckResult {
     if (this.bricks.has(brick.id)) return { ok: false, reason: 'It does not fit there.' };
     const bounds = getWorldBounds(brick);
+    const board = Number.isFinite(this.size);
     if (
-      bounds.minX < -1e-6 ||
-      bounds.minZ < -1e-6 ||
       bounds.minY < -1e-6 ||
-      bounds.maxX > this.size + 1e-6 ||
-      bounds.maxZ > this.size + 1e-6
+      (board &&
+        (bounds.minX < -1e-6 ||
+          bounds.minZ < -1e-6 ||
+          bounds.maxX > this.size + 1e-6 ||
+          bounds.maxZ > this.size + 1e-6))
     )
       return { ok: false, reason: 'It does not fit there.' };
     const neighbours = this.near(bounds, 1);

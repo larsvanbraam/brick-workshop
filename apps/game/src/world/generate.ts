@@ -55,7 +55,10 @@ export function generateChunk(
   cx: number,
   cz: number,
   terrain: Terrain = new Terrain(seed),
-  /** The board's size: plants that would reach past its edges are left out. */
+  /**
+   * A board's size, when the world has one: plants that would reach past its edges are left out.
+   * `Infinity` for a world without edges.
+   */
   limit = WORLD_SIZE,
 ): ChunkResult {
   const key = chunkKey(cx, cz);
@@ -116,6 +119,7 @@ export function generateChunk(
   const { plants: grown, nearby, priorities } = plantChunk(terrain, x0, z0, CHUNK);
   const priorityOf = (id: string) => priorities.get(id.split('-')[0]);
   const onBoard = (pieces: Plant) =>
+    !Number.isFinite(limit) ||
     pieces.every((brick) => {
       const bounds = getWorldBounds(brick);
       return (

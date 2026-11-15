@@ -34,7 +34,7 @@ function forget(key: string) {
  * Edits are kept per island and per version of the generator: a changed generator shapes a
  * different island from the same seed, which old edits would not fit.
  */
-export const WORLD_VERSION = 4;
+export const WORLD_VERSION = 5;
 const editsKey = (seed: number) => `edits:v${WORLD_VERSION}:${seed}`;
 const ISLANDS_KEY = `islands:v${WORLD_VERSION}`;
 
@@ -66,7 +66,7 @@ function summarise(seed: number, edits: readonly Edit[]): IslandSummary {
 }
 
 /** The chunk an edit belongs to: the chunk of the piece put down or taken off. */
-const editChunk = (edit: Edit) =>
+export const editChunk = (edit: Edit) =>
   edit.op === 'add' ? chunkOf(edit.brick) : (edit.chunk ?? 'unknown');
 const chunkEditsKey = (seed: number, chunk: string) => `${editsKey(seed)}:${chunk}`;
 

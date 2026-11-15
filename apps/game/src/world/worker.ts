@@ -23,8 +23,10 @@ let terrain: Terrain | null = null;
 self.onmessage = (event: MessageEvent<ChunkRequest>) => {
   const { seed, cx, cz } = event.data;
   const start = performance.now();
-  if (terrain?.seed !== seed) terrain = new Terrain(seed);
-  const chunk = generateChunk(seed, cx, cz, terrain);
+  // A long walk would remember columns without end; past a point the memory starts afresh.
+  if (terrain?.seed !== seed || terrain.remembered > 400_000) terrain = new Terrain(seed);
+  // A streamed world has no edge, so plants are kept wherever they reach.
+  const chunk = generateChunk(seed, cx, cz, terrain, Infinity);
   const message: ChunkMessage = { ...chunk, ms: performance.now() - start };
   self.postMessage(message);
 };

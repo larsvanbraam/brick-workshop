@@ -95,8 +95,12 @@ export class WalkWorld {
   private readonly free: number[] = [];
   private live = 0;
 
-  constructor(bricks: Iterable<Brick>, buildArea: number) {
-    this.limit = buildArea / 2 + 12;
+  /**
+   * `buildArea` centres the board in the scene; `limit` is how far from the centre the walker may
+   * roam, a little past the board's edge unless given (`Infinity` for a world without edges).
+   */
+  constructor(bricks: Iterable<Brick>, buildArea: number, limit = buildArea / 2 + 12) {
+    this.limit = limit;
     this.half = buildArea / 2;
     this.setGroup('', bricks);
   }

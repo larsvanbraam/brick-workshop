@@ -10,6 +10,8 @@ import { displayHex } from '@brick-workshop/render/ldraw-materials';
 import { WalkMode } from '@brick-workshop/walk/walk-view';
 import type { WalkWorld } from '@brick-workshop/walk/walk';
 import type { Chunks } from './chunks.ts';
+import { LOAD_RADIUS, chunkAt } from './streaming.ts';
+import { CHUNK } from './chunks.ts';
 import type { WalkCamera, WalkProbe } from '@brick-workshop/walk/walk-view';
 import { DebugHelpers, DebugProbe } from '@brick-workshop/render/scene-debug';
 import type { DebugOptions, DebugStore } from '@brick-workshop/render/scene-debug';
@@ -41,6 +43,8 @@ export interface GameSceneProps {
   buildArea: number;
   /** Where the minifigure starts, in build-grid studs. */
   spawn: { x: number; z: number };
+  /** Told the walker's chunk whenever it walks into another. */
+  onChunk: (cx: number, cz: number) => void;
   view: WalkCamera;
   flying: boolean;
   onFlyingChange: (flying: boolean) => void;
@@ -93,7 +97,12 @@ export function GameScene(props: GameSceneProps) {
       dpr={[1, 2]}
       aria-label="Brick island"
     >
-      <GameStage size={buildArea} clock={props.clock} volcano={props.volcano} />
+      <GameStage
+        size={buildArea}
+        view={(LOAD_RADIUS + 0.5) * CHUNK}
+        clock={props.clock}
+        volcano={props.volcano}
+      />
       {[...chunks].map(([key, pieces]) => (
         <ChunkView
           key={key}
@@ -118,6 +127,7 @@ export function GameScene(props: GameSceneProps) {
         probe={probe}
       />
       <EdgeDimmer drawings={drawings} clock={props.clock} />
+      <ChunkWatcher probe={probe} buildArea={buildArea} onChunk={props.onChunk} />
       {debug.options.enabled && (
         <>
           <DebugProbe store={debug.store} options={debug.options} batch={batchRef} />
@@ -220,6 +230,30 @@ function ChunkView({
       <primitive object={simple.object} dispose={null} />
     </>
   );
+}
+
+/** Watches the walker each frame and says when it crosses into another chunk. */
+function ChunkWatcher({
+  probe,
+  buildArea,
+  onChunk,
+}: {
+  probe: { current: WalkProbe | null };
+  buildArea: number;
+  onChunk: (cx: number, cz: number) => void;
+}) {
+  const last = useRef('');
+  useFrame(() => {
+    const walker = probe.current?.walker;
+    if (!walker) return;
+    // Scene to world studs: the scene centres the frame and runs z the other way.
+    const [cx, cz] = chunkAt(walker.x + buildArea / 2, buildArea / 2 - walker.z);
+    const key = `${cx},${cz}`;
+    if (key === last.current) return;
+    last.current = key;
+    onChunk(cx, cz);
+  });
+  return null;
 }
 
 /** Whether a part's model can go in a batch, remembered per model. */

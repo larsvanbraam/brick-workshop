@@ -90,8 +90,13 @@ export function placementFor(
       z = aim.brick.z + target.depth;
       break;
   }
-  const grid = (at: number, offset: number, span: number) =>
-    Math.max(offset, Math.min(buildArea - span, Math.round(at - offset) + offset));
+  const grid = (at: number, offset: number, span: number) => {
+    const snapped = Math.round(at - offset) + offset;
+    // A world without edges (`buildArea` of `Infinity`) keeps the piece where it is.
+    return Number.isFinite(buildArea)
+      ? Math.max(offset, Math.min(buildArea - span, snapped))
+      : snapped;
+  };
   x = grid(x, snap.dx, size.width);
   z = grid(z, snap.dz, size.depth);
   return { ...probe, x, y: Math.max(0, y), z };

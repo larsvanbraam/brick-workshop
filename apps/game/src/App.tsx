@@ -4,8 +4,17 @@ import type { Assembly, Brick } from '@brick-workshop/engine';
 import { useLDrawLibrary } from '@brick-workshop/render/ldraw';
 import type { WalkCamera } from '@brick-workshop/walk/walk-view';
 import { WalkWorld } from '@brick-workshop/walk/walk';
-import { placementFor, replayEdits } from './build.ts';
-import { allBricks, applyToChunks, chunkOf, splitIntoChunks } from './chunks.ts';
+import { placementFor } from './build.ts';
+import {
+  ChunkLoader,
+  START_RADIUS,
+  UNLOAD_RADIUS,
+  chunkAt,
+  chunkDistance,
+  chunksAround,
+  plan,
+} from './streaming.ts';
+import { CHUNK, allBricks, applyToChunks, chunkOf, withEdits } from './chunks.ts';
 import type { Chunks } from './chunks.ts';
 import { WorldIndex } from './world-index.ts';
 import type { Aim, Edit, Held } from './build.ts';
@@ -31,77 +40,17 @@ import {
   saveSeed,
   saveTime,
 } from './save.ts';
-import { WORLD_SIZE, boardChunks, findSpawn } from './world/generate.ts';
+import { WORLD_SIZE, findSpawn } from './world/generate.ts';
 import { isPlant } from './world/plants.ts';
-import { START, Terrain, volcanoAt } from './world/terrain.ts';
-import type { Volcano } from './world/terrain.ts';
-import type { ChunkMessage, ChunkRequest } from './world/worker.ts';
-
-interface Loaded {
-  seed: number;
-  assembly: Assembly;
-  spawn: { x: number; z: number };
-  terrain: ReadonlySet<string>;
-  generationMs: number;
-  volcano: Volcano | null;
-}
+import { REGION, Terrain, volcanoIn } from './world/terrain.ts';
+import type { ChunkMessage } from './world/worker.ts';
 
 function newSeed() {
   return Math.floor(Math.random() * 1_000_000);
 }
 
-/** Background threads that build chunks: a few, so chunks are built side by side. */
-const WORKERS = Math.max(1, Math.min(4, (navigator.hardwareConcurrency || 4) - 1));
-
-/**
- * Builds the board's chunks off the main thread, a few side by side, so the page keeps drawing
- * while they come in. The start and the volcano follow from the terrain alone.
- */
-function useWorld(seed: number): Loaded | null {
-  const [world, setWorld] = useState<Loaded | null>(null);
-  useEffect(() => {
-    const started = performance.now();
-    const queue = boardChunks();
-    const results: ChunkMessage[] = [];
-    const workers = Array.from(
-      { length: WORKERS },
-      () => new Worker(new URL('./world/worker.ts', import.meta.url), { type: 'module' }),
-    );
-    const finish = () => {
-      for (const worker of workers) worker.terminate();
-      const terrain = new Terrain(seed);
-      setWorld({
-        seed,
-        assembly: {
-          name: `World ${seed}`,
-          bricks: results.flatMap((chunk) => chunk.bricks),
-          buildArea: WORLD_SIZE,
-        },
-        spawn: findSpawn(terrain),
-        terrain: new Set(results.flatMap((chunk) => chunk.terrain)),
-        generationMs: performance.now() - started,
-        volcano: volcanoAt(seed, START.x, START.z),
-      });
-    };
-    const total = queue.length;
-    for (const worker of workers) {
-      const ask = () => {
-        const next = queue.shift();
-        if (next) worker.postMessage({ seed, cx: next[0], cz: next[1] } satisfies ChunkRequest);
-      };
-      worker.onmessage = (event: MessageEvent<ChunkMessage>) => {
-        results.push(event.data);
-        if (results.length === total) finish();
-        else ask();
-      };
-      ask();
-    }
-    return () => {
-      for (const worker of workers) worker.terminate();
-    };
-  }, [seed]);
-  return world;
-}
+/** The scene's frame: positions are shown centred on a board this size, wherever they are. */
+const FRAME = WORLD_SIZE;
 
 /** Keys typed into a field are text, not game controls. */
 const isTyping = (target: EventTarget | null) =>
@@ -112,8 +61,6 @@ export function App() {
   // Bumped to open an island afresh from its saved edits, even the one being played.
   const [opened, setOpened] = useState(0);
   useEffect(() => saveSeed(seed), [seed]);
-  const world = useWorld(seed);
-  if (!world || world.seed !== seed) return <Splash message={`Shaping island ${seed}…`} />;
   const open = (next: number) => {
     setSeed(next);
     setOpened((current) => current + 1);
@@ -121,7 +68,7 @@ export function App() {
   return (
     <Game
       key={`${seed}:${opened}`}
-      world={world}
+      seed={seed}
       onNewWorld={() => open(newSeed())}
       onOpenIsland={open}
     />
@@ -153,36 +100,106 @@ function Splash({ message }: { message: string }) {
 }
 
 function Game({
-  world,
+  seed,
   onNewWorld,
   onOpenIsland,
 }: {
-  world: Loaded;
+  seed: number;
   onNewWorld: () => void;
   onOpenIsland: (seed: number) => void;
 }) {
+  const [spawn] = useState(() => findSpawn(new Terrain(seed)));
   /**
-   * The live world, built once from the island and its saved edits: the pieces by chunk, an index
-   * for placing and breaking, and the walker's collision world, all kept up to date together.
+   * The live world, streamed in chunk by chunk round the walker: the pieces by chunk, an index for
+   * placing and breaking, and the walker's collision world, all kept up to date together. Chunks
+   * come from background threads with the player's saved edits laid over them, and go again once
+   * the walker is far enough away.
    */
-  const [initial] = useState(() => {
-    const saved = loadEdits(world.seed);
-    const bricks = replayEdits(world.assembly, saved).bricks;
-    const chunks = splitIntoChunks(bricks);
-    const walk = new WalkWorld([], WORLD_SIZE);
-    for (const [key, pieces] of chunks) walk.setGroup(key, pieces);
-    return { saved, chunks, walk, index: new WorldIndex(bricks, WORLD_SIZE) };
-  });
-  const { index, walk } = initial;
-  const [edits, setEdits] = useState<Edit[]>(initial.saved);
-  useEffect(() => saveEdits(world.seed, edits), [world.seed, edits]);
-  const [chunks, setChunks] = useState<Chunks>(initial.chunks);
-  const chunksRef = useRef<Chunks>(initial.chunks);
+  const [{ index, walk }] = useState(() => ({
+    index: new WorldIndex([]),
+    walk: new WalkWorld([], FRAME, Infinity),
+  }));
+  const [edits, setEdits] = useState<Edit[]>(() => loadEdits(seed));
+  const editsRef = useRef(edits);
+  useEffect(() => {
+    editsRef.current = edits;
+    saveEdits(seed, edits);
+  }, [seed, edits]);
+  const [chunks, setChunks] = useState<Chunks>(() => new Map());
+  const chunksRef = useRef<Chunks>(chunks);
   const [revision, setRevision] = useState(0);
+  const [centre, setCentre] = useState(() => chunkAt(spawn.x, spawn.z));
+  const centreRef = useRef(centre);
+  /** How long the last few chunks took to build, for the debug window. */
+  const [chunkTimes, setChunkTimes] = useState<number[]>([]);
   const assembly = useMemo<Assembly>(
-    () => ({ name: world.assembly.name, bricks: allBricks(chunks), buildArea: WORLD_SIZE }),
-    [chunks, world.assembly.name],
+    () => ({ name: `World ${seed}`, bricks: allBricks(chunks) }),
+    [chunks, seed],
   );
+
+  /** A chunk from the loader, with the player's edits to it laid over, put into the world. */
+  const addChunk = useCallback(
+    (chunk: ChunkMessage) => {
+      const [cx, cz] = centreRef.current;
+      if (chunksRef.current.has(chunk.key) || chunkDistance(chunk.key, cx, cz) > UNLOAD_RADIUS)
+        return;
+      const bricks = withEdits(chunk.key, chunk.bricks, editsRef.current);
+      for (const brick of bricks) index.add(brick);
+      walk.setGroup(chunk.key, bricks);
+      const next = new Map(chunksRef.current).set(chunk.key, bricks);
+      chunksRef.current = next;
+      setChunkTimes((current) => [...current.slice(-15), chunk.ms]);
+      setChunks(next);
+      setRevision((current) => current + 1);
+    },
+    [index, walk],
+  );
+  const dropChunk = useCallback(
+    (key: string) => {
+      for (const brick of chunksRef.current.get(key) ?? []) index.remove(brick.id);
+      walk.removeGroup(key);
+      const next = new Map(chunksRef.current);
+      next.delete(key);
+      chunksRef.current = next;
+      setChunks(next);
+      setRevision((current) => current + 1);
+    },
+    [index, walk],
+  );
+  // The loader lasts as long as the game; it is made before the planning below first runs.
+  const loader = useRef<ChunkLoader | null>(null);
+  useEffect(() => {
+    const created = new ChunkLoader(seed, addChunk);
+    loader.current = created;
+    return () => {
+      created.dispose();
+      loader.current = null;
+    };
+  }, [seed, addChunk]);
+  // As the walker crosses into another chunk: build the chunks round it, nearest first, and drop
+  // those now far away.
+  useEffect(() => {
+    if (!loader.current) return;
+    centreRef.current = centre;
+    const [cx, cz] = centre;
+    const { request, unload } = plan(cx, cz, new Set(chunksRef.current.keys()));
+    for (const key of unload) dropChunk(key);
+    loader.current.want(request);
+  }, [centre, dropChunk]);
+  const onChunk = useCallback((cx: number, cz: number) => setCentre([cx, cz]), []);
+  /** The chunks that must be there before the game starts: those round the start. */
+  const startChunks = useMemo(
+    () => chunksAround(...chunkAt(spawn.x, spawn.z), START_RADIUS),
+    [spawn],
+  );
+  const ready = startChunks.every((key) => chunks.has(key));
+  /** The volcano of the region the walker is in, if it has one, for the glow over its crater. */
+  const regionX = Math.floor((centre[0] * CHUNK) / REGION);
+  const regionZ = Math.floor((centre[1] * CHUNK) / REGION);
+  const volcano = useMemo(() => volcanoIn(seed, regionX, regionZ), [seed, regionX, regionZ]);
+  /** The middle of the walker's chunk: near enough to where it stands for an area export. */
+  const position = { x: centre[0] * CHUNK + CHUNK / 2, z: centre[1] * CHUNK + CHUNK / 2 };
+
   const [slots, setSlots] = useState<Held[]>(() => loadHotbar() ?? [...STARTER_HOTBAR]);
   useEffect(() => saveHotbar(slots), [slots]);
   const [selected, setSelected] = useState(0);
@@ -242,7 +259,7 @@ function Game({
             aim,
             held,
             'ghost',
-            WORLD_SIZE,
+            Infinity,
             getSnap(held.partId, held.rotation) ?? undefined,
           )
         : null,
@@ -416,8 +433,8 @@ function Game({
 
   /** Forgets every change and opens the island again as it was made. */
   const resetWorld = () => {
-    saveEdits(world.seed, []);
-    onOpenIsland(world.seed);
+    saveEdits(seed, []);
+    onOpenIsland(seed);
   };
 
   const worldInfo = useMemo(() => {
@@ -426,16 +443,18 @@ function Game({
     for (const brick of assembly.bricks)
       if (isPlant(brick)) trees++;
       else if (isPlayerPiece(brick)) player++;
+    const times = chunkTimes;
     return {
-      seed: world.seed,
+      seed,
       version: WORLD_VERSION,
-      generationMs: world.generationMs,
+      generationMs: times.length ? times.reduce((sum, ms) => sum + ms, 0) / times.length : 0,
+      chunks: chunks.size,
       ground: assembly.bricks.length - trees - player,
       trees,
       player,
       total: assembly.bricks.length,
     };
-  }, [assembly, world]);
+  }, [assembly, chunks, chunkTimes, seed]);
   const debugCounts = useMemo(() => {
     let fallback = 0;
     for (const brick of assembly.bricks) if (!library.models[brick.partId]) fallback++;
@@ -443,6 +462,10 @@ function Game({
     return { visible: total, batched: total - fallback, separate: 0, fallback, total };
   }, [assembly, library.models]);
 
+  if (!ready) {
+    const done = startChunks.filter((key) => chunks.has(key)).length;
+    return <Splash message={`Shaping island ${seed}… ${done} of ${startChunks.length}`} />;
+  }
   if (library.status === 'loading') return <Splash message="Loading parts…" />;
   // Pieces of the player's still standing, not every one ever put down.
   const built = worldInfo.player;
@@ -454,8 +477,9 @@ function Game({
         walkWorld={walk}
         revision={revision}
         models={library.models}
-        buildArea={WORLD_SIZE}
-        spawn={world.spawn}
+        buildArea={FRAME}
+        spawn={spawn}
+        onChunk={onChunk}
         view={view}
         flying={flying}
         onFlyingChange={setFlying}
@@ -466,7 +490,7 @@ function Game({
         onMouse={onMouse}
         playing={playing}
         clock={clock}
-        volcano={world.volcano}
+        volcano={volcano}
         debug={{
           options: debugOptions,
           store: debugStore,
@@ -500,7 +524,7 @@ function Game({
       {playing && ghostCheck && !ghostCheck.ok && <div className="hint">{ghostCheck.reason}</div>}
       <div className="status">
         <strong>
-          Island {world.seed}
+          Island {seed}
           <ClockLabel clock={clock} />
         </strong>
         <span>
@@ -557,9 +581,10 @@ function Game({
       {screen === 'menu' && (
         <Menu
           started={started}
-          seed={world.seed}
+          seed={seed}
           edits={edits}
           assembly={assembly}
+          position={position}
           onPlay={play}
           onReset={resetWorld}
           onNewIsland={onNewWorld}

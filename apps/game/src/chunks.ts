@@ -60,3 +60,21 @@ export function applyToChunks(
   }
   return { chunks: next, changed };
 }
+
+/**
+ * A chunk's pieces as the player left them: the generated pieces with the player's edits to that
+ * chunk laid over them in order, pieces put down added and pieces taken off gone.
+ */
+export function withEdits(
+  key: string,
+  bricks: readonly Brick[],
+  edits: readonly ({ op: 'add'; brick: Brick } | { op: 'remove'; id: string; chunk?: string })[],
+): Brick[] {
+  const pieces = new Map(bricks.map((brick) => [brick.id, brick]));
+  for (const edit of edits) {
+    if (edit.op === 'add') {
+      if (chunkOf(edit.brick) === key) pieces.set(edit.brick.id, edit.brick);
+    } else if ((edit.chunk ?? key) === key) pieces.delete(edit.id);
+  }
+  return [...pieces.values()];
+}
