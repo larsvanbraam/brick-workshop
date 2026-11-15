@@ -25,6 +25,21 @@ export type WalkCamera = 'first' | 'third';
 export interface WalkProbe {
   walker: Walker;
   world: WalkWorld;
+  /** Which way the camera looks, in radians: yaw 0 looks toward -z, pitch up is positive. */
+  look: { yaw: number; pitch: number };
+}
+
+/**
+ * Where the minifigure starts, in scene x and z; with `y` it stands on the first floor at or
+ * above that height (so a game resumed indoors stays indoors), and `yaw` and `pitch` turn the
+ * camera as it was.
+ */
+export interface WalkStart {
+  x: number;
+  z: number;
+  y?: number;
+  yaw?: number;
+  pitch?: number;
 }
 
 const LOOK_SPEED = 0.0022;
@@ -126,8 +141,8 @@ export function WalkMode({
    */
   gamepad?: GamepadLayout | 'off';
   sound?: boolean;
-  /** Where the minifigure starts, in scene x and z; the front of the board when left out. */
-  start?: { x: number; z: number };
+  /** Where the minifigure starts (see `WalkStart`); the front of the board when left out. */
+  start?: WalkStart;
   /** Filled with the live walker and the boxes it collides with, for a debug view. */
   probe?: { current: WalkProbe | null };
   /**
@@ -145,14 +160,14 @@ export function WalkMode({
   const world = given ?? built!;
   const [spawn] = useState(() => spawnWalker(world, buildArea, start));
   const walker = useRef(spawn);
+  const look = useRef({ yaw: start?.yaw ?? 0, pitch: clampPitch(start?.pitch ?? -0.08) });
   useEffect(() => {
     if (!probe) return;
-    probe.current = { walker: walker.current, world };
+    probe.current = { walker: walker.current, world, look: look.current };
     return () => {
       probe.current = null;
     };
   }, [probe, world]);
-  const look = useRef({ yaw: 0, pitch: -0.08 });
   const held = useRef(new Set<string>());
   const jumpQueued = useRef(false);
   const eyeY = useRef(spawn.y + MINIFIG.eye);

@@ -17,7 +17,7 @@ import type { RenderDistance } from './streaming.ts';
 import { FarLayer } from './FarView.tsx';
 import type { FarStore } from './FarView.tsx';
 import { CHUNK, chunkKey } from './chunks.ts';
-import type { WalkCamera, WalkProbe } from '@brick-workshop/walk/walk-view';
+import type { WalkCamera, WalkProbe, WalkStart } from '@brick-workshop/walk/walk-view';
 import { DebugHelpers, DebugProbe } from '@brick-workshop/render/scene-debug';
 import type { DebugOptions, DebugStore } from '@brick-workshop/render/scene-debug';
 import { CollisionBoxes, PlayerProbe } from './debug.tsx';
@@ -56,8 +56,13 @@ export interface GameSceneProps {
   revision: number;
   models: Record<string, Group>;
   buildArea: number;
-  /** Where the minifigure starts, in build-grid studs. */
-  spawn: { x: number; z: number };
+  /**
+   * Where the minifigure starts, in build-grid studs; a resumed game adds the height it stood at
+   * and the way it looked (see `WalkStart`).
+   */
+  spawn: WalkStart;
+  /** Filled with the live walker and its look, for saving where it is. */
+  probe?: { current: WalkProbe | null };
   /** Told the walker's chunk whenever it walks into another. */
   onChunk: (cx: number, cz: number) => void;
   view: WalkCamera;
@@ -105,14 +110,15 @@ export function GameScene(props: GameSceneProps) {
   const { chunks, models, buildArea } = props;
   const half = buildArea / 2;
   const start = useMemo(
-    () => ({ x: props.spawn.x - half, z: half - props.spawn.z }),
+    () => ({ ...props.spawn, x: props.spawn.x - half, z: half - props.spawn.z }),
     [props.spawn, half],
   );
   // One map for the scene's lifetime: chunks register their batches in it as they mount.
   const [drawings] = useState(() => new Map<string, ChunkDrawing>());
   // The debug window's batch figures, summed over every chunk's batch.
   const [summed] = useState(() => ({ current: new SummedBatches(drawings) }));
-  const probe = useRef<WalkProbe | null>(null);
+  const ownProbe = useRef<WalkProbe | null>(null);
+  const probe = props.probe ?? ownProbe;
   const { debug } = props;
   const dpr = useCappedDpr();
   return (

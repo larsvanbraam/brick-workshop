@@ -253,11 +253,11 @@ function overlaps(box: WalkBox, region: WalkBox) {
 export function spawnWalker(
   world: WalkWorld,
   buildArea: number,
-  start?: { x: number; z: number },
+  start?: { x: number; z: number; y?: number },
 ): Walker {
   const x = start?.x ?? 0;
   const z = start?.z ?? buildArea / 2 + 3;
-  return { x, y: world.standingHeight(x, z), z, velocityY: 0, grounded: true };
+  return { x, y: world.standingHeight(x, z, start?.y), z, velocityY: 0, grounded: true };
 }
 
 /** Moves the walker along one axis, stepping up onto low ledges. Returns whether it moved. */

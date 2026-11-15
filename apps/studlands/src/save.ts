@@ -215,3 +215,73 @@ export function readSaveFile(value: unknown): SaveFile {
 export function importSaveFile(save: SaveFile) {
   saveEdits(save.seed, save.edits);
 }
+
+/** Where the walker was and how it looked round, to pick a game up there again. */
+export interface Place {
+  /** World studs. */
+  x: number;
+  z: number;
+  /** The minifigure's feet, in scene units. */
+  y: number;
+  /** The camera's heading and tilt, in radians, as the walk view keeps them. */
+  yaw: number;
+  pitch: number;
+  flying: boolean;
+  view: 'first' | 'third';
+}
+
+/** One save game: a slot's player, where it was and how long it has played. */
+export interface SaveGame {
+  place: Place;
+  /** Seconds spent playing, summed over every visit. */
+  playSeconds: number;
+  /** When it was first and last played, as ISO dates. */
+  startedAt: string;
+  playedAt: string;
+}
+
+/** How many save games a game with slots keeps. */
+export const SAVE_SLOTS = 3;
+const SAVES_KEY = 'saves:v1';
+const SLOT_KEY = 'slot';
+
+const isPlace = (value: unknown): value is Place =>
+  isRecord(value) &&
+  ['x', 'y', 'z', 'yaw', 'pitch'].every(
+    (key) => typeof value[key] === 'number' && Number.isFinite(value[key]),
+  ) &&
+  typeof value.flying === 'boolean' &&
+  (value.view === 'first' || value.view === 'third');
+
+const isSaveGame = (value: unknown): value is SaveGame =>
+  isRecord(value) &&
+  isPlace(value.place) &&
+  typeof value.playSeconds === 'number' &&
+  typeof value.startedAt === 'string' &&
+  typeof value.playedAt === 'string';
+
+/** Every slot, empty ones as null; a damaged save reads as an empty slot. */
+export function listSaves(): (SaveGame | null)[] {
+  const stored = read<unknown[]>(SAVES_KEY);
+  return Array.from({ length: SAVE_SLOTS }, (_, slot) => {
+    const save = Array.isArray(stored) ? stored[slot] : null;
+    return isSaveGame(save) ? save : null;
+  });
+}
+
+export const loadSave = (slot: number) => listSaves()[slot] ?? null;
+
+export function storeSave(slot: number, save: SaveGame | null) {
+  const saves = listSaves();
+  saves[slot] = save;
+  write(SAVES_KEY, saves);
+}
+
+export const deleteSave = (slot: number) => storeSave(slot, null);
+
+/** The slot played last, which the game opens on. */
+export function loadSlot() {
+  const slot = read<number>(SLOT_KEY);
+  return Number.isInteger(slot) && slot! >= 0 && slot! < SAVE_SLOTS ? slot! : 0;
+}
+export const saveSlot = (slot: number) => write(SLOT_KEY, slot);

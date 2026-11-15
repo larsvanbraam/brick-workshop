@@ -22,6 +22,11 @@ export interface GameConfig {
   fixedTime?: number;
   /** Whether a map of the world shows in the corner, with its landmarks (`N` opens it full). */
   minimap: boolean;
+  /**
+   * Whether the game keeps save games: slots that each remember where the player was, so a
+   * game picks up where it was left. Studlands keeps worlds instead, each with its building.
+   */
+  saveSlots: boolean;
 }
 
 export const STUDLANDS: GameConfig = {
@@ -32,6 +37,7 @@ export const STUDLANDS: GameConfig = {
   slug: 'studlands',
   building: true,
   minimap: false,
+  saveSlots: false,
 };
 
 export const BRICK_ISLAND: GameConfig = {
@@ -45,6 +51,7 @@ export const BRICK_ISLAND: GameConfig = {
   // Always a bright morning: no nights, which suits a game for children.
   fixedTime: 0.42,
   minimap: true,
+  saveSlots: true,
 };
 
 let current: GameConfig = STUDLANDS;

@@ -4,27 +4,36 @@ import type { Edit } from './build.ts';
 import { cutOutArea, cutOutBuild, download, ldrawDocument, workshopDocument } from './export.ts';
 import {
   createSaveFile,
+  deleteSave,
   deleteWorld,
   importSaveFile,
+  listSaves,
   listWorlds,
   loadEdits,
   readSaveFile,
 } from './save.ts';
-import type { SaveFile } from './save.ts';
+import type { SaveFile, SaveGame } from './save.ts';
 import { DISTANCES } from './streaming.ts';
 import type { DistanceName } from './streaming.ts';
 import { MUSIC_LEVELS } from './music.ts';
 import type { MusicLevel } from './music.ts';
 import { game } from './game.ts';
+import { LANDMARKS } from './world/island/map.ts';
 
-type Tab = 'play' | 'worlds' | 'export' | 'settings';
+type Tab = 'play' | 'saves' | 'worlds' | 'export' | 'settings';
 
 export interface MenuProps {
   /** Where the walker stands, in world studs: the area export is centred on it. */
   position: { x: number; z: number };
   seed: number;
+  /** The save game being played, in a game with save slots. */
+  slot: number;
   /** Whether the game has been played since it loaded: the button then resumes it. */
   started: boolean;
+  /** Whether it opened from a save game, so the first press continues it. */
+  resumable: boolean;
+  /** Opens a save game, or starts a new one in an empty slot (afresh when it is the current one). */
+  onOpenSlot: (slot: number) => void;
   edits: readonly Edit[];
   /** Every loaded piece in one list, built when asked for: only an export needs it. */
   getAssembly: () => Assembly;
@@ -57,7 +66,7 @@ function playedAgo(date: string) {
   return 'just now';
 }
 
-const TABS = ['play', 'worlds', 'export', 'settings'] as const;
+const TABS = ['play', 'saves', 'worlds', 'export', 'settings'] as const;
 
 export function Menu(props: MenuProps) {
   const [tab, setTab] = useState<Tab>('play');
@@ -66,12 +75,14 @@ export function Menu(props: MenuProps) {
       <div className="panel">
         <h1>{game().title}</h1>
         {game().seed === undefined && <p>World {props.seed}</p>}
+        {game().saveSlots && <p>Game {props.slot + 1}</p>}
         <button type="button" className="play" onClick={props.onPlay} data-pad-start>
-          {props.started ? 'Resume' : 'Play'} <kbd>Esc</kbd>
+          {props.started ? 'Resume' : props.resumable ? 'Continue' : 'Play'} <kbd>Esc</kbd>
         </button>
         <div className="tabs" role="tablist" data-pad-tabs>
           {TABS.filter(
             (name) =>
+              (name !== 'saves' || game().saveSlots) &&
               (name !== 'worlds' || game().seed === undefined) &&
               (name !== 'export' || game().building),
           ).map((name) => (
@@ -83,11 +94,20 @@ export function Menu(props: MenuProps) {
               className={tab === name ? 'tab selected' : 'tab'}
               onClick={() => setTab(name)}
             >
-              {{ play: 'Controls', worlds: 'Worlds', export: 'Export', settings: 'Settings' }[name]}
+              {
+                {
+                  play: 'Controls',
+                  saves: 'Saves',
+                  worlds: 'Worlds',
+                  export: 'Export',
+                  settings: 'Settings',
+                }[name]
+              }
             </button>
           ))}
         </div>
         {tab === 'play' && <Controls {...props} />}
+        {tab === 'saves' && <Saves {...props} />}
         {tab === 'worlds' && <Worlds {...props} />}
         {tab === 'export' && <Export {...props} />}
         {tab === 'settings' && <Settings {...props} />}
@@ -223,6 +243,97 @@ function Settings({ distance, onDistance, music, onMusic }: MenuProps) {
       </div>
       <p className="note">Ambient piano while you play, following the day and the night.</p>
     </div>
+  );
+}
+
+/** The landmark nearest a save's place, to say where it was left. */
+function nearestLandmark({ x, z }: { x: number; z: number }) {
+  let best = LANDMARKS[0];
+  for (const landmark of LANDMARKS)
+    if (Math.hypot(landmark.x - x, landmark.z - z) < Math.hypot(best.x - x, best.z - z))
+      best = landmark;
+  return best;
+}
+
+function playTime(seconds: number) {
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 1) return 'under a minute';
+  if (minutes < 60) return `${minutes} min`;
+  const rest = minutes % 60;
+  return `${Math.floor(minutes / 60)} h${rest ? ` ${rest} min` : ''}`;
+}
+
+function describeSave(save: SaveGame) {
+  const landmark = nearestLandmark(save.place);
+  return `${landmark.icon} Near ${landmark.name} · ${playTime(save.playSeconds)} played · ${playedAgo(save.playedAt)}`;
+}
+
+/** The save games: each picks up where it was left; an empty slot starts a new game. */
+function Saves({ slot, onOpenSlot }: MenuProps) {
+  // Read when the menu opens, and again after a delete.
+  const [saves, setSaves] = useState(listSaves);
+  const [confirming, setConfirming] = useState<number | null>(null);
+  const forget = (index: number) => {
+    deleteSave(index);
+    setConfirming(null);
+    // The game being played starts again from the beginning; another slot just empties.
+    if (index === slot) onOpenSlot(index);
+    else setSaves(listSaves());
+  };
+  return (
+    <>
+      <ul className="worlds">
+        {saves.map((save, index) => (
+          <li key={index} className={index === slot ? 'current' : undefined}>
+            <div>
+              <strong>Game {index + 1}</strong>
+              <span>{save ? describeSave(save) : index === slot ? 'Just started' : 'Empty'}</span>
+            </div>
+            {confirming === index ? (
+              <span className="confirm">
+                <button type="button" className="danger" onClick={() => forget(index)}>
+                  {index === slot ? 'Start over' : 'Delete'}
+                </button>
+                <button type="button" onClick={() => setConfirming(null)}>
+                  Keep
+                </button>
+              </span>
+            ) : index === slot ? (
+              <span className="confirm">
+                <em>Playing</em>
+                {save && (
+                  <button type="button" onClick={() => setConfirming(index)}>
+                    Start over
+                  </button>
+                )}
+              </span>
+            ) : (
+              <span className="confirm">
+                <button type="button" onClick={() => onOpenSlot(index)}>
+                  {save ? 'Load' : 'New game'}
+                </button>
+                {save && (
+                  <button
+                    type="button"
+                    aria-label={`Delete game ${index + 1}`}
+                    onClick={() => setConfirming(index)}
+                  >
+                    Delete
+                  </button>
+                )}
+              </span>
+            )}
+          </li>
+        ))}
+      </ul>
+      <p className="note">
+        {confirming === null
+          ? 'Your game saves by itself as you play. Pick another slot to keep a second game.'
+          : confirming === slot
+            ? 'Starting over goes back to the start and forgets this game. It can’t be undone.'
+            : 'Deleting forgets this game. It can’t be undone.'}
+      </p>
+    </>
   );
 }
 

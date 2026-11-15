@@ -4,7 +4,7 @@ import type { Assembly, Brick } from '@brick-workshop/engine';
 import { Loader } from '@brick-workshop/render/loader';
 import { dismissSplash, setSplashMessage } from '@brick-workshop/render/splash';
 import { useLDrawLibrary } from '@brick-workshop/render/ldraw';
-import type { WalkCamera } from '@brick-workshop/walk/walk-view';
+import type { WalkCamera, WalkProbe } from '@brick-workshop/walk/walk-view';
 import { WalkWorld } from '@brick-workshop/walk/walk';
 import { AmbientMusic } from '@brick-workshop/audio/music';
 import { placementFor } from './build.ts';
@@ -46,15 +46,20 @@ import {
   loadDistance,
   loadHotbar,
   loadMusic,
+  loadSave,
   loadSeed,
+  loadSlot,
   loadTime,
   saveEdits,
   saveDistance,
   saveHotbar,
   saveMusic,
   saveSeed,
+  saveSlot,
   saveTime,
+  storeSave,
 } from './save.ts';
+import type { SaveGame } from './save.ts';
 import { WORLD_SIZE, findSpawn } from './world/generate.ts';
 import { glowsNear } from './world/glows.ts';
 import { isPlant } from './world/plants.ts';
@@ -120,6 +125,8 @@ const DIRECTIONS = ['up', 'down', 'left', 'right'] as const;
 export function App() {
   const fixed = game().seed;
   const [seed, setSeed] = useState(() => fixed ?? loadSeed() ?? newSeed());
+  /** The save game being played, in a game with save slots. */
+  const [slot, setSlot] = useState(() => (game().saveSlots ? loadSlot() : 0));
   // Bumped to open a world afresh from its saved edits, even the one being played.
   const [opened, setOpened] = useState(0);
   useEffect(() => {
@@ -132,13 +139,21 @@ export function App() {
     setSeed(next);
     setOpened((current) => current + 1);
   };
+  /** Opens a save game, or starts a new one in an empty slot. */
+  const openSlot = (next: number) => {
+    saveSlot(next);
+    setSlot(next);
+    setOpened((current) => current + 1);
+  };
   return (
     <Game
       key={`${seed}:${opened}`}
       seed={seed}
+      slot={slot}
       music={music}
       onNewWorld={() => open(newSeed())}
       onOpenWorld={open}
+      onOpenSlot={openSlot}
     />
   );
 }
@@ -155,18 +170,29 @@ function ClockLabel({ clock }: { clock: DayClock }) {
 
 function Game({
   seed,
+  slot,
   music,
   onNewWorld,
   onOpenWorld,
+  onOpenSlot,
 }: {
   seed: number;
+  slot: number;
   music: AmbientMusic;
   onNewWorld: () => void;
   onOpenWorld: (seed: number) => void;
+  onOpenSlot: (slot: number) => void;
 }) {
   /** The terrain on the main thread: for the start, and for the debug window's chunk borders. */
   const [terrain] = useState(() => createTerrain(seed, game().world));
-  const [spawn] = useState(() => findSpawn(terrain));
+  /** The save game this picks up from, in a game with save slots; null for a new one. */
+  const [saved] = useState(() => (game().saveSlots ? loadSave(slot) : null));
+  /** Where the walker starts: where the save left it, or the world's own start. */
+  const [spawn] = useState(() => {
+    if (!saved) return findSpawn(terrain);
+    const { x, y, z, yaw, pitch } = saved.place;
+    return { x, y, z, yaw, pitch };
+  });
   /**
    * The live world, streamed in chunk by chunk round the walker: the pieces by chunk, an index for
    * placing and breaking, and the walker's collision world, all kept up to date together. Chunks
@@ -353,8 +379,8 @@ function Game({
   const [selected, setSelected] = useState(0);
   const held = slots[selected];
   const [aim, setAim] = useState<Aim | null>(null);
-  const [view, setView] = useState<WalkCamera>('first');
-  const [flying, setFlying] = useState(false);
+  const [view, setView] = useState<WalkCamera>(() => saved?.place.view ?? 'first');
+  const [flying, setFlying] = useState(() => saved?.place.flying ?? false);
   /** Whether the game has been played yet, so the menu offers to resume rather than to play. */
   const [started, setStarted] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
@@ -386,6 +412,62 @@ function Game({
       saveTime(clock.time);
     });
   }, [clock]);
+  /**
+   * The save game, in a game with save slots: where the walker stands and looks, kept every few
+   * seconds while playing, when the menu opens and when the page is left, so the next visit
+   * picks up there. A slot gets a save only once it has been played.
+   */
+  const probe = useRef<WalkProbe | null>(null);
+  const lastSave = useRef<SaveGame | null>(saved);
+  /** When the play time was last counted, while playing. */
+  const playClock = useRef<number | null>(null);
+  const viewRef = useRef(view);
+  useEffect(() => {
+    viewRef.current = view;
+  }, [view]);
+  const keepSave = useCallback(() => {
+    const live = probe.current;
+    if (!game().saveSlots || !live) return;
+    const now = Date.now();
+    const played = playClock.current === null ? 0 : (now - playClock.current) / 1000;
+    if (playClock.current !== null) playClock.current = now;
+    const previous = lastSave.current;
+    if (!previous && !played) return;
+    const { walker, look } = live;
+    const next: SaveGame = {
+      place: {
+        x: walker.x + FRAME / 2,
+        z: FRAME / 2 - walker.z,
+        y: walker.y,
+        yaw: look.yaw,
+        pitch: look.pitch,
+        flying: walker.flying ?? false,
+        view: viewRef.current,
+      },
+      playSeconds: (previous?.playSeconds ?? 0) + played,
+      startedAt: previous?.startedAt ?? new Date(now).toISOString(),
+      playedAt: new Date(now).toISOString(),
+    };
+    lastSave.current = next;
+    storeSave(slot, next);
+  }, [slot]);
+  useEffect(() => {
+    if (!playing || !game().saveSlots) return;
+    playClock.current = Date.now();
+    const timer = setInterval(keepSave, 5000);
+    const leave = () => {
+      if (document.visibilityState === 'hidden') keepSave();
+    };
+    window.addEventListener('pagehide', keepSave);
+    document.addEventListener('visibilitychange', leave);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener('pagehide', keepSave);
+      document.removeEventListener('visibilitychange', leave);
+      keepSave();
+      playClock.current = null;
+    };
+  }, [playing, keepSave]);
   // Ambient piano: starts with the first Play (browsers need a click or key for sound), softer
   // in the menu, and turns to its night loop after sunset.
   const [musicLevel, setMusicLevel] = useState<MusicLevel>(() => {
@@ -515,6 +597,8 @@ function Game({
   };
   /** The menu or the brick box, with the mouse let go so their buttons can be clicked. */
   const show = (next: 'menu' | 'box') => {
+    // Saved before the menu shows, so its list of save games has this one as it is now.
+    if (playing) keepSave();
     setScreen(next);
     unlockPointer();
   };
@@ -779,6 +863,7 @@ function Game({
         buildArea={FRAME}
         distance={distance}
         spawn={spawn}
+        probe={probe}
         onChunk={onChunk}
         view={view}
         flying={flying}
@@ -898,6 +983,9 @@ function Game({
         <Menu
           started={started}
           seed={seed}
+          slot={slot}
+          resumable={saved !== null}
+          onOpenSlot={onOpenSlot}
           edits={edits}
           getAssembly={getAssembly}
           hasBuild={kinds.player > 0}

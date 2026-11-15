@@ -1,7 +1,22 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vite-plus/test';
 import type { Brick } from '@brick-workshop/engine';
 import type { Edit } from './build.ts';
-import { WORLD_VERSION, deleteWorld, listWorlds, loadEdits, saveEdits } from './save.ts';
+import {
+  SAVE_SLOTS,
+  WORLD_VERSION,
+  deleteSave,
+  deleteWorld,
+  listSaves,
+  listWorlds,
+  loadEdits,
+  loadSave,
+  loadSlot,
+  saveEdits,
+  saveSlot,
+  storeSave,
+} from './save.ts';
+import type { SaveGame } from './save.ts';
+import { BRICK_ISLAND, STUDLANDS, setGame } from './game.ts';
 
 /** Browser storage for the tests, which run without a browser. */
 class MemoryStorage {
@@ -77,5 +92,42 @@ describe('saved edits', () => {
   it('still reads a save that kept one list of edits', () => {
     storage.setItem(`brick-island:edits:v${WORLD_VERSION}:9`, JSON.stringify(edits));
     expect(loadEdits(9)).toEqual(edits);
+  });
+});
+
+describe('save games', () => {
+  const save: SaveGame = {
+    place: { x: 290, y: 4.8, z: 368, yaw: 1.2, pitch: -0.1, flying: false, view: 'third' },
+    playSeconds: 754,
+    startedAt: '2026-11-14T09:00:00.000Z',
+    playedAt: '2026-11-15T09:00:00.000Z',
+  };
+  beforeEach(() => setGame(BRICK_ISLAND));
+  afterEach(() => setGame(STUDLANDS));
+
+  it('keeps a game per slot under the game’s own prefix', () => {
+    expect(listSaves()).toEqual(Array.from({ length: SAVE_SLOTS }, () => null));
+    storeSave(1, save);
+    expect(loadSave(1)).toEqual(save);
+    expect(loadSave(0)).toBeNull();
+    expect(storage.items.has('brick-island-map:saves:v1')).toBe(true);
+    deleteSave(1);
+    expect(loadSave(1)).toBeNull();
+  });
+
+  it('reads a damaged save as an empty slot', () => {
+    storage.setItem(
+      'brick-island-map:saves:v1',
+      JSON.stringify([{ ...save, place: { x: 'here' } }, save]),
+    );
+    expect(listSaves()).toEqual([null, save, null]);
+  });
+
+  it('remembers the slot played last, and ignores one out of range', () => {
+    expect(loadSlot()).toBe(0);
+    saveSlot(2);
+    expect(loadSlot()).toBe(2);
+    saveSlot(SAVE_SLOTS);
+    expect(loadSlot()).toBe(0);
   });
 });
