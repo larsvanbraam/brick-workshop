@@ -210,3 +210,17 @@ describe('the follow camera', () => {
     expect(inTree).toBe(8);
   });
 });
+
+describe('drift', () => {
+  it("carries the walker along with the world's push, on top of its own steps", () => {
+    const world = new WalkWorld([], AREA, Infinity);
+    world.drift = (x) => (x < 5 ? [3, 0] : null);
+    const walker = spawnWalker(world, AREA, { x: 0, z: 0 });
+    walk(world, walker, {}, 1);
+    expect(walker.x).toBeCloseTo(3, 1);
+    // Past where the push ends, it stays put.
+    walk(world, walker, {}, 3);
+    expect(walker.x).toBeGreaterThanOrEqual(5);
+    expect(walker.x).toBeLessThan(5.2);
+  });
+});

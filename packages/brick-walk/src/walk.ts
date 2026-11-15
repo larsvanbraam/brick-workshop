@@ -94,6 +94,11 @@ export class WalkWorld {
   readonly limit: number;
   /** How high the walker may fly: well over the tallest piece. */
   ceiling = 40;
+  /**
+   * A push the world gives whatever moves through it at a spot (scene x and z), in studs a
+   * second: a current, a wind, a tide that keeps the walker off the open sea. Null for none.
+   */
+  drift: ((x: number, z: number) => readonly [x: number, z: number] | null) | null = null;
   private readonly cells = new Map<string, number[]>();
   private readonly marks: number[] = [];
   private mark = 0;
@@ -324,6 +329,12 @@ export function stepWalker(world: WalkWorld, walker: Walker, input: WalkInput, d
   } else {
     walker.velocityX = 0;
     walker.velocityZ = 0;
+  }
+  // The world's drift carries the walker along on top of its own steps.
+  const drift = world.drift?.(walker.x, walker.z);
+  if (drift) {
+    moveX += drift[0] * dt;
+    moveZ += drift[1] * dt;
   }
   const steps = Math.max(1, Math.ceil(Math.hypot(moveX, moveZ) / SUBSTEP));
   for (let step = 0; step < steps; step++) {

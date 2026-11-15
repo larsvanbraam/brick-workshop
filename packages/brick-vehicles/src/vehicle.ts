@@ -945,6 +945,15 @@ export function stepVehicle(world: WalkWorld, vehicle: Vehicle, input: DriveInpu
     hit = stepGround(world, spec, vehicle, given, dt);
     vehicle.engine = approach(vehicle.engine, vehicle.driven ? 1 : 0, dt / 0.6);
   }
+  // The world's drift carries it too: on its wheels round anything in the way, in the air freely.
+  const drift = world.drift?.(vehicle.x, vehicle.z);
+  if (drift) {
+    if (spec.handling === 'ground') drive(world, spec, vehicle, drift[0] * dt, drift[1] * dt);
+    else {
+      vehicle.x += drift[0] * dt;
+      vehicle.z += drift[1] * dt;
+    }
+  }
   const limit = world.limit;
   vehicle.x = clamp(vehicle.x, -limit, limit);
   vehicle.z = clamp(vehicle.z, -limit, limit);

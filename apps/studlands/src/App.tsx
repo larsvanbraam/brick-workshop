@@ -83,6 +83,7 @@ import type { MusicLevel } from './music.ts';
 import { lineFor, personality } from './dialogue.ts';
 import { residentById } from './npcs.ts';
 import { SpeechBubble } from './SpeechBubble.tsx';
+import { TIDE_LINES, Tide } from './tide.ts';
 
 /**
  * Counts per chunk, kept until the chunk changes: a chunk's list is replaced whenever its pieces
@@ -219,10 +220,13 @@ function Game({
    * come from background threads with the player's saved edits laid over them, and go again once
    * the walker is far enough away.
    */
-  const [{ index, walk }] = useState(() => ({
-    index: new WorldIndex([]),
-    walk: new WalkWorld([], FRAME, Infinity),
-  }));
+  const [{ index, walk, tide }] = useState(() => {
+    const walk = new WalkWorld([], FRAME, Infinity);
+    // On Brick Island, the tide walks the player back from the open sea.
+    const tide = game().world === 'island' ? new Tide(seed, FRAME) : null;
+    if (tide) walk.drift = tide.push;
+    return { index: new WorldIndex([]), walk, tide };
+  });
   const [edits, setEdits] = useState<Edit[]>(() => loadEdits(seed));
   const editsRef = useRef(edits);
   useEffect(() => {
@@ -616,6 +620,32 @@ function Game({
   }, [speaker, voices]);
   /** What is being said: the last line, while its speaker still speaks. */
   const saying = speech && speech.id === speaker ? speech : null;
+  /** What the player says when the tide turns them round, while it is said. */
+  const [tideLine, setTideLine] = useState<string | null>(null);
+  /** How many lines the tide has drawn, and until when the player keeps quiet after the last. */
+  const tideTalk = useRef({ count: 0, quietUntil: 0 });
+  const sayingRef = useRef(saying);
+  useEffect(() => {
+    sayingRef.current = saying;
+  });
+  useEffect(() => {
+    if (!tide || !playing) return;
+    const said = tideTalk.current;
+    const timer = setInterval(() => {
+      const now = performance.now();
+      // Once the push is felt, and not over someone else talking or straight after the last one.
+      if (tide.strength < 2 || now < said.quietUntil || sayingRef.current) return;
+      const text = TIDE_LINES[said.count++ % TIDE_LINES.length];
+      const reading = 1600 + text.length * 50;
+      said.quietUntil = now + reading + 8000;
+      setTideLine(text);
+      setTimeout(() => setTideLine((current) => (current === text ? null : current)), reading);
+    }, 200);
+    return () => {
+      clearInterval(timer);
+      setTideLine(null);
+    };
+  }, [tide, playing]);
   const onAim = useCallback(
     (next: Aim | null) => {
       setAim(next);
@@ -1069,6 +1099,7 @@ function Game({
         onDrive={onDrive}
         onNear={setNearVehicle}
         talk={talk}
+        tide={tide}
         debug={{
           options: debugOptions,
           store: debugStore,
@@ -1127,6 +1158,9 @@ function Game({
           name={saying.name}
           text={saying.text}
         />
+      )}
+      {playing && tide && tideLine && !saying && (
+        <SpeechBubble key={tideLine} anchor={tide.anchor} name="You" text={tideLine} />
       )}
       {playing && drivingKind && <DriveHint kind={drivingKind} />}
       <div className="status">

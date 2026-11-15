@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { BoxGeometry, EdgesGeometry, Raycaster, Vector2 } from 'three';
+import { BoxGeometry, EdgesGeometry, Raycaster, Vector2, Vector3 } from 'three';
 import type { Color, Group, Object3D } from 'three';
 import { PLATE_HEIGHT, footprint } from '@brick-workshop/engine';
 import type { Brick } from '@brick-workshop/engine';
@@ -19,7 +19,9 @@ import type { Animal } from './animals.ts';
 import { FARM } from './world/island/map.ts';
 import { Vehicles } from '@brick-workshop/vehicles/drive-view';
 import type { Vehicle, VehicleKind } from '@brick-workshop/vehicles/vehicle';
+import { MINIFIG } from '@brick-workshop/walk/walk';
 import type { WalkWorld } from '@brick-workshop/walk/walk';
+import type { Tide } from './tide.ts';
 import type { Chunks } from './chunks.ts';
 import { chunkAt } from './streaming.ts';
 import type { RenderDistance } from './streaming.ts';
@@ -110,6 +112,8 @@ export interface GameSceneProps {
   onNear: (kind: VehicleKind | null) => void;
   /** Who the walker can talk to and who is speaking. */
   talk: TalkLink;
+  /** Brick Island's tide, whose bubble over the player's head the scene places. */
+  tide?: Tide | null;
 }
 
 /** The debug window's probes inside the canvas; drawn only while the window is open. */
@@ -211,6 +215,7 @@ export function GameScene(props: GameSceneProps) {
       )}
       <EdgeDimmer drawings={drawings} clock={props.clock} />
       <ChunkWatcher probe={probe} buildArea={buildArea} onChunk={props.onChunk} />
+      {props.tide && <HeadAnchor probe={probe} tide={props.tide} />}
       {props.map && <MapProbe probe={probe} store={props.map} buildArea={buildArea} />}
       {debug.options.enabled && (
         <>
@@ -476,6 +481,20 @@ function ChunkWatcher({
     if (key === last.current) return;
     last.current = key;
     onChunk(cx, cz);
+  });
+  return null;
+}
+
+/** Keeps a screen point over the player's head each frame, for a speech bubble of their own. */
+function HeadAnchor({ probe, tide }: { probe: { current: WalkProbe | null }; tide: Tide }) {
+  const { camera, size } = useThree();
+  const [head] = useState(() => new Vector3());
+  useFrame(() => {
+    const walker = probe.current?.walker;
+    if (!walker) return;
+    head.set(walker.x, walker.y + MINIFIG.height + 0.6, walker.z).project(camera);
+    // Behind the camera, the projection lands mirrored on screen.
+    tide.placeHead(((head.x + 1) / 2) * size.width, ((1 - head.y) / 2) * size.height, head.z < 1);
   });
   return null;
 }
