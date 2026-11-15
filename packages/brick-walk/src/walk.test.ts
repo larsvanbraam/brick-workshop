@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vite-plus/test';
 import type { Brick } from '@brick-workshop/engine';
-import { MINIFIG, WalkWorld, spawnWalker, stepWalker } from './walk';
+import {
+  CAMERA_CLEARANCE,
+  MINIFIG,
+  WalkWorld,
+  followDistance,
+  spawnWalker,
+  stepWalker,
+} from './walk';
 import type { WalkInput, Walker } from './walk';
 
 const AREA = 16;
@@ -166,5 +173,40 @@ describe('WalkWorld groups', () => {
     world.removeGroup('b');
     expect(world.count).toBe(1);
     expect(world.contains(5, 0.5, -6)).toBe(false);
+  });
+});
+
+describe('the follow camera', () => {
+  it('hangs back the full distance in the open', () => {
+    const world = new WalkWorld([], AREA);
+    expect(followDistance(world, { x: 0, y: 5, z: 0 }, { x: 0, y: 0, z: 1 }, 8)).toBe(8);
+  });
+
+  it('stops short of a wall behind the minifigure, keeping its clearance', () => {
+    const world = new WalkWorld(wall(3), AREA);
+    // The wall fills grid z 4, scene z 3 to 4, behind a figure at scene z 0.
+    const target = { x: 0, y: 2, z: 0 };
+    const distance = followDistance(world, target, { x: 0, y: 0, z: 1 }, 8);
+    const [box] = world.query({ minX: -0.1, maxX: 0.1, minY: 1.9, maxY: 2.1, minZ: -8, maxZ: 8 });
+    const gap = box.minZ - (target.z + distance);
+    expect(gap).toBeGreaterThanOrEqual(CAMERA_CLEARANCE - 1e-6);
+    expect(gap).toBeLessThan(CAMERA_CLEARANCE + 0.1);
+  });
+
+  it('keeps above the ground', () => {
+    const world = new WalkWorld([], AREA);
+    const distance = followDistance(world, { x: 0, y: 2, z: 0 }, { x: 0, y: -1, z: 0 }, 8);
+    expect(2 - distance).toBeGreaterThanOrEqual(CAMERA_CLEARANCE - 1e-6);
+  });
+
+  it('stops at a tree the walker passes through, but not one it stands in', () => {
+    // An oval tree, 5 x 5 studs, its trunk at grid (6..11, 1..6): scene x -2 to 3, z 2 to 7.
+    const world = new WalkWorld([brick('3470', 6, 0, 1)], AREA);
+    expect(world.blocking(0, 0, 4)).toHaveLength(0);
+    const target = { x: 0, y: 3, z: 0 };
+    const distance = followDistance(world, target, { x: 0, y: 0, z: 1 }, 8);
+    expect(distance).toBeLessThan(2);
+    const inTree = followDistance(world, { x: 0, y: 3, z: 4 }, { x: 0, y: 0, z: 1 }, 8);
+    expect(inTree).toBe(8);
   });
 });

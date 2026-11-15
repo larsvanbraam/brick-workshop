@@ -34,6 +34,8 @@ export interface WalkBox {
   maxY: number;
   minZ: number;
   maxZ: number;
+  /** Stops only the follow camera, as a tree crown does: the walker brushes through it. */
+  cameraOnly?: boolean;
 }
 
 export interface Walker {
@@ -75,6 +77,12 @@ function isSolid(brick: Brick) {
   return family !== 'foliage' && family !== 'door';
 }
 
+/** Whether a piece the walker passes through still keeps the camera out: a whole tree. */
+function blocksCamera(brick: Brick) {
+  const part = getPart(brick.partId);
+  return part.family === 'foliage' && part.width >= 5 && part.depth >= 5 && part.height >= 18;
+}
+
 /**
  * The pieces as boxes in scene space, hashed by the stud columns they cover for quick lookup.
  * Boxes come in groups (a world split into chunks gives each chunk one) that can be replaced on
@@ -105,7 +113,7 @@ export class WalkWorld {
     this.setGroup('', bricks);
   }
 
-  /** How many boxes stand in the world. */
+  /** How many boxes stand in the world, camera-only ones included. */
   get count() {
     return this.live;
   }
@@ -115,8 +123,9 @@ export class WalkWorld {
     this.removeGroup(key);
     const indices: number[] = [];
     for (const brick of bricks) {
-      if (!isSolid(brick)) continue;
-      indices.push(this.add(this.boxOf(brick)));
+      if (isSolid(brick)) indices.push(this.add(this.boxOf(brick)));
+      else if (blocksCamera(brick))
+        indices.push(this.add({ ...this.boxOf(brick), cameraOnly: true }));
     }
     if (indices.length) this.groups.set(key, indices);
   }
@@ -167,7 +176,7 @@ export class WalkWorld {
     this.boxes[index] = box;
     if (reused === undefined) this.marks.push(0);
     this.live++;
-    this.ceiling = Math.max(this.ceiling, box.maxY + 30);
+    if (!box.cameraOnly) this.ceiling = Math.max(this.ceiling, box.maxY + 30);
     for (const cell of this.cellsOf(box)) {
       const list = this.cells.get(cell);
       if (list) list.push(index);
@@ -176,8 +185,11 @@ export class WalkWorld {
     return index;
   }
 
-  /** The boxes overlapping the given region, each once. */
-  query(region: WalkBox): WalkBox[] {
+  /**
+   * The boxes overlapping the given region, each once: the solid ones, and with `camera` also
+   * those that only stop the camera.
+   */
+  query(region: WalkBox, camera = false): WalkBox[] {
     const found: WalkBox[] = [];
     const mark = ++this.mark;
     for (const key of this.cellsOf(region)) {
@@ -187,7 +199,7 @@ export class WalkWorld {
         if (this.marks[index] === mark) continue;
         this.marks[index] = mark;
         const box = this.boxes[index];
-        if (overlaps(box, region)) found.push(box);
+        if ((camera || !box.cameraOnly) && overlaps(box, region)) found.push(box);
       }
     }
     return found;
@@ -360,4 +372,52 @@ export function stepWalker(world: WalkWorld, walker: Walker, input: WalkInput, d
       walker.y <= EPSILON || world.blocking(walker.x, walker.y - 0.02, walker.z).length > 0;
   }
   return walker;
+}
+
+/** How much room the follow camera keeps from pieces on every side, so its view never cuts into one. */
+export const CAMERA_CLEARANCE = 0.3;
+
+/**
+ * How far the follow camera can hang back from `target` along the unit vector `behind` before a
+ * piece (or the ground) comes within `CAMERA_CLEARANCE` of it, up to `max`. Trees count, except
+ * one the minifigure is standing in: the camera then backs out of it rather than into its head.
+ */
+export function followDistance(
+  world: WalkWorld,
+  target: { x: number; y: number; z: number },
+  behind: { x: number; y: number; z: number },
+  max: number,
+): number {
+  const r = CAMERA_CLEARANCE;
+  const around = (x: number, y: number, z: number) =>
+    world.query(
+      { minX: x - r, maxX: x + r, minY: y - r, maxY: y + r, minZ: z - r, maxZ: z + r },
+      true,
+    );
+  const inside = new Set(around(target.x, target.y, target.z).filter((box) => box.cameraOnly));
+  const clear = (distance: number) => {
+    const x = target.x + behind.x * distance;
+    const y = target.y + behind.y * distance;
+    const z = target.z + behind.z * distance;
+    if (y < r) return false;
+    return around(x, y, z).every((box) => inside.has(box));
+  };
+  const step = 0.2;
+  let distance = 0;
+  while (distance < max) {
+    const next = Math.min(max, distance + step);
+    if (!clear(next)) {
+      // Closes in on the piece, so the camera does not stop a whole step short of it.
+      let low = distance;
+      let high = next;
+      for (let i = 0; i < 4; i++) {
+        const middle = (low + high) / 2;
+        if (clear(middle)) low = middle;
+        else high = middle;
+      }
+      return low;
+    }
+    distance = next;
+  }
+  return max;
 }

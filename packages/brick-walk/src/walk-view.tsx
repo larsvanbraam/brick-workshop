@@ -6,7 +6,14 @@ import type { Brick } from '@brick-workshop/engine';
 import { coloredLDrawModel, loadLDrawModels } from '@brick-workshop/render/ldraw';
 import { MINIFIG_PARTS } from '@brick-workshop/render/minifig-parts';
 import { LDRAW_SCALE } from '@brick-workshop/render/scene-frame';
-import { MINIFIG, WalkWorld, spawnWalker, stepWalker } from './walk';
+import {
+  CAMERA_CLEARANCE,
+  MINIFIG,
+  WalkWorld,
+  followDistance,
+  spawnWalker,
+  stepWalker,
+} from './walk';
 import type { Walker } from './walk';
 import { LOOK_RATE, readGamepads } from './walk-gamepad';
 import type { GamepadLayout } from './walk-gamepad';
@@ -24,6 +31,14 @@ const LOOK_SPEED = 0.0022;
 const MAX_PITCH = Math.PI / 2 - 0.05;
 /** How far behind the minifigure the third-person camera hangs. */
 const FOLLOW_DISTANCE = 8;
+/**
+ * Closer than this the follow camera would sit in the minifigure's head, so the figure hides and
+ * the view is as good as first person; it shows again past `SHOW_FIGURE`, so it does not flicker.
+ */
+const HIDE_FIGURE = 1.4;
+const SHOW_FIGURE = 1.9;
+/** How fast the follow camera eases back out once a wall is out of the way, per second. */
+const FOLLOW_EASE_OUT = 5;
 const WALK_FOV = 70;
 
 const KEYS = {
@@ -305,6 +320,8 @@ export function WalkMode({
 
   const target = useMemo(() => new Vector3(), []);
   const behind = useMemo(() => new Vector3(), []);
+  /** The follow camera's distance last frame, and whether the figure is hidden for being too close. */
+  const follow = useRef({ distance: FOLLOW_DISTANCE, hideFigure: false });
   useFrame(({ clock }, delta) => {
     const keys = held.current;
     const pressed = (codes: string[]) => codes.some((code) => keys.has(code));
@@ -393,31 +410,36 @@ export function WalkMode({
       camera.position.set(current.x, eyeY.current + bob, current.z);
       camera.rotation.set(pitch, yaw, 0, 'YXZ');
     } else {
-      // Over the shoulder, pulled in where a wall is in the way.
+      // Over the shoulder, pulled in where a wall is in the way: at once when one comes between,
+      // easing back out when it has gone, so a jagged wall does not make the camera jump.
       target.set(current.x, eyeY.current + 0.6, current.z);
+      // Under a low ceiling the point above the head is in it; look from the eyes instead.
+      if (world.contains(target.x, target.y + CAMERA_CLEARANCE, target.z)) target.y = eyeY.current;
       behind.set(
         Math.sin(yaw) * Math.cos(pitch),
         -Math.sin(pitch),
         Math.cos(yaw) * Math.cos(pitch),
       );
-      let distance = 0;
-      while (distance < FOLLOW_DISTANCE) {
-        const next = distance + 0.25;
-        const x = target.x + behind.x * next;
-        const y = target.y + behind.y * next;
-        const z = target.z + behind.z * next;
-        if (y < 0.3 || world.contains(x, y, z)) break;
-        distance = next;
-      }
-      distance = Math.max(0, distance - 0.3);
-      camera.position.copy(target).addScaledVector(behind, distance);
-      camera.lookAt(target);
+      const room = followDistance(world, target, behind, FOLLOW_DISTANCE);
+      const state = follow.current;
+      state.distance =
+        room < state.distance
+          ? room
+          : Math.min(
+              room,
+              state.distance + (room - state.distance) * Math.min(1, delta * FOLLOW_EASE_OUT),
+            );
+      if (state.distance < HIDE_FIGURE) state.hideFigure = true;
+      else if (state.distance > SHOW_FIGURE) state.hideFigure = false;
+      camera.position.copy(target).addScaledVector(behind, state.distance);
+      // Set from the angles rather than looking at the target, which fails when the camera is on it.
+      camera.rotation.set(pitch, yaw, 0, 'YXZ');
     }
 
     const rig = figure.current;
     const body = rig.root;
     if (body) {
-      body.visible = viewRef.current === 'third';
+      body.visible = viewRef.current === 'third' && !follow.current.hideFigure;
       body.position.set(current.x, eyeY.current - MINIFIG.eye, current.z);
       body.rotation.y = yaw;
       // Angles swing a limb forward when positive; the rig says which way that turns it.
