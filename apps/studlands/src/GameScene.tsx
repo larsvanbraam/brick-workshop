@@ -185,6 +185,7 @@ export function GameScene(props: GameSceneProps) {
         start={start}
         probe={probe}
         riding={props.driving !== null}
+        active={props.playing}
       />
       <People
         chunks={chunks}

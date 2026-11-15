@@ -127,6 +127,7 @@ export function WalkMode({
   world: given,
   revision = 0,
   riding = false,
+  active = true,
 }: {
   bricks: Iterable<Brick>;
   buildArea: number;
@@ -159,6 +160,11 @@ export function WalkMode({
    * out where the vehicle stopped.
    */
   riding?: boolean;
+  /**
+   * Whether the keys and the mouse walk and look. Off while a game's menu or another panel is in
+   * front, so its keys (Space on a button, WASD) go to the panel instead of the minifigure.
+   */
+  active?: boolean;
 }) {
   const { camera, gl, invalidate } = useThree();
   const built = useMemo(
@@ -216,6 +222,12 @@ export function WalkMode({
     lastForward: -Infinity,
     sprint: false,
   });
+  const activeRef = useRef(active);
+  useEffect(() => {
+    activeRef.current = active;
+    held.current.clear();
+    fly.current.sprint = false;
+  }, [active]);
   const flewBefore = useRef(flying);
   useEffect(() => {
     if (flewBefore.current !== flying) sounds.toggleFlight(flying);
@@ -287,6 +299,7 @@ export function WalkMode({
     const element = gl.domElement;
     const keydown = (event: KeyboardEvent) => {
       if (event.metaKey || event.ctrlKey || event.altKey || ridingRef.current) return;
+      if (!activeRef.current) return;
       if (!HANDLED.has(event.code) || isTyping(event.target)) return;
       event.preventDefault();
       // Keeps the workshop's own shortcuts (Space pans, F frames) out of it.
@@ -314,6 +327,7 @@ export function WalkMode({
     // A click locks the pointer for mouse look; where the page may not lock it (an embedded
     // frame), dragging looks round instead.
     const lock = () => {
+      if (!activeRef.current) return;
       sounds.wake();
       if (document.pointerLockElement === element || !element.requestPointerLock) return;
       Promise.resolve(element.requestPointerLock()).catch(() => {});
@@ -326,7 +340,7 @@ export function WalkMode({
       dragging = false;
     };
     const move = (event: MouseEvent) => {
-      if (ridingRef.current) return;
+      if (ridingRef.current || !activeRef.current) return;
       if (document.pointerLockElement !== element && !dragging) return;
       look.current.yaw -= event.movementX * LOOK_SPEED;
       look.current.pitch = clampPitch(look.current.pitch - event.movementY * LOOK_SPEED);
