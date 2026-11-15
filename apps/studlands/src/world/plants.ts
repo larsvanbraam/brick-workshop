@@ -1,8 +1,11 @@
 import { getConnectionSites, getWorldBounds } from '@brick-workshop/engine';
 import type { Brick, Rotation } from '@brick-workshop/engine';
 import { addTree } from '@brick-workshop/engine/examples/trees';
+import type { Carving } from './caves.ts';
 import { hash2, random } from './noise.ts';
 import { COLOR } from './palette.ts';
+import { caveProps, sightIn } from './sights.ts';
+import type { Taken } from './sights.ts';
 import { LAND_BIOMES } from './terrain.ts';
 import type { Biome, Terrain, TreeSpot } from './terrain.ts';
 
@@ -118,12 +121,13 @@ function smallPlants(
   x0: number,
   z0: number,
   size: number,
-  trees: readonly TreeSpot[],
+  carving: Carving,
+  spots: readonly Taken[],
 ): Plant[] {
   const { seed } = terrain;
   const next = random(seed * 97 + 11 + Math.imul(x0, 73856093) + Math.imul(z0, 19349663));
   const plants: Plant[] = [];
-  const taken: { x: number; z: number; r: number }[] = trees.map(({ x, z }) => ({ x, z, r: 6 }));
+  const taken: Taken[] = [...spots];
   const free = (x: number, z: number, r: number) =>
     taken.every((spot) => Math.hypot(spot.x - x, spot.z - z) >= Math.max(r, spot.r));
   /**
@@ -157,6 +161,9 @@ function smallPlants(
     for (let x = x0; x < x0 + size; x++) {
       const column = terrain.column(x, z);
       const { biome, water, height } = column;
+      // A cave's mouth, cut open to the sky, has no top to grow on.
+      const hollow = carving.hollows.get(`${x},${z}`);
+      if (hollow && hollow.to >= height) continue;
       // Lily pads float on the marsh pools.
       if (biome === 'marsh' && water && next() < 0.08 && free(x, z, 1)) {
         const { pieces, add } = collector(`plant${index++}`);
@@ -238,8 +245,8 @@ function smallPlants(
 }
 
 /**
- * Everything that grows in a chunk: the broadleaf trees whose trunks stand in it, and its small
- * plants and scree. Also the trees of neighbouring chunks that reach over its edges, which it
+ * Everything that grows in a chunk: the broadleaf trees whose trunks stand in it, its sight and
+ * the props in its cave, and its small plants and scree. Also the trees of neighbouring chunks that reach over its edges, which it
  * does not own but must keep clear of, and every tree's priority by its ID's prefix, for settling
  * crowns that meet.
  */
@@ -248,6 +255,7 @@ export function plantChunk(
   x0: number,
   z0: number,
   size: number,
+  carving: Carving,
 ): { plants: Plant[]; nearby: Brick[]; priorities: Map<string, number> } {
   const own = terrain.treesIn(x0, z0, x0 + size, z0 + size);
   // A crown spreads up to about eight studs from its trunk, so two crowns can meet when their
@@ -261,7 +269,14 @@ export function plantChunk(
     priorities.set(`tree${index}`, spot.priority);
     return treeAt(terrain, spot, `tree${index}`);
   });
-  plants.push(...smallPlants(terrain, x0, z0, size, [...own, ...around]));
+  const taken = treeSpots(terrain, x0, z0, size);
+  const sight = sightIn(terrain, carving, x0, z0, size, taken);
+  if (sight) {
+    plants.push(sight.pieces);
+    taken.push(sight.spot);
+  }
+  plants.push(...caveProps(terrain, carving));
+  plants.push(...smallPlants(terrain, x0, z0, size, carving, taken));
   const nearby = around.flatMap((spot, index) => {
     priorities.set(`nearby${index}`, spot.priority);
     return treeAt(terrain, spot, `nearby${index}`);
@@ -269,5 +284,22 @@ export function plantChunk(
   return { plants, nearby, priorities };
 }
 
+/** Trees standing round a chunk: what its sight and plants keep clear of. */
+function treeSpots(terrain: Terrain, x0: number, z0: number, size: number): Taken[] {
+  const reach = 16;
+  return terrain
+    .treesIn(x0 - reach, z0 - reach, x0 + size + reach, z0 + size + reach)
+    .map(({ x, z }) => ({ x, z, r: 6 }));
+}
+
+/** The chunk's sight on its own, as `plantChunk` places it: for the lights the game shows. */
+export const chunkSight = (
+  terrain: Terrain,
+  carving: Carving,
+  x0: number,
+  z0: number,
+  size: number,
+) => sightIn(terrain, carving, x0, z0, size, treeSpots(terrain, x0, z0, size));
+
 /** Whether a piece is a plant rather than ground or something a player built. */
-export const isPlant = (brick: Brick) => /^(tree|plant)s?\d/.test(brick.id);
+export const isPlant = (brick: Brick) => /^(tree|plant|sight|cave)s?\d/.test(brick.id);

@@ -6,6 +6,7 @@ import {
 } from '@brick-workshop/engine';
 import type { Assembly, Brick } from '@brick-workshop/engine';
 import { CHUNK, chunkKey } from '../chunks.ts';
+import { carveChunk } from './caves.ts';
 import { cellColor, waterColor } from './palette.ts';
 import { plantChunk } from './plants.ts';
 import type { Plant } from './plants.ts';
@@ -68,21 +69,27 @@ export function generateChunk(
   const tag = (bricks: readonly Brick[]) =>
     bricks.map((brick) => ({ ...brick, id: brick.id + suffix }));
 
-  // The ground: each column's layers, coloured by biome and depth, and water to its surface.
+  // The ground: each column's layers, coloured by biome and depth, and water to its surface,
+  // with the chunk's cave and undercut cliffs left empty.
+  const carving = carveChunk(terrain, x0, z0, CHUNK);
   const cells: (number | null)[] = new Array(CHUNK * CHUNK * MAX_LAYERS).fill(null);
   for (let lz = 0; lz < CHUNK; lz++)
     for (let lx = 0; lx < CHUNK; lx++) {
       const x = x0 + lx;
       const z = z0 + lz;
       const { height, water } = terrain.column(x, z);
-      for (let layer = 0; layer < height; layer++)
+      const hollow = carving.hollows.get(`${x},${z}`);
+      const tint = carving.tints.get(`${x},${z}`) ?? { x, z };
+      for (let layer = 0; layer < height; layer++) {
+        if (hollow && layer >= hollow.from && layer < hollow.to) continue;
         cells[(layer * CHUNK + lz) * CHUNK + lx] = cellColor(
           terrain,
-          x,
-          z,
+          tint.x,
+          tint.z,
           height - 1 - layer,
           layer,
         );
+      }
       if (water > height) {
         const color = waterColor(seed, x, z, water - height);
         for (let layer = height; layer < water; layer++)
@@ -116,7 +123,7 @@ export function generateChunk(
 
   // Plants, checked against the ground and the neighbours' trees: any that do not fit are left
   // out, until the rest all do.
-  const { plants: grown, nearby, priorities } = plantChunk(terrain, x0, z0, CHUNK);
+  const { plants: grown, nearby, priorities } = plantChunk(terrain, x0, z0, CHUNK, carving);
   const priorityOf = (id: string) => priorities.get(id.split('-')[0]);
   const onBoard = (pieces: Plant) =>
     !Number.isFinite(limit) ||
@@ -140,7 +147,7 @@ export function generateChunk(
     });
     const bad = new Set<string>();
     for (const issue of issues) {
-      if (!/^(tree|plant)/.test(issue.brickId)) continue;
+      if (!/^(tree|plant|sight|cave)/.test(issue.brickId)) continue;
       // Where two crowns meet, the weaker tree gives way: every chunk that sees the pair makes
       // the same choice, so a tree is never kept on one side of an edge and lost on the other.
       if (issue.code === 'collision') {

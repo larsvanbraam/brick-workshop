@@ -53,6 +53,7 @@ import {
   saveTime,
 } from './save.ts';
 import { WORLD_SIZE, findSpawn } from './world/generate.ts';
+import { glowsNear } from './world/glows.ts';
 import { isPlant } from './world/plants.ts';
 import { REGION, Terrain, volcanoIn } from './world/terrain.ts';
 import type { ChunkMessage, FarMessage } from './world/worker.ts';
@@ -325,6 +326,8 @@ function Game({
   const regionX = Math.floor((centre[0] * CHUNK) / REGION);
   const regionZ = Math.floor((centre[1] * CHUNK) / REGION);
   const volcano = useMemo(() => volcanoIn(seed, regionX, regionZ), [seed, regionX, regionZ]);
+  /** The campfire and cave crystals nearest the walker's chunk, for their lights. */
+  const glows = useMemo(() => glowsNear(terrain, centre[0], centre[1]), [terrain, centre]);
   /** The middle of the walker's chunk: near enough to where it stands for an area export. */
   const position = { x: centre[0] * CHUNK + CHUNK / 2, z: centre[1] * CHUNK + CHUNK / 2 };
 
@@ -729,6 +732,7 @@ function Game({
         playing={playing}
         clock={clock}
         volcano={volcano}
+        glows={glows}
         debug={{
           options: debugOptions,
           store: debugStore,

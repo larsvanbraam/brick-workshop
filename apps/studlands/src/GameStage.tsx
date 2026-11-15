@@ -25,7 +25,14 @@ import { PLATE_HEIGHT } from '@brick-workshop/engine';
 import { SHADOW_INTERVAL, requestShadows, takeShadowRequest } from './shadows.ts';
 import { skyAt } from './sky.ts';
 import type { DayClock } from './sky.ts';
+import type { Glow } from './world/glows.ts';
 import type { Volcano } from './world/terrain.ts';
+
+/** The lights near the walker besides the sun's. */
+export interface Glows {
+  fire: Glow | null;
+  crystal: Glow | null;
+}
 
 /** The sky dome's radius: inside the camera's far plane, round wherever the camera is. */
 const DOME = 480;
@@ -120,6 +127,7 @@ export function GameStage({
   shadowView,
   clock,
   volcano,
+  glows,
 }: {
   /** The scene's frame: positions are centred on a board this size. */
   size: number;
@@ -129,6 +137,8 @@ export function GameStage({
   shadowView: number;
   clock: DayClock;
   volcano: Volcano | null;
+  /** The campfire and the cave crystals nearest the walker, each lit by a light of its own. */
+  glows: Glows;
 }) {
   const { gl, scene, invalidate } = useThree();
   const rig = useMemo(() => {
@@ -203,6 +213,34 @@ export function GameStage({
     [rig],
   );
   useEffect(() => () => glow.dispose(), [glow]);
+  /**
+   * A flickering warm light over the nearest campfire, and a cold one in the nearest cave's
+   * chamber, coloured by its crystals. Like the volcano's, they stay in the scene, dark when
+   * there is nothing to light.
+   */
+  const lamps = useMemo(
+    () => ({
+      fire: new PointLight('#ff8a3c', 0, 16, 2),
+      crystal: new PointLight('#7fd4ff', 0, 12, 2),
+    }),
+    [],
+  );
+  useEffect(() => {
+    for (const kind of ['fire', 'crystal'] as const) {
+      const spot = glows[kind];
+      if (!spot) continue;
+      lamps[kind].color.set(spot.color);
+      lamps[kind].position.set(spot.x - size / 2, spot.y * PLATE_HEIGHT, size / 2 - spot.z);
+    }
+    invalidate();
+  }, [lamps, glows, size, invalidate]);
+  useEffect(
+    () => () => {
+      lamps.fire.dispose();
+      lamps.crystal.dispose();
+    },
+    [lamps],
+  );
 
   useEffect(() => {
     const previous = scene.fog;
@@ -277,6 +315,11 @@ export function GameStage({
     scene.environmentIntensity = sky.environment;
     // The lava glows all day; it only shows once the sun is down.
     glow.intensity = volcano ? 8 + 60 * sky.stars : 0;
+    // A campfire shows at dusk and flickers; crystals glow the same day and night underground.
+    const flicker =
+      0.85 + Math.sin(performance.now() / 90) * 0.08 + Math.sin(performance.now() / 37) * 0.07;
+    lamps.fire.intensity = glows.fire ? (6 + 50 * sky.stars) * flicker : 0;
+    lamps.crystal.intensity = glows.crystal ? 30 : 0;
     // The sky goes wherever the camera does, so it is never reached.
     dome.position.copy(camera.position);
     stars.position.copy(camera.position);
@@ -299,6 +342,8 @@ export function GameStage({
       <primitive object={rig.dome} />
       <primitive object={rig.stars} />
       <primitive object={rig.key} />
+      <primitive object={lamps.fire} />
+      <primitive object={lamps.crystal} />
       <primitive object={rig.target} />
       <primitive object={rig.fill} />
       <primitive object={glow} />

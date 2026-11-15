@@ -27,6 +27,7 @@ import { aimAt, aimKey } from './build.ts';
 import { buriedPieces } from './buried.ts';
 import { requestShadows } from './shadows.ts';
 import { GameStage } from './GameStage.tsx';
+import type { Glows } from './GameStage.tsx';
 import { skyAt } from './sky.ts';
 import type { DayClock } from './sky.ts';
 import type { Terrain } from './world/terrain.ts';
@@ -75,6 +76,8 @@ export interface GameSceneProps {
   clock: DayClock;
   /** The volcano, whose crater glows. */
   volcano: Volcano | null;
+  /** The campfire and cave crystals nearest the walker. */
+  glows: Glows;
 }
 
 /** The debug window's probes inside the canvas; drawn only while the window is open. */
@@ -123,6 +126,7 @@ export function GameScene(props: GameSceneProps) {
         shadowView={(Math.min(props.distance.load, 2) + 0.5) * CHUNK}
         clock={props.clock}
         volcano={props.volcano}
+        glows={props.glows}
       />
       {[...chunks].map(([key, pieces]) => (
         <ChunkView
