@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vite-plus/test';
-import { PadPresses, REPEAT, nextBox, readPads } from './gamepad.ts';
+import { PadPresses, REPEAT, isPadActive, nextBox, readPads } from './gamepad.ts';
 import type { PadButton } from './gamepad.ts';
 import type { PadLike } from '@brick-workshop/walk/walk-gamepad';
 
@@ -42,6 +42,16 @@ describe('studlands gamepad', () => {
   it('leaves the left stick to walking while playing', () => {
     expect(readPads([pad([0, 0.9])])!.down.size).toBe(0);
     expect(readPads([pad([-0.9, 0])])!.down.size).toBe(0);
+  });
+
+  it('counts the controller as in use only while a button is down or a stick pushed', () => {
+    expect(isPadActive([pad()])).toBe(false);
+    expect(isPadActive([null, pad([0.05, -0.1, 0, 0])])).toBe(false);
+    // Triggers some browsers report as axes, resting at -1.
+    expect(isPadActive([pad([0, 0, 0, 0, -1, -1])])).toBe(false);
+    expect(isPadActive([pad([0, 0, 0, 0.8])])).toBe(true);
+    expect(isPadActive([pad(undefined, [1])])).toBe(true);
+    expect(isPadActive([{ ...pad(undefined, [1]), connected: false }])).toBe(false);
   });
 
   it('presses once on the way down and repeats only repeating buttons', () => {

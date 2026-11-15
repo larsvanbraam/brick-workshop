@@ -427,7 +427,7 @@ export function Vehicles({
       const shown = live.shown.get(current.id) ?? current.y;
       if (live.view === 'first' && rig) {
         // From the driver's eyes, turning and tipping with the vehicle.
-        const [sx, sy, sz] = MODELS[current.kind].seat;
+        const [sx, sy, sz] = MODELS[current.kind].rider.seat;
         rig.root.updateMatrixWorld();
         eye.set(-sx * 0.05, -sy * 0.05 + 1.15, sz * 0.05);
         rig.root.localToWorld(eye);

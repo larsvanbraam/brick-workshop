@@ -43,7 +43,7 @@ import { DayClock, START_TIME, clockTime, isDaytime } from './sky.ts';
 import { STARTER_HOTBAR } from './hotbar.ts';
 import { BrickBox, PART_DRAG, PartImage, colorHex, colorName } from './BrickBox.tsx';
 import { colorsFor, getSnap, nextRotation } from './catalog.ts';
-import { PadPresses, readPads } from './gamepad.ts';
+import { PadPresses, isPadActive, readPads } from './gamepad.ts';
 import type { PadButton, PadState } from './gamepad.ts';
 import { PAD_CLASS, moveFocus, pressFocused, scrollPanel, switchTab } from './pad-ui.ts';
 import {
@@ -908,6 +908,8 @@ function Game({
   useEffect(() => {
     padHandler.current = onPad;
   });
+  // The prompts name the controller's buttons while it is the last thing used, else the keys.
+  const [padInUse, setPadInUse] = useState(false);
   useEffect(() => {
     const presses = new PadPresses();
     let last = performance.now();
@@ -916,6 +918,7 @@ function Game({
       const seconds = Math.min(0.1, (now - last) / 1000);
       last = now;
       const pads = navigator.getGamepads?.();
+      if (pads && isPadActive(pads)) setPadInUse(true);
       const playing = keys.current.screen === 'playing';
       // While playing the left stick walks, so it must not press the d-pad's actions.
       const state = pads ? readPads(pads, !playing) : null;
@@ -924,11 +927,17 @@ function Game({
       padHandler.current(state, presses.update(state.down, now, repeating), seconds);
     });
     // The focus ring shows only while the controller is in use.
-    const mouse = () => document.documentElement.classList.remove(PAD_CLASS);
+    const mouse = () => {
+      document.documentElement.classList.remove(PAD_CLASS);
+      setPadInUse(false);
+    };
+    const key = () => setPadInUse(false);
     window.addEventListener('mousemove', mouse);
+    window.addEventListener('keydown', key);
     return () => {
       cancelAnimationFrame(frame);
       window.removeEventListener('mousemove', mouse);
+      window.removeEventListener('keydown', key);
     };
   }, []);
 
@@ -1141,12 +1150,13 @@ function Game({
         <div className="vehicle-hint">
           {nearVehicle && (
             <span>
-              <kbd>E</kbd> {vehicleAction(nearVehicle)}
+              <kbd>{padInUse ? 'X' : 'E'}</kbd> {vehicleAction(nearVehicle)}
             </span>
           )}
           {nearbyName && (
             <span>
-              <kbd>T</kbd> {saying?.id === nearbyPerson ? 'Carry on' : `Talk to ${nearbyName}`}
+              <kbd>{padInUse ? 'B' : 'T'}</kbd>{' '}
+              {saying?.id === nearbyPerson ? 'Carry on' : `Talk to ${nearbyName}`}
             </span>
           )}
         </div>
@@ -1162,7 +1172,7 @@ function Game({
       {playing && tide && tideLine && !saying && (
         <SpeechBubble key={tideLine} anchor={tide.anchor} name="You" text={tideLine} />
       )}
-      {playing && drivingKind && <DriveHint kind={drivingKind} />}
+      {playing && drivingKind && <DriveHint kind={drivingKind} pad={padInUse} />}
       <div className="status">
         <strong>
           {game().seed === undefined ? `World ${seed}` : game().title}
@@ -1178,11 +1188,11 @@ function Game({
         <div className="top-buttons">
           {game().building && (
             <button type="button" onClick={() => show('box')}>
-              Bricks <kbd>B</kbd>
+              Bricks <kbd>{padInUse ? 'D-pad ↓' : 'B'}</kbd>
             </button>
           )}
           <button type="button" onClick={() => show('menu')}>
-            Menu <kbd>M</kbd>
+            Menu <kbd>{padInUse ? '≡' : 'M'}</kbd>
           </button>
         </div>
       )}
@@ -1238,9 +1248,40 @@ function Game({
 const isVoiceMode = (name: unknown): name is VoiceMode =>
   name === 'simlish' || name === 'device' || name === 'off';
 
-/** The controls for the vehicle being driven, along the bottom of the screen. */
-function DriveHint({ kind }: { kind: VehicleKind }) {
+/**
+ * The controls for the vehicle being driven, along the bottom of the screen: the keys, or with
+ * `pad` the controller's buttons (see `drive-view.tsx`).
+ */
+function DriveHint({ kind, pad }: { kind: VehicleKind; pad: boolean }) {
   const air = kind === 'helicopter' || kind === 'airplane';
+  if (pad)
+    return (
+      <div className="vehicle-hint driving">
+        <span>
+          <kbd>Left stick</kbd>{' '}
+          {kind === 'airplane' ? 'steer, faster, slower' : air ? 'fly, turn' : 'steer, go'}
+        </span>
+        {air ? (
+          <span>
+            <kbd>A</kbd>
+            <kbd>B</kbd> {kind === 'airplane' ? 'climb, dive' : 'up, down'}
+          </span>
+        ) : (
+          <span>
+            <kbd>RT</kbd>
+            <kbd>LT</kbd> go, brake
+          </span>
+        )}
+        {kind !== 'bike' && (
+          <span>
+            <kbd>Y</kbd> horn
+          </span>
+        )}
+        <span>
+          <kbd>X</kbd> get out
+        </span>
+      </div>
+    );
   return (
     <div className="vehicle-hint driving">
       <span>

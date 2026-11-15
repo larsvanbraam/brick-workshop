@@ -2,7 +2,7 @@ import { Group, Matrix4 } from 'three';
 import { coloredLDrawModel } from '@brick-workshop/render/ldraw';
 import { LDRAW_SCALE } from '@brick-workshop/render/scene-frame';
 import { buildMinifig } from '@brick-workshop/walk/minifig';
-import type { Placement, Pose, VehicleModel } from './models';
+import type { Placement, Rider, VehicleModel } from './models';
 import type { Vehicle } from './vehicle';
 
 /** A vehicle's model in the scene, with the parts that move. */
@@ -20,7 +20,7 @@ interface Driver {
   rightLeg: Group;
   leftArm: Group;
   rightArm: Group;
-  pose: Pose;
+  rider: Rider;
 }
 
 function place(models: Record<string, Group>, placement: Placement) {
@@ -55,10 +55,10 @@ export function buildVehicle(model: VehicleModel, models: Record<string, Group>)
   let driver: Driver | null = null;
   if (models['973']) {
     const figure = buildMinifig(models);
-    figure.body.position.set(...model.seat);
+    figure.body.position.set(...model.rider.seat);
     figure.body.visible = false;
     ldraw.add(figure.body);
-    driver = { ...figure, pose: model.pose };
+    driver = { ...figure, rider: model.rider };
   }
   const root = new Group();
   root.add(ldraw);
@@ -93,21 +93,13 @@ export function poseVehicle(rig: VehicleRig, vehicle: Vehicle, y: number, showDr
   if (!driver) return;
   driver.body.visible = showDriver;
   if (!showDriver) return;
-  // A negative turn about x swings a limb forward.
-  if (driver.pose === 'sit') {
-    driver.leftLeg.rotation.x = driver.rightLeg.rotation.x = -Math.PI / 2;
-    driver.leftArm.rotation.x = driver.rightArm.rotation.x = -1.1;
-    driver.body.rotation.x = 0;
-  } else if (driver.pose === 'ride') {
-    driver.leftLeg.rotation.x = driver.rightLeg.rotation.x = -1.25;
-    driver.leftArm.rotation.x = driver.rightArm.rotation.x = -1.35;
-    driver.body.rotation.x = -0.25;
-  } else {
-    // Pedalling: the legs go round with the wheels, half a turn apart.
-    const crank = vehicle.wheelTurn * 0.7;
-    driver.leftLeg.rotation.x = -1.05 + Math.sin(crank) * 0.45;
-    driver.rightLeg.rotation.x = -1.05 - Math.sin(crank) * 0.45;
-    driver.leftArm.rotation.x = driver.rightArm.rotation.x = -1.15;
-    driver.body.rotation.x = -0.15;
-  }
+  // A negative turn about x swings a limb forward; LDraw's left arm is at +x.
+  const { lean, legs, arms, armsOut = 0, pedal = 0 } = driver.rider;
+  // Pedalling: the legs go round with the wheels, half a turn apart.
+  const crank = Math.sin(vehicle.wheelTurn * 0.7) * pedal;
+  driver.body.rotation.x = lean;
+  driver.leftLeg.rotation.x = legs + crank;
+  driver.rightLeg.rotation.x = legs - crank;
+  driver.leftArm.rotation.set(arms, 0, -armsOut);
+  driver.rightArm.rotation.set(arms, 0, armsOut);
 }

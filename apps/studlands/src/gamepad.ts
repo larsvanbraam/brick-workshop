@@ -77,6 +77,23 @@ export function readPads(pads: readonly (PadLike | null)[], stickAsDpad = false)
   return any ? state : null;
 }
 
+/** A stick pushed this far, or a button held, counts as the controller being used. */
+const ACTIVE = 0.4;
+
+/**
+ * Whether anyone is using a controller this frame: a button down or a stick pushed well over.
+ * A connected pad lying idle does not count, so the prompts can follow whichever was used last.
+ */
+export function isPadActive(pads: readonly (PadLike | null)[]) {
+  return pads.some(
+    (pad) =>
+      pad?.connected &&
+      (pad.buttons.some((button) => button.pressed || button.value > ACTIVE) ||
+        // Only the sticks: some browsers report the triggers as axes resting at -1.
+        pad.axes.slice(0, 4).some((axis) => Math.abs(axis) > ACTIVE)),
+  );
+}
+
 /** How long a held button waits before repeating, and then how often it repeats, in ms. */
 export const REPEAT = { delay: 400, every: 150 };
 

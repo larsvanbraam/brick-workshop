@@ -44,16 +44,30 @@ export interface Moving {
   steer?: number;
 }
 
-/** How the driver sits. */
-export type Pose = 'sit' | 'ride' | 'pedal';
+/**
+ * How the driver sits, as turns in radians about the minifigure's pivots (LDraw's frame: a
+ * negative turn about x swings a limb forward; the body turns about its shoulders).
+ */
+export interface Rider {
+  /** Where the top of the driver's torso goes. */
+  seat: Vec3;
+  /** The body leaning forward about the shoulders (positive) or upright (0). */
+  lean: number;
+  /** Both legs about the hips: about -1.57 sits with the thighs level. */
+  legs: number;
+  /** Both arms about the shoulders, reaching for the wheel, bars or stick. */
+  arms: number;
+  /** The arms turned out to the sides (positive), to reach wide handlebars. */
+  armsOut?: number;
+  /** The legs swing this far each way with the wheels, pedalling. */
+  pedal?: number;
+}
 
 export interface VehicleModel {
   kind: VehicleKind;
   body: readonly Placement[];
   moving: readonly Moving[];
-  /** Where the driver's torso top goes, and how they sit. */
-  seat: Vec3;
-  pose: Pose;
+  rider: Rider;
 }
 
 const turnY = (degrees: number): Matrix3 => {
@@ -146,8 +160,7 @@ const CAR: VehicleModel = {
     ...pair(44, -18, -60, (s) => [piece('30027bc01', LIGHT_GREY, [0, 0, 0], side(s))], 0.45),
     ...pair(44, -18, 60, (s) => [piece('30027bc01', LIGHT_GREY, [0, 0, 0], side(s))]),
   ],
-  seat: [0, -81, 12],
-  pose: 'sit',
+  rider: { seat: [0, -81, 12], lean: 0, legs: -Math.PI / 2, arms: -1.1 },
 };
 
 /**
@@ -197,8 +210,7 @@ const RACECAR: VehicleModel = {
       piece('18977', BLACK, [0, 0, 0], side(s)),
     ]),
   ],
-  seat: [0, -84, 22],
-  pose: 'sit',
+  rider: { seat: [0, -84, 22], lean: 0, legs: -Math.PI / 2, arms: -1.1 },
 };
 
 /** The racing motorcycle's frame and fairing as LEGO sells it (18895c01), stood on its tyres. */
@@ -225,8 +237,8 @@ const MOTORCYCLE: VehicleModel = {
       steer: 0.35,
     },
   ],
-  seat: [0, -104, 12],
-  pose: 'ride',
+  // Crouched over the tank, hands on the grips and legs tucked into the fairing.
+  rider: { seat: [0, -98, -9], lean: 0.5, legs: -1.45, arms: -1.4 },
 };
 
 /** The minifigure bicycle (4719) with its two wheels, as in 4719c03. */
@@ -238,8 +250,8 @@ const BIKE: VehicleModel = {
     { pivot: [0, -21.2, -43], parts: BIKE_WHEEL, spin: 'wheel', axis: 'x', steer: 0.4 },
     { pivot: [0, -21.2, 43], parts: BIKE_WHEEL, spin: 'wheel', axis: 'x' },
   ],
-  seat: [0, -110, 18],
-  pose: 'pedal',
+  // On the saddle, leaning to the handlebar's grips, feet down to the cranks.
+  rider: { seat: [0, -88, -2], lean: 0.35, legs: -0.8, arms: -1, pedal: 0.3 },
 };
 
 /**
@@ -256,21 +268,27 @@ const HELICOPTER: VehicleModel = {
       piece('3062b', BLACK, [x, -32, 50]),
     ]),
     piece('3035', WHITE, [0, -40, 0], ACROSS),
-    piece('3823', TRANS_LIGHT_BLUE, [0, -88, -50]),
-    piece('4079', BLACK, [0, -48, -20]),
-    piece('3001', RED, [0, -64, 20]),
-    piece('3001', RED, [0, -64, 60]),
-    piece('3001', WHITE, [0, -88, 20]),
-    piece('3001', WHITE, [0, -88, 60]),
-    piece('3035', WHITE, [0, -96, 0], ACROSS),
-    piece('3062b', LIGHT_GREY, [0, -120, 0]),
+    // A low wall at the front under the windscreen, clear of the pilot's feet.
+    piece('3010', RED, [0, -64, -60]),
+    piece('3010', WHITE, [0, -88, -60]),
+    piece('3823', TRANS_LIGHT_BLUE, [0, -136, -50]),
+    piece('4079', BLACK, [0, -48, -10]),
+    // The cabin's back, four bricks tall so the pilot sits upright under the roof.
+    ...[20, 60].flatMap((z) => [
+      piece('3001', RED, [0, -64, z]),
+      piece('3001', WHITE, [0, -88, z]),
+      piece('3001', WHITE, [0, -112, z]),
+      piece('3001', WHITE, [0, -136, z]),
+    ]),
+    piece('3035', WHITE, [0, -144, 0], ACROSS),
+    piece('3062b', LIGHT_GREY, [0, -168, 0]),
     piece('3001', WHITE, [0, -88, 120], ACROSS),
     piece('3001', WHITE, [0, -88, 200], ACROSS),
     piece('2340', RED, [0, -160, 220]),
   ],
   moving: [
     {
-      pivot: [0, -120, 0],
+      pivot: [0, -168, 0],
       parts: [piece('30644', BLACK, [0, -24, 0]), piece('30644', BLACK, [0, -24, 0], ACROSS)],
       spin: 'engine',
       axis: 'y',
@@ -282,8 +300,7 @@ const HELICOPTER: VehicleModel = {
       axis: 'x',
     },
   ],
-  seat: [0, -98, -18],
-  pose: 'sit',
+  rider: { seat: [0, -98, -8], lean: 0, legs: -Math.PI / 2, arms: -0.9 },
 };
 
 /**
@@ -333,8 +350,8 @@ const AIRPLANE: VehicleModel = {
       axis: 'z',
     },
   ],
-  seat: [0, -89, -38],
-  pose: 'sit',
+  // Hands on the dashboard behind the windscreen.
+  rider: { seat: [0, -87, -32], lean: 0, legs: -Math.PI / 2, arms: -0.7 },
 };
 
 export const MODELS: Readonly<Record<VehicleKind, VehicleModel>> = Object.freeze({
