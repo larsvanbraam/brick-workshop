@@ -4,6 +4,10 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./animal-parts": {
+      "types": "./src/animal-parts.ts",
+      "import": "./src/animal-parts.ts"
+    },
     "./cinematic": {
       "types": "./src/cinematic.tsx",
       "import": "./src/cinematic.tsx"
@@ -52,6 +56,10 @@
       "types": "./src/scene-debug.tsx",
       "import": "./src/scene-debug.tsx"
     },
+    "./scene-frame": {
+      "types": "./src/scene-frame.ts",
+      "import": "./src/scene-frame.ts"
+    },
     "./splash": {
       "types": "./src/splash.ts",
       "import": "./src/splash.ts"
@@ -59,10 +67,6 @@
     "./splash-plugin": {
       "types": "./src/splash-plugin.ts",
       "import": "./src/splash-plugin.ts"
-    },
-    "./scene-frame": {
-      "types": "./src/scene-frame.ts",
-      "import": "./src/scene-frame.ts"
     }
   },
   "scripts": {

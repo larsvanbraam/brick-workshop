@@ -4,6 +4,10 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./animal": {
+      "types": "./src/animal.ts",
+      "import": "./src/animal.ts"
+    },
     "./wander": {
       "types": "./src/wander.ts",
       "import": "./src/wander.ts"

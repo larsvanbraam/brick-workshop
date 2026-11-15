@@ -2,11 +2,25 @@ import { stepWalker } from '@brick-workshop/walk/walk';
 import type { WalkWorld, Walker } from '@brick-workshop/walk/walk';
 
 /**
- * A minifigure that walks about on its own: it strolls a while, stands a while, turns back at
- * ground it should not cross (water, a cliff, the edge of what is loaded), hops up a step it
- * bumps into, keeps near its home, and stops to wave at the player when they come close. It
- * moves with the walker's own physics, so it climbs, falls and collides like the player does.
+ * A minifigure or an animal that walks about on its own: it strolls a while, stands a while,
+ * turns back at ground it should not cross (water, a cliff, the edge of what is loaded), hops up
+ * a step it bumps into and keeps near its home. When the player comes close it does what its
+ * temper says: a friendly one stops to wave, a shy one runs off, a calm one carries on. It moves
+ * with the walker's own physics, so it climbs, falls and collides like the player does.
  */
+
+/**
+ * What it does when the player comes close: `friendly` stops, faces them and waves, `shy` runs
+ * away, `calm` takes no notice beyond keeping out of their way.
+ */
+export type Temper = 'friendly' | 'shy' | 'calm';
+
+/** How a wanderer goes about: its temper and how fast it strolls. */
+export interface WanderTraits {
+  temper?: Temper;
+  /** Strolling pace, a fraction of the walker's walking speed. */
+  pace?: number;
+}
 
 export interface Wanderer {
   walker: Walker;
@@ -15,7 +29,9 @@ export interface Wanderer {
   /** Which way it faces (the walker's yaw: 0 looks toward -z), and which way it means to go. */
   yaw: number;
   heading: number;
-  mode: 'walk' | 'idle' | 'greet';
+  mode: 'walk' | 'idle' | 'greet' | 'flee';
+  temper: Temper;
+  pace: number;
   /** Seconds left in this stroll or rest. */
   timer: number;
   /** How far along its stride it is, and how far it moved last step: for the legs' swing. */
@@ -40,6 +56,11 @@ export interface WanderRules {
 
 /** Strolling pace, a fraction of the walker's walking speed. */
 export const WANDER_PACE = 0.4;
+/** How close the player comes before a shy one runs, and how far it gets before it calms down. */
+export const FLEE_RANGE = 7;
+const FLEE_LEAVE = 12;
+/** How much faster than its stroll a shy one runs. */
+const FLEE_SPEEDUP = 3;
 /** How close the player comes before it stops to wave, and how far before it walks on. */
 export const GREET_RANGE = 5;
 const GREET_LEAVE = 7;
@@ -53,10 +74,16 @@ const LOOK_AHEAD = 1.5;
 const PERSONAL_SPACE = 2;
 
 /** A wanderer standing at `walker`, at home there, facing a random way. */
-export function createWanderer(walker: Walker, next: () => number): Wanderer {
+export function createWanderer(
+  walker: Walker,
+  next: () => number,
+  traits: WanderTraits = {},
+): Wanderer {
   const yaw = next() * Math.PI * 2;
   return {
     walker,
+    temper: traits.temper ?? 'friendly',
+    pace: traits.pace ?? WANDER_PACE,
     home: { x: walker.x, z: walker.z },
     yaw,
     heading: yaw,
@@ -109,17 +136,29 @@ export function stepWanderer(
   others: readonly { x: number; z: number }[] = [],
 ) {
   const { walker } = npc;
-  const near =
-    player &&
-    Math.abs(player.y - walker.y) < 3 &&
-    Math.hypot(player.x - walker.x, player.z - walker.z) <
-      (npc.mode === 'greet' ? GREET_LEAVE : GREET_RANGE);
-  if (near && npc.mode !== 'greet') {
-    npc.mode = 'greet';
-    npc.greeting = 0;
-  } else if (!near && npc.mode === 'greet') {
-    npc.mode = 'idle';
-    npc.timer = 1 + npc.next() * 2;
+  // What the player's coming near sets off, if its temper reacts at all.
+  const reaction = npc.temper === 'friendly' ? 'greet' : npc.temper === 'shy' ? 'flee' : null;
+  if (reaction) {
+    const reacting = npc.mode === reaction;
+    const range =
+      reaction === 'greet'
+        ? reacting
+          ? GREET_LEAVE
+          : GREET_RANGE
+        : reacting
+          ? FLEE_LEAVE
+          : FLEE_RANGE;
+    const near =
+      player &&
+      Math.abs(player.y - walker.y) < 3 &&
+      Math.hypot(player.x - walker.x, player.z - walker.z) < range;
+    if (near && !reacting) {
+      npc.mode = reaction;
+      npc.greeting = 0;
+    } else if (!near && reacting) {
+      npc.mode = 'idle';
+      npc.timer = 1 + npc.next() * 2;
+    }
   }
 
   let forward = 0;
@@ -127,6 +166,16 @@ export function stepWanderer(
   if (npc.mode === 'greet') {
     npc.heading = yawToward(walker, player!);
     npc.greeting += delta;
+  } else if (npc.mode === 'flee') {
+    // Straight away from the player, swerving round what it may not cross.
+    const away = yawToward(player!, walker);
+    if (Math.abs(turn(npc.heading, away)) > 1.2) npc.heading = away;
+    const target = ahead(walker, npc.heading, LOOK_AHEAD);
+    if (!rules.canWalk(walker, target)) npc.heading += (npc.next() < 0.5 ? -1 : 1) * 0.9;
+    else if (Math.abs(turn(npc.yaw, npc.heading)) < 0.9) {
+      forward = Math.min(1, npc.pace * FLEE_SPEEDUP);
+      jump = npc.stuck > 0.35;
+    }
   } else {
     npc.timer -= delta;
     if (npc.timer <= 0) {
@@ -160,7 +209,7 @@ export function stepWanderer(
         npc.stuck = 0;
       } else if (Math.abs(turn(npc.yaw, npc.heading)) < 0.6) {
         // Sets off once it roughly faces the way it means to go.
-        forward = WANDER_PACE;
+        forward = npc.pace;
         jump = npc.stuck > 0.35;
       }
     }
@@ -168,7 +217,7 @@ export function stepWanderer(
 
   // Turns smoothly toward its heading.
   const difference = turn(npc.yaw, npc.heading);
-  const step = TURN_RATE * delta;
+  const step = TURN_RATE * (npc.mode === 'flee' ? 2 : 1) * delta;
   npc.yaw += Math.abs(difference) < step ? difference : Math.sign(difference) * step;
   // Looks at the player while greeting, as far as its neck turns.
   const lookTarget =

@@ -11,7 +11,7 @@ import type { Biome, Terrain } from './world/terrain.ts';
  */
 
 /** How often a chunk has someone living in it. */
-const CHANCE = 0.4;
+const CHANCE = 0.2;
 /** Spots tried before a chunk gives up on its person. */
 const ATTEMPTS = 24;
 /** How far a person strays from home, in studs. */
@@ -107,7 +107,7 @@ function homely(terrain: Terrain, x: number, z: number) {
 
 /**
  * Whoever lives in the chunk, on open dry ground clear of tree trunks, with a little room round
- * them to walk: none or one person out in the country, two or three in a town.
+ * them to walk: now and then one person out in the country, one or two in a town.
  */
 export function residentsOf(terrain: Terrain, cx: number, cz: number): Resident[] {
   const { seed } = terrain;
@@ -115,7 +115,7 @@ export function residentsOf(terrain: Terrain, cx: number, cz: number): Resident[
   const z0 = cz * CHUNK;
   const middle = terrain.column(x0 + CHUNK / 2, z0 + CHUNK / 2);
   const roll = hash2(seed + 701, cx, cz);
-  const count = TOWN.has(middle.biome) ? 2 + Math.floor(roll * 2) : roll < CHANCE ? 1 : 0;
+  const count = TOWN.has(middle.biome) ? 1 + Math.floor(roll * 2) : roll < CHANCE ? 1 : 0;
   if (!count) return [];
   const next = random(Math.floor(hash2(seed + 702, cx, cz) * 2 ** 31));
   const found: Resident[] = [];

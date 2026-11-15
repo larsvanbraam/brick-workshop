@@ -5,6 +5,7 @@ import { LDrawConditionalLineMaterial } from 'three/addons/materials/LDrawCondit
 import { PARTS } from '@brick-workshop/engine';
 import type { LibraryCatalog } from './ldraw-library';
 import { COLOR_CONFIG, cloneLDrawModel } from './ldraw-materials';
+import { ANIMAL_PARTS } from './animal-parts';
 import { MINIFIG_PARTS } from './minifig-parts';
 
 const modelLoaders = new WeakMap<Group, LDrawLoader>();
@@ -118,7 +119,10 @@ export function loadLDrawModels(
   const ids = [...new Set(partIds)];
   const missing = ids.filter((id) => !pendingPartModels.has(id));
   const supported = missing.filter(
-    (id) => MINIFIG_PARTS.includes(id) || PARTS.some((part) => part.id === id),
+    (id) =>
+      MINIFIG_PARTS.includes(id) ||
+      ANIMAL_PARTS.includes(id) ||
+      PARTS.some((part) => part.id === id),
   );
   if (supported.length) {
     const batch = loadSupportedModels(supported);

@@ -1,4 +1,4 @@
-import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { BoxGeometry, EdgesGeometry, Raycaster, Vector2 } from 'three';
 import type { Color, Group, Object3D } from 'three';
@@ -13,6 +13,9 @@ import { WalkMode } from '@brick-workshop/walk/walk-view';
 import { Wanderers } from '@brick-workshop/npc/wanderers';
 import type { WandererSpec } from '@brick-workshop/npc/wanderers';
 import { NPC_RADIUS, residentsOf, wanderRules } from './npcs.ts';
+import { animalRules, farmAnimals, wildlifeOf } from './animals.ts';
+import type { Animal } from './animals.ts';
+import { FARM } from './world/island/map.ts';
 import type { WalkWorld } from '@brick-workshop/walk/walk';
 import type { Chunks } from './chunks.ts';
 import { chunkAt } from './streaming.ts';
@@ -452,7 +455,10 @@ function ChunkWatcher({
 /** A brick layer of ground, in scene units: three plates. */
 const LAYER = 3 * PLATE_HEIGHT;
 
-/** The people living in the loaded chunks round the walker, strolling about their homes. */
+/**
+ * The people and animals living in the loaded chunks round the walker, strolling about their
+ * homes, and on Brick Island the farm's animals in its pastures.
+ */
 function People({
   chunks,
   terrain,
@@ -470,31 +476,69 @@ function People({
 }) {
   const half = buildArea / 2;
   const [cx, cz] = centre;
+  // Which chunks are loaded, for the rules to check: kept up to date in place, so everyone's
+  // rules see the latest without being remade.
+  const [loaded] = useState(() => new Set<string>());
+  useEffect(() => {
+    loaded.clear();
+    for (const key of chunks.keys()) loaded.add(key);
+  }, [loaded, chunks]);
   // Only which chunks are in counts, not their pieces: an edit keeps everyone where they are.
+  // A chunk's people move in once the chunks round it are in too: a house or barn reaching over
+  // from a neighbour would otherwise land on top of whoever stands there.
+  const settled = (x: number, z: number) => {
+    for (let dz = -1; dz <= 1; dz++)
+      for (let dx = -1; dx <= 1; dx++) if (!chunks.has(chunkKey(x + dx, z + dz))) return false;
+    return true;
+  };
   const near: string[] = [];
   for (let dz = -NPC_RADIUS; dz <= NPC_RADIUS; dz++)
     for (let dx = -NPC_RADIUS; dx <= NPC_RADIUS; dx++)
-      if (chunks.has(chunkKey(cx + dx, cz + dz))) near.push(`${cx + dx},${cz + dz}`);
+      if (settled(cx + dx, cz + dz)) near.push(chunkKey(cx + dx, cz + dz));
   const nearKey = near.join(';');
-  const specs = useMemo<WandererSpec[]>(
-    () =>
-      (nearKey ? nearKey.split(';') : []).flatMap((key) => {
-        const [x, z] = key.split(',').map(Number);
-        return residentsOf(terrain, x, z).map((resident) => ({
-          id: resident.id,
-          x: resident.x - half,
-          z: half - resident.z,
-          // From inside the top brick, so it climbs onto the ground, not out of a cave below.
-          y: resident.ground * LAYER - LAYER / 2,
-          outfit: resident.outfit,
-          seed: resident.seed,
-        }));
-      }),
-    [nearKey, terrain, half],
+  const isLoaded = useCallback((x: number, z: number) => loaded.has(chunkKey(x, z)), [loaded]);
+  const farm = useMemo(
+    () => (game().world === 'island' ? farmAnimals(terrain, FARM) : []),
+    [terrain],
   );
+  const specs = useMemo<WandererSpec[]>(() => {
+    const keys = new Set(nearKey ? nearKey.split(';') : []);
+    /** Scene x and z, and the height to look for ground from: inside the top brick, so it
+     * climbs onto the ground, not out of a cave below. */
+    const at = (spot: { x: number; z: number; ground: number }) => ({
+      x: spot.x - half,
+      z: half - spot.z,
+      y: spot.ground * LAYER - LAYER / 2,
+    });
+    const animal = (beast: Animal): WandererSpec => ({
+      id: beast.id,
+      ...at(beast),
+      look: { kind: 'animal', parts: beast.species.parts, gait: beast.species.gait },
+      temper: beast.species.temper,
+      pace: beast.species.pace,
+      seed: beast.seed,
+      rules: animalRules(terrain, buildArea, isLoaded, beast.pasture),
+    });
+    const specs = [...keys].flatMap((key) => {
+      const [x, z] = key.split(',').map(Number);
+      return [
+        ...residentsOf(terrain, x, z).map((resident): WandererSpec => ({
+          id: resident.id,
+          ...at(resident),
+          look: { kind: 'minifig', outfit: resident.outfit },
+          seed: resident.seed,
+        })),
+        ...wildlifeOf(terrain, x, z).map(animal),
+      ];
+    });
+    for (const beast of farm)
+      if (keys.has(chunkKey(Math.floor(beast.x / CHUNK), Math.floor(beast.z / CHUNK))))
+        specs.push(animal(beast));
+    return specs;
+  }, [nearKey, terrain, half, farm, buildArea, isLoaded]);
   const rules = useMemo(
-    () => wanderRules(terrain, buildArea, (x, z) => chunks.has(chunkKey(x, z))),
-    [terrain, buildArea, chunks],
+    () => wanderRules(terrain, buildArea, isLoaded),
+    [terrain, buildArea, isLoaded],
   );
   const player = () => probe.current?.walker ?? null;
   return <Wanderers world={world} specs={specs} rules={rules} player={player} />;

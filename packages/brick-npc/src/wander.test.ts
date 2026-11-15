@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vite-plus/test';
 import { WalkWorld } from '@brick-workshop/walk/walk';
 import type { Brick } from '@brick-workshop/engine';
-import { GREET_RANGE, createWanderer, stepWanderer, yawToward } from './wander';
+import { FLEE_RANGE, GREET_RANGE, createWanderer, stepWanderer, yawToward } from './wander';
 import type { WanderRules } from './wander';
 
 const SIZE = 64;
@@ -127,5 +127,22 @@ describe('wanderers', () => {
       for (const other of others)
         expect(Math.hypot(other.x - npc.walker.x, other.z - npc.walker.z)).toBeGreaterThan(1);
     }
+  });
+
+  it('run from the player when shy, and take no notice when calm', () => {
+    const world = new WalkWorld([], SIZE, Infinity);
+    const player = { x: FLEE_RANGE - 2, y: 0, z: 0 };
+    const walker = () => ({ x: 0, y: 0, z: 0, velocityY: 0, grounded: true });
+    const shy = createWanderer(walker(), seeded(3), { temper: 'shy' });
+    const calm = createWanderer(walker(), seeded(3), { temper: 'calm' });
+    for (let t = 0; t < 0.8; t += 1 / 30) {
+      stepWanderer(world, shy, { leash: 30, canWalk: () => true }, player, 1 / 30);
+      stepWanderer(world, calm, open, player, 1 / 30);
+    }
+    expect(shy.mode).toBe('flee');
+    // Further from the player than it started.
+    expect(Math.hypot(player.x - shy.walker.x, shy.walker.z)).toBeGreaterThan(FLEE_RANGE);
+    expect(calm.mode).not.toBe('greet');
+    expect(calm.mode).not.toBe('flee');
   });
 });
