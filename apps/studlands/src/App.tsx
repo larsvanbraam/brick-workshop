@@ -4,6 +4,7 @@ import type { Assembly, Brick } from '@brick-workshop/engine';
 import { Loader } from '@brick-workshop/render/loader';
 import { dismissSplash, setSplashMessage } from '@brick-workshop/render/splash';
 import { useLDrawLibrary } from '@brick-workshop/render/ldraw';
+import { MINIFIG_BODY } from '@brick-workshop/render/minifig-parts';
 import type { WalkCamera, WalkProbe } from '@brick-workshop/walk/walk-view';
 import { WalkWorld } from '@brick-workshop/walk/walk';
 import { VEHICLES } from '@brick-workshop/vehicles/vehicle';
@@ -662,7 +663,8 @@ function Game({
   );
 
   const required = useMemo(() => {
-    const ids = new Set(partsSeen);
+    // The walker's own body too, so the start doesn't show a stand-in figure.
+    const ids = new Set([...MINIFIG_BODY, ...partsSeen]);
     for (const slot of slots) ids.add(slot.partId);
     // Pieces the player put down that no chunk had yet.
     for (const edit of edits) if (edit.op === 'add') ids.add(edit.brick.partId);
@@ -1026,7 +1028,13 @@ function Game({
   // loader card below it takes over for anything that loads later.
   const worldName = game().seed === undefined ? `world ${seed}` : game().title;
   const startDone = startChunks.filter((key) => chunks.has(key)).length;
-  const booting = !ready || library.status === 'loading';
+  // The first parts request goes out before any chunk has arrived, so booting also waits for the
+  // parts the start chunks asked for since. Latched like `ready`: parts of chunks streamed in later
+  // load behind the loader card rather than the splash.
+  const [partsReady, setPartsReady] = useState(false);
+  if (!partsReady && ready && library.status !== 'loading' && !library.pending.length)
+    setPartsReady(true);
+  const booting = !ready || !partsReady;
   useEffect(() => {
     if (!booting) dismissSplash();
     else if (!ready)
@@ -1039,9 +1047,7 @@ function Game({
   const loading = (
     <Loader
       key="loader"
-      label={
-        !ready ? `Shaping ${worldName}…` : library.status === 'loading' ? 'Loading parts…' : null
-      }
+      label={!ready ? `Shaping ${worldName}…` : !partsReady ? 'Loading parts…' : null}
       progress={
         ready
           ? null
