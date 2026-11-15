@@ -143,7 +143,7 @@ function nearestOn(segment: Segment, x: number, z: number): Nearest {
 
 /** Road segments by cell of the map, so a column only looks at the roads near it. */
 const CELL = 16;
-const REACH = 6 + VERGE + PAVEMENT;
+const REACH = Math.ceil(Math.max(...ROADS.map((road) => road.width)) / 2) + VERGE + PAVEMENT;
 const roadCells = new Map<string, Segment[]>();
 for (const road of ROADS)
   for (const segment of segmentsOf(road.points, road, road.loop)) {

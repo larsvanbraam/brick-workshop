@@ -21,6 +21,12 @@ export interface Road {
   loop?: boolean;
 }
 
+/**
+ * Studs across a road or street: two lanes, each wide enough for the car (5.4 studs) with room
+ * to pass, and a middle stud for the centre line.
+ */
+export const ROAD_WIDTH = 13;
+
 /** The middle the coastline is drawn round. */
 export const CENTRE = { x: 320, z: 260 } as const;
 
@@ -133,7 +139,7 @@ export const FIELDS: readonly { x0: number; z0: number; x1: number; z1: number; 
   ];
 
 /** The speedway: an oval track round a grassy infield, for races later. */
-export const SPEEDWAY = { x: 508, z: 232, half: 42, radius: 36, layer: 5, width: 9 } as const;
+export const SPEEDWAY = { x: 508, z: 232, half: 42, radius: 36, layer: 5, width: 17 } as const;
 export const SPEEDWAY_FLAT: Flat = { x0: 412, z0: 180, x1: 600, z1: 284, layer: 5, blend: 12 };
 
 /** The lookout on Summit Peak, where the mountain road ends. */
@@ -167,7 +173,7 @@ export const ROADS: readonly Road[] = [
   // Harbour Town.
   {
     name: 'Main Street',
-    width: 7,
+    width: ROAD_WIDTH,
     street: true,
     points: [
       [226, 395, 4],
@@ -176,7 +182,7 @@ export const ROADS: readonly Road[] = [
   },
   {
     name: 'Harbour Street',
-    width: 7,
+    width: ROAD_WIDTH,
     street: true,
     points: [
       [240, 445, 4],
@@ -185,7 +191,7 @@ export const ROADS: readonly Road[] = [
   },
   {
     name: 'North Street',
-    width: 7,
+    width: ROAD_WIDTH,
     street: true,
     points: [
       [255, 340, 4],
@@ -194,7 +200,7 @@ export const ROADS: readonly Road[] = [
   },
   {
     name: 'West Street',
-    width: 7,
+    width: ROAD_WIDTH,
     street: true,
     points: [
       [255, 340, 4],
@@ -203,7 +209,7 @@ export const ROADS: readonly Road[] = [
   },
   {
     name: 'Church Street',
-    width: 7,
+    width: ROAD_WIDTH,
     street: true,
     points: [
       [320, 322, 4],
@@ -212,7 +218,7 @@ export const ROADS: readonly Road[] = [
   },
   {
     name: 'East Street',
-    width: 7,
+    width: ROAD_WIDTH,
     street: true,
     points: [
       [385, 340, 4],
@@ -223,7 +229,7 @@ export const ROADS: readonly Road[] = [
   // Out of town to the north, to the crossroads in the middle of the island.
   {
     name: 'Middle Road',
-    width: 7,
+    width: ROAD_WIDTH,
     points: [
       [320, 322, 4],
       [322, 290, 5],
@@ -233,7 +239,7 @@ export const ROADS: readonly Road[] = [
   // The west loop: past the farm and the lake, through the pinewood to the mountain's foot.
   {
     name: 'Lake Road',
-    width: 7,
+    width: ROAD_WIDTH,
     points: [
       [326, 252, 6],
       [276, 250, 6],
@@ -249,7 +255,7 @@ export const ROADS: readonly Road[] = [
   },
   {
     name: 'Mountain Foot Road',
-    width: 7,
+    width: ROAD_WIDTH,
     points: [
       [286, 160, 8],
       [306, 206, 7],
@@ -259,7 +265,7 @@ export const ROADS: readonly Road[] = [
   // The farm lane, and the coast road from the farm down to Sunset Bay and into town.
   {
     name: 'Farm Lane',
-    width: 7,
+    width: ROAD_WIDTH,
     points: [
       [150, 266, 5],
       [150, 300, 5],
@@ -267,7 +273,7 @@ export const ROADS: readonly Road[] = [
   },
   {
     name: 'Bay Road',
-    width: 7,
+    width: ROAD_WIDTH,
     points: [
       [102, 246, 5],
       [88, 320, 5],
@@ -279,7 +285,7 @@ export const ROADS: readonly Road[] = [
   // Up Summit Peak in switchbacks to the lookout.
   {
     name: 'Summit Road',
-    width: 7,
+    width: ROAD_WIDTH,
     points: [
       [286, 160, 8],
       [356, 146, 10],
@@ -293,7 +299,7 @@ export const ROADS: readonly Road[] = [
   // East: to the speedway and on along the mountain's flank back to its foot.
   {
     name: 'Speedway Road',
-    width: 7,
+    width: ROAD_WIDTH,
     points: [
       [326, 252, 6],
       [380, 250, 6],
@@ -302,7 +308,7 @@ export const ROADS: readonly Road[] = [
   },
   {
     name: 'Ridge Road',
-    width: 7,
+    width: ROAD_WIDTH,
     points: [
       [508, 196, 5],
       [494, 160, 6],
@@ -314,7 +320,7 @@ export const ROADS: readonly Road[] = [
   // From town out east, over the river, to the speedway and to Lighthouse Point.
   {
     name: 'Coast Road',
-    width: 7,
+    width: ROAD_WIDTH,
     points: [
       [420, 395, 4],
       [476, 392, 4],
@@ -324,7 +330,7 @@ export const ROADS: readonly Road[] = [
   },
   {
     name: 'Lighthouse Road',
-    width: 7,
+    width: ROAD_WIDTH,
     points: [
       [476, 392, 4],
       [504, 418, 5],
