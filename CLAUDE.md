@@ -18,6 +18,14 @@ pnpm fmt       # format the workspace
 
 Commit straight to `main`; this repo has no feature branches. Commit only when asked.
 
+When a feature built in a worktree is done, land it on `main` and sync the main checkout:
+
+1. Commit in the worktree, then rebase on the latest `main` (`git fetch origin && git rebase
+   origin/main`).
+2. Merge it into `main` and push: `git push origin HEAD:main`.
+3. Pull `main` in the main checkout so it has the work: `git -C <repo root> pull --ff-only
+   origin main`.
+
 ## Example builds
 
 Most work here is making example builds: TypeScript files in
