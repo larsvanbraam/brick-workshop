@@ -20,7 +20,7 @@ import { aimAt, aimKey } from './build.ts';
 import { GameStage } from './GameStage.tsx';
 import { skyAt } from './sky.ts';
 import type { DayClock } from './sky.ts';
-import type { Volcano } from './world/map.ts';
+import type { Volcano } from './world/terrain.ts';
 import type { Aim } from './build.ts';
 
 /** How far the crosshair reaches from the eye, in studs; further from the over-shoulder camera. */

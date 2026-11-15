@@ -24,7 +24,7 @@ import { random } from './world/noise.ts';
 import { PLATE_HEIGHT } from '@brick-workshop/engine';
 import { skyAt } from './sky.ts';
 import type { DayClock } from './sky.ts';
-import type { Volcano } from './world/map.ts';
+import type { Volcano } from './world/terrain.ts';
 
 /** The sky dome's radius: inside the camera's far plane, round wherever the camera is. */
 const DOME = 480;

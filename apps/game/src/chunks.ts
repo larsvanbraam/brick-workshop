@@ -6,9 +6,16 @@ export const CHUNK = 32;
 /** A chunk's key, from its place in the grid of chunks. */
 export const chunkKey = (cx: number, cz: number) => `${cx},${cz}`;
 
-/** The chunk a piece belongs to: the one holding its corner nearest the origin. */
-export const chunkOf = (brick: Pick<Brick, 'x' | 'z'>) =>
-  chunkKey(Math.floor(brick.x / CHUNK), Math.floor(brick.z / CHUNK));
+/**
+ * The chunk a piece belongs to. A generated piece names the chunk that grew it after an `@` in
+ * its ID, so a tree leaning over an edge stays with its trunk; anything else, such as a piece a
+ * player put down, belongs to the chunk holding its corner nearest the origin.
+ */
+export function chunkOf(brick: Pick<Brick, 'x' | 'z'> & { id?: string }) {
+  const at = brick.id?.lastIndexOf('@') ?? -1;
+  if (at !== -1) return brick.id!.slice(at + 1);
+  return chunkKey(Math.floor(brick.x / CHUNK), Math.floor(brick.z / CHUNK));
+}
 
 /** The pieces of a world, by chunk. Chunks with no pieces are left out. */
 export type Chunks = ReadonlyMap<string, readonly Brick[]>;

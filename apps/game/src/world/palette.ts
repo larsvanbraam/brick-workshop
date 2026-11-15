@@ -1,6 +1,6 @@
 import { fbm } from './noise.ts';
-import { WATER_LAYERS } from './map.ts';
-import type { WorldMap } from './map.ts';
+import { WATER_LAYERS } from './terrain.ts';
+import type { Terrain } from './terrain.ts';
 
 /** The colours of the ground, by the build standard's materials. */
 export const COLOR = {
@@ -74,14 +74,14 @@ function strata(seed: number, x: number, z: number, layer: number) {
  * The colour of a column's cell `depth` layers below its top (0 is the top), `layer` brick
  * layers up from the board.
  */
-export function cellColor(map: WorldMap, x: number, z: number, depth: number, layer: number) {
-  const index = z * map.size + x;
-  const biome = map.biomes[index];
-  const { seed } = map;
-  const dry = map.warmth[index] > 0.6 && map.moisture[index] < 0.45;
+export function cellColor(terrain: Terrain, x: number, z: number, depth: number, layer: number) {
+  const column = terrain.column(x, z);
+  const { biome } = column;
+  const { seed } = terrain;
+  const dry = column.warmth > 0.6 && column.moisture < 0.45;
   if (biome === 'sea' || biome === 'river') {
     if (depth > 0) return COLOR.darkRock;
-    return map.water[index] - map.heights[index] <= 1
+    return column.water - column.height <= 1
       ? shade(seed + 1, x, z, COLOR.sand, COLOR.darkSand, COLOR.sand)
       : COLOR.seabed;
   }
@@ -135,8 +135,8 @@ export function cellColor(map: WorldMap, x: number, z: number, depth: number, la
 }
 
 /** The water's colour over a column `depth` layers deep: light at the shore, dark far out. */
-export function waterColor(map: WorldMap, x: number, z: number, depth: number) {
-  const ripple = fbm(map.seed + 8, x, z, 9, 2) - 0.5;
+export function waterColor(seed: number, x: number, z: number, depth: number) {
+  const ripple = fbm(seed + 8, x, z, 9, 2) - 0.5;
   const shaded = depth + ripple * 1.2;
   return shaded < 1.3 ? COLOR.shallows : shaded < 2.4 ? COLOR.sea : COLOR.deep;
 }

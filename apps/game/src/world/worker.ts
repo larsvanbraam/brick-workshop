@@ -1,30 +1,30 @@
-import { generateWorld } from './generate.ts';
-import type { World } from './generate.ts';
-import type { Volcano } from './map.ts';
+import { generateChunk } from './generate.ts';
+import type { ChunkResult } from './generate.ts';
+import { Terrain } from './terrain.ts';
 
-export interface WorldRequest {
+/** Which chunk of which world to build. */
+export interface ChunkRequest {
   seed: number;
+  cx: number;
+  cz: number;
 }
 
-/** A world as it crosses from the worker: plain data, the terrain IDs as a list. */
-export type WorldMessage = Omit<World, 'terrain' | 'map'> & {
-  terrain: string[];
-  /** The volcano's crater, if the island has one, for the glow over it. */
-  volcano: Volcano | null;
-  /** How long generating took, in ms, for the debug window. */
-  generationMs: number;
+export type ChunkMessage = ChunkResult & {
+  /** How long building it took, in ms, for the debug window. */
+  ms: number;
 };
 
-self.onmessage = (event: MessageEvent<WorldRequest>) => {
+/**
+ * Builds chunks off the main thread, one per message. The terrain is kept between messages for
+ * the same seed, so columns and tree spots worked out for one chunk serve its neighbours.
+ */
+let terrain: Terrain | null = null;
+
+self.onmessage = (event: MessageEvent<ChunkRequest>) => {
+  const { seed, cx, cz } = event.data;
   const start = performance.now();
-  const world = generateWorld(event.data.seed);
-  const message: WorldMessage = {
-    seed: world.seed,
-    assembly: world.assembly,
-    spawn: world.spawn,
-    terrain: [...world.terrain],
-    volcano: world.map.volcano,
-    generationMs: performance.now() - start,
-  };
+  if (terrain?.seed !== seed) terrain = new Terrain(seed);
+  const chunk = generateChunk(seed, cx, cz, terrain);
+  const message: ChunkMessage = { ...chunk, ms: performance.now() - start };
   self.postMessage(message);
 };

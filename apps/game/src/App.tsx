@@ -31,10 +31,11 @@ import {
   saveSeed,
   saveTime,
 } from './save.ts';
-import { WORLD_SIZE } from './world/generate.ts';
+import { WORLD_SIZE, boardChunks, findSpawn } from './world/generate.ts';
 import { isPlant } from './world/plants.ts';
-import type { WorldMessage } from './world/worker.ts';
-import type { Volcano } from './world/map.ts';
+import { START, Terrain, volcanoAt } from './world/terrain.ts';
+import type { Volcano } from './world/terrain.ts';
+import type { ChunkMessage, ChunkRequest } from './world/worker.ts';
 
 interface Loaded {
   seed: number;
@@ -49,18 +50,55 @@ function newSeed() {
   return Math.floor(Math.random() * 1_000_000);
 }
 
-/** Generates a world off the main thread, so the page keeps drawing while it does. */
+/** Background threads that build chunks: a few, so chunks are built side by side. */
+const WORKERS = Math.max(1, Math.min(4, (navigator.hardwareConcurrency || 4) - 1));
+
+/**
+ * Builds the board's chunks off the main thread, a few side by side, so the page keeps drawing
+ * while they come in. The start and the volcano follow from the terrain alone.
+ */
 function useWorld(seed: number): Loaded | null {
   const [world, setWorld] = useState<Loaded | null>(null);
   useEffect(() => {
-    const worker = new Worker(new URL('./world/worker.ts', import.meta.url), { type: 'module' });
-    worker.onmessage = (event: MessageEvent<WorldMessage>) => {
-      const { assembly, spawn, terrain, generationMs, volcano } = event.data;
-      setWorld({ seed, assembly, spawn, terrain: new Set(terrain), generationMs, volcano });
-      worker.terminate();
+    const started = performance.now();
+    const queue = boardChunks();
+    const results: ChunkMessage[] = [];
+    const workers = Array.from(
+      { length: WORKERS },
+      () => new Worker(new URL('./world/worker.ts', import.meta.url), { type: 'module' }),
+    );
+    const finish = () => {
+      for (const worker of workers) worker.terminate();
+      const terrain = new Terrain(seed);
+      setWorld({
+        seed,
+        assembly: {
+          name: `World ${seed}`,
+          bricks: results.flatMap((chunk) => chunk.bricks),
+          buildArea: WORLD_SIZE,
+        },
+        spawn: findSpawn(terrain),
+        terrain: new Set(results.flatMap((chunk) => chunk.terrain)),
+        generationMs: performance.now() - started,
+        volcano: volcanoAt(seed, START.x, START.z),
+      });
     };
-    worker.postMessage({ seed });
-    return () => worker.terminate();
+    const total = queue.length;
+    for (const worker of workers) {
+      const ask = () => {
+        const next = queue.shift();
+        if (next) worker.postMessage({ seed, cx: next[0], cz: next[1] } satisfies ChunkRequest);
+      };
+      worker.onmessage = (event: MessageEvent<ChunkMessage>) => {
+        results.push(event.data);
+        if (results.length === total) finish();
+        else ask();
+      };
+      ask();
+    }
+    return () => {
+      for (const worker of workers) worker.terminate();
+    };
   }, [seed]);
   return world;
 }
