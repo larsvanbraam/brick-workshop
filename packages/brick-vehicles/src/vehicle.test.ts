@@ -93,25 +93,38 @@ describe('vehicles', () => {
     expect(top('bike')).toBeLessThanOrEqual(VEHICLES.bike.maxSpeed);
   });
 
-  it('climbs a brick and stops at a wall two bricks high', () => {
-    // Forward at yaw 0 is scene -z, which is grid +z: a step one brick high across the board at
-    // grid z 40 to 50, and a wall two bricks high at grid z 70.
+  it('climbs two bricks and stops at a wall three bricks high', () => {
+    // Forward at yaw 0 is scene -z, which is grid +z: a step two bricks high across the board at
+    // grid z 40 to 50, and a wall three bricks high at grid z 70.
     const step: Brick[] = [];
     for (let x = 0; x < AREA; x += 4)
-      for (let z = 40; z < 50; z += 2) step.push(brick('3001', x, 1, z));
+      for (let z = 40; z < 50; z += 2) for (const y of [1, 4]) step.push(brick('3001', x, y, z));
     const wall: Brick[] = [];
     for (let x = 0; x < AREA; x += 4)
-      for (let y = 1; y < 7; y += 3) wall.push(brick('3010', x, y, 70, 90));
+      for (let y = 1; y < 10; y += 3) wall.push(brick('3010', x, y, 70, 90));
     const ground = world([...step, ...wall]);
     const vehicle = car('car', ground, 0, sceneZ(30));
     drive(ground, vehicle, { throttle: 1 }, 2.4);
     expect(vehicle.z).toBeLessThan(sceneZ(42));
-    expect(vehicle.y).toBeCloseTo(1.6);
+    expect(vehicle.y).toBeCloseTo(0.4 + 2 * 1.2);
     drive(ground, vehicle, { throttle: 1 }, 5);
     // Off the step and stopped short of the wall, which starts at scene z sceneZ(71).
     expect(vehicle.y).toBeCloseTo(0.4);
     expect(vehicle.z - VEHICLES.car.length / 2).toBeGreaterThan(sceneZ(71) - 0.6);
     expect(Math.abs(vehicle.speed)).toBeLessThan(3);
+  });
+
+  it('climbs a brick it meets at an angle or between its wheels', () => {
+    // A platform a brick high from grid z 72 on, met by the body's corner before any wheel.
+    const platform: Brick[] = [];
+    for (let x = 0; x < AREA; x += 4)
+      for (let z = 72; z < 120; z += 2) platform.push(brick('3001', x, 1, z));
+    const ground = world(platform);
+    for (const kind of ['bike', 'motorcycle', 'car', 'racecar'] as const)
+      for (const yaw of [0, 0.6, 0.9]) {
+        const vehicle = drive(ground, car(kind, ground, 0, 0, yaw), { throttle: 1 }, 4);
+        expect(vehicle.y, `${kind} at ${yaw}`).toBeCloseTo(0.4 + 1.2);
+      }
   });
 
   it('drops off a ledge and lands', () => {
@@ -156,6 +169,55 @@ describe('vehicles', () => {
     plane.driven = false;
     drive(floor, plane, {}, 30);
     expect(plane.grounded).toBe(true);
+  });
+
+  it('drives out of a post it ended up stuck in, but not back into it', () => {
+    // A post six bricks high right through the middle of the car, as if built through it.
+    const post: Brick[] = [];
+    for (let y = 1; y < 19; y += 3) post.push(brick('3005', 64, y, 64));
+    const ground = world(post);
+    const vehicle = parkVehicle('v', 'car', 0.5, -0.5, 0, 0.4);
+    vehicle.settled = true;
+    vehicle.driven = true;
+    drive(ground, vehicle, { throttle: 1 }, 2);
+    expect(vehicle.z).toBeLessThan(-10);
+    expect(vehicle.y).toBeCloseTo(0.4);
+    // Free of it now, reversing stops at the post instead of driving through it again.
+    drive(ground, vehicle, { throttle: -1 }, 6);
+    expect(vehicle.z + VEHICLES.car.length / 2).toBeLessThan(-0.5);
+  });
+
+  it('comes down on top of a post, and lifts out of one built through it', () => {
+    const post: Brick[] = [];
+    for (let y = 1; y < 7; y += 3) post.push(brick('3005', 64, y, 64));
+    const ground = world(post);
+    const landing = car('helicopter', ground, 0.5, -0.5);
+    landing.y = 10;
+    landing.grounded = false;
+    landing.engine = 1;
+    drive(ground, landing, { rise: -1 }, 3);
+    expect(landing.y).toBeCloseTo(0.4 + 2 * 1.2);
+    const heli = parkVehicle('v', 'helicopter', 0.5, -0.5, 0, 0.4);
+    heli.settled = true;
+    heli.driven = true;
+    drive(ground, heli, { rise: 1 }, 3);
+    expect(heli.y).toBeGreaterThan(8);
+    drive(ground, heli, { throttle: 1 }, 2);
+    expect(heli.z).toBeLessThan(-10);
+  });
+
+  it('backs an airplane away from a wall it ran into', () => {
+    const wall: Brick[] = [];
+    for (let x = 0; x < AREA; x += 4)
+      for (let y = 1; y < 10; y += 3) wall.push(brick('3010', x, y, 80, 90));
+    const ground = world(wall);
+    const plane = car('airplane', ground, 0, sceneZ(64));
+    drive(ground, plane, { throttle: 1 }, 4);
+    expect(Math.abs(plane.speed)).toBeLessThan(1);
+    const against = { z: plane.z, yaw: plane.yaw };
+    drive(ground, plane, { throttle: -1, steer: 1 }, 3);
+    expect(plane.z).toBeGreaterThan(against.z + 2);
+    expect(plane.yaw).not.toBe(against.yaw);
   });
 
   it('fills boxes the walker stands on while parked, and finds room beside it to get out', () => {

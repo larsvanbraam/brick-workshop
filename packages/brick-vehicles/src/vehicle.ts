@@ -28,7 +28,7 @@ export interface VehicleSpec {
   wheelbase: number;
   /** 0 for a single track (a bike or a motorcycle), which leans into turns instead of rolling. */
   track: number;
-  /** The highest ledge it drives up without stopping: a brick for wheels. */
+  /** The highest ledge it drives up without stopping: two bricks for wheels. */
   step: number;
   /** Studs a second. */
   maxSpeed: number;
@@ -53,6 +53,8 @@ export interface VehicleSpec {
 }
 
 const BRICK = 1.2;
+/** What wheels drive up without stopping: two bricks, so a kerb or a low wall is no barrier. */
+const CLIMB = 2 * BRICK + 0.05;
 
 export const VEHICLES: Readonly<Record<VehicleKind, VehicleSpec>> = Object.freeze({
   bike: {
@@ -65,7 +67,7 @@ export const VEHICLES: Readonly<Record<VehicleKind, VehicleSpec>> = Object.freez
     deck: 2.2,
     wheelbase: 4.3,
     track: 0,
-    step: BRICK + 0.05,
+    step: CLIMB,
     maxSpeed: 10,
     reverseSpeed: 3,
     acceleration: 6,
@@ -86,7 +88,7 @@ export const VEHICLES: Readonly<Record<VehicleKind, VehicleSpec>> = Object.freez
     deck: 2.6,
     wheelbase: 6,
     track: 0,
-    step: BRICK + 0.05,
+    step: CLIMB,
     maxSpeed: 18,
     reverseSpeed: 3,
     acceleration: 10,
@@ -107,7 +109,7 @@ export const VEHICLES: Readonly<Record<VehicleKind, VehicleSpec>> = Object.freez
     deck: 3.6,
     wheelbase: 6,
     track: 4.4,
-    step: BRICK + 0.05,
+    step: CLIMB,
     maxSpeed: 15,
     reverseSpeed: 5,
     acceleration: 8,
@@ -128,7 +130,7 @@ export const VEHICLES: Readonly<Record<VehicleKind, VehicleSpec>> = Object.freez
     deck: 2.4,
     wheelbase: 9,
     track: 5.6,
-    step: BRICK + 0.05,
+    step: CLIMB,
     maxSpeed: 22,
     reverseSpeed: 6,
     acceleration: 12,
@@ -171,9 +173,9 @@ export const VEHICLES: Readonly<Record<VehicleKind, VehicleSpec>> = Object.freez
     deck: 3,
     wheelbase: 6,
     track: 3,
-    step: BRICK + 0.05,
+    step: CLIMB,
     maxSpeed: 20,
-    reverseSpeed: 0,
+    reverseSpeed: 3,
     acceleration: 5,
     braking: 10,
     drag: 3,
@@ -328,6 +330,24 @@ function bodyBoxes(
   }));
 }
 
+const NONE: ReadonlySet<WalkBox> = new Set();
+
+/** The pieces the body would press into with its bottom at `bottom`, but those in `ignore`. */
+function bodyHits(
+  world: WalkWorld,
+  spec: VehicleSpec,
+  x: number,
+  z: number,
+  yaw: number,
+  bottom: number,
+  ignore: ReadonlySet<WalkBox> = NONE,
+) {
+  const hits = new Set<WalkBox>();
+  for (const box of bodyBoxes(spec, x, z, yaw, bottom, bottom + spec.height))
+    for (const hit of world.query(box)) if (!ignore.has(hit)) hits.add(hit);
+  return hits;
+}
+
 /** Whether the body would press into a piece with its bottom at `bottom`. */
 function bodyBlocked(
   world: WalkWorld,
@@ -337,10 +357,14 @@ function bodyBlocked(
   yaw: number,
   bottom: number,
 ) {
-  return bodyBoxes(spec, x, z, yaw, bottom, bottom + spec.height).some(
-    (box) => world.query(box).length > 0,
-  );
+  return bodyHits(world, spec, x, z, yaw, bottom).size > 0;
 }
+
+/** Whether every piece in the way is one the vehicle is already stuck in. */
+const onlyStuckIn = (hits: Iterable<WalkBox>, stuck: ReadonlySet<WalkBox>) => {
+  for (const hit of hits) if (!stuck.has(hit)) return false;
+  return true;
+};
 
 /**
  * The top of the ground at a point, at or below `below`: the highest top there that does not
@@ -349,18 +373,51 @@ function bodyBlocked(
  * course.
  */
 export function groundAt(world: WalkWorld, x: number, z: number, below: number, walls = false) {
+  if (!walls) return groundUnder(world, x, z, below, null);
+  const found: WalkBox[] = [];
+  const top = groundUnder(world, x, z, below, found);
+  return found.length ? Infinity : top;
+}
+
+/**
+ * The top of the ground at a point, at or below `below`, leaving out the pieces in `ignore`; with
+ * `walls`, the pieces there that reach up past it are added to that list.
+ */
+function groundUnder(
+  world: WalkWorld,
+  x: number,
+  z: number,
+  below: number,
+  walls: WalkBox[] | null,
+  ignore: ReadonlySet<WalkBox> = NONE,
+) {
   const r = 0.3;
+  return groundIn(world, x - r, x + r, z - r, z + r, below, walls, ignore);
+}
+
+/** As `groundUnder`, over a patch of ground rather than round a point. */
+function groundIn(
+  world: WalkWorld,
+  minX: number,
+  maxX: number,
+  minZ: number,
+  maxZ: number,
+  below: number,
+  walls: WalkBox[] | null,
+  ignore: ReadonlySet<WalkBox> = NONE,
+) {
   let top = 0;
   for (const box of world.query({
-    minX: x - r,
-    maxX: x + r,
+    minX,
+    maxX,
     minY: -1,
     maxY: below + (walls ? 0.1 : 0),
-    minZ: z - r,
-    maxZ: z + r,
+    minZ,
+    maxZ,
   })) {
+    if (ignore.has(box)) continue;
     if (box.maxY <= below + EPSILON) top = Math.max(top, box.maxY);
-    else if (walls) return Infinity;
+    else walls?.push(box);
   }
   return top;
 }
@@ -403,15 +460,35 @@ function wheelGround(
   z: number,
   yaw: number,
   below: number,
-  ends = false,
-  walls = false,
 ) {
-  const points = contacts(spec, x, z, yaw);
-  if (ends) {
-    const reach = spec.length / 2 - 0.5;
-    points.push(local(x, z, yaw, 0, reach), local(x, z, yaw, 0, -reach));
-  }
-  return points.map((point) => groundAt(world, point.x, point.z, below, walls));
+  return contacts(spec, x, z, yaw).map((point) => groundAt(world, point.x, point.z, below));
+}
+
+/**
+ * The highest ground anywhere under the vehicle, no higher than `below`: under its wheels and
+ * under every part of its body, so a brick it meets with a corner or between its wheels lifts it
+ * like one under a wheel. With `walls`, the pieces that reach up past `below` there are added to
+ * that list; the pieces in `ignore` are left out.
+ */
+function groundUnderBody(
+  world: WalkWorld,
+  spec: VehicleSpec,
+  x: number,
+  z: number,
+  yaw: number,
+  below: number,
+  walls: WalkBox[] | null = null,
+  ignore: ReadonlySet<WalkBox> = NONE,
+) {
+  let top = 0;
+  for (const point of contacts(spec, x, z, yaw))
+    top = Math.max(top, groundUnder(world, point.x, point.z, below, walls, ignore));
+  for (const box of bodyBoxes(spec, x, z, yaw, 0, 0))
+    top = Math.max(
+      top,
+      groundIn(world, box.minX, box.maxX, box.minZ, box.maxZ, below, walls, ignore),
+    );
+  return top;
 }
 
 /**
@@ -426,9 +503,7 @@ export function settleVehicle(world: WalkWorld, vehicle: Vehicle) {
   let y = saved ? vehicle.y : world.ceiling;
   // Rests on the highest ground under its wheels, then climbs out of anything still in the way;
   // one left up in the air (a saved flight) stays there.
-  const ground = Math.max(
-    ...wheelGround(world, spec, vehicle.x, vehicle.z, vehicle.yaw, y + spec.step, true),
-  );
+  const ground = groundUnderBody(world, spec, vehicle.x, vehicle.z, vehicle.yaw, y + spec.step);
   const airborne = saved && y - ground > spec.step;
   if (!airborne) y = ground;
   for (
@@ -447,8 +522,32 @@ export function settleVehicle(world: WalkWorld, vehicle: Vehicle) {
 }
 
 /**
- * Tries the body at a new spot on its wheels: the height it would stand at there, or null when a
- * wall or a ledge too high to climb is in the way.
+ * The body at a spot on its wheels: the height it would stand at there, and what is in the way: a
+ * wall or a ledge too high to climb under a wheel, or a piece the body presses into. The pieces in
+ * `ignore` are left out, as if they were not there.
+ */
+function footing(
+  world: WalkWorld,
+  spec: VehicleSpec,
+  vehicle: Vehicle,
+  x: number,
+  z: number,
+  yaw: number,
+  ignore: ReadonlySet<WalkBox> = NONE,
+) {
+  const blockers: WalkBox[] = [];
+  const top = groundUnderBody(world, spec, x, z, yaw, vehicle.y + spec.step, blockers, ignore);
+  // On the ground it follows the ground down a step; in the air it keeps its height.
+  const y = vehicle.grounded && top >= vehicle.y - spec.step ? top : Math.max(top, vehicle.y);
+  const bottom = y + Math.min(spec.step, 0.5) + EPSILON;
+  for (const hit of bodyHits(world, spec, x, z, yaw, bottom, ignore)) blockers.push(hit);
+  return { y, blockers };
+}
+
+/**
+ * Tries the body at a new spot on its wheels: the height it would stand at there, or null when
+ * something is in the way. A vehicle that ended up inside something (it came down on a post, or a
+ * piece was built through it) passes through what it is `stuck` in, so it can always get out.
  */
 function rollTo(
   world: WalkWorld,
@@ -457,14 +556,15 @@ function rollTo(
   x: number,
   z: number,
   yaw: number,
+  stuck = NONE,
 ) {
-  const ground = wheelGround(world, spec, x, z, yaw, vehicle.y + spec.step, true, true);
-  const top = Math.max(...ground);
-  if (top === Infinity) return null;
-  // On the ground it follows the ground down a step; in the air it keeps its height.
-  const y = vehicle.grounded && top >= vehicle.y - spec.step ? top : Math.max(top, vehicle.y);
-  if (bodyBlocked(world, spec, x, z, yaw, y + Math.min(spec.step, 0.5) + EPSILON)) return null;
-  return { y, ground };
+  const at = footing(world, spec, vehicle, x, z, yaw, stuck);
+  return at.blockers.length ? null : at;
+}
+
+/** What the vehicle is stuck in where it stands: usually nothing. */
+function stuckIn(world: WalkWorld, spec: VehicleSpec, vehicle: Vehicle): ReadonlySet<WalkBox> {
+  return new Set(footing(world, spec, vehicle, vehicle.x, vehicle.z, vehicle.yaw).blockers);
 }
 
 /** Moves the vehicle by `dx`, `dz` on its wheels, sliding along walls. Returns whether it hit one. */
@@ -478,15 +578,25 @@ function drive(world: WalkWorld, spec: VehicleSpec, vehicle: Vehicle, dx: number
       [0, dz / steps],
     ] as const;
     let moved = false;
-    for (const [mx, mz] of tries) {
-      const at = rollTo(world, spec, vehicle, vehicle.x + mx, vehicle.z + mz, vehicle.yaw);
-      if (!at) continue;
-      vehicle.x += mx;
-      vehicle.z += mz;
-      if (vehicle.grounded || at.y > vehicle.y) vehicle.y = at.y;
-      if (mx !== dx / steps || mz !== dz / steps) hit = true;
-      moved = true;
-      break;
+    // Only when no way is clear does it look at what it is stuck in, to let it out.
+    let stuck: ReadonlySet<WalkBox> | null = null;
+    for (let pass = 0; pass < 2 && !moved; pass++) {
+      if (pass === 1) {
+        stuck = stuckIn(world, spec, vehicle);
+        if (!stuck.size) break;
+      }
+      for (const [mx, mz] of tries) {
+        const x = vehicle.x + mx;
+        const z = vehicle.z + mz;
+        const at = rollTo(world, spec, vehicle, x, z, vehicle.yaw, stuck ?? NONE);
+        if (!at) continue;
+        vehicle.x = x;
+        vehicle.z = z;
+        if (vehicle.grounded || at.y > vehicle.y) vehicle.y = at.y;
+        if (mx !== dx / steps || mz !== dz / steps) hit = true;
+        moved = true;
+        break;
+      }
     }
     if (!moved) {
       hit = true;
@@ -498,8 +608,13 @@ function drive(world: WalkWorld, spec: VehicleSpec, vehicle: Vehicle, dx: number
 
 /** Falls, or stays on, whatever is under the wheels. */
 function fall(world: WalkWorld, spec: VehicleSpec, vehicle: Vehicle, dt: number) {
-  const ground = Math.max(
-    ...wheelGround(world, spec, vehicle.x, vehicle.z, vehicle.yaw, vehicle.y + EPSILON, true),
+  const ground = groundUnderBody(
+    world,
+    spec,
+    vehicle.x,
+    vehicle.z,
+    vehicle.yaw,
+    vehicle.y + EPSILON,
   );
   if (vehicle.grounded && vehicle.y - ground <= PROBE) {
     vehicle.y = ground;
@@ -562,8 +677,13 @@ function stepGround(
   vehicle.speed = accelerate(spec, vehicle, input, dt);
   vehicle.steer = ease(vehicle.steer, input.steer, 8, dt);
   const yaw = vehicle.yaw + turning(spec, vehicle) * (vehicle.grounded ? 1 : 0.4) * dt;
-  // Turning only if the body fits the new heading where it stands.
-  if (yaw !== vehicle.yaw && rollTo(world, spec, vehicle, vehicle.x, vehicle.z, yaw))
+  // Turning only if the body fits the new heading where it stands, or presses into nothing it was
+  // not already stuck in.
+  if (
+    yaw !== vehicle.yaw &&
+    (rollTo(world, spec, vehicle, vehicle.x, vehicle.z, yaw) ||
+      rollTo(world, spec, vehicle, vehicle.x, vehicle.z, yaw, stuckIn(world, spec, vehicle)))
+  )
     vehicle.yaw = yaw;
   const forward = forwardOf(vehicle.yaw);
   const hit = drive(
@@ -588,6 +708,24 @@ function stepGround(
   return hit;
 }
 
+/**
+ * Whether a flying body fits at `x`, `z` with its bottom at `bottom`, or presses only into what it
+ * is already in with its bottom at `from` where it is.
+ */
+function clearOf(
+  world: WalkWorld,
+  spec: VehicleSpec,
+  vehicle: Vehicle,
+  x: number,
+  z: number,
+  bottom: number,
+  from: number,
+) {
+  const hits = bodyHits(world, spec, x, z, vehicle.yaw, bottom);
+  if (!hits.size) return true;
+  return onlyStuckIn(hits, bodyHits(world, spec, vehicle.x, vehicle.z, vehicle.yaw, from));
+}
+
 /** Moves a flying body by `dx`, `dz`, stopping against walls. Returns which way it was stopped. */
 function fly(
   world: WalkWorld,
@@ -607,8 +745,8 @@ function fly(
       const x = axis === 'x' ? vehicle.x + move : vehicle.x;
       const z = axis === 'z' ? vehicle.z + move : vehicle.z;
       // Skimming along the ground, it slides up over a low lip rather than stopping.
-      const lift = vehicle.grounded ? spec.step : 0;
-      if (!bodyBlocked(world, spec, x, z, vehicle.yaw, vehicle.y + lift + EPSILON)) {
+      const bottom = vehicle.y + (vehicle.grounded ? spec.step : 0) + EPSILON;
+      if (clearOf(world, spec, vehicle, x, z, bottom, bottom)) {
         vehicle.x = x;
         vehicle.z = z;
       } else stopped[axis] = true;
@@ -616,15 +754,20 @@ function fly(
     const move = dy / steps;
     if (move && !stopped.down && !stopped.up) {
       const y = vehicle.y + move;
-      const ground = Math.max(
-        ...wheelGround(world, spec, vehicle.x, vehicle.z, vehicle.yaw, vehicle.y + EPSILON, true),
+      const ground = groundUnderBody(
+        world,
+        spec,
+        vehicle.x,
+        vehicle.z,
+        vehicle.yaw,
+        vehicle.y + EPSILON,
       );
       if (move < 0 && y <= ground) {
         vehicle.y = ground;
         stopped.down = true;
       } else if (
         move > 0 &&
-        bodyBlocked(world, spec, vehicle.x, vehicle.z, vehicle.yaw, y + EPSILON)
+        !clearOf(world, spec, vehicle, vehicle.x, vehicle.z, y + EPSILON, vehicle.y + EPSILON)
       ) {
         stopped.up = true;
       } else vehicle.y = y;
@@ -639,8 +782,13 @@ function fly(
 
 /** Whether the vehicle stands on something rather than hanging in the air. */
 function onGround(world: WalkWorld, spec: VehicleSpec, vehicle: Vehicle) {
-  const ground = Math.max(
-    ...wheelGround(world, spec, vehicle.x, vehicle.z, vehicle.yaw, vehicle.y + EPSILON, true),
+  const ground = groundUnderBody(
+    world,
+    spec,
+    vehicle.x,
+    vehicle.z,
+    vehicle.yaw,
+    vehicle.y + EPSILON,
   );
   return vehicle.y - ground <= PROBE;
 }

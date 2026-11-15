@@ -6,6 +6,7 @@ import { dismissSplash, setSplashMessage } from '@brick-workshop/render/splash';
 import { useLDrawLibrary } from '@brick-workshop/render/ldraw';
 import type { WalkCamera, WalkProbe } from '@brick-workshop/walk/walk-view';
 import { WalkWorld } from '@brick-workshop/walk/walk';
+import { VEHICLES } from '@brick-workshop/vehicles/vehicle';
 import type { VehicleKind } from '@brick-workshop/vehicles/vehicle';
 import { AmbientMusic } from '@brick-workshop/audio/music';
 import { Voices, voiceFor } from '@brick-workshop/audio/voice';
@@ -76,7 +77,7 @@ import { game } from './game.ts';
 import type { ChunkMessage, FarMessage } from './world/worker.ts';
 import { FarStore } from './FarView.tsx';
 import { MapStore, Minimap } from './Minimap.tsx';
-import { createVehicles, parkedVehicles, vehicleAction } from './vehicles.ts';
+import { createVehicles, parkedVehicles, returnVehicles, vehicleAction } from './vehicles.ts';
 import { DEFAULT_MUSIC, MENU_SHARE, MUSIC_LEVELS, isMusicLevel } from './music.ts';
 import type { MusicLevel } from './music.ts';
 import { lineFor, personality } from './dialogue.ts';
@@ -668,6 +669,19 @@ function Game({
   );
 
   const say = useCallback((message: string) => setToast(message), []);
+  /**
+   * Puts every vehicle back at its spot, for one that got stuck. Whoever is driving gets out where
+   * they are first, flying if it was up in the air.
+   */
+  const onReturnVehicles = useCallback(() => {
+    const current = vehicles.find((vehicle) => vehicle.id === drivingRef.current);
+    if (current) {
+      current.driven = false;
+      onDrive(null, !current.grounded && VEHICLES[current.kind].handling !== 'ground');
+    }
+    returnVehicles(vehicles, game().vehicles, FRAME);
+    say('The vehicles are back in their spots');
+  }, [vehicles, onDrive, say]);
   useEffect(() => {
     if (!toast) return;
     const timer = setTimeout(() => setToast(null), 1800);
@@ -1010,6 +1024,7 @@ function Game({
     position,
     onPlay: play,
     onReset: resetWorld,
+    onReturnVehicles,
     onNewWorld,
     onOpenWorld,
     distance: distanceName,

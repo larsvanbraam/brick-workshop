@@ -315,6 +315,8 @@ export function Vehicles({
     for (const vehicle of vehicles) {
       if (vehicle.driven) continue;
       if (!vehicle.settled) {
+        // One sent back to its spot leaves nothing solid behind where it stood.
+        if (live.parked.delete(vehicle.id)) world.removeGroup(boxKey(vehicle));
         if (!settleVehicle(world, vehicle)) continue;
         animating = true;
       }
@@ -333,8 +335,8 @@ export function Vehicles({
       }
     }
 
-    // The vehicle being driven.
-    if (current && walker) {
+    // The vehicle being driven, once it stands somewhere.
+    if (current && walker && current.settled) {
       animating = true;
       const keys = held.current;
       const pressed = (codes: string[]) => codes.some((code) => keys.has(code));

@@ -33,6 +33,24 @@ export function createVehicles(
   });
 }
 
+/**
+ * Puts every vehicle back at its spot, for one that got stuck or was left far away. Each waits,
+ * hidden, for the ground there to load, as at the start.
+ */
+export function returnVehicles(
+  vehicles: readonly Vehicle[],
+  spawns: readonly VehicleSpawn[],
+  frame: number,
+) {
+  for (const vehicle of vehicles) {
+    const spawn = spawns.find((entry) => entry.id === vehicle.id);
+    if (!spawn) continue;
+    const x = spawn.x - frame / 2;
+    const z = frame / 2 - spawn.z;
+    Object.assign(vehicle, parkVehicle(spawn.id, spawn.kind, x, z, YAW[spawn.heading]));
+  }
+}
+
 /** Where each vehicle stands now, for a save game. */
 export function parkedVehicles(vehicles: readonly Vehicle[], frame: number): ParkedVehicle[] {
   return vehicles

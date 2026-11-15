@@ -43,6 +43,8 @@ export interface MenuProps {
   hasBuild: boolean;
   onPlay: () => void;
   onReset: () => void;
+  /** Puts every vehicle back at its spot, for one that got stuck. */
+  onReturnVehicles: () => void;
   onNewWorld: () => void;
   /** Opens a world, again from its saved edits even when it is the one being played. */
   onOpenWorld: (seed: number) => void;
@@ -120,7 +122,7 @@ export function Menu(props: MenuProps) {
   );
 }
 
-export function Controls({ edits, onReset, onNewWorld }: MenuProps) {
+export function Controls({ edits, onReset, onReturnVehicles, onNewWorld }: MenuProps) {
   return (
     <>
       <dl>
@@ -190,14 +192,25 @@ export function Controls({ edits, onReset, onNewWorld }: MenuProps) {
         <dt>Menu</dt>
         <dd>Menu opens it; stick moves, A presses, LB/RB tabs, B closes</dd>
       </dl>
-      {game().building && (
+      {(game().building || game().vehicles.length > 0) && (
         <div className="actions">
-          <button type="button" onClick={onReset} disabled={!edits.length}>
-            Reset world
-          </button>
-          {game().seed === undefined && (
+          {game().building && (
+            <button type="button" onClick={onReset} disabled={!edits.length}>
+              Reset world
+            </button>
+          )}
+          {game().building && game().seed === undefined && (
             <button type="button" onClick={onNewWorld}>
               New world
+            </button>
+          )}
+          {game().vehicles.length > 0 && (
+            <button
+              type="button"
+              onClick={onReturnVehicles}
+              title="Puts every vehicle back where it was parked, for one that got stuck"
+            >
+              Return vehicles
             </button>
           )}
         </div>
