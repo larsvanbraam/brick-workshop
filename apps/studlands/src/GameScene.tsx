@@ -10,6 +10,9 @@ import { LDrawBatch, LookCache, canBatchLDrawModel } from '@brick-workshop/rende
 import type { BatchEntry, BatchLayerStats, BatchStats } from '@brick-workshop/render/ldraw-batches';
 import { displayHex } from '@brick-workshop/render/ldraw-materials';
 import { WalkMode } from '@brick-workshop/walk/walk-view';
+import { Wanderers } from '@brick-workshop/npc/wanderers';
+import type { WandererSpec } from '@brick-workshop/npc/wanderers';
+import { NPC_RADIUS, residentsOf, wanderRules } from './npcs.ts';
 import type { WalkWorld } from '@brick-workshop/walk/walk';
 import type { Chunks } from './chunks.ts';
 import { chunkAt } from './streaming.ts';
@@ -88,6 +91,10 @@ export interface GameSceneProps {
   volcano: Volcano | null;
   /** The campfire and cave crystals nearest the walker. */
   glows: Glows;
+  /** The terrain on the main thread, for where people live and walk. */
+  terrain: Terrain;
+  /** The walker's chunk: people live in the chunks round it. */
+  centre: readonly [number, number];
 }
 
 /** The debug window's probes inside the canvas; drawn only while the window is open. */
@@ -161,6 +168,14 @@ export function GameScene(props: GameSceneProps) {
         onViewChange={props.onViewChange}
         gamepad={props.gamepad}
         start={start}
+        probe={probe}
+      />
+      <People
+        chunks={chunks}
+        terrain={props.terrain}
+        centre={props.centre}
+        world={props.walkWorld}
+        buildArea={buildArea}
         probe={probe}
       />
       <EdgeDimmer drawings={drawings} clock={props.clock} />
@@ -432,6 +447,57 @@ function ChunkWatcher({
     onChunk(cx, cz);
   });
   return null;
+}
+
+/** A brick layer of ground, in scene units: three plates. */
+const LAYER = 3 * PLATE_HEIGHT;
+
+/** The people living in the loaded chunks round the walker, strolling about their homes. */
+function People({
+  chunks,
+  terrain,
+  centre,
+  world,
+  buildArea,
+  probe,
+}: {
+  chunks: Chunks;
+  terrain: Terrain;
+  centre: readonly [number, number];
+  world: WalkWorld;
+  buildArea: number;
+  probe: { current: WalkProbe | null };
+}) {
+  const half = buildArea / 2;
+  const [cx, cz] = centre;
+  // Only which chunks are in counts, not their pieces: an edit keeps everyone where they are.
+  const near: string[] = [];
+  for (let dz = -NPC_RADIUS; dz <= NPC_RADIUS; dz++)
+    for (let dx = -NPC_RADIUS; dx <= NPC_RADIUS; dx++)
+      if (chunks.has(chunkKey(cx + dx, cz + dz))) near.push(`${cx + dx},${cz + dz}`);
+  const nearKey = near.join(';');
+  const specs = useMemo<WandererSpec[]>(
+    () =>
+      (nearKey ? nearKey.split(';') : []).flatMap((key) => {
+        const [x, z] = key.split(',').map(Number);
+        return residentsOf(terrain, x, z).map((resident) => ({
+          id: resident.id,
+          x: resident.x - half,
+          z: half - resident.z,
+          // From inside the top brick, so it climbs onto the ground, not out of a cave below.
+          y: resident.ground * LAYER - LAYER / 2,
+          outfit: resident.outfit,
+          seed: resident.seed,
+        }));
+      }),
+    [nearKey, terrain, half],
+  );
+  const rules = useMemo(
+    () => wanderRules(terrain, buildArea, (x, z) => chunks.has(chunkKey(x, z))),
+    [terrain, buildArea, chunks],
+  );
+  const player = () => probe.current?.walker ?? null;
+  return <Wanderers world={world} specs={specs} rules={rules} player={player} />;
 }
 
 /** Whether a part's model can go in a batch, remembered per model. */

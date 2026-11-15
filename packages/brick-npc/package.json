@@ -1,0 +1,38 @@
+{
+  "name": "@brick-workshop/npc",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./wander": {
+      "types": "./src/wander.ts",
+      "import": "./src/wander.ts"
+    },
+    "./wanderers": {
+      "types": "./src/wanderers.tsx",
+      "import": "./src/wanderers.tsx"
+    }
+  },
+  "scripts": {
+    "test": "vp test",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@brick-workshop/engine": "workspace:*",
+    "@brick-workshop/render": "workspace:*",
+    "@brick-workshop/walk": "workspace:*"
+  },
+  "devDependencies": {
+    "@react-three/fiber": "^9.8.2",
+    "@types/react": "^19.3.0",
+    "@types/three": "^0.183.0",
+    "react": "^19.3.1",
+    "three": "^0.183.0",
+    "vite-plus": "1.4.0"
+  },
+  "peerDependencies": {
+    "@react-three/fiber": "^9.8.2",
+    "react": "^19.3.1",
+    "three": "^0.183.0"
+  }
+}

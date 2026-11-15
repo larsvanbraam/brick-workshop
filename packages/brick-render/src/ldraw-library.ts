@@ -4,7 +4,7 @@ import { isAbsolute, relative, resolve, sep } from 'node:path';
 import { createInterface } from 'node:readline';
 import type { Plugin, ViteDevServer } from 'vite-plus';
 import { PARTS } from '@brick-workshop/engine';
-import { MINIFIG_PARTS } from './minifig-parts.ts';
+import { MINIFIG_BODY, MINIFIG_PARTS } from './minifig-parts.ts';
 
 export interface LibraryManifest {
   available: boolean;
@@ -139,6 +139,8 @@ async function findFile(root: string, reference: string): Promise<string> {
 
 /** Everything the workshop draws from the library: the catalogue's parts and the minifigure. */
 const SHIPPED_PARTS = [...PARTS.map((part) => part.id), ...MINIFIG_PARTS];
+/** The catalogue and the walker's figure alone, for a library without the extra faces and hats. */
+const BODY_PARTS = [...PARTS.map((part) => part.id), ...MINIFIG_BODY];
 
 export async function collectLibrary(
   libraryPath: string,
@@ -185,12 +187,12 @@ export async function collectLibrary(
 
 export function ldrawLibraryPlugin(libraryPath: string): Plugin {
   let library: ReturnType<typeof collectLibrary> | undefined;
-  // A library without the minifigure's parts still serves the catalogue; the walker then draws
-  // a stand-in figure.
+  // A library without the faces, hair and hats still serves the walker's figure, and one without
+  // the minifigure's parts still serves the catalogue; the walker then draws a stand-in figure.
   const loadLibrary = () =>
-    (library ??= collectLibrary(libraryPath, SHIPPED_PARTS).catch(() =>
-      collectLibrary(libraryPath),
-    ));
+    (library ??= collectLibrary(libraryPath, SHIPPED_PARTS)
+      .catch(() => collectLibrary(libraryPath, BODY_PARTS))
+      .catch(() => collectLibrary(libraryPath)));
   let catalog: Promise<LibraryCatalog> | undefined;
   const loadCatalog = () => (catalog ??= indexLibrary(libraryPath));
   const previews = new Map<string, ReturnType<typeof collectLibrary>>();

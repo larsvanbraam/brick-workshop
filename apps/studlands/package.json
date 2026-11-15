@@ -17,6 +17,7 @@
   "dependencies": {
     "@brick-workshop/audio": "workspace:*",
     "@brick-workshop/engine": "workspace:*",
+    "@brick-workshop/npc": "workspace:*",
     "@brick-workshop/render": "workspace:*",
     "@brick-workshop/walk": "workspace:*",
     "@react-three/fiber": "^9.8.2",

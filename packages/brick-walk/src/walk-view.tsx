@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
-import { Box3, Group, Matrix4, PerspectiveCamera, Vector3 } from 'three';
-import type { Object3D } from 'three';
+import { PerspectiveCamera, Vector3 } from 'three';
+import type { Group } from 'three';
 import type { Brick } from '@brick-workshop/engine';
-import { coloredLDrawModel, loadLDrawModels } from '@brick-workshop/render/ldraw';
-import { MINIFIG_PARTS } from '@brick-workshop/render/minifig-parts';
-import { LDRAW_SCALE } from '@brick-workshop/render/scene-frame';
+import { loadLDrawModels } from '@brick-workshop/render/ldraw';
+import { MINIFIG_BODY } from '@brick-workshop/render/minifig-parts';
+import { assembleMinifig, poseMinifig } from './minifig';
+import type { MinifigRig } from './minifig';
 import {
   CAMERA_CLEARANCE,
   MINIFIG,
@@ -228,7 +229,7 @@ export function WalkMode({
   const [models, setModels] = useState<Record<string, Group> | null>(null);
   useEffect(() => {
     let cancelled = false;
-    loadLDrawModels(MINIFIG_PARTS)
+    loadLDrawModels(MINIFIG_BODY)
       .then((loaded) => {
         if (!cancelled) setModels(loaded);
       })
@@ -457,25 +458,13 @@ export function WalkMode({
       body.visible = viewRef.current === 'third' && !follow.current.hideFigure;
       body.position.set(current.x, eyeY.current - MINIFIG.eye, current.z);
       body.rotation.y = yaw;
-      // Angles swing a limb forward when positive; the rig says which way that turns it.
-      const pose = (limb: Group | null, angle: number) =>
-        limb?.rotation.set(angle * rig.forward, 0, 0);
-      if (current.flying) {
-        // Upright, limbs swinging as if walking on air, and a slow sway while hovering.
-        const swing = Math.sin(stride.current) * Math.min(0.5, moved * 18);
-        const sway = Math.sin(clock.elapsedTime * 1.6) * 0.06;
-        pose(rig.leftLeg, swing);
-        pose(rig.rightLeg, -swing);
-        pose(rig.leftArm, -swing * 0.8 + sway);
-        pose(rig.rightArm, swing * 0.8 - sway);
-      } else {
-        const swing = Math.sin(stride.current) * Math.min(0.7, moved * 25);
-        const air = current.grounded ? 0 : 0.5;
-        pose(rig.leftLeg, swing + air);
-        pose(rig.rightLeg, -swing - air * 0.4);
-        pose(rig.leftArm, -swing * 0.8 + air);
-        pose(rig.rightArm, swing * 0.8 + air);
-      }
+      poseMinifig(rig, {
+        stride: stride.current,
+        moved,
+        grounded: current.grounded,
+        flying: current.flying,
+        time: clock.elapsedTime,
+      });
     }
     // Keeps drawing while walking: the canvas otherwise renders on demand.
     invalidate();
@@ -491,92 +480,6 @@ export function WalkMode({
   );
 }
 
-/** An LDraw transform line's position and matrix (`x y z a b c d e f g h i`). */
-function ldrawMatrix(values: readonly number[]) {
-  const [x, y, z, a, b, c, d, e, f, g, h, i] = values;
-  return new Matrix4().set(a, b, c, x, d, e, f, y, g, h, i, z, 0, 0, 0, 1);
-}
-
-function placed(object: Object3D, matrix: Matrix4) {
-  matrix.decompose(object.position, object.quaternion, object.scale);
-  return object;
-}
-
-/** Where the parts sit in a standard LDraw minifigure, torso at the origin. */
-const RIGHT_ARM = ldrawMatrix([-15.552, 9, 0, 0.985, -0.17, 0, 0.17, 0.985, 0, 0, 0, 1]);
-const LEFT_ARM = ldrawMatrix([15.552, 9, 0, 0.985, 0.17, 0, -0.17, 0.985, 0, 0, 0, 1]);
-const RIGHT_HAND = ldrawMatrix([
-  -23.69, 26.774, -9.898, 0.985, -0.12, 0.12, 0.17, 0.696, -0.696, 0, 0.707, 0.707,
-]);
-const LEFT_HAND = ldrawMatrix([
-  23.69, 26.774, -9.898, 0.985, 0.12, -0.12, -0.17, 0.696, -0.696, 0, 0.707, 0.707,
-]);
-
-/** LDraw colour codes: yellow skin, a red shirt and blue trousers. */
-const SKIN = 14;
-const SHIRT_CODE = 4;
-const TROUSERS_CODE = 1;
-
-/**
- * The minifigure from its LDraw parts, feet at the origin and facing -z, with legs swinging from
- * the hips and arms from the shoulders.
- */
-function assembleMinifig(models: Record<string, Group>): MinifigRig & { root: Group } {
-  const part = (id: string, color: number) => coloredLDrawModel(models[id], color);
-  const body = new Group();
-  body.add(part('973', SHIRT_CODE));
-  body.add(placed(part('3626cp01', SKIN), new Matrix4().makeTranslation(0, -24, 0)));
-  body.add(placed(part('3815', TROUSERS_CODE), new Matrix4().makeTranslation(0, 32, 0)));
-  const leg = (id: string) => {
-    const pivot = new Group();
-    pivot.position.set(0, 44, 0);
-    pivot.add(part(id, TROUSERS_CODE));
-    body.add(pivot);
-    return pivot;
-  };
-  // Each arm turns about its shoulder and carries its hand along.
-  const arm = (id: string, armMatrix: Matrix4, handMatrix: Matrix4) => {
-    const shoulder = new Vector3().setFromMatrixPosition(armMatrix);
-    const pivot = new Group();
-    pivot.position.copy(shoulder);
-    const toShoulder = new Matrix4().makeTranslation(-shoulder.x, -shoulder.y, -shoulder.z);
-    pivot.add(placed(part(id, SHIRT_CODE), toShoulder.clone().multiply(armMatrix)));
-    pivot.add(placed(part('3820', SKIN), toShoulder.multiply(handMatrix)));
-    body.add(pivot);
-    return pivot;
-  };
-  const rig = {
-    rightLeg: leg('3816'),
-    leftLeg: leg('3817'),
-    rightArm: arm('3818', RIGHT_ARM, RIGHT_HAND),
-    leftArm: arm('3819', LEFT_ARM, LEFT_HAND),
-  };
-  // LDraw's y points down and its front faces -z; the scene stands it upright (see LDRAW_SCALE),
-  // which turns its front to +z, so it is turned round to face the way the walker looks.
-  body.scale.set(...LDRAW_SCALE);
-  body.rotation.y = Math.PI;
-  const feet = new Box3().setFromObject(body).min.y;
-  body.position.y = -feet;
-  const root = new Group();
-  root.visible = false;
-  root.add(body);
-  root.traverse((object) => {
-    object.castShadow = false;
-  });
-  // LDraw's limbs hang down its +y and face -z, so a positive turn swings them back.
-  return { forward: -1, root, ...rig };
-}
-
-interface MinifigRig {
-  /** Which way a positive turn about x swings a limb: 1 forward, -1 back. */
-  forward: number;
-  root: Group | null;
-  leftLeg: Group | null;
-  rightLeg: Group | null;
-  leftArm: Group | null;
-  rightArm: Group | null;
-}
-
 const YELLOW = '#f2cd37';
 const SHIRT = '#c91a09';
 const TROUSERS = '#0055bf';
@@ -586,7 +489,7 @@ const HIPS = '#1b2a34';
 function Minifig({
   onPart,
 }: {
-  onPart: (part: Exclude<keyof MinifigRig, 'forward'>, node: Group | null) => void;
+  onPart: (part: Exclude<keyof MinifigRig, 'forward' | 'head'>, node: Group | null) => void;
 }) {
   const plastic = { roughness: 0.35, metalness: 0 };
   const leg = (side: -1 | 1) => (

@@ -4,6 +4,10 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./minifig": {
+      "types": "./src/minifig.ts",
+      "import": "./src/minifig.ts"
+    },
     "./walk": {
       "types": "./src/walk.ts",
       "import": "./src/walk.ts"

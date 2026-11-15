@@ -879,6 +879,8 @@ function Game({
         clock={clock}
         volcano={volcano}
         glows={glows}
+        terrain={terrain}
+        centre={centre}
         debug={{
           options: debugOptions,
           store: debugStore,
