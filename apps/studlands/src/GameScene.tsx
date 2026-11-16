@@ -317,6 +317,28 @@ const CHUNK_RESERVE = { instances: 2048, vertices: 131_072, indices: 262_144 };
 /** Parts baked once for every chunk: the same few dozen parts and colors fill them all. */
 const CHUNK_LOOKS = new LookCache();
 
+/** Studs from the camera past which a chunk is drawn without studs, and where it gets them back. */
+const STUDLESS = { from: 40, back: 32 } as const;
+/** Studs from the camera past which a chunk's edges are left out: the shader has faded them. */
+const EDGES_UNTIL = 60;
+
+/** The height the ground mostly stays under, in scene units: above it, height adds distance. */
+const GROUND_TOP = 12;
+
+/**
+ * How far the camera is from the nearest point of a chunk, in studs: along the ground, plus how
+ * high it flies above the land, so everything shrinks to a few pixels from up in the air.
+ */
+function chunkDistance(chunk: string, buildArea: number, camera: Vector3) {
+  const [cx, cz] = chunk.split(',').map(Number);
+  const half = buildArea / 2;
+  const x0 = cx * CHUNK - half;
+  const z1 = half - cz * CHUNK;
+  const dx = Math.max(x0 - camera.x, 0, camera.x - (x0 + CHUNK));
+  const dz = Math.max(z1 - CHUNK - camera.z, 0, camera.z - z1);
+  return Math.hypot(dx, dz, Math.max(camera.y - GROUND_TOP, 0));
+}
+
 /**
  * One chunk's pieces: those with an LDraw model in a batch of their own, the rest from simple
  * shapes. A change to the chunk redraws only this chunk.
@@ -377,6 +399,17 @@ const ChunkView = memo(function ChunkView({
       }),
   );
   const [simple] = useState(() => new FallbackBatch());
+  // Distance levels of detail: a chunk away from the camera loses its studs (rebuilt, so only
+  // when it crosses the line) and then its edges (a visibility switch every frame).
+  const camera = useThree((state) => state.camera);
+  const [far, setFar] = useState(
+    () => chunkDistance(chunk, buildArea, camera.position) > STUDLESS.from,
+  );
+  useFrame(() => {
+    const distance = chunkDistance(chunk, buildArea, camera.position);
+    native.setEdges(distance < EDGES_UNTIL);
+    setFar((was) => (was ? distance > STUDLESS.back : distance > STUDLESS.from));
+  });
   useEffect(() => {
     drawings.set(chunk, { native, objects: [native.object, simple.object] });
     return () => {
@@ -392,6 +425,7 @@ const ChunkView = memo(function ChunkView({
   useEffect(() => () => shown.delete(chunk), [shown, chunk]);
   useLayoutEffect(() => {
     const entries = split.batched;
+    native.setStudless(far);
     const redraw = () => {
       requestShadows();
       invalidate();
@@ -423,7 +457,7 @@ const ChunkView = memo(function ChunkView({
     return () => {
       cancelled = true;
     };
-  }, [native, simple, split, buildArea, invalidate, shown, chunk]);
+  }, [native, simple, split, buildArea, invalidate, shown, chunk, far]);
   useEffect(
     () => () => {
       native.dispose();

@@ -263,6 +263,38 @@ describe('local LDraw assets', () => {
     batch.dispose();
   });
 
+  it('leaves every stud out of a far batch and brings them back, and can hide its edges', () => {
+    const body = new BoxGeometry(20, 24, 20).translate(0, 12, 0);
+    const stud = new CylinderGeometry(6, 6, 4, 16).translate(0, -2, 0);
+    const model = new Group().add(
+      new Mesh(body, new MeshStandardMaterial()),
+      new Mesh(stud, new MeshStandardMaterial()),
+    );
+    const entries = [
+      { id: 'only', partId: '3005', color: 4, x: 2, y: 0, z: 2, rotation: 0 as const },
+    ].map((brick) => ({ brick, model }));
+    const batch = new LDrawBatch((part) => part);
+    batch.update(entries, 16);
+    expect(batch.stats().coveredStuds).toBe(0);
+
+    // Far away every stud goes, though nothing sits on it; the next update rewrites the bricks.
+    batch.setStudless(true);
+    expect(batch.changes(entries, 16)).toBe(1);
+    batch.update(entries, 16);
+    expect(batch.stats().coveredStuds).toBe(1);
+
+    // Near again, they return.
+    batch.setStudless(false);
+    batch.update(entries, 16);
+    expect(batch.stats().coveredStuds).toBe(0);
+
+    // Edges are switched off without being rebuilt.
+    batch.setEdges(false);
+    expect(batch.lines.every((mesh) => !mesh.visible)).toBe(true);
+    batch.setEdges(true);
+    batch.dispose();
+  });
+
   it('leaves out undersides that are closed off below', () => {
     // A 1 x 1 brick with a tube inside its hollow underside, within the 4 LDU walls.
     const body = new BoxGeometry(20, 24, 20).translate(0, 12, 0);

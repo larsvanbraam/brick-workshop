@@ -859,7 +859,7 @@ function batchConditionalLines(shader: { vertexShader: string }) {
 }
 
 /** How many device pixels a stud has to span before edges start to show, and fully show. */
-export const EDGE_FADE_PIXELS = { hidden: 5, full: 14 } as const;
+export const EDGE_FADE_PIXELS = { hidden: 14, full: 24 } as const;
 
 /**
  * Fades a line material out as studs shrink on screen. Zoomed out, a stud's dozen-plus outline
@@ -944,6 +944,8 @@ export class LDrawBatch {
   private readonly solidGround: boolean;
   private readonly gap: number;
   private readonly cullEach: boolean;
+  private studless = false;
+  private edgesOn = true;
   private readonly reserve: { instances: number; vertices: number; indices: number } | undefined;
 
   /**
@@ -1238,10 +1240,15 @@ export class LDrawBatch {
     for (const id of affected) {
       const current = tracked.get(id)!;
       let covered = '';
-      if (coverable && current.studSites.length + Number(current.closable) > 0) {
+      const stripStuds = this.studless && !explode;
+      if (stripStuds || (coverable && current.studSites.length + Number(current.closable) > 0)) {
         const { studs } = this.shapeOf(current.model);
-        const hidden = studs.filter((_, index) => this.receiverSites.has(current.studSites[index]));
+        // A far look leaves every stud out; otherwise only the ones a brick sits on.
+        const hidden = stripStuds
+          ? [...studs]
+          : studs.filter((_, index) => this.receiverSites.has(current.studSites[index]));
         if (
+          coverable &&
           current.closable &&
           ((this.solidGround && current.brick.y === 0) ||
             (current.receivers.length > 0 &&
@@ -1265,6 +1272,25 @@ export class LDrawBatch {
           current.covered || undefined,
         );
     return tracked;
+  }
+
+  /**
+   * Draws every stud left out, for a chunk far from the camera: a stud is a few dozen triangles
+   * and a ring of edge segments, and at that distance it is a pixel or two. Bricks are rewritten
+   * on the next update (`changes` counts them), which can be sliced like any other.
+   */
+  setStudless(studless: boolean) {
+    if (this.studless === studless) return;
+    this.studless = studless;
+    this.trackedFor = undefined;
+  }
+
+  /** Whether the batch draws its edges: off for a chunk where they would be sub-pixel noise. */
+  setEdges(on: boolean) {
+    if (this.edgesOn === on) return;
+    this.edgesOn = on;
+    for (const layer of Object.values(this.lineLayers))
+      layer.mesh.visible = on && layer.mesh.instanceCount > layer.free.length;
   }
 
   private run = 0;
@@ -1351,8 +1377,10 @@ export class LDrawBatch {
     }
     for (const layer of Object.values(this.lineLayers)) {
       // An empty batch still costs a draw call; a hidden one doesn't.
-      layer.mesh.visible = layer.mesh.instanceCount > layer.free.length;
-      if (!layer.mesh.visible) continue;
+      const filled = layer.mesh.instanceCount > layer.free.length;
+      layer.mesh.visible = this.edgesOn && filled;
+      // Bounds stay current while edges are off, so turning them on again culls right.
+      if (!filled) continue;
       layer.mesh.computeBoundingBox();
       layer.mesh.computeBoundingSphere();
     }
