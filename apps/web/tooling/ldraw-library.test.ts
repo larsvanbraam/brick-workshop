@@ -289,9 +289,11 @@ describe('local LDraw assets', () => {
     expect(batch.stats().coveredStuds).toBe(0);
 
     // Edges are switched off without being rebuilt.
-    batch.setEdges(false);
+    batch.setEdges('none');
     expect(batch.lines.every((mesh) => !mesh.visible)).toBe(true);
-    batch.setEdges(true);
+    batch.setEdges('plain');
+    expect(batch.lines.filter((mesh) => mesh.visible)).toHaveLength(0);
+    batch.setEdges('all');
     batch.dispose();
   });
 

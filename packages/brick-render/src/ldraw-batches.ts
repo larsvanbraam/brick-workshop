@@ -945,7 +945,7 @@ export class LDrawBatch {
   private readonly gap: number;
   private readonly cullEach: boolean;
   private studless = false;
-  private edgesOn = true;
+  private edgeLevel: 'all' | 'plain' | 'none' = 'all';
   private readonly reserve: { instances: number; vertices: number; indices: number } | undefined;
 
   /**
@@ -1247,12 +1247,15 @@ export class LDrawBatch {
         const hidden = stripStuds
           ? [...studs]
           : studs.filter((_, index) => this.receiverSites.has(current.studSites[index]));
+        // Hollow undersides (walls and tubes, a few hundred triangles on a long brick) are out
+        // of sight from above, and from far off.
         if (
-          coverable &&
           current.closable &&
-          ((this.solidGround && current.brick.y === 0) ||
-            (current.receivers.length > 0 &&
-              current.receivers.every((key) => this.studSites.has(key))))
+          (stripStuds ||
+            (coverable &&
+              ((this.solidGround && current.brick.y === 0) ||
+                (current.receivers.length > 0 &&
+                  current.receivers.every((key) => this.studSites.has(key))))))
         )
           hidden.push(UNDERSIDE);
         covered = hidden.join(',');
@@ -1275,8 +1278,8 @@ export class LDrawBatch {
   }
 
   /**
-   * Draws every stud left out, for a chunk far from the camera: a stud is a few dozen triangles
-   * and a ring of edge segments, and at that distance it is a pixel or two. Bricks are rewritten
+   * Draws every stud and every hollow underside left out, for a chunk far from the camera: a stud
+   * is a few dozen triangles and a ring of edge segments, and at that distance it is a pixel or two. Bricks are rewritten
    * on the next update (`changes` counts them), which can be sliced like any other.
    */
   setStudless(studless: boolean) {
@@ -1285,12 +1288,22 @@ export class LDrawBatch {
     this.trackedFor = undefined;
   }
 
-  /** Whether the batch draws its edges: off for a chunk where they would be sub-pixel noise. */
-  setEdges(on: boolean) {
-    if (this.edgesOn === on) return;
-    this.edgesOn = on;
-    for (const layer of Object.values(this.lineLayers))
-      layer.mesh.visible = on && layer.mesh.instanceCount > layer.free.length;
+  /**
+   * Which edges the batch draws: `all`, `plain` (without the conditional ones, which only soften
+   * curved surfaces and are the first to turn to noise with distance) or `none`. Switching
+   * rebuilds nothing.
+   */
+  setEdges(level: 'all' | 'plain' | 'none') {
+    if (this.edgeLevel === level) return;
+    this.edgeLevel = level;
+    for (const kind of LINE_KINDS) {
+      const layer = this.lineLayers[kind];
+      layer.mesh.visible = this.linesShown(kind) && layer.mesh.instanceCount > layer.free.length;
+    }
+  }
+
+  private linesShown(kind: LineKind) {
+    return this.edgeLevel === 'all' || (this.edgeLevel === 'plain' && INDEXED_LINES.has(kind));
   }
 
   private run = 0;
@@ -1375,10 +1388,11 @@ export class LDrawBatch {
       layer.mesh.computeBoundingBox();
       layer.mesh.computeBoundingSphere();
     }
-    for (const layer of Object.values(this.lineLayers)) {
+    for (const kind of LINE_KINDS) {
+      const layer = this.lineLayers[kind];
       // An empty batch still costs a draw call; a hidden one doesn't.
       const filled = layer.mesh.instanceCount > layer.free.length;
-      layer.mesh.visible = this.edgesOn && filled;
+      layer.mesh.visible = this.linesShown(kind) && filled;
       // Bounds stay current while edges are off, so turning them on again culls right.
       if (!filled) continue;
       layer.mesh.computeBoundingBox();

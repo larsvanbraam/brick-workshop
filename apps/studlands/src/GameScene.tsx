@@ -161,6 +161,7 @@ export function GameScene(props: GameSceneProps) {
   const probe = props.probe ?? ownProbe;
   const { debug } = props;
   const dpr = useCappedDpr();
+  const focus = useMemo(() => new Vector3(start.x, GROUND_TOP, start.z), [start]);
   return (
     <Canvas
       shadows
@@ -188,6 +189,7 @@ export function GameScene(props: GameSceneProps) {
           buildArea={buildArea}
           drawings={drawings}
           shown={shown}
+          focus={focus}
         />
       ))}
       <FarLayer store={props.farChunks} shown={shown} />
@@ -317,13 +319,19 @@ const CHUNK_RESERVE = { instances: 2048, vertices: 131_072, indices: 262_144 };
 /** Parts baked once for every chunk: the same few dozen parts and colors fill them all. */
 const CHUNK_LOOKS = new LookCache();
 
-/** Studs from the camera past which a chunk is drawn without studs, and where it gets them back. */
-const STUDLESS = { from: 40, back: 32 } as const;
-/** Studs from the camera past which a chunk's edges are left out: the shader has faded them. */
-const EDGES_UNTIL = 60;
+/**
+ * Levels of detail by studs from the camera. A full chunk is about 85,000 triangles and 160,000
+ * edge segments; without studs it is a fifth of the triangles and half the edges, and edges
+ * and studs are a pixel or two across well before the world's reach.
+ */
+const STUDLESS = { from: 20, back: 14 } as const;
+/** Conditional edges go first, then every edge. */
+const EDGES = { all: 14, plain: 28 } as const;
 
 /** The height the ground mostly stays under, in scene units: above it, height adds distance. */
 const GROUND_TOP = 12;
+/** The canvas camera's height before anything moves it (see `camera` on the Canvas). */
+const DEFAULT_CAMERA_HEIGHT = 30;
 
 /**
  * How far the camera is from the nearest point of a chunk, in studs: along the ground, plus how
@@ -350,6 +358,7 @@ const ChunkView = memo(function ChunkView({
   buildArea,
   drawings,
   shown,
+  focus,
 }: {
   chunk: string;
   pieces: readonly Brick[];
@@ -357,6 +366,8 @@ const ChunkView = memo(function ChunkView({
   buildArea: number;
   drawings: Map<string, ChunkDrawing>;
   shown: ShownChunks;
+  /** Where the walk starts, in scene units, for chunks that mount before the camera is placed. */
+  focus: Vector3;
 }) {
   // The library hands over a new set of models whenever any part loads; the chunk is redrawn
   // only when one of the models its own pieces use has changed, not on every load elsewhere.
@@ -402,12 +413,16 @@ const ChunkView = memo(function ChunkView({
   // Distance levels of detail: a chunk away from the camera loses its studs (rebuilt, so only
   // when it crosses the line) and then its edges (a visibility switch every frame).
   const camera = useThree((state) => state.camera);
-  const [far, setFar] = useState(
-    () => chunkDistance(chunk, buildArea, camera.position) > STUDLESS.from,
-  );
+  // The first chunks mount before the walker has moved the camera off r3f's default, so they
+  // judge from where the walk starts: judging from the default would build every chunk wrongly
+  // and rebuild it a moment later.
+  const [far, setFar] = useState(() => {
+    const here = camera.position.y === DEFAULT_CAMERA_HEIGHT ? focus : camera.position;
+    return chunkDistance(chunk, buildArea, here) > STUDLESS.from;
+  });
   useFrame(() => {
     const distance = chunkDistance(chunk, buildArea, camera.position);
-    native.setEdges(distance < EDGES_UNTIL);
+    native.setEdges(distance < EDGES.all ? 'all' : distance < EDGES.plain ? 'plain' : 'none');
     setFar((was) => (was ? distance > STUDLESS.back : distance > STUDLESS.from));
   });
   useEffect(() => {
