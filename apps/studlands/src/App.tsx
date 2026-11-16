@@ -16,6 +16,7 @@ import { AmbientMusic } from '@brick-workshop/audio/music';
 import { Voices, voiceFor } from '@brick-workshop/audio/voice';
 import type { VoiceMode, VoiceTraits } from '@brick-workshop/audio/voice';
 import { TalkLink } from '@brick-workshop/npc/talk';
+import { ANIMAL_WORDS } from './animals.ts';
 import { placementFor } from './build.ts';
 import {
   ChunkLoader,
@@ -760,9 +761,14 @@ function Game({
   const lineNumber = useRef(0);
   const nearbyName = useMemo(() => {
     if (nearbyPerson && isHelper(nearbyPerson)) return helperName(nearbyPerson, locale);
+    const kind = nearbyPerson ? talk.pets.get(nearbyPerson) : undefined;
+    if (kind) {
+      const name = locale === 'nl' ? ANIMAL_WORDS[kind].nl : kind;
+      return locale === 'nl' ? `de ${name}` : `the ${name}`;
+    }
     const resident = nearbyPerson ? residentById(terrain, nearbyPerson) : null;
     return resident ? personality(resident).name : null;
-  }, [nearbyPerson, terrain, locale]);
+  }, [nearbyPerson, terrain, locale, talk]);
   /** Has someone say a line: in a bubble over their head and out loud, till said and read. */
   const speak = (id: string, name: string, text: string, voice: VoiceTraits) => {
     const line = ++lineNumber.current;
@@ -852,10 +858,27 @@ function Game({
     setActiveQuest(started);
     chime(quest.sounds?.start ?? 'start');
   };
+  /** Petting an animal: it stands for it, bounces about and a heart shows over its head. */
+  const petAnimal = (id: string, kind: string) => {
+    const line = ++lineNumber.current;
+    const words = ANIMAL_WORDS[kind];
+    setSpeech({
+      id,
+      name: locale === 'nl' ? words.nl : kind,
+      text: `♥ ${words.sound[locale]}`,
+    });
+    talk.say(id);
+    chime('pick');
+    setTimeout(() => {
+      if (lineNumber.current === line) talk.say(null);
+    }, 1800);
+  };
   const talkTo = () => {
     const id = talk.nearby;
     if (!id || drivingRef.current) return;
     if (isHelper(id)) return talkToHelper(id);
+    const kind = talk.pets.get(id);
+    if (kind) return petAnimal(id, kind);
     const resident = residentById(terrain, id);
     if (!resident) return;
     const count = talkCounts.get(id) ?? 0;
@@ -1483,7 +1506,9 @@ function Game({
                   ? 'Put on a brick'
                   : saying?.id === nearbyPerson
                     ? 'Carry on'
-                    : `Talk to ${nearbyName}`}
+                    : nearbyPerson && talk.pets.has(nearbyPerson)
+                      ? `${locale === 'nl' ? 'Aai' : 'Pet'} ${nearbyName}`
+                      : `Talk to ${nearbyName}`}
               </span>
             )}
           </div>

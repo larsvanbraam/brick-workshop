@@ -40,6 +40,8 @@ export interface WandererSpec {
   rules?: WanderRules;
   /** Whether the player can talk to them: people can unless this says otherwise, animals not. */
   talks?: boolean;
+  /** The kind of animal this is, if the player can pet it (see `TalkLink.pets`). */
+  pet?: string;
 }
 
 /** Further than this from the player, in studs, they stand still and are not drawn. */
@@ -52,6 +54,7 @@ interface Person {
   /** The height it moved in at. */
   home: number;
   talks: boolean;
+  pet: boolean;
 }
 
 /** How long someone keeps facing the player after a line, in seconds. */
@@ -122,6 +125,7 @@ export function Wanderers({
         group.remove(person.rig.rig.root);
         people.delete(id);
         positions?.delete(id);
+        talk?.pets.delete(id);
       }
     for (const spec of specs) {
       if (people.has(spec.id)) continue;
@@ -147,10 +151,12 @@ export function Wanderers({
         rig,
         rules: spec.rules,
         home: y,
-        talks: spec.talks ?? look.kind === 'minifig',
+        talks: spec.talks ?? (look.kind === 'minifig' || spec.pet !== undefined),
+        pet: spec.pet !== undefined,
       });
+      if (spec.pet !== undefined) talk?.pets.set(spec.id, spec.pet);
     }
-  }, [models, specs, people, group, world, positions]);
+  }, [models, specs, people, group, world, positions, talk]);
   useEffect(
     () => () => {
       group.clear();
@@ -191,8 +197,12 @@ export function Wanderers({
         grounded: walker.grounded,
         time: clock.elapsedTime,
       };
-      if (person.rig.kind === 'animal') poseAnimal(person.rig.rig, motion);
-      else {
+      if (person.rig.kind === 'animal') {
+        poseAnimal(person.rig.rig, motion);
+        // Bounces happily while being petted.
+        if (speaker)
+          person.rig.rig.body.position.y += Math.abs(Math.sin(clock.elapsedTime * 9)) * 0.12;
+      } else {
         poseMinifig(person.rig.rig, {
           ...motion,
           waving: npc.mode === 'greet' && npc.greeting < WAVE_TIME,

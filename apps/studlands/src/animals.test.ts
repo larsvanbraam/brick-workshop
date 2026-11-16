@@ -49,3 +49,13 @@ describe('the animals', () => {
     }
   });
 });
+
+describe('petting', () => {
+  it('lets the calm animals be petted and every one of them has words in both languages', async () => {
+    const { SPECIES, ANIMAL_WORDS, pettable } = await import('./animals.ts');
+    for (const kind of Object.values(SPECIES)) {
+      expect(pettable(kind)).toBe(kind.temper === 'calm');
+      if (pettable(kind)) expect(ANIMAL_WORDS[kind.name].nl).toBeTruthy();
+    }
+  });
+});

@@ -87,6 +87,24 @@ const WILD_CHANCE = 0.3;
 const WILD_LEASH = 12;
 const HERD_LEASH = 9;
 
+/** What each kind is called, and the sound it makes, in Dutch (English is the species name). */
+export const ANIMAL_WORDS: Record<string, { nl: string; sound: { en: string; nl: string } }> = {
+  cow: { nl: 'koe', sound: { en: 'Moo!', nl: 'Boe!' } },
+  pig: { nl: 'varken', sound: { en: 'Oink!', nl: 'Knor!' } },
+  piglet: { nl: 'big', sound: { en: 'Oink!', nl: 'Knor!' } },
+  lamb: { nl: 'lammetje', sound: { en: 'Baa!', nl: 'Mè!' } },
+  goat: { nl: 'geit', sound: { en: 'Meh!', nl: 'Mè!' } },
+  chicken: { nl: 'kip', sound: { en: 'Cluck!', nl: 'Tok tok!' } },
+  horse: { nl: 'paard', sound: { en: 'Neigh!', nl: 'Hihihi!' } },
+  foal: { nl: 'veulen', sound: { en: 'Neigh!', nl: 'Hihihi!' } },
+  crab: { nl: 'krab', sound: { en: 'Click click!', nl: 'Klik klik!' } },
+  penguin: { nl: 'pinguïn', sound: { en: 'Honk!', nl: 'Toet!' } },
+  camel: { nl: 'kameel', sound: { en: 'Grumph!', nl: 'Bwoeh!' } },
+};
+
+/** Whether the player can pet this kind: the calm ones stay put; the shy ones run off. */
+export const pettable = (kind: Species) => kind.temper === 'calm' && kind.name in ANIMAL_WORDS;
+
 export interface Animal {
   id: string;
   species: Species;

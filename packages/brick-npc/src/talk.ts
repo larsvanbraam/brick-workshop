@@ -9,6 +9,8 @@ export class TalkLink {
   /** Who is speaking now, or null. */
   speaker: string | null = null;
   /** Where the speaker's head is on screen, in CSS pixels, while it shows. */
+  /** The animals within reach that can be petted, by ID, with the name of their kind. */
+  readonly pets = new Map<string, string>();
   readonly anchor = { x: 0, y: 0, visible: false };
   private readonly listeners = new Set<() => void>();
 

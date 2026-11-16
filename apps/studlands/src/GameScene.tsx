@@ -14,7 +14,7 @@ import { Wanderers } from '@brick-workshop/npc/wanderers';
 import type { WandererSpec } from '@brick-workshop/npc/wanderers';
 import type { TalkLink } from '@brick-workshop/npc/talk';
 import { NPC_RADIUS, residentsOf, wanderRules } from './npcs.ts';
-import { animalRules, farmAnimals, wildlifeOf } from './animals.ts';
+import { animalRules, farmAnimals, pettable, wildlifeOf } from './animals.ts';
 import type { Animal } from './animals.ts';
 import { FARM } from './world/island/map.ts';
 import { QUESTS, giverId, takerId } from './quests.ts';
@@ -700,6 +700,7 @@ function People({
       pace: beast.species.pace,
       seed: beast.seed,
       rules: animalRules(terrain, buildArea, isLoaded, beast.pasture),
+      pet: pettable(beast.species) ? beast.species.name : undefined,
     });
     const specs = [...keys].flatMap((key) => {
       const [x, z] = key.split(',').map(Number);
