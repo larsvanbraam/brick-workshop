@@ -7,6 +7,8 @@ import { dismissSplash, setSplashMessage } from '@brick-workshop/render/splash';
 import { useLDrawLibrary } from '@brick-workshop/render/ldraw';
 import { MINIFIG_BODY } from '@brick-workshop/render/minifig-parts';
 import type { WalkCamera, WalkProbe } from '@brick-workshop/walk/walk-view';
+import { CLASSIC_OUTFIT } from '@brick-workshop/walk/minifig';
+import type { MinifigOutfit } from '@brick-workshop/walk/minifig';
 import { WalkWorld } from '@brick-workshop/walk/walk';
 import { VEHICLES } from '@brick-workshop/vehicles/vehicle';
 import type { VehicleKind } from '@brick-workshop/vehicles/vehicle';
@@ -92,6 +94,7 @@ import { SpeechBubble } from './SpeechBubble.tsx';
 import { TIDE_LINES, Tide } from './tide.ts';
 import {
   QUESTS,
+  giftOf,
   advance,
   giverId,
   isQuestProgress,
@@ -533,7 +536,20 @@ function Game({
   /** How far through asking each helper has got, so each press says the next line. */
   const [askCounts] = useState(() => new Map<string, number>());
   /** The cheer when a job is done. */
-  const [cheer, setCheer] = useState<{ icon: string; name: string; text: string } | null>(null);
+  const [cheer, setCheer] = useState<{
+    icon: string;
+    name: string;
+    text: string;
+    gift: boolean;
+  } | null>(null);
+  // The latest job done gives the hat that its helper wears, which the player then wears too.
+  const wornOutfit = useMemo<MinifigOutfit | undefined>(() => {
+    const last = [...questDone]
+      .map((id) => questById(id))
+      .findLast((quest) => quest && giftOf(quest));
+    const headgear = last ? giftOf(last) : null;
+    return headgear ? { ...CLASSIC_OUTFIT, headgear } : undefined;
+  }, [questDone]);
   // The language people speak: the saved choice, else the browser's own where we have it.
   const [locale, setLocale] = useState<Locale>(() => {
     const saved = loadLocale();
@@ -736,8 +752,10 @@ function Game({
     const who = goal.kind === 'take' && 'outfit' in goal.to ? takerId(quest) : giverId(quest);
     const name = helperName(who, locale) ?? quest.giver.name;
     const { thanks } = questWords(quest, locale);
-    setCheer({ icon: quest.icon, name, text: thanks });
+    setCheer({ icon: quest.icon, name, text: thanks, gift: giftOf(quest) !== null });
     chime('done');
+    const finish = quest.sounds?.done;
+    if (finish) setTimeout(() => chime(finish), 900);
     speak(who, name, thanks, helperVoice(who));
   };
   /** Something happened on a job: picked up, back with it all, arrived, a brick put on. */
@@ -750,7 +768,7 @@ function Game({
     if (next === 'done') return finishQuest(quest);
     questRef.current = { ...questRef.current, active: next };
     setActiveQuest(next);
-    if (next.step === 'go') return chime('pick');
+    if (next.step === 'go') return chime(quest.sounds?.pick ?? 'pick');
     if (next.step === 'back' && active.step === 'go') return chime('all');
     if (next.step === 'build' && active.step === 'back') {
       chime('all');
@@ -793,7 +811,7 @@ function Game({
     const started = startQuest(quest);
     questRef.current = { ...questRef.current, active: started };
     setActiveQuest(started);
-    chime('start');
+    chime(quest.sounds?.start ?? 'start');
   };
   const talkTo = () => {
     const id = talk.nearby;
@@ -1324,6 +1342,7 @@ function Game({
         onNear={setNearVehicle}
         talk={talk}
         tide={tide}
+        outfit={questsOn ? wornOutfit : undefined}
         quests={
           questsOn
             ? { view: questView, onEvent: questEvents, positions: helperPositions }
@@ -1411,6 +1430,11 @@ function Game({
           <span>
             {cheer.name}: {cheer.text}
           </span>
+          {cheer.gift && (
+            <em className="cheer-gift">
+              🎩 {locale === 'nl' ? 'Je hebt een nieuwe hoed!' : 'You got a new hat!'}
+            </em>
+          )}
         </div>
       )}
       <div className="status">

@@ -7,6 +7,7 @@ import { BRICK_ISLAND } from './game.ts';
 import {
   QUESTS,
   advance,
+  giftOf,
   isQuestProgress,
   questById,
   questWords,
@@ -20,14 +21,14 @@ import type { QuestProgress, Spot } from './quests.ts';
 const terrain = createTerrain(BRICK_ISLAND.seed!, 'island');
 const structures = islandStructures(BRICK_ISLAND.seed!);
 
-/** Dry, open ground: no water, and no building on it. */
-function open(spot: Spot) {
+/** Dry ground, with no building on it unless it is a room helpers work in (the police office). */
+function open(spot: Spot, indoors = false) {
   const column = terrain.column(Math.floor(spot.x), Math.floor(spot.z));
   const built = structures.some(
     ({ bounds }) =>
       spot.x >= bounds.x0 && spot.x < bounds.x1 && spot.z >= bounds.z0 && spot.z < bounds.z1,
   );
-  return column.water === 0 && !built;
+  return column.water === 0 && (indoors || !built);
 }
 
 describe('Brick Island jobs', () => {
@@ -41,10 +42,17 @@ describe('Brick Island jobs', () => {
   it('puts helpers, things to find and places to go on dry, open ground', () => {
     for (const quest of QUESTS) {
       const { goal } = quest;
+      const indoors = quest.id === 'thief';
       const spots: Spot[] = [quest.giver];
-      if (goal.kind === 'find') spots.push(...goal.spots, ...(goal.build ? [goal.build] : []));
+      if (goal.kind === 'find') spots.push(...goal.spots);
       else spots.push(goal.to);
-      for (const spot of spots) expect(open(spot), `${quest.id} at ${spot.x},${spot.z}`).toBe(true);
+      for (const spot of spots)
+        expect(
+          open(spot, spot === quest.giver && indoors),
+          `${quest.id} at ${spot.x},${spot.z}`,
+        ).toBe(true);
+      if (goal.kind === 'find' && goal.build)
+        expect(open(goal.build, indoors), `${quest.id} build`).toBe(true);
     }
   });
 
@@ -55,6 +63,12 @@ describe('Brick Island jobs', () => {
         goal.kind === 'find' ? [goal.look, goal.build?.pieces ?? []] : [goal.leave ?? []];
       for (const piece of looks.flat()) expect(() => getPart(piece.part)).not.toThrow();
     }
+  });
+
+  it('gives every job a hat, and the fire and police jobs their own sounds', () => {
+    for (const quest of QUESTS) expect(giftOf(quest), quest.id).not.toBeNull();
+    expect(questById('fire')!.sounds).toEqual({ start: 'siren', pick: 'splash', done: 'siren' });
+    expect(questById('thief')!.sounds?.done).toBe('clang');
   });
 
   it('keeps what helpers say short enough for a young child', () => {

@@ -1,5 +1,6 @@
 import type { MinifigOutfit } from '@brick-workshop/walk/minifig';
 import type { VoiceRegister } from '@brick-workshop/audio/voice';
+import type { Chime } from './chime.ts';
 import type { Locale } from './locale.ts';
 
 /**
@@ -84,7 +85,12 @@ export interface Quest {
   goal: Goal;
   /** What the helper says when it is done. */
   thanks: string;
+  /** Sounds that suit the job, in place of the usual ones: when it starts, a find and when done. */
+  sounds?: { start?: Chime; pick?: Chime; done?: Chime };
 }
+
+/** The hat a helper gives to whoever finishes their job: the one they wear themselves. */
+export const giftOf = (quest: Quest) => quest.giver.outfit.headgear ?? null;
 
 const outfit = (
   torso: number,
@@ -104,6 +110,19 @@ const DUCK: Look = [
 const FLAG: Look = [
   { part: '3957a', color: 0 },
   { part: '2335', color: 4, y: 6, rotation: 90 },
+];
+
+/** A little fire: red, orange and yellow flames stacked up. */
+const FLAME: Look = [
+  { part: '3062b', color: 4 },
+  { part: '3062b', color: 25, y: 3 },
+  { part: '3062b', color: 14, y: 6 },
+];
+
+/** A silly thief: a black body and a yellow head. */
+const THIEF: Look = [
+  { part: '3005', color: 0 },
+  { part: '3062b', color: 14, y: 3 },
 ];
 
 export const QUESTS: readonly Quest[] = [
@@ -342,6 +361,78 @@ export const QUESTS: readonly Quest[] = [
     },
     thanks: 'You made it to the top! Hooray!',
   },
+  {
+    id: 'fire',
+    area: 'Fire Station',
+    icon: '🚒',
+    giver: {
+      name: 'Chief Flo',
+      voice: 'high',
+      x: 348.5,
+      z: 385.5,
+      outfit: outfit(4, 0, { part: '3833', color: 4 }, '3626bp04'),
+    },
+    ask: [
+      'Nee-naw! I am Chief Flo.',
+      'Little fires on Main Street!',
+      'Run through them with the hose!',
+    ],
+    task: 'Put out the fires',
+    goal: {
+      kind: 'find',
+      things: 'fires',
+      look: FLAME,
+      spots: [
+        { x: 354.5, z: 387.5 },
+        { x: 336.5, z: 387.5 },
+        { x: 318.5, z: 387.5 },
+      ],
+      back: true,
+    },
+    thanks: 'Hooray! You are a fire fighter!',
+    sounds: { start: 'siren', pick: 'splash', done: 'siren' },
+  },
+  {
+    id: 'thief',
+    area: 'Police Station',
+    icon: '🚓',
+    giver: {
+      name: 'Officer Pip',
+      voice: 'low',
+      x: 296.5,
+      z: 381.5,
+      outfit: outfit(272, 0, { part: '3624', color: 0 }, '3626bp03'),
+    },
+    ask: [
+      'Hello! I am Officer Pip.',
+      'Two silly thieves ran off with my cake!',
+      'Find them and I lock them up!',
+    ],
+    task: 'Find the silly thieves',
+    goal: {
+      kind: 'find',
+      things: 'thieves',
+      look: THIEF,
+      spots: [
+        { x: 301.5, z: 373.5 },
+        { x: 361.5, z: 372.5 },
+      ],
+      back: true,
+      // The thieves end up in the jail's open cell, one piece for each press.
+      build: {
+        x: 291.5,
+        z: 373.5,
+        pieces: [
+          { part: '3005', color: 0, x: 0 },
+          { part: '3062b', color: 14, x: 0, y: 3 },
+          { part: '3005', color: 0, x: 2 },
+          { part: '3062b', color: 14, x: 2, y: 3 },
+        ],
+      },
+    },
+    thanks: 'Clang! The thieves are in jail!',
+    sounds: { done: 'clang' },
+  },
 ];
 
 export const questById = (id: string) => QUESTS.find((quest) => quest.id === id) ?? null;
@@ -482,6 +573,24 @@ const DUTCH: Record<string, QuestWords> = {
     task: 'Haal de lamp',
     thanks: 'Hoera! Mijn licht kan weer schijnen!',
     things: 'lamp',
+  },
+  fire: {
+    giver: 'Brandweer Flo',
+    ask: ['Nee-naw! Ik ben Flo.', 'Vuurtjes op de Hoofdstraat!', 'Ren er met de slang doorheen!'],
+    task: 'Blus de vuurtjes',
+    thanks: 'Hoera! Jij bent een brandweerman!',
+    things: 'vuurtjes',
+  },
+  thief: {
+    giver: 'Agent Pip',
+    ask: [
+      'Hallo! Ik ben Agent Pip.',
+      'Twee gekke dieven hebben mijn taart!',
+      'Vind ze, dan sluit ik ze op!',
+    ],
+    task: 'Vind de gekke dieven',
+    thanks: 'Klang! De dieven zitten in de cel!',
+    things: 'dieven',
   },
   summit: {
     giver: 'Wandelaar Hugo',

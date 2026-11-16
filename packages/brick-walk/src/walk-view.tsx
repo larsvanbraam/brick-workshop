@@ -6,7 +6,7 @@ import type { Brick } from '@brick-workshop/engine';
 import { loadLDrawModels } from '@brick-workshop/render/ldraw';
 import { MINIFIG_BODY } from '@brick-workshop/render/minifig-parts';
 import { assembleMinifig, poseMinifig } from './minifig';
-import type { MinifigRig } from './minifig';
+import type { MinifigOutfit, MinifigRig } from './minifig';
 import {
   CAMERA_CLEARANCE,
   MINIFIG,
@@ -127,6 +127,7 @@ export function WalkMode({
   revision = 0,
   riding = false,
   active = true,
+  outfit,
 }: {
   bricks: Iterable<Brick>;
   buildArea: number;
@@ -164,6 +165,8 @@ export function WalkMode({
    * front, so its keys (Space on a button, WASD) go to the panel instead of the minifigure.
    */
   active?: boolean;
+  /** What the minifigure wears; the classic red shirt and blue trousers when left out. */
+  outfit?: MinifigOutfit;
 }) {
   const { camera, gl, invalidate } = useThree();
   const built = useMemo(
@@ -254,9 +257,10 @@ export function WalkMode({
   // The real minifigure from the LDraw library; a stand-in walks until it has loaded, or for good
   // when the library has no minifigure parts.
   const [models, setModels] = useState<Record<string, Group> | null>(null);
+  const hat = outfit?.headgear?.part;
   useEffect(() => {
     let cancelled = false;
-    loadLDrawModels(MINIFIG_BODY)
+    loadLDrawModels(hat ? [...MINIFIG_BODY, hat] : MINIFIG_BODY)
       .then((loaded) => {
         if (!cancelled) setModels(loaded);
       })
@@ -264,8 +268,11 @@ export function WalkMode({
     return () => {
       cancelled = true;
     };
-  }, []);
-  const ldrawFigure = useMemo(() => (models ? assembleMinifig(models) : null), [models]);
+  }, [hat]);
+  const ldrawFigure = useMemo(
+    () => (models ? assembleMinifig(models, outfit) : null),
+    [models, outfit],
+  );
   useEffect(() => {
     if (!ldrawFigure) return;
     const previous = figure.current;

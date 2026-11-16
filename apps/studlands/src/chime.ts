@@ -4,7 +4,7 @@
  * going on and a fanfare when a job is done.
  */
 
-export type Chime = 'start' | 'pick' | 'all' | 'place' | 'done';
+export type Chime = 'start' | 'pick' | 'all' | 'place' | 'done' | 'siren' | 'splash' | 'clang';
 
 /** Notes for each, as semitones above C5, and how long each note lasts in seconds. */
 const TUNES: Record<Chime, { notes: readonly number[]; step: number; wave: OscillatorType }> = {
@@ -13,6 +13,10 @@ const TUNES: Record<Chime, { notes: readonly number[]; step: number; wave: Oscil
   all: { notes: [0, 4, 7, 12], step: 0.09, wave: 'triangle' },
   place: { notes: [-5], step: 0.08, wave: 'square' },
   done: { notes: [0, 4, 7, 12, 7, 12, 16], step: 0.11, wave: 'triangle' },
+  // The fire engine's nee-naw, a splash of water and the clang of a cell door.
+  siren: { notes: [7, 2, 7, 2, 7, 2], step: 0.3, wave: 'sawtooth' },
+  splash: { notes: [19, 16, 12, 9, 14, 7], step: 0.045, wave: 'sine' },
+  clang: { notes: [-17, -16, -17], step: 0.12, wave: 'square' },
 };
 
 let context: AudioContext | null = null;

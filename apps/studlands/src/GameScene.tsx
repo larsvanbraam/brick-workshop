@@ -26,6 +26,7 @@ import { Vehicles } from '@brick-workshop/vehicles/drive-view';
 import type { Vehicle, VehicleKind } from '@brick-workshop/vehicles/vehicle';
 import { MINIFIG } from '@brick-workshop/walk/walk';
 import type { WalkWorld } from '@brick-workshop/walk/walk';
+import type { MinifigOutfit } from '@brick-workshop/walk/minifig';
 import type { Tide } from './tide.ts';
 import type { Chunks } from './chunks.ts';
 import { chunkAt } from './streaming.ts';
@@ -119,6 +120,8 @@ export interface GameSceneProps {
   talk: TalkLink;
   /** Brick Island's tide, whose bubble over the player's head the scene places. */
   tide?: Tide | null;
+  /** What the player's minifigure wears: the hats won for finished jobs. */
+  outfit?: MinifigOutfit;
   /** Brick Island's little jobs: their helpers, what to find and where to go (see `quests.ts`). */
   quests?: {
     view: QuestView;
@@ -207,6 +210,7 @@ export function GameScene(props: GameSceneProps) {
         probe={probe}
         riding={props.driving !== null}
         active={props.playing}
+        outfit={props.outfit}
       />
       <People
         chunks={chunks}
