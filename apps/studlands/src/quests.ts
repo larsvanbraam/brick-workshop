@@ -47,6 +47,15 @@ export interface Spot {
   z: number;
 }
 
+/** A minifigure standing at a spot. */
+export interface Figure extends Spot {
+  outfit: MinifigOutfit;
+}
+
+/** How many presses a build job takes: a piece or a figure each. */
+export const buildSize = (build: { pieces: Look; figures?: readonly Figure[] }) =>
+  build.figures?.length ?? build.pieces.length;
+
 export type Goal =
   | {
       kind: 'find';
@@ -58,8 +67,13 @@ export type Goal =
       back: boolean;
       /** How close to come to pick one up, in studs, where it is more than a step (in a car). */
       reach?: number;
-      /** For a build job: the model the found bricks make by the helper, a piece each. */
-      build?: { x: number; z: number; pieces: Look };
+      /** Minifigures to find, one for each spot, drawn in place of `look`. */
+      crooks?: readonly MinifigOutfit[];
+      /**
+       * For a build job: the model the found bricks make by the helper, a piece each. Or, with
+       * `figures`, the minifigures put in place there (spots in world studs), one for each press.
+       */
+      build?: { x: number; z: number; pieces: Look; figures?: readonly Figure[] };
     }
   | {
       kind: 'take';
@@ -119,11 +133,9 @@ const FLAME: Look = [
   { part: '3062b', color: 14, y: 6 },
 ];
 
-/** A silly thief: a black body and a yellow head. */
-const THIEF: Look = [
-  { part: '3005', color: 0 },
-  { part: '3062b', color: 14, y: 3 },
-];
+/** A burglar: a black cap, sunglasses and a black top, and a thief in an orange jumpsuit. */
+const BURGLAR: MinifigOutfit = outfit(0, 0, { part: '86035', color: 0 }, '3626bp03');
+const CONVICT: MinifigOutfit = outfit(25, 0, { part: '86035', color: 0 }, '3626bp04');
 
 export const QUESTS: readonly Quest[] = [
   {
@@ -412,21 +424,22 @@ export const QUESTS: readonly Quest[] = [
     goal: {
       kind: 'find',
       things: 'thieves',
-      look: THIEF,
+      look: [],
+      crooks: [BURGLAR, CONVICT],
       spots: [
         { x: 301.5, z: 373.5 },
         { x: 361.5, z: 372.5 },
       ],
       back: true,
-      // The thieves end up in the jail's open cell, one piece for each press.
+      // The thieves end up locked in the jail's shut cell (the station's left-hand one, in front
+      // of its bench and behind the bars), one for each press.
       build: {
-        x: 291.5,
+        x: 285,
         z: 373.5,
-        pieces: [
-          { part: '3005', color: 0, x: 0 },
-          { part: '3062b', color: 14, x: 0, y: 3 },
-          { part: '3005', color: 0, x: 2 },
-          { part: '3062b', color: 14, x: 2, y: 3 },
+        pieces: [],
+        figures: [
+          { x: 283.5, z: 373.5, outfit: BURGLAR },
+          { x: 286.5, z: 373.5, outfit: CONVICT },
         ],
       },
     },
@@ -488,7 +501,7 @@ export function advance(
     return goal.build ? { ...progress, step: 'build' } : 'done';
   if (event.kind === 'place' && progress.step === 'build' && goal.build) {
     const built = progress.built + 1;
-    return built >= goal.build.pieces.length ? 'done' : { ...progress, built };
+    return built >= buildSize(goal.build) ? 'done' : { ...progress, built };
   }
   return progress;
 }
@@ -660,7 +673,7 @@ export function taskCount(quest: Quest, progress: QuestProgress): string | null 
   const { goal } = quest;
   if (goal.kind === 'take') return null;
   if (progress.step === 'build' && goal.build)
-    return `${progress.built} / ${goal.build.pieces.length}`;
+    return `${progress.built} / ${buildSize(goal.build)}`;
   if (progress.step === 'go' && goal.spots.length > 1)
     return `${progress.found.length} / ${goal.spots.length}`;
   return null;

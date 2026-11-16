@@ -14,11 +14,15 @@ import {
 import { PLATE_HEIGHT, getLDrawTransform } from '@brick-workshop/engine';
 import { coloredLDrawModel, loadLDrawModels } from '@brick-workshop/render/ldraw';
 import { LDRAW_SCALE } from '@brick-workshop/render/scene-frame';
+import { assembleMinifig, poseMinifig } from '@brick-workshop/walk/minifig';
+import type { MinifigRig } from '@brick-workshop/walk/minifig';
+import { MINIFIG_BODY } from '@brick-workshop/render/minifig-parts';
 import { MINIFIG } from '@brick-workshop/walk/walk';
 import type { WalkWorld } from '@brick-workshop/walk/walk';
 import type { WalkProbe } from '@brick-workshop/walk/walk-view';
 import { TALK_RANGE } from '@brick-workshop/npc/talk';
-import { QUESTS, giverId, questById, takerId } from './quests.ts';
+import { QUESTS, buildSize, giverId, questById, takerId } from './quests.ts';
+import type { MinifigOutfit } from '@brick-workshop/walk/minifig';
 import type { Look, QuestEvent, QuestProgress, Spot } from './quests.ts';
 import type { Terrain } from './world/terrain.ts';
 
@@ -49,12 +53,30 @@ const PARTS = [
     QUESTS.flatMap((quest) => {
       const { goal } = quest;
       const looks: Look[] = [];
-      if (goal.kind === 'find') looks.push(goal.look, ...(goal.build ? [goal.build.pieces] : []));
-      else if (goal.leave) looks.push(goal.leave);
-      return looks.flatMap((look) => look.map((piece) => piece.part));
+      const figures: MinifigOutfit[] = [];
+      if (goal.kind === 'find') {
+        looks.push(goal.look, ...(goal.build ? [goal.build.pieces] : []));
+        figures.push(...(goal.crooks ?? []), ...(goal.build?.figures ?? []).map((f) => f.outfit));
+      } else if (goal.leave) looks.push(goal.leave);
+      return [
+        ...looks.flatMap((look) => look.map((piece) => piece.part)),
+        ...figures.flatMap((each) => [
+          ...MINIFIG_BODY,
+          each.head,
+          ...(each.headgear ? [each.headgear.part] : []),
+        ]),
+      ];
     }),
   ),
 ];
+
+/** A minifigure standing upright and still, for a thief to find or in the cell. */
+function buildFigure(outfit: MinifigOutfit, models: Record<string, Group>, scale = 1) {
+  const rig = assembleMinifig(models, outfit);
+  rig.root.visible = true;
+  rig.root.scale.setScalar(scale);
+  return { object: rig.root, rig };
+}
 
 /** A look built from its loaded parts, standing on its origin in scene units. */
 function buildLook(look: Look, models: Record<string, Group>, scale = 1) {
@@ -181,10 +203,10 @@ export function QuestMarks({
   // Everything drawn, rebuilt when the jobs change.
   const [root] = useState(() => new Group());
   const drawn = useRef<{
-    items: { index: number; spot: Spot; object: Group }[];
+    items: { index: number; spot: Spot; object: Group; rig?: MinifigRig }[];
     beacons: { spot: Spot | string; object: Group; lift: number }[];
     gems: { id: string; object: Mesh }[];
-    fixed: { spot: Spot; object: Group }[];
+    fixed: { spot: Spot; object: Group; rig?: MinifigRig }[];
   }>({ items: [], beacons: [], gems: [], fixed: [] });
 
   useEffect(() => {
@@ -208,9 +230,12 @@ export function QuestMarks({
       if (goal.kind === 'find' && progress.step === 'go')
         goal.spots.forEach((spot, index) => {
           if (progress.found.includes(index)) return;
-          const object = buildLook(goal.look, models, goal.reach ? 1.6 : FIND_SCALE);
+          const crook = goal.crooks?.[index];
+          const figure = crook ? buildFigure(crook, models, 1.3) : null;
+          const object =
+            figure?.object ?? buildLook(goal.look, models, goal.reach ? 1.6 : FIND_SCALE);
           root.add(object);
-          items.push({ index, spot, object });
+          items.push({ index, spot, object, rig: figure?.rig });
           const beacon = makeBeacon(0x3ee06a);
           root.add(beacon);
           beacons.push({ spot, object: beacon, lift: 7 });
@@ -241,9 +266,16 @@ export function QuestMarks({
               ? own.built
               : 0
             : view.done.has(each.id)
-              ? goal.build.pieces.length
+              ? buildSize(goal.build)
               : 0;
-          if (count) {
+          if (count && goal.build.figures) {
+            // Each thief in the cell, waving from behind the bars.
+            for (const figure of goal.build.figures.slice(0, count)) {
+              const made = buildFigure(figure.outfit, models, 1.3);
+              root.add(made.object);
+              fixed.push({ spot: figure, object: made.object, rig: made.rig });
+            }
+          } else if (count) {
             const object = buildLook(goal.build.pieces.slice(0, count), models, 1.5);
             root.add(object);
             fixed.push({ spot: goal.build, object });
@@ -287,9 +319,16 @@ export function QuestMarks({
       const { x, y, z } = ground(item.spot);
       item.object.visible = near(x, z);
       if (!item.object.visible) continue;
-      const bob = 0.5 + Math.sin(time * 2.5 + item.index) * 0.25;
-      item.object.position.set(x, y + bob, z);
-      item.object.rotation.y = time * 1.5 + item.index;
+      if (item.rig) {
+        // A thief stands about, looking this way and that, ready to run.
+        item.object.position.set(x, y, z);
+        item.object.rotation.y = Math.sin(time * 1.2 + item.index * 2) * 0.8;
+        poseMinifig(item.rig, { stride: 0, moved: 0, grounded: true, time });
+      } else {
+        const bob = 0.5 + Math.sin(time * 2.5 + item.index) * 0.25;
+        item.object.position.set(x, y + bob, z);
+        item.object.rotation.y = time * 1.5 + item.index;
+      }
       const goal = quest?.goal;
       const reach = goal?.kind === 'find' ? (goal.reach ?? PICK_REACH) : PICK_REACH;
       if (Math.hypot(x - walker.x, z - walker.z) < reach && Math.abs(y - walker.y) < REACH_HEIGHT)
@@ -319,6 +358,8 @@ export function QuestMarks({
       const { x, y, z } = ground(thing.spot);
       thing.object.visible = near(x, z);
       thing.object.position.set(x, y, z);
+      if (thing.rig)
+        poseMinifig(thing.rig, { stride: 0, moved: 0, grounded: true, time, waving: true });
     }
     if (!quest || !progress) return;
     const { goal } = quest;

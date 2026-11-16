@@ -109,6 +109,7 @@ import {
   takerId,
   targets,
   taskLine,
+  buildSize,
 } from './quests.ts';
 import type { Quest, QuestEvent, QuestProgress } from './quests.ts';
 import type { Positions, QuestView } from './QuestScene.tsx';
@@ -1678,7 +1679,7 @@ function QuestCard({
     goal.kind === 'find' && progress.step === 'go' && goal.spots.length > 1
       ? goal.spots.map((_, index) => progress.found.includes(index))
       : goal.kind === 'find' && progress.step === 'build' && goal.build
-        ? goal.build.pieces.map((_, index) => index < progress.built)
+        ? Array.from({ length: buildSize(goal.build) }, (_, index) => index < progress.built)
         : null;
   return (
     <div className="quest-card" role="status">
