@@ -1,9 +1,9 @@
-import { getWorldBounds } from '@brick-workshop/engine';
+import { getWorldBounds, isMatchingInsertFrame } from '@brick-workshop/engine';
 import type { Brick, Rotation } from '@brick-workshop/engine';
 
 /**
  * Brick Island's houses, laid brick by brick from a small plan: bonded walls with corner quoins,
- * framed and glazed windows, an open doorway to walk through, a contrasting band between storeys
+ * framed and glazed windows, a shut front door in its frame, a contrasting band between storeys
  * and a gabled roof of 45° slopes in two shades with eaves over the walls and a ridge on top.
  * Built facing +z, then turned to face their street.
  */
@@ -36,6 +36,9 @@ const STOREY = 7;
 const WINDOW = '60593';
 const WINDOW_GLASS = '60602';
 const DOOR_FRAME = '60596';
+/** The front door: 1 x 4 x 6 with four panes, hung in the frame's hinge holes. */
+const DOOR = '60623';
+const DOOR_COLOR = 70;
 
 /** Bricks to fill a run of wall, longest first, by length. */
 const RUN: Record<number, string> = { 1: '3005', 2: '3004', 3: '3622', 4: '3010' };
@@ -70,6 +73,32 @@ function windowsAlong(length: number, door?: { from: number; to: number }) {
     if (at >= 1 && at + 2 <= length - 1 && fits(at)) spots.push(at);
   }
   return spots;
+}
+
+/** Hangs the door in the frame at `frame`: doors are handed, so try either hinge. */
+function hangDoor(
+  add: (partId: string, color: number, x: number, y: number, z: number, rotation: Rotation) => void,
+  frame: { x: number; y: number; z: number; rotation: Rotation },
+) {
+  const placed = { id: 'frame', partId: DOOR_FRAME, color: 0, ...frame };
+  for (const rotation of [frame.rotation, (frame.rotation + 180) % 360] as Rotation[])
+    for (const dx of [0, -0.5, 0.5, -1, 1])
+      for (const dz of [0, -0.5, 0.5, -1, 1]) {
+        const door = {
+          id: 'door',
+          partId: DOOR,
+          color: DOOR_COLOR,
+          x: frame.x + dx,
+          y: frame.y,
+          z: frame.z + dz,
+          rotation,
+        };
+        if (isMatchingInsertFrame(door, placed)) {
+          add(DOOR, DOOR_COLOR, door.x, door.y, door.z, rotation);
+          return;
+        }
+      }
+  throw new Error('No fit for the house door.');
 }
 
 export function buildHouse(plan: HousePlan, next: () => number): Piece[] {
@@ -178,14 +207,9 @@ export function buildHouse(plan: HousePlan, next: () => number): Piece[] {
     for (const opening of openings) {
       const rotation: Rotation = opening.along === 'x' ? 90 : 0;
       const oy = y + opening.from * 3;
-      add(
-        opening.part,
-        opening.part === DOOR_FRAME ? plan.frame : plan.frame,
-        opening.x,
-        oy,
-        opening.z,
-        rotation,
-      );
+      add(opening.part, plan.frame, opening.x, oy, opening.z, rotation);
+      if (opening.part === DOOR_FRAME)
+        hangDoor(add, { x: opening.x, y: oy, z: opening.z, rotation });
       if (opening.part === WINDOW) add(WINDOW_GLASS, GLASS, opening.x, oy, opening.z, rotation);
     }
     y += STOREY * 3;

@@ -110,6 +110,7 @@ describe('Brick Island', () => {
             z: piece.z + 2,
           }),
         );
+        expect(pieces.filter((piece) => piece.partId === '60623')).toHaveLength(1);
         expect(
           validateAssembly({ name: 'house', bricks: [...base, ...pieces], buildArea: 16 }),
         ).toEqual([]);
