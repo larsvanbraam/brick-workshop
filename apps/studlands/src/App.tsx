@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { getPart } from '@brick-workshop/engine';
-import type { Assembly, Brick } from '@brick-workshop/engine';
+import type { Brick } from '@brick-workshop/engine';
 import { Loader } from '@brick-workshop/render/loader';
 import { FullscreenButton, useFullscreen } from '@brick-workshop/render/fullscreen';
 import { dismissSplash, setSplashMessage } from '@brick-workshop/render/splash';
@@ -31,7 +31,7 @@ import {
   unloadRadius,
 } from './streaming.ts';
 import type { DistanceName } from './streaming.ts';
-import { CHUNK, allBricks, applyToChunks, chunkOf, withEdits } from './chunks.ts';
+import { CHUNK, applyToChunks, chunkOf, withEdits } from './chunks.ts';
 import type { Chunks } from './chunks.ts';
 import { WorldIndex } from './world-index.ts';
 import type { Aim, Edit, Held } from './build.ts';
@@ -319,7 +319,6 @@ function Game({
   const playing = screen === 'playing';
   // Every loaded piece in one list is only needed by the menu (its export) and the debug window.
   const [debugOptions, setDebugOptions] = useDebugOptions('brick-island-debug-v1');
-  const getAssembly = (): Assembly => ({ name: `World ${seed}`, bricks: allBricks(chunks) });
   /** Parts of every chunk loaded so far, gathered as chunks arrive rather than counted afresh. */
   const [partsSeen, setPartsSeen] = useState<ReadonlySet<string>>(() => new Set());
 
@@ -489,9 +488,6 @@ function Game({
   const volcano = useMemo(() => terrain.volcanoIn(regionX, regionZ), [terrain, regionX, regionZ]);
   /** The campfire and cave crystals nearest the walker's chunk, for their lights. */
   const glows = useMemo(() => glowsNear(terrain, centre[0], centre[1]), [terrain, centre]);
-  /** The middle of the walker's chunk: near enough to where it stands for an area export. */
-  const position = { x: centre[0] * CHUNK + CHUNK / 2, z: centre[1] * CHUNK + CHUNK / 2 };
-
   const [slots, setSlots] = useState<Held[]>(() => loadHotbar() ?? [...STARTER_HOTBAR]);
   useEffect(() => saveHotbar(slots), [slots]);
   const [selected, setSelected] = useState(0);
@@ -1205,6 +1201,12 @@ function Game({
       if (pressed.has('menu')) play();
       return;
     }
+    if (screen === 'menu' && pressed.has('b')) {
+      const back = root.querySelector<HTMLElement>('[data-pad-back]');
+      if (back) back.click();
+      else play();
+      return;
+    }
     if (pressed.has('b') || (screen === 'menu' && pressed.has('menu'))) play();
   };
   const padHandler = useRef(onPad);
@@ -1370,9 +1372,6 @@ function Game({
     resumable: saved !== null,
     onOpenSlot,
     edits,
-    getAssembly,
-    hasBuild: kinds.player > 0,
-    position,
     onPlay: play,
     onReset: resetWorld,
     onReturnVehicles,

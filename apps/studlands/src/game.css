@@ -1112,42 +1112,94 @@ kbd {
   color: var(--accent);
 }
 
+/* A page of the menu: it takes the screen in place of the list, in the same bare style. */
 .title-page {
-  position: absolute;
-  top: 50%;
-  right: clamp(16px, 6vw, 96px);
-  width: min(460px, calc(100% - 32px));
-  max-height: calc(100vh - 64px);
-  transform: translateY(-50%);
+  position: relative;
+  display: grid;
+  align-content: start;
+  justify-items: start;
+  gap: 6px;
+  width: min(760px, 100%);
+  max-height: calc(100vh - 2 * clamp(24px, 7vw, 120px));
+  overflow-y: auto;
   animation: title-page 360ms cubic-bezier(0.2, 0.7, 0.3, 1) both;
 }
 
-.title-page header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 14px;
-}
-
 .title-page h2 {
-  margin: 0;
-  font-size: 20px;
+  margin: 0 0 8px;
+  font-size: clamp(32px, 4.4vw, 56px);
+  font-weight: 800;
+  text-shadow: 0 1px 8px rgb(0 0 0 / 0.5);
 }
 
-.title-page header button {
+.page-back {
   display: flex;
   gap: 8px;
   align-items: center;
-  padding: 4px 6px 4px 10px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
+  padding: 6px 2px;
+  border: 0;
   background: none;
+  font-size: 16px;
+  color: var(--muted);
+  transition:
+    color 160ms ease-out,
+    padding 160ms ease-out;
+}
+
+.page-back:hover,
+.page-back:focus-visible {
+  padding-left: 10px;
+  color: var(--accent);
+}
+
+/* The content sits straight on the shade, not in a box. */
+.title-page .page-body {
+  width: 100%;
+  max-height: none;
+  padding: 0;
+  overflow: visible;
+  border: 0;
+  background: none;
+  backdrop-filter: none;
+}
+
+.title-page .setting {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 0 4px;
+  border-top: 1px solid var(--line);
+  font-size: 16px;
+}
+
+.title-page .setting .choices {
+  flex: 0 1 380px;
+}
+
+.title-page .settings .note + .setting {
+  margin-top: 0;
+}
+
+.title-page .settings .note {
+  margin: 0 0 8px;
+  max-width: 60ch;
+}
+
+.title-page .worlds li,
+.title-page fieldset {
+  border-color: var(--line);
+}
+
+/* The list gives way to the page. */
+.title-screen.paged .title-main {
+  display: none;
 }
 
 @keyframes title-page {
   from {
     opacity: 0;
-    transform: translate(32px, -50%);
+    transform: translateX(32px);
   }
 }
 
@@ -1452,4 +1504,126 @@ kbd {
   .cheer-star {
     animation: none;
   }
+}
+
+/* The pause menu reuses the title screen's layout, over a darker shade of the paused world. */
+.pause {
+  z-index: 5;
+  background: rgb(0 0 0 / 0.35);
+}
+
+.pause .title-shade {
+  background:
+    linear-gradient(90deg, rgb(14 12 9 / 0.9), rgb(14 12 9 / 0.7) 45%, rgb(14 12 9 / 0.5)),
+    radial-gradient(ellipse 120% 70% at 50% 115%, rgb(0 0 0 / 0.55), transparent 70%);
+  backdrop-filter: blur(6px);
+}
+
+.pause .title-shade::after {
+  display: none;
+}
+
+.pause .title-logo {
+  font-size: clamp(32px, 4.6vw, 64px);
+}
+
+@media (max-width: 640px) {
+  .title-page .setting {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+  }
+}
+
+/* The controls page: keyboard and controller side by side, each button as a key cap. */
+.title-page:has(.controls) {
+  width: min(1100px, 100%);
+}
+
+.controls {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(420px, 100%), 1fr));
+  gap: 8px 48px;
+  margin-bottom: 20px;
+}
+
+.bindings h3 {
+  margin: 0 0 4px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+}
+
+.bindings dl {
+  display: block;
+  margin: 0;
+}
+
+.binding-row {
+  display: grid;
+  grid-template-columns: 84px 1fr;
+  gap: 12px;
+  padding: 9px 0;
+  border-top: 1px solid var(--line);
+}
+
+.binding-row dt {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.binding-row dd {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+}
+
+.binding {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+
+.binding kbd {
+  padding: 2px 7px 3px;
+  border-radius: 5px;
+  border-bottom-width: 2px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.binding .or {
+  margin: 0 4px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.binding .does {
+  margin-left: 4px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.title-page .backup {
+  width: 100%;
+  margin: 24px 0 0;
+  padding: 14px 0 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+}
+
+.title-page .backup legend {
+  padding: 0 10px 0 0;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+}
+
+.title-page .backup .note {
+  margin: 0 0 10px;
 }

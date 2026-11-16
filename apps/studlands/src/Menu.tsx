@@ -1,7 +1,8 @@
-import { useRef, useState } from 'react';
-import type { Assembly } from '@brick-workshop/engine';
+import { useEffect, useRef, useState } from 'react';
+import type { CSSProperties } from 'react';
+import { Logo, logoLetters } from './Logo.tsx';
 import type { Edit } from './build.ts';
-import { cutOutArea, cutOutBuild, download, ldrawDocument, workshopDocument } from './export.ts';
+import { download } from './export.ts';
 import {
   createSaveFile,
   deleteSave,
@@ -23,13 +24,19 @@ import type { Locale } from './locale.ts';
 import type { VoiceMode } from '@brick-workshop/audio/voice';
 import { game } from './game.ts';
 import { Key } from './input-hint.tsx';
+import { MenuPage } from './MenuPage.tsx';
 import { LANDMARKS } from './world/island/map.ts';
 
-type Tab = 'play' | 'saves' | 'worlds' | 'export' | 'settings';
+type Page = 'saves' | 'worlds' | 'controls' | 'settings';
+
+const PAGE_TITLES: Record<Page, string> = {
+  saves: 'Saves',
+  worlds: 'Worlds',
+  controls: 'Controls',
+  settings: 'Settings',
+};
 
 export interface MenuProps {
-  /** Where the walker stands, in world studs: the area export is centred on it. */
-  position: { x: number; z: number };
   seed: number;
   /** The save game being played, in a game with save slots. */
   slot: number;
@@ -40,10 +47,6 @@ export interface MenuProps {
   /** Opens a save game, or starts a new one in an empty slot (afresh when it is the current one). */
   onOpenSlot: (slot: number) => void;
   edits: readonly Edit[];
-  /** Every loaded piece in one list, built when asked for: only an export needs it. */
-  getAssembly: () => Assembly;
-  /** Whether any of the player's pieces stand in the loaded chunks. */
-  hasBuild: boolean;
   onPlay: () => void;
   onReset: () => void;
   /** Puts every vehicle back at its spot, for one that got stuck. */
@@ -81,142 +84,256 @@ function playedAgo(date: string) {
   return 'just now';
 }
 
-const TABS = ['play', 'saves', 'worlds', 'export', 'settings'] as const;
-
+/**
+ * The pause menu: the title screen's layout over the paused world, the logo and a list on the
+ * left, and the page you pick (settings, controls, saves…) as a panel on the right.
+ */
 export function Menu(props: MenuProps) {
-  const [tab, setTab] = useState<Tab>('play');
+  const [page, setPage] = useState<Page | null>(null);
+  const resume = useRef<HTMLButtonElement>(null);
+
+  // Esc closes an open page first, and only then resumes the game (see App.tsx).
+  useEffect(() => {
+    if (!page) return;
+    const keydown = (event: KeyboardEvent) => {
+      if (event.code !== 'Escape') return;
+      event.preventDefault();
+      event.stopPropagation();
+      setPage(null);
+    };
+    window.addEventListener('keydown', keydown, true);
+    return () => window.removeEventListener('keydown', keydown, true);
+  }, [page]);
+
+  useEffect(() => resume.current?.focus({ preventScroll: true }), []);
+
+  const pages: Page[] = [
+    ...(game().saveSlots ? (['saves'] as const) : []),
+    ...(game().seed === undefined ? (['worlds'] as const) : []),
+    'controls',
+    'settings',
+  ];
+  const subtitle = game().seed === undefined ? `World ${props.seed}` : null;
+  let item = 0;
+  const step = () => ({ '--item': item++ }) as CSSProperties;
+  const { title } = game();
+
   return (
-    <div className="menu">
-      <div className="panel">
-        <h1>{game().title}</h1>
-        {game().seed === undefined && <p>World {props.seed}</p>}
-        {game().saveSlots && <p>Game {props.slot + 1}</p>}
-        <button type="button" className="play" onClick={props.onPlay} data-pad-start>
-          {props.started ? 'Resume' : props.resumable ? 'Continue' : 'Play'} <Key k="Esc" pad="B" />
-        </button>
-        <div className="tabs" role="tablist" data-pad-tabs>
-          {TABS.filter(
-            (name) =>
-              (name !== 'saves' || game().saveSlots) &&
-              (name !== 'worlds' || game().seed === undefined) &&
-              (name !== 'export' || game().building),
-          ).map((name) => (
+    <div
+      className={page ? 'title-screen pause quick paged' : 'title-screen pause quick'}
+      style={{ '--letters': logoLetters(title) } as CSSProperties}
+    >
+      <div className="title-shade" aria-hidden />
+      <div className="title-main">
+        <Logo title={title} />
+        <p className="title-tagline">Paused</p>
+        <nav className="title-actions" aria-label="Pause menu">
+          <button
+            ref={resume}
+            type="button"
+            className="title-play"
+            style={step()}
+            onClick={props.onPlay}
+            data-pad-start
+          >
+            <span>{props.started ? 'Resume' : props.resumable ? 'Continue' : 'Play'}</span>
+            <Key k="Esc" pad="B" />
+          </button>
+          {(subtitle || game().saveSlots) && (
+            <p className="title-subtitle" style={step()}>
+              {subtitle ?? `Game ${props.slot + 1}`}
+            </p>
+          )}
+          {pages.map((name) => (
             <button
               key={name}
               type="button"
-              role="tab"
-              aria-selected={tab === name}
-              className={tab === name ? 'tab selected' : 'tab'}
-              onClick={() => setTab(name)}
+              className={page === name ? 'title-item selected' : 'title-item'}
+              aria-expanded={page === name}
+              style={step()}
+              onClick={() => setPage((current) => (current === name ? null : name))}
             >
-              {
-                {
-                  play: 'Controls',
-                  saves: 'Saves',
-                  worlds: 'Worlds',
-                  export: 'Export',
-                  settings: 'Settings',
-                }[name]
-              }
+              {PAGE_TITLES[name]}
             </button>
           ))}
-        </div>
-        {tab === 'play' && <Controls {...props} />}
-        {tab === 'saves' && <Saves {...props} />}
-        {tab === 'worlds' && <Worlds {...props} />}
-        {tab === 'export' && <Export {...props} />}
-        {tab === 'settings' && <Settings {...props} />}
+        </nav>
       </div>
+      {page && (
+        <MenuPage title={PAGE_TITLES[page]} onBack={() => setPage(null)} key={page}>
+          {page === 'saves' && <Saves {...props} />}
+          {page === 'worlds' && <Worlds {...props} />}
+          {page === 'controls' && <Controls {...props} />}
+          {page === 'settings' && <Settings {...props} />}
+        </MenuPage>
+      )}
     </div>
+  );
+}
+
+/** One thing you can do and the buttons for it: several keys mean any of them works. */
+type Binding = { keys: string[]; does: string };
+type Row = { name: string; bindings: Binding[] };
+
+const bind = (does: string, ...keys: string[]): Binding => ({ keys, does });
+
+function keyboardRows(): Row[] {
+  const { building, minimap, vehicles, world } = game();
+  return [
+    {
+      name: 'Move',
+      bindings: [bind('walk', 'WASD'), bind('jump', 'Space'), bind('run', 'Shift')],
+    },
+    {
+      name: 'Fly',
+      bindings: [bind('take off', 'Space ×2'), bind('up', 'Space'), bind('down', 'C')],
+    },
+    ...(vehicles.length > 0
+      ? [
+          {
+            name: 'Vehicles',
+            bindings: [
+              bind('get in or out', 'E'),
+              bind('drive', 'WASD'),
+              bind('brake or climb', 'Space'),
+              bind('sink', 'Shift'),
+              bind('honk', 'H'),
+            ],
+          },
+        ]
+      : []),
+    ...(building
+      ? [
+          {
+            name: 'Build',
+            bindings: [
+              bind('place', 'Right click', 'Enter'),
+              bind('take off', 'Left click', 'Backspace'),
+              bind('copy', 'Middle click', 'G'),
+            ],
+          },
+          {
+            name: 'Pieces',
+            bindings: [
+              bind('pick', '1–9', 'Wheel'),
+              bind('colour', 'Q', 'E'),
+              bind('turn', 'R'),
+              bind('brick box', 'B'),
+            ],
+          },
+        ]
+      : []),
+    ...(minimap ? [{ name: 'Map', bindings: [bind('open or close', 'N')] }] : []),
+    ...(world === 'island' ? [{ name: 'Hats', bindings: [bind('change hat', 'H')] }] : []),
+    { name: 'Talk', bindings: [bind('talk, then next line', 'T')] },
+    { name: 'Camera', bindings: [bind('over the shoulder', 'V')] },
+    { name: 'Screen', bindings: [bind('fullscreen', 'F')] },
+    { name: 'Menu', bindings: [bind('open', 'M'), bind('close', 'Esc')] },
+  ];
+}
+
+function controllerRows(): Row[] {
+  const { building, minimap, vehicles, world } = game();
+  return [
+    {
+      name: 'Move',
+      bindings: [
+        bind('walk', 'Left stick'),
+        bind('sprint', 'Stick click'),
+        bind('look', 'Right stick'),
+      ],
+    },
+    {
+      name: 'Fly',
+      bindings: [
+        bind('jump', 'A'),
+        bind('take off', 'Y', 'A ×2'),
+        bind('up', 'A'),
+        bind('down', 'B'),
+      ],
+    },
+    ...(vehicles.length > 0
+      ? [
+          {
+            name: 'Vehicles',
+            bindings: [
+              bind('get in or out', 'X'),
+              bind('drive', 'Left stick', 'Triggers'),
+              bind('up', 'A'),
+              bind('down', 'B'),
+              bind('honk', 'Y'),
+            ],
+          },
+        ]
+      : []),
+    ...(building
+      ? [
+          {
+            name: 'Build',
+            bindings: [bind('place', 'RT'), bind('take off', 'LT'), bind('copy', 'X')],
+          },
+          {
+            name: 'Pieces',
+            bindings: [
+              bind('pick', 'LB', 'RB'),
+              bind('colour', '◀', '▶'),
+              bind('turn', '▲'),
+              bind('brick box', '▼'),
+            ],
+          },
+        ]
+      : []),
+    ...(minimap ? [{ name: 'Map', bindings: [bind('open', '▼'), bind('close', 'B')] }] : []),
+    ...(world === 'island' ? [{ name: 'Hats', bindings: [bind('change hat', '▲')] }] : []),
+    { name: 'Talk', bindings: [bind('talk, then next line', 'B')] },
+    { name: 'Camera', bindings: [bind('over the shoulder', 'View')] },
+    { name: 'Screen', bindings: [bind('fullscreen, in a menu', 'Y')] },
+    {
+      name: 'Menu',
+      bindings: [
+        bind('open', 'Menu'),
+        bind('move', 'Stick'),
+        bind('press', 'A'),
+        bind('close', 'B'),
+      ],
+    },
+  ];
+}
+
+function BindingList({ title, rows }: { title: string; rows: Row[] }) {
+  return (
+    <section className="bindings">
+      <h3>{title}</h3>
+      <dl>
+        {rows.map((row) => (
+          <div key={row.name} className="binding-row">
+            <dt>{row.name}</dt>
+            <dd>
+              {row.bindings.map((binding) => (
+                <span key={binding.does} className="binding">
+                  {binding.keys.map((key, index) => (
+                    <span key={key}>
+                      {index > 0 && <span className="or">or</span>}
+                      <kbd>{key}</kbd>
+                    </span>
+                  ))}
+                  <span className="does">{binding.does}</span>
+                </span>
+              ))}
+            </dd>
+          </div>
+        ))}
+      </dl>
+    </section>
   );
 }
 
 export function Controls({ edits, onReset, onReturnVehicles, onNewWorld }: MenuProps) {
   return (
     <>
-      <dl>
-        <dt>Move</dt>
-        <dd>WASD, Space to jump, Shift to run</dd>
-        <dt>Fly</dt>
-        <dd>Double Space; Space up, C down</dd>
-        <dt>Fullscreen</dt>
-        <dd>F</dd>
-        {game().vehicles.length > 0 && (
-          <>
-            <dt>Vehicles</dt>
-            <dd>E gets in and out; WASD drives, Space brakes or climbs, Shift sinks, H honks</dd>
-          </>
-        )}
-        {game().building && (
-          <>
-            <dt>Build</dt>
-            <dd>Right click or Enter places, left click or Backspace takes a piece off</dd>
-            <dt>Pieces</dt>
-            <dd>1–9 or wheel; Q/E colour, R turn, middle click or G copies</dd>
-            <dt>Bricks</dt>
-            <dd>B opens the brick box to fill the bar; B or Esc closes it</dd>
-          </>
-        )}
-        {game().minimap && (
-          <>
-            <dt>Map</dt>
-            <dd>N opens the island map, N or Esc closes it</dd>
-          </>
-        )}
-        {game().world === 'island' && (
-          <>
-            <dt>Hats</dt>
-            <dd>H changes the hat you wear</dd>
-          </>
-        )}
-        <dt>Talk</dt>
-        <dd>T beside someone; T again for their next line</dd>
-        <dt>Camera</dt>
-        <dd>V for over the shoulder</dd>
-        <dt>Menu</dt>
-        <dd>M opens this menu, Esc closes it</dd>
-      </dl>
-      <h2 className="controls-heading">Controller</h2>
-      <dl>
-        <dt>Move</dt>
-        <dd>Left stick, click it in to sprint; right stick looks</dd>
-        <dt>Fly</dt>
-        <dd>A jumps, Y or double A flies; A up, B down</dd>
-        {game().vehicles.length > 0 && (
-          <>
-            <dt>Vehicles</dt>
-            <dd>X gets in and out; left stick or triggers drive, A up, B down, Y honks</dd>
-          </>
-        )}
-        {game().building && (
-          <>
-            <dt>Build</dt>
-            <dd>RT places, LT takes a piece off, X copies</dd>
-            <dt>Pieces</dt>
-            <dd>LB/RB pick; d-pad ◀ ▶ colour, ▲ turn, ▼ brick box</dd>
-          </>
-        )}
-        {game().minimap && (
-          <>
-            <dt>Map</dt>
-            <dd>D-pad ▼ opens the island map, B closes it</dd>
-          </>
-        )}
-        {game().world === 'island' && (
-          <>
-            <dt>Hats</dt>
-            <dd>D-pad ▲ changes the hat you wear</dd>
-          </>
-        )}
-        <dt>Talk</dt>
-        <dd>B beside someone; B again for their next line</dd>
-        <dt>Camera</dt>
-        <dd>View for over the shoulder</dd>
-        <dt>Menu</dt>
-        <dd>Menu opens it; stick moves, A presses, LB/RB tabs, B closes</dd>
-        <dt>Fullscreen</dt>
-        <dd>Y, while a menu is open</dd>
-      </dl>
+      <div className="controls">
+        <BindingList title="Keyboard" rows={keyboardRows()} />
+        <BindingList title="Controller" rows={controllerRows()} />
+      </div>
       {(game().building || game().vehicles.length > 0) && (
         <div className="actions">
           {game().building && (
@@ -475,7 +592,7 @@ export function Saves({ slot, onOpenSlot }: MenuProps) {
   );
 }
 
-export function Worlds({ seed, onOpenWorld }: MenuProps) {
+export function Worlds({ seed, edits, onOpenWorld }: MenuProps) {
   // Read when the menu opens, and again after a delete.
   const [worlds, setWorlds] = useState(listWorlds);
   const [confirming, setConfirming] = useState<number | null>(null);
@@ -560,36 +677,22 @@ export function Worlds({ seed, onOpenWorld }: MenuProps) {
       {confirming !== null && (
         <p className="note">Deleting forgets everything built in that world. It can’t be undone.</p>
       )}
+      <Backup seed={seed} edits={edits} onOpenWorld={onOpenWorld} />
     </>
   );
 }
 
-type Scope = 'world' | 'build';
-type Format = 'ldr' | 'workshop';
-
-function Export({ seed, edits, getAssembly, hasBuild, position, onOpenWorld }: MenuProps) {
-  const [scope, setScope] = useState<Scope>(hasBuild ? 'build' : 'world');
-  const [format, setFormat] = useState<Format>('ldr');
+/** Backs the world being played up to a file, and opens a world from one, to move it elsewhere. */
+function Backup({ seed, edits, onOpenWorld }: Pick<MenuProps, 'seed' | 'edits' | 'onOpenWorld'>) {
   const [message, setMessage] = useState<{ text: string; bad?: boolean } | null>(null);
   const [pending, setPending] = useState<SaveFile | null>(null);
   const input = useRef<HTMLInputElement>(null);
 
-  const exportModel = () => {
-    const name = scope === 'build' ? `My build in world ${seed}` : `World ${seed}`;
-    const assembly = getAssembly();
-    const model =
-      scope === 'build' ? cutOutBuild(assembly, name) : cutOutArea(assembly, position, name);
-    if (!model) return setMessage({ text: 'Nothing built yet to export.', bad: true });
-    const base = `${game().slug}-${seed}${scope === 'build' ? '-build' : ''}`;
-    try {
-      if (format === 'ldr') download(ldrawDocument(model), `${base}.ldr`, 'text/plain');
-      else download(workshopDocument(model), `${base}.json`, 'application/json');
-      setMessage({ text: `Exported ${model.bricks.length.toLocaleString()} pieces.` });
-    } catch (error) {
-      setMessage({ text: error instanceof Error ? error.message : 'Export failed.', bad: true });
-    }
+  const apply = (save: SaveFile) => {
+    importSaveFile(save);
+    setPending(null);
+    onOpenWorld(save.seed);
   };
-
   const load = async (file: File | undefined) => {
     if (!file) return;
     try {
@@ -609,92 +712,41 @@ function Export({ seed, edits, getAssembly, hasBuild, position, onOpenWorld }: M
       });
     }
   };
-  const apply = (save: SaveFile) => {
-    importSaveFile(save);
-    setPending(null);
-    onOpenWorld(save.seed);
-  };
 
   return (
-    <>
-      <fieldset>
-        <legend>Model</legend>
-        <div className="choices">
-          <label>
-            <input
-              type="radio"
-              name="scope"
-              checked={scope === 'build'}
-              disabled={!hasBuild}
-              onChange={() => setScope('build')}
-            />
-            My build, on its patch of ground
-          </label>
-          <label>
-            <input
-              type="radio"
-              name="scope"
-              checked={scope === 'world'}
-              onChange={() => setScope('world')}
-            />
-            The area round you, 128 studs across
-          </label>
-        </div>
-        <div className="choices">
-          <label>
-            <input
-              type="radio"
-              name="format"
-              checked={format === 'ldr'}
-              onChange={() => setFormat('ldr')}
-            />
-            LDraw (.ldr), for Studio, LDCad and other LDraw tools
-          </label>
-          <label>
-            <input
-              type="radio"
-              name="format"
-              checked={format === 'workshop'}
-              onChange={() => setFormat('workshop')}
-            />
-            Brick Workshop file, for parts lists and instructions
-          </label>
-        </div>
-        <button type="button" className="wide" onClick={exportModel}>
-          Download model
+    <fieldset className="backup">
+      <legend>Back up</legend>
+      <p className="note">
+        World {seed} and everything you built in it, as a file to keep or open in another browser.
+      </p>
+      <div className="actions">
+        <button
+          type="button"
+          onClick={() => {
+            download(
+              JSON.stringify(createSaveFile(seed, edits)),
+              `${game().slug}-${seed}.save.json`,
+              'application/json',
+            );
+            setMessage({ text: `Saved world ${seed} to a file.` });
+          }}
+        >
+          Download save
         </button>
-      </fieldset>
-      <fieldset>
-        <legend>Save file</legend>
-        <p className="note">The world number and your changes, to back up or open elsewhere.</p>
-        <div className="actions">
-          <button
-            type="button"
-            onClick={() =>
-              download(
-                JSON.stringify(createSaveFile(seed, edits)),
-                `${game().slug}-${seed}.save.json`,
-                'application/json',
-              )
-            }
-          >
-            Download save
-          </button>
-          <button type="button" onClick={() => input.current?.click()}>
-            Load save…
-          </button>
-          <input
-            ref={input}
-            type="file"
-            accept=".json,application/json"
-            hidden
-            onChange={(event) => {
-              void load(event.target.files?.[0]);
-              event.target.value = '';
-            }}
-          />
-        </div>
-      </fieldset>
+        <button type="button" onClick={() => input.current?.click()}>
+          Load save…
+        </button>
+        <input
+          ref={input}
+          type="file"
+          accept=".json,application/json"
+          hidden
+          onChange={(event) => {
+            void load(event.target.files?.[0]);
+            event.target.value = '';
+          }}
+        />
+      </div>
       {pending && (
         <div className="replace">
           <p>World {pending.seed} already has changes here. Loading the save replaces them.</p>
@@ -709,6 +761,6 @@ function Export({ seed, edits, getAssembly, hasBuild, position, onOpenWorld }: M
         </div>
       )}
       {message && <p className={message.bad ? 'note bad' : 'note'}>{message.text}</p>}
-    </>
+    </fieldset>
   );
 }

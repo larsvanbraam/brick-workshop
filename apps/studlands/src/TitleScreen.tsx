@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { Key } from './input-hint.tsx';
+import { MenuPage } from './MenuPage.tsx';
+import { Logo, logoLetters } from './Logo.tsx';
 import { Controls, Saves, Settings, Worlds, describeSave } from './Menu.tsx';
 import type { MenuProps } from './Menu.tsx';
 import type { SaveGame } from './save.ts';
@@ -14,16 +16,6 @@ const PAGE_TITLES: Record<Page, string> = {
   controls: 'Controls',
   settings: 'Settings',
 };
-
-/** The logo's brick colours, in turn: red, blue, yellow, green, orange and white. */
-const BRICKS = [
-  { color: '#c91a09', ink: '#fff6ec' },
-  { color: '#0055bf', ink: '#f2f6ff' },
-  { color: '#f2cd37', ink: '#3b2d07' },
-  { color: '#237841', ink: '#effaf1' },
-  { color: '#fe8a18', ink: '#3a1d02' },
-  { color: '#f4f4f4', ink: '#2a2a2a' },
-];
 
 /** How long the title takes to leave once Play is pressed, in milliseconds (see game.css). */
 const LEAVE_MS = 900;
@@ -78,11 +70,6 @@ export function TitleScreen(props: TitleScreenProps) {
   }, [leaving, onGone]);
 
   const { title, tagline } = game();
-  let at = 0;
-  const words = title
-    .split(' ')
-    .map((word) => [...word].map((letter) => ({ letter, index: at++ })));
-  const letters = at;
   const subtitle =
     game().seed === undefined
       ? `World ${props.seed}`
@@ -106,38 +93,12 @@ export function TitleScreen(props: TitleScreenProps) {
         leaving ? 'leaving' : '',
         page ? 'paged' : '',
       ].join(' ')}
-      style={{ '--letters': letters } as CSSProperties}
+      style={{ '--letters': logoLetters(title) } as CSSProperties}
       inert={leaving}
     >
       <div className="title-shade" aria-hidden />
       <div className="title-main">
-        <h1 className="title-logo" aria-label={title}>
-          {words.map((word, w) => (
-            <span key={w} className="title-word" aria-hidden>
-              {word.map(({ letter, index }) => {
-                const brick = BRICKS[index % BRICKS.length];
-                // A small tilt per letter, the same every time, so the logo looks stacked by hand.
-                const tilt = (((index * 37) % 7) - 3) * 0.9;
-                return (
-                  <span
-                    key={index}
-                    className="title-brick"
-                    style={
-                      {
-                        '--c': brick.color,
-                        '--ink': brick.ink,
-                        '--i': index,
-                        '--tilt': `${tilt}deg`,
-                      } as CSSProperties
-                    }
-                  >
-                    {letter}
-                  </span>
-                );
-              })}
-            </span>
-          ))}
-        </h1>
+        <Logo title={title} />
         <p className="title-tagline">{tagline}</p>
         <nav className="title-actions" aria-label="Title menu">
           <button
@@ -171,18 +132,12 @@ export function TitleScreen(props: TitleScreenProps) {
         </nav>
       </div>
       {page && (
-        <section className="title-page panel" aria-label={PAGE_TITLES[page]} key={page}>
-          <header>
-            <h2>{PAGE_TITLES[page]}</h2>
-            <button type="button" onClick={() => setPage(null)} data-pad-back>
-              Back <Key k="Esc" pad="B" />
-            </button>
-          </header>
+        <MenuPage title={PAGE_TITLES[page]} onBack={() => setPage(null)} key={page}>
           {page === 'saves' && <Saves {...props} />}
           {page === 'worlds' && <Worlds {...props} />}
           {page === 'controls' && <Controls {...props} />}
           {page === 'settings' && <Settings {...props} />}
-        </section>
+        </MenuPage>
       )}
       <p className="title-credit">Built from real LDraw parts</p>
     </div>
