@@ -19,6 +19,7 @@ import {
   Mesh,
   MeshStandardMaterial,
   PerspectiveCamera,
+  PlaneGeometry,
   Raycaster,
   Vector3,
 } from 'three';
@@ -196,6 +197,31 @@ describe('local LDraw assets', () => {
     third.update([{ brick, model }], 16);
     expect(colorize).toHaveBeenCalledTimes(2);
     third.dispose();
+  });
+  it('keeps a hollow underside whole at the middle stud levels', () => {
+    // A slope keeps its underside, which is no stud and has no centre to snap to.
+    const body = new BoxGeometry(20, 24, 20).translate(0, 12, 0);
+    const ceiling = new PlaneGeometry(10, 10).rotateX(Math.PI / 2).translate(0, 20, 0);
+    const stud = new CylinderGeometry(6, 6, 4, 16).translate(0, -2, 0);
+    const model = new Group().add(
+      new Mesh(body, new MeshStandardMaterial()),
+      new Mesh(ceiling, new MeshStandardMaterial()),
+      new Mesh(stud, new MeshStandardMaterial()),
+    );
+    const brick = { id: 'a', partId: '3040b', color: 4, x: 2, y: 0, z: 2, rotation: 0 as const };
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    for (const level of ['low', 'tiny', 'none'] as const) {
+      const batch = new LDrawBatch((part) => part);
+      batch.setStudLevel(level);
+      batch.update([{ brick, model }], 16);
+      batch.object.updateMatrixWorld(true);
+      const box = new Box3().setFromObject(batch.object);
+      expect(box.isEmpty(), level).toBe(false);
+      expect(Number.isNaN(box.min.x + box.max.x + box.min.y + box.max.y), level).toBe(false);
+      batch.dispose();
+    }
+    expect(error).not.toHaveBeenCalled();
+    error.mockRestore();
   });
   it('leaves out studs that an opaque brick sits on', () => {
     // A 1 x 1 brick: a 24 LDU body below the top (LDraw y = 0) and a stud standing on it.

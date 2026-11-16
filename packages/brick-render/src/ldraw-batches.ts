@@ -519,7 +519,8 @@ function gather(split: Split, covered: ReadonlySet<string>, kind?: 'faces' | 'li
   const parts = [body];
   for (const [stud, chunks] of split.studs) {
     if (covered.has(stud)) continue;
-    if (!sides) parts.push(chunks);
+    // The underside is no stud: it keeps its faces, as it is only left out whole.
+    if (!sides || stud === UNDERSIDE) parts.push(chunks);
     else if (kind === 'faces')
       // A plain stud is 48 triangles; more means the "stud" is really part of a leaf or a lamp.
       parts.push(
