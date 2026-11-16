@@ -210,7 +210,16 @@ export function generateChunk(
       groundIds.has(brick.id) ||
       (brick.id.startsWith('ground-') && brick.id.endsWith(suffix) && inChunk(brick, x0, z0)),
   );
-  const paved = paveChunk(terrain, x0, z0, carving, [...kept, ...planted, ...owned], suffix);
+  const paved = paveChunk(
+    terrain,
+    x0,
+    z0,
+    carving,
+    // Every structure that reaches this chunk, not just the ones it owns: a building that spills
+    // over the edge has pieces here, and tiles laid under them would overlap and flicker.
+    [...kept, ...planted, ...reach.flatMap((structure) => structure.pieces())],
+    suffix,
+  );
   const groundPieces = [...kept, ...paved];
   return {
     key,
