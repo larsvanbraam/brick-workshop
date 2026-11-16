@@ -14,7 +14,6 @@ import {
   LineBasicMaterial,
   LineSegments,
   LoadingManager,
-  Matrix3,
   Matrix4,
   Mesh,
   MeshStandardMaterial,

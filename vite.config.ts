@@ -9,6 +9,10 @@ export default defineConfig({
       'apps/studlands/src/**/*.test.ts',
     ],
   },
-  lint: { plugins: ['typescript', 'react'] },
+  lint: {
+    plugins: ['typescript', 'react'],
+    // react-three-fiber code mutates three.js objects and refs inside useFrame by design.
+    rules: { 'react/immutability': 'off' },
+  },
   fmt: { singleQuote: true, semi: true },
 });

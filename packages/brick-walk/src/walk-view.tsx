@@ -264,7 +264,7 @@ export function WalkMode({
     pad.current.onViewChange = onViewChange;
     pad.current.onExit = onExit;
     pad.current.gamepad = gamepad;
-  }, [onViewChange, onExit, gamepad]);
+  }, [simple, onViewChange, onExit, gamepad]);
   // The real minifigure from the LDraw library; a stand-in walks until it has loaded, or for good
   // when the library has no minifigure parts.
   const [models, setModels] = useState<Record<string, Group> | null>(null);
