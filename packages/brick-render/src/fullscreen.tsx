@@ -51,7 +51,7 @@ export function FullscreenButton({ active, toggle }: { active: boolean; toggle: 
     <button
       type="button"
       className="fullscreen-toggle"
-      title={`${label} (F)`}
+      title={label}
       aria-label={label}
       onClick={toggle}
     >
