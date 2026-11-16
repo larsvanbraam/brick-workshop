@@ -81,6 +81,7 @@ export function Wanderers({
   rules,
   player,
   talk,
+  positions,
 }: {
   world: WalkWorld;
   specs: readonly WandererSpec[];
@@ -89,6 +90,8 @@ export function Wanderers({
   player: () => { x: number; y: number; z: number } | null;
   /** Who the player can talk to and who is speaking (see `TalkLink`). */
   talk?: TalkLink;
+  /** Filled each frame with where everyone about stands, in scene units, by ID. */
+  positions?: Map<string, { x: number; y: number; z: number }>;
 }) {
   const { camera, size, invalidate } = useThree();
   const [head] = useState(() => new Vector3());
@@ -118,6 +121,7 @@ export function Wanderers({
       if (!wanted.has(id)) {
         group.remove(person.rig.rig.root);
         people.delete(id);
+        positions?.delete(id);
       }
     for (const spec of specs) {
       if (people.has(spec.id)) continue;
@@ -146,7 +150,7 @@ export function Wanderers({
         talks: spec.talks ?? look.kind === 'minifig',
       });
     }
-  }, [models, specs, people, group, world]);
+  }, [models, specs, people, group, world, positions]);
   useEffect(
     () => () => {
       group.clear();
@@ -180,6 +184,7 @@ export function Wanderers({
       }
       root.position.set(walker.x, walker.y, walker.z);
       root.rotation.y = npc.yaw;
+      positions?.set(id, { x: walker.x, y: walker.y, z: walker.z });
       const motion = {
         stride: npc.stride,
         moved: npc.moved,

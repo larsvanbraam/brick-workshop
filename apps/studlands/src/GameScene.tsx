@@ -17,6 +17,11 @@ import { NPC_RADIUS, residentsOf, wanderRules } from './npcs.ts';
 import { animalRules, farmAnimals, wildlifeOf } from './animals.ts';
 import type { Animal } from './animals.ts';
 import { FARM } from './world/island/map.ts';
+import { QUESTS, giverId, takerId } from './quests.ts';
+import type { Helper, QuestEvent } from './quests.ts';
+import { QuestMarks } from './QuestScene.tsx';
+import type { Positions, QuestView } from './QuestScene.tsx';
+import { hash2 } from './world/noise.ts';
 import { Vehicles } from '@brick-workshop/vehicles/drive-view';
 import type { Vehicle, VehicleKind } from '@brick-workshop/vehicles/vehicle';
 import { MINIFIG } from '@brick-workshop/walk/walk';
@@ -114,6 +119,13 @@ export interface GameSceneProps {
   talk: TalkLink;
   /** Brick Island's tide, whose bubble over the player's head the scene places. */
   tide?: Tide | null;
+  /** Brick Island's little jobs: their helpers, what to find and where to go (see `quests.ts`). */
+  quests?: {
+    view: QuestView;
+    onEvent: (event: QuestEvent) => void;
+    /** Filled with where the helpers stand. */
+    positions: Positions;
+  };
 }
 
 /** The debug window's probes inside the canvas; drawn only while the window is open. */
@@ -202,7 +214,19 @@ export function GameScene(props: GameSceneProps) {
         buildArea={buildArea}
         probe={probe}
         talk={props.driving === null ? props.talk : undefined}
+        positions={props.quests?.positions}
       />
+      {props.quests && (
+        <QuestMarks
+          view={props.quests.view}
+          world={props.walkWorld}
+          terrain={props.terrain}
+          buildArea={buildArea}
+          probe={probe}
+          positions={props.quests.positions}
+          onEvent={props.quests.onEvent}
+        />
+      )}
       {props.vehicles.length > 0 && (
         <Vehicles
           vehicles={props.vehicles}
@@ -515,6 +539,8 @@ function HeadAnchor({ probe, tide }: { probe: { current: WalkProbe | null }; tid
 
 /** A brick layer of ground, in scene units: three plates. */
 const LAYER = 3 * PLATE_HEIGHT;
+/** How far a job helper strays from their spot, in studs. */
+const HELPER_LEASH = 2.5;
 
 /**
  * The people and animals living in the loaded chunks round the walker, strolling about their
@@ -528,6 +554,7 @@ function People({
   buildArea,
   probe,
   talk,
+  positions,
 }: {
   chunks: Chunks;
   terrain: Terrain;
@@ -536,6 +563,8 @@ function People({
   buildArea: number;
   probe: { current: WalkProbe | null };
   talk?: TalkLink;
+  /** Where the job helpers stand, kept for their markers; on Brick Island only. */
+  positions?: Positions;
 }) {
   const half = buildArea / 2;
   const [cx, cz] = centre;
@@ -597,14 +626,48 @@ function People({
     for (const beast of farm)
       if (keys.has(chunkKey(Math.floor(beast.x / CHUNK), Math.floor(beast.z / CHUNK))))
         specs.push(animal(beast));
+    // The job helpers stay close to where they stand, so they are easy to find again.
+    const helper = (id: string, person: Helper): WandererSpec | null => {
+      if (!keys.has(chunkKey(Math.floor(person.x / CHUNK), Math.floor(person.z / CHUNK))))
+        return null;
+      const ground = terrain.column(Math.floor(person.x), Math.floor(person.z)).height;
+      const shared = wanderRules(terrain, buildArea, isLoaded);
+      return {
+        id,
+        ...at({ ...person, ground }),
+        look: { kind: 'minifig', outfit: person.outfit },
+        seed: Math.floor(hash2(911, Math.floor(person.x), Math.floor(person.z)) * 2 ** 31),
+        temper: 'friendly',
+        pace: 0.25,
+        rules: { leash: HELPER_LEASH, canWalk: shared.canWalk },
+      };
+    };
+    if (positions)
+      for (const quest of QUESTS) {
+        const giver = helper(giverId(quest), quest.giver);
+        if (giver) specs.push(giver);
+        const { goal } = quest;
+        const taker =
+          goal.kind === 'take' && 'outfit' in goal.to ? helper(takerId(quest), goal.to) : null;
+        if (taker) specs.push(taker);
+      }
     return specs;
-  }, [nearKey, terrain, half, farm, buildArea, isLoaded]);
+  }, [nearKey, terrain, half, farm, buildArea, isLoaded, positions]);
   const rules = useMemo(
     () => wanderRules(terrain, buildArea, isLoaded),
     [terrain, buildArea, isLoaded],
   );
   const player = () => probe.current?.walker ?? null;
-  return <Wanderers world={world} specs={specs} rules={rules} player={player} talk={talk} />;
+  return (
+    <Wanderers
+      world={world}
+      specs={specs}
+      rules={rules}
+      player={player}
+      talk={talk}
+      positions={positions}
+    />
+  );
 }
 
 /** Whether a part's model can go in a batch, remembered per model. */

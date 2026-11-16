@@ -11,7 +11,7 @@ import { VEHICLES } from '@brick-workshop/vehicles/vehicle';
 import type { VehicleKind } from '@brick-workshop/vehicles/vehicle';
 import { AmbientMusic } from '@brick-workshop/audio/music';
 import { Voices, voiceFor } from '@brick-workshop/audio/voice';
-import type { VoiceMode } from '@brick-workshop/audio/voice';
+import type { VoiceMode, VoiceTraits } from '@brick-workshop/audio/voice';
 import { TalkLink } from '@brick-workshop/npc/talk';
 import { placementFor } from './build.ts';
 import {
@@ -85,6 +85,22 @@ import { lineFor, personality } from './dialogue.ts';
 import { residentById } from './npcs.ts';
 import { SpeechBubble } from './SpeechBubble.tsx';
 import { TIDE_LINES, Tide } from './tide.ts';
+import {
+  QUESTS,
+  advance,
+  giverId,
+  isQuestProgress,
+  questById,
+  reminder,
+  startQuest,
+  takerId,
+  targets,
+  taskLine,
+} from './quests.ts';
+import type { Quest, QuestEvent, QuestProgress } from './quests.ts';
+import type { Positions, QuestView } from './QuestScene.tsx';
+import type { MapPin } from './Minimap.tsx';
+import { chime } from './chime.ts';
 
 /**
  * Counts per chunk, kept until the chunk changes: a chunk's list is replaced whenever its pieces
@@ -437,6 +453,34 @@ function Game({
   const [toast, setToast] = useState<string | null>(null);
   const nextId = useRef(0);
 
+  // Brick Island's little jobs (see `quests.ts`): talking to a helper starts one, and the save
+  // game keeps those finished and the one being done.
+  const questsOn = game().world === 'island';
+  const [questDone, setQuestDone] = useState<ReadonlySet<string>>(
+    () => new Set((saved?.quests?.done ?? []).filter((id) => questById(id))),
+  );
+  const [activeQuest, setActiveQuest] = useState<QuestProgress | null>(() => {
+    const active = saved?.quests?.active;
+    return isQuestProgress(active) ? active : null;
+  });
+  /** The latest of both, for handlers that outlive a render, and kept ahead of it by them. */
+  const questRef = useRef({ done: questDone, active: activeQuest });
+  useEffect(() => {
+    questRef.current = { done: questDone, active: activeQuest };
+  }, [questDone, activeQuest]);
+  /** Where the helpers stand, written by the scene. */
+  const [helperPositions] = useState<Positions>(() => new Map());
+  /** How far through asking each helper has got, so each press says the next line. */
+  const [askCounts] = useState(() => new Map<string, number>());
+  /** The cheer when a job is done. */
+  const [cheer, setCheer] = useState<{ icon: string; name: string; text: string } | null>(null);
+  const mapPins = useMemo(() => questPins(questDone, activeQuest), [questDone, activeQuest]);
+  useEffect(() => {
+    if (!cheer) return;
+    const timer = setTimeout(() => setCheer(null), 5000);
+    return () => clearTimeout(timer);
+  }, [cheer]);
+
   // The debug window (` or ?debug): the renderer's figures, and the game's own below them.
   const [debugStore] = useState(() => new DebugStore());
   useEffect(() => () => debugStore.dispose(), [debugStore]);
@@ -498,13 +542,16 @@ function Game({
       ...(vehicles.length
         ? { vehicles: parkedVehicles(vehicles, FRAME), driving: drivingRef.current }
         : {}),
+      ...(questsOn
+        ? { quests: { done: [...questRef.current.done], active: questRef.current.active } }
+        : {}),
       playSeconds: (previous?.playSeconds ?? 0) + played,
       startedAt: previous?.startedAt ?? new Date(now).toISOString(),
       playedAt: new Date(now).toISOString(),
     };
     lastSave.current = next;
     storeSave(slot, next);
-  }, [slot, vehicles]);
+  }, [slot, vehicles, questsOn]);
   useEffect(() => {
     if (!playing || !game().saveSlots) return;
     playClock.current = Date.now();
@@ -591,33 +638,101 @@ function Game({
   const [talkCounts] = useState(() => new Map<string, number>());
   const lineNumber = useRef(0);
   const nearbyName = useMemo(() => {
+    if (nearbyPerson && isHelper(nearbyPerson)) return helperName(nearbyPerson);
     const resident = nearbyPerson ? residentById(terrain, nearbyPerson) : null;
     return resident ? personality(resident).name : null;
   }, [nearbyPerson, terrain]);
+  /** Has someone say a line: in a bubble over their head and out loud, till said and read. */
+  const speak = (id: string, name: string, text: string, voice: VoiceTraits) => {
+    const line = ++lineNumber.current;
+    setSpeech({ id, name, text });
+    talk.say(id);
+    // The bubble stays while the line is said, and long enough to read it.
+    const reading = new Promise((resolve) => setTimeout(resolve, 1600 + text.length * 50));
+    void Promise.all([voices.speak(text, voice, voiceMode), reading]).then(() => {
+      if (lineNumber.current === line) talk.say(null);
+    });
+  };
+  /** A job is done: a cheer, a star, and thanks from whoever it was for. */
+  const finishQuest = (quest: Quest) => {
+    questRef.current = {
+      done: new Set(questRef.current.done).add(quest.id),
+      active: null,
+    };
+    setActiveQuest(null);
+    setQuestDone(questRef.current.done);
+    const { goal } = quest;
+    const who = goal.kind === 'take' && 'outfit' in goal.to ? takerId(quest) : giverId(quest);
+    const name = helperName(who) ?? quest.giver.name;
+    setCheer({ icon: quest.icon, name, text: quest.thanks });
+    chime('done');
+    speak(who, name, quest.thanks, helperVoice(who));
+  };
+  /** Something happened on a job: picked up, back with it all, arrived, a brick put on. */
+  const onQuestEvent = (event: QuestEvent) => {
+    const active = questRef.current.active;
+    const quest = active ? questById(active.id) : null;
+    if (!quest || !active) return;
+    const next = advance(quest, active, event);
+    if (next === active) return;
+    if (next === 'done') return finishQuest(quest);
+    questRef.current = { ...questRef.current, active: next };
+    setActiveQuest(next);
+    if (next.step === 'go') return chime('pick');
+    if (next.step === 'back' && active.step === 'go') return chime('all');
+    if (next.step === 'build' && active.step === 'back') {
+      chime('all');
+      return speak(
+        giverId(quest),
+        quest.giver.name,
+        'Yay! Now we build!',
+        helperVoice(giverId(quest)),
+      );
+    }
+    chime('place');
+  };
+  const questEventRef = useRef(onQuestEvent);
+  useEffect(() => {
+    questEventRef.current = onQuestEvent;
+  });
+  const questEvents = useCallback((event: QuestEvent) => questEventRef.current(event), []);
+  /** Talking to a job's helper: they ask, a line a press, and the job starts with the last. */
+  const talkToHelper = (id: string) => {
+    const [, questId, role] = id.split(':');
+    const quest = questById(questId);
+    if (!quest) return;
+    const { active, done } = questRef.current;
+    const mine = active?.id === quest.id ? active : null;
+    const name = helperName(id) ?? quest.giver.name;
+    if (role === 'to') {
+      // Someone to take a thing to: arriving hands it over (see the scene), so this is a hello.
+      const text = done.has(quest.id) ? 'Thank you again!' : 'Hello there!';
+      return speak(id, name, text, helperVoice(id));
+    }
+    if (mine?.step === 'build') return onQuestEvent({ kind: 'place' });
+    if (mine?.step === 'back') return onQuestEvent({ kind: 'giver' });
+    if (mine) return speak(id, name, reminder(quest, mine), helperVoice(id));
+    const count = askCounts.get(quest.id) ?? 0;
+    const last = count >= quest.ask.length - 1;
+    askCounts.set(quest.id, last ? 0 : count + 1);
+    speak(id, name, quest.ask[Math.min(count, quest.ask.length - 1)], helperVoice(id));
+    if (!last) return;
+    const started = startQuest(quest);
+    questRef.current = { ...questRef.current, active: started };
+    setActiveQuest(started);
+    chime('start');
+  };
   const talkTo = () => {
     const id = talk.nearby;
     if (!id || drivingRef.current) return;
+    if (isHelper(id)) return talkToHelper(id);
     const resident = residentById(terrain, id);
     if (!resident) return;
     const count = talkCounts.get(id) ?? 0;
     talkCounts.set(id, count + 1);
     const context = { daytime: isDaytime(clock.time), island: game().world === 'island' };
-    const text = lineFor(resident, context, count);
-    const line = ++lineNumber.current;
-    setSpeech({ id, name: personality(resident).name, text });
-    talk.say(id);
-    // The bubble stays while the line is said, and long enough to read it.
-    const reading = new Promise((resolve) => setTimeout(resolve, 1600 + text.length * 50));
-    void Promise.all([
-      voices.speak(
-        text,
-        voiceFor(resident.seed, resident.figure === 'woman' ? 'high' : 'low'),
-        voiceMode,
-      ),
-      reading,
-    ]).then(() => {
-      if (lineNumber.current === line) talk.say(null);
-    });
+    const voice = voiceFor(resident.seed, resident.figure === 'woman' ? 'high' : 'low');
+    speak(id, personality(resident).name, lineFor(resident, context, count), voice);
   };
   const talkRef = useRef(talkTo);
   useEffect(() => {
@@ -1065,6 +1180,12 @@ function Game({
     />
   );
   if (booting) return <div className="game">{loading}</div>;
+  const questView: QuestView = { active: activeQuest, done: questDone };
+  const shownQuest = activeQuest ? questById(activeQuest.id) : null;
+  /** Whether the press beside the nearby helper puts a brick on. */
+  const building =
+    shownQuest !== null && activeQuest?.step === 'build' && nearbyPerson === giverId(shownQuest);
+  const talkKey = padInUse ? 'B' : 'T';
   const drivingKind = vehicles.find((vehicle) => vehicle.id === driving)?.kind ?? null;
   // Pieces of the player's still standing, not every one ever put down.
   const built = placedCount;
@@ -1128,6 +1249,11 @@ function Game({
         onNear={setNearVehicle}
         talk={talk}
         tide={tide}
+        quests={
+          questsOn
+            ? { view: questView, onEvent: questEvents, positions: helperPositions }
+            : undefined
+        }
         debug={{
           options: debugOptions,
           store: debugStore,
@@ -1174,8 +1300,12 @@ function Game({
           )}
           {nearbyName && (
             <span>
-              <kbd>{padInUse ? 'B' : 'T'}</kbd>{' '}
-              {saying?.id === nearbyPerson ? 'Carry on' : `Talk to ${nearbyName}`}
+              <kbd>{talkKey}</kbd>{' '}
+              {building
+                ? 'Put on a brick'
+                : saying?.id === nearbyPerson
+                  ? 'Carry on'
+                  : `Talk to ${nearbyName}`}
             </span>
           )}
         </div>
@@ -1192,6 +1322,22 @@ function Game({
         <SpeechBubble key={tideLine} anchor={tide.anchor} name="You" text={tideLine} />
       )}
       {playing && drivingKind && <DriveHint kind={drivingKind} pad={padInUse} />}
+      {playing && shownQuest && activeQuest && (
+        <QuestCard quest={shownQuest} progress={activeQuest} talkKey={talkKey} />
+      )}
+      {playing && cheer && (
+        <div className="cheer" role="status">
+          <div className="cheer-star" aria-hidden>
+            ⭐
+          </div>
+          <strong>
+            {cheer.icon} Well done! {cheer.icon}
+          </strong>
+          <span>
+            {cheer.name}: {cheer.text}
+          </span>
+        </div>
+      )}
       <div className="status">
         <strong>
           {game().seed === undefined ? `World ${seed}` : game().title}
@@ -1201,6 +1347,11 @@ function Game({
           {pieceCount.toLocaleString()} pieces{game().building ? ` · ${built} placed` : ''}
           {drivingKind ? ` · ${vehicleAction(drivingKind, true)}` : flying ? ' · flying' : ''}
         </span>
+        {questsOn && (
+          <span className="stars" title="Jobs done">
+            ⭐ {questDone.size} of {QUESTS.length}
+          </span>
+        )}
       </div>
       {toast && <div className="toast">{toast}</div>}
       {playing && (
@@ -1253,13 +1404,110 @@ function Game({
         </div>
       )}
       {game().minimap && playing && (
-        <Minimap seed={seed} store={mapStore} open={mapOpen} onClose={closeMap} />
+        <Minimap
+          seed={seed}
+          store={mapStore}
+          open={mapOpen}
+          onClose={closeMap}
+          pins={questsOn ? mapPins : undefined}
+        />
       )}
       {screen === 'menu' && <Menu {...menuProps} />}
       {titleShown && (
         <TitleScreen {...menuProps} save={saved} leaving={screen !== 'title'} onGone={hideTitle} />
       )}
       {loading}
+    </div>
+  );
+}
+
+/** Whether a wanderer is one of the jobs' helpers rather than someone living there. */
+const isHelper = (id: string) => id.startsWith('quest:');
+
+/** A helper's name from their wanderer ID (see `giverId`, `takerId`). */
+function helperName(id: string) {
+  const [, questId, role] = id.split(':');
+  const quest = questById(questId);
+  if (!quest) return null;
+  if (role !== 'to') return quest.giver.name;
+  return quest.goal.kind === 'take' ? quest.goal.to.name : null;
+}
+
+/** A helper's voice, the same every time, high or low as the helper says. */
+function helperVoice(id: string) {
+  let hash = 7;
+  for (const char of id) hash = (hash * 31 + char.charCodeAt(0)) | 0;
+  const [, questId, role] = id.split(':');
+  const quest = questById(questId);
+  const goal = quest?.goal;
+  const helper =
+    role === 'to' ? (goal?.kind === 'take' && 'outfit' in goal.to ? goal.to : null) : quest?.giver;
+  return voiceFor(Math.abs(hash), helper?.voice);
+}
+
+/**
+ * Pins for the map: a ❗ on each helper with a job to give, and where to go for the job being
+ * done.
+ */
+function questPins(done: ReadonlySet<string>, active: QuestProgress | null): MapPin[] {
+  const pins: MapPin[] = QUESTS.filter(
+    (quest) => !done.has(quest.id) && quest.id !== active?.id,
+  ).map((quest) => ({ x: quest.giver.x, z: quest.giver.z, icon: '❗', name: quest.giver.name }));
+  const quest = active ? questById(active.id) : null;
+  if (quest && active)
+    for (const spot of targets(quest, active))
+      pins.push({ x: spot.x, z: spot.z, icon: quest.icon, target: true });
+  return pins;
+}
+
+/**
+ * The job being done, at the top of the screen: its picture, what to do in a few words, and a
+ * picture for each thing to find, filled in as they are found.
+ */
+function QuestCard({
+  quest,
+  progress,
+  talkKey,
+}: {
+  quest: Quest;
+  progress: QuestProgress;
+  talkKey: string;
+}) {
+  const { goal } = quest;
+  const things =
+    goal.kind === 'find' && progress.step === 'go' && goal.spots.length > 1
+      ? goal.spots.map((_, index) => progress.found.includes(index))
+      : goal.kind === 'find' && progress.step === 'build' && goal.build
+        ? goal.build.pieces.map((_, index) => index < progress.built)
+        : null;
+  return (
+    <div className="quest-card" role="status">
+      <span className="quest-icon" aria-hidden>
+        {quest.icon}
+      </span>
+      <div>
+        <strong>
+          {progress.step === 'build' ? (
+            <>
+              Press <kbd>{talkKey}</kbd> to build!
+            </>
+          ) : (
+            `${taskLine(quest, progress)}!`
+          )}
+        </strong>
+        {things && (
+          <span
+            className="quest-things"
+            aria-label={`${things.filter(Boolean).length} of ${things.length}`}
+          >
+            {things.map((got, index) => (
+              <span key={index} className={got ? 'got' : undefined}>
+                {progress.step === 'build' ? '🧱' : quest.icon}
+              </span>
+            ))}
+          </span>
+        )}
+      </div>
     </div>
   );
 }

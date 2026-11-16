@@ -15,6 +15,15 @@ import {
  * the landmarks near it; and the whole island with every landmark named, opened with `N`.
  */
 
+/** A pin of the game's own: a job's helper, or where to go next for it (kept on the map's edge). */
+export interface MapPin {
+  x: number;
+  z: number;
+  icon: string;
+  name?: string;
+  target?: boolean;
+}
+
 /** Where the walker is, in world studs, and which way it looks: 0 faces south, +x is east. */
 export interface MapPosition {
   x: number;
@@ -118,7 +127,14 @@ function drawPin(
   icon: string,
   size: number,
   label?: string,
+  ring?: string,
 ) {
+  if (ring) {
+    context.beginPath();
+    context.arc(x, y, size * 1.05, 0, Math.PI * 2);
+    context.fillStyle = ring;
+    context.fill();
+  }
   context.beginPath();
   context.arc(x, y, size * 0.75, 0, Math.PI * 2);
   context.fillStyle = 'rgb(255 255 255 / 0.92)';
@@ -149,11 +165,14 @@ export function Minimap({
   store,
   open,
   onClose,
+  pins,
 }: {
   seed: number;
   store: MapStore;
   open: boolean;
   onClose: () => void;
+  /** The game's own pins, over the landmarks. */
+  pins?: readonly MapPin[];
 }) {
   const corner = useRef<HTMLCanvasElement>(null);
   const full = useRef<HTMLCanvasElement>(null);
@@ -214,11 +233,27 @@ export function Minimap({
         if (x < -pin || y < -pin || x > width + pin || y > height + pin) continue;
         drawPin(context, x, y, landmark.icon, pin, open ? landmark.name : undefined);
       }
+      for (const each of pins ?? []) {
+        let x = toX(each.x);
+        let y = toY(each.z);
+        if (each.target && !open) {
+          // Kept inside the round corner map, so the way to go always shows.
+          const middle = width / 2;
+          const room = middle - pin;
+          const away = Math.hypot(x - middle, y - middle);
+          if (away > room) {
+            x = middle + ((x - middle) / away) * room;
+            y = middle + ((y - middle) / away) * room;
+          }
+        } else if (x < -pin || y < -pin || x > width + pin || y > height + pin) continue;
+        const label = open && !each.target ? each.name : undefined;
+        drawPin(context, x, y, each.icon, pin, label, each.target ? '#3ee06a' : undefined);
+      }
       drawArrow(context, toX(position.x), toY(position.z), position.yaw, open ? 14 : 10);
     };
     draw();
     return store.subscribe(draw);
-  }, [ready, open, seed, store]);
+  }, [ready, open, seed, store, pins]);
 
   useEffect(() => {
     if (!open) return;
