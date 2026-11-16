@@ -1,0 +1,21 @@
+.fullscreen-toggle {
+  position: fixed;
+  left: 16px;
+  bottom: 16px;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  border: 1px solid rgb(255 255 255 / 0.25);
+  border-radius: 10px;
+  color: #fff;
+  background: rgb(20 20 24 / 0.55);
+  backdrop-filter: blur(6px);
+  cursor: pointer;
+}
+
+.fullscreen-toggle:hover {
+  background: rgb(20 20 24 / 0.8);
+}

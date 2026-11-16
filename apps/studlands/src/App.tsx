@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import { getPart } from '@brick-workshop/engine';
 import type { Assembly, Brick } from '@brick-workshop/engine';
 import { Loader } from '@brick-workshop/render/loader';
+import { useFullscreen } from '@brick-workshop/render/fullscreen';
 import { dismissSplash, setSplashMessage } from '@brick-workshop/render/splash';
 import { useLDrawLibrary } from '@brick-workshop/render/ldraw';
 import { MINIFIG_BODY } from '@brick-workshop/render/minifig-parts';
@@ -735,6 +736,11 @@ function Game({
     speak(id, personality(resident).name, lineFor(resident, context, count), voice);
   };
   const talkRef = useRef(talkTo);
+  const fullscreen = useFullscreen();
+  const fullscreenToggle = useRef(fullscreen.toggle);
+  useEffect(() => {
+    fullscreenToggle.current = fullscreen.toggle;
+  }, [fullscreen.toggle]);
   useEffect(() => {
     talkRef.current = talkTo;
   });
@@ -954,6 +960,10 @@ function Game({
       if (typing) return;
       if (event.code === 'KeyT') {
         if (!event.repeat) talkRef.current();
+        return;
+      }
+      if (event.code === 'KeyF' && !event.repeat && !event.metaKey && !event.ctrlKey) {
+        fullscreenToggle.current();
         return;
       }
       if (event.code === 'KeyN' && game().minimap) {
@@ -1359,6 +1369,11 @@ function Game({
           {game().building && (
             <button type="button" onClick={() => show('box')}>
               Bricks <kbd>{padInUse ? 'D-pad ↓' : 'B'}</kbd>
+            </button>
+          )}
+          {fullscreen.supported && (
+            <button type="button" onClick={fullscreen.toggle}>
+              {fullscreen.active ? 'Exit fullscreen' : 'Fullscreen'} <kbd>F</kbd>
             </button>
           )}
           <button type="button" onClick={() => show('menu')}>

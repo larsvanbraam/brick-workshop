@@ -17,6 +17,7 @@ import {
   Leaf,
   LibraryBig,
   Maximize,
+  Minimize,
   MousePointer2,
   Orbit,
   PersonStanding,
@@ -100,6 +101,7 @@ import type {
   SceneStability,
 } from './Scene';
 import { Loader } from '@brick-workshop/render/loader';
+import { useFullscreen } from '@brick-workshop/render/fullscreen';
 import { dismissSplash, setSplashMessage } from '@brick-workshop/render/splash';
 import { useLDrawLibrary } from '@brick-workshop/render/ldraw';
 import { displayHex } from '@brick-workshop/render/ldraw-materials';
@@ -504,6 +506,7 @@ function isTyping(target: EventTarget | null) {
 }
 
 export default function App() {
+  const fullscreen = useFullscreen();
   // Restored once: the last session's build, with the library parts it needs registered.
   const [autosave] = useState(readAutosave);
   const [runtimeParts, setRuntimeParts] = useState<Part[]>(() => autosave?.parts ?? []);
@@ -1545,6 +1548,17 @@ export default function App() {
               <Redo2 size={17} />
             </button>
           </div>
+          {fullscreen.supported && (
+            <button
+              className="icon-button"
+              title={fullscreen.active ? 'Exit fullscreen' : 'Fullscreen'}
+              aria-label={fullscreen.active ? 'Exit fullscreen' : 'Fullscreen'}
+              aria-pressed={fullscreen.active}
+              onClick={fullscreen.toggle}
+            >
+              {fullscreen.active ? <Minimize size={17} /> : <Maximize size={17} />}
+            </button>
+          )}
           <button
             className="icon-button"
             title="Details"

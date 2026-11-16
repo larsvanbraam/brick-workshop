@@ -24,6 +24,10 @@
       "types": "./src/fallback-geometry.ts",
       "import": "./src/fallback-geometry.ts"
     },
+    "./fullscreen": {
+      "types": "./src/fullscreen.tsx",
+      "import": "./src/fullscreen.tsx"
+    },
     "./ldraw": {
       "types": "./src/ldraw.ts",
       "import": "./src/ldraw.ts"
@@ -79,6 +83,7 @@
   },
   "dependencies": {
     "@brick-workshop/engine": "workspace:*",
+    "lucide-react": "^0.577.0",
     "n8ao": "^2.0.1",
     "three-mesh-bvh": "^0.8.3"
   },
