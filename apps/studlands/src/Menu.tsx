@@ -24,6 +24,7 @@ import type { Locale } from './locale.ts';
 import type { VoiceMode } from '@brick-workshop/audio/voice';
 import { game } from './game.ts';
 import { Key } from './input-hint.tsx';
+import { useArrowNav } from './arrow-nav.ts';
 import { MenuPage } from './MenuPage.tsx';
 import { LANDMARKS } from './world/island/map.ts';
 
@@ -91,6 +92,8 @@ function playedAgo(date: string) {
 export function Menu(props: MenuProps) {
   const [page, setPage] = useState<Page | null>(null);
   const resume = useRef<HTMLButtonElement>(null);
+  const root = useRef<HTMLDivElement>(null);
+  useArrowNav(root);
 
   // Esc closes an open page first, and only then resumes the game (see App.tsx).
   useEffect(() => {
@@ -120,6 +123,7 @@ export function Menu(props: MenuProps) {
 
   return (
     <div
+      ref={root}
       className={page ? 'title-screen pause quick paged' : 'title-screen pause quick'}
       style={{ '--letters': logoLetters(title) } as CSSProperties}
     >

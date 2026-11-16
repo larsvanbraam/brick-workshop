@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { Key } from './input-hint.tsx';
+import { useArrowNav } from './arrow-nav.ts';
 import { MenuPage } from './MenuPage.tsx';
 import { Logo, logoLetters } from './Logo.tsx';
 import { Controls, Saves, Settings, Worlds, describeSave } from './Menu.tsx';
@@ -44,6 +45,8 @@ export function TitleScreen(props: TitleScreenProps) {
   }, []);
   const [page, setPage] = useState<Page | null>(null);
   const play = useRef<HTMLButtonElement>(null);
+  const root = useRef<HTMLDivElement>(null);
+  useArrowNav(root, !leaving);
 
   // Esc closes an open page, so the keyboard can get back to the buttons.
   useEffect(() => {
@@ -87,6 +90,7 @@ export function TitleScreen(props: TitleScreenProps) {
 
   return (
     <div
+      ref={root}
       className={[
         'title-screen',
         full ? 'intro' : 'quick',
