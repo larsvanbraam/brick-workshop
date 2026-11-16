@@ -542,14 +542,35 @@ function Game({
     text: string;
     gift: boolean;
   } | null>(null);
-  // The latest job done gives the hat that its helper wears, which the player then wears too.
+  // Each job done gives the hat its helper wears. The player wears the one just won, and H
+  // changes between those won, and none. `hat` is the quest whose hat is worn, `''` for none, and
+  // `undefined` before a choice, which wears the latest.
+  const [hat, setHat] = useState<string | undefined>(() => saved?.quests?.hat);
+  const hatRef = useRef(hat);
+  useEffect(() => {
+    hatRef.current = hat;
+  }, [hat]);
+  const hatsWon = useMemo(
+    () =>
+      [...questDone]
+        .map((id) => questById(id))
+        .filter(
+          (quest): quest is Quest => quest !== null && quest !== undefined && !!giftOf(quest),
+        ),
+    [questDone],
+  );
+  const hatWorn =
+    hat === '' ? null : (hatsWon.find((quest) => quest.id === hat) ?? hatsWon.at(-1) ?? null);
   const wornOutfit = useMemo<MinifigOutfit | undefined>(() => {
-    const last = [...questDone]
-      .map((id) => questById(id))
-      .findLast((quest) => quest && giftOf(quest));
-    const headgear = last ? giftOf(last) : null;
+    const headgear = hatWorn ? giftOf(hatWorn) : null;
     return headgear ? { ...CLASSIC_OUTFIT, headgear } : undefined;
-  }, [questDone]);
+  }, [hatWorn]);
+  const [hatNote, setHatNote] = useState<string | null>(null);
+  useEffect(() => {
+    if (!hatNote) return;
+    const timer = setTimeout(() => setHatNote(null), 2200);
+    return () => clearTimeout(timer);
+  }, [hatNote]);
   // The language people speak: the saved choice, else the browser's own where we have it.
   const [locale, setLocale] = useState<Locale>(() => {
     const saved = loadLocale();
@@ -628,7 +649,13 @@ function Game({
         ? { vehicles: parkedVehicles(vehicles, FRAME), driving: drivingRef.current }
         : {}),
       ...(questsOn
-        ? { quests: { done: [...questRef.current.done], active: questRef.current.active } }
+        ? {
+            quests: {
+              done: [...questRef.current.done],
+              active: questRef.current.active,
+              ...(hatRef.current !== undefined ? { hat: hatRef.current } : {}),
+            },
+          }
         : {}),
       playSeconds: (previous?.playSeconds ?? 0) + played,
       startedAt: previous?.startedAt ?? new Date(now).toISOString(),
@@ -748,6 +775,7 @@ function Game({
     };
     setActiveQuest(null);
     setQuestDone(questRef.current.done);
+    if (giftOf(quest)) setHat(quest.id);
     const { goal } = quest;
     const who = goal.kind === 'take' && 'outfit' in goal.to ? takerId(quest) : giverId(quest);
     const name = helperName(who, locale) ?? quest.giver.name;
@@ -828,6 +856,29 @@ function Game({
   const talkRef = useRef(talkTo);
   useEffect(() => {
     talkRef.current = talkTo;
+  });
+  /** H: the next hat won, then none, then the first again. Says whether there was a hat to change. */
+  const changeHat = () => {
+    if (!questsOn || !hatsWon.length) return false;
+    const options = [...hatsWon.map((quest) => quest.id), ''];
+    const now = hat === undefined ? hatsWon.at(-1)!.id : hat;
+    const next = options[(Math.max(0, options.indexOf(now)) + 1) % options.length];
+    setHat(next);
+    const quest = next ? questById(next) : null;
+    setHatNote(
+      quest
+        ? locale === 'nl'
+          ? `Hoed van ${questWords(quest, 'nl').giver}`
+          : `${questWords(quest, 'en').giver}'s hat`
+        : locale === 'nl'
+          ? 'Geen hoed'
+          : 'No hat',
+    );
+    return true;
+  };
+  const hatKeyRef = useRef(changeHat);
+  useEffect(() => {
+    hatKeyRef.current = changeHat;
   });
   // The talk ends when the speaker stops (walked off, finished), the menu opens or a drive starts.
   useEffect(() => {
@@ -1047,6 +1098,7 @@ function Game({
         if (!event.repeat) talkRef.current();
         return;
       }
+      if (event.code === 'KeyH' && !event.repeat && hatKeyRef.current()) return;
       if (event.code === 'KeyN' && game().minimap) {
         setMapOpen((current) => !current);
         return;
@@ -1419,6 +1471,11 @@ function Game({
       {playing && shownQuest && activeQuest && (
         <QuestCard quest={shownQuest} progress={activeQuest} talkKey={talkKey} locale={locale} />
       )}
+      {playing && hatNote && (
+        <div className="hat-note" role="status">
+          🎩 {hatNote}
+        </div>
+      )}
       {playing && cheer && (
         <div className="cheer" role="status">
           <div className="cheer-star" aria-hidden>
@@ -1432,7 +1489,8 @@ function Game({
           </span>
           {cheer.gift && (
             <em className="cheer-gift">
-              🎩 {locale === 'nl' ? 'Je hebt een nieuwe hoed!' : 'You got a new hat!'}
+              🎩 {locale === 'nl' ? 'Je hebt een nieuwe hoed!' : 'You got a new hat!'} <kbd>H</kbd>{' '}
+              {locale === 'nl' ? 'wisselt van hoed' : 'changes hats'}
             </em>
           )}
         </div>

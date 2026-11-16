@@ -253,7 +253,7 @@ export interface SaveGame {
   vehicles?: ParkedVehicle[];
   driving?: string | null;
   /** Brick Island's jobs: those finished, by ID, and the one being done. Missing in older saves. */
-  quests?: { done: string[]; active: unknown };
+  quests?: { done: string[]; active: unknown; hat?: string };
   /** Seconds spent playing, summed over every visit. */
   playSeconds: number;
   /** When it was first and last played, as ISO dates. */

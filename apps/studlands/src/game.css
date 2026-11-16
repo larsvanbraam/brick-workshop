@@ -725,10 +725,15 @@ kbd {
 }
 
 /* Brick Island's map: a small one in the corner, the whole island on N. */
+:root {
+  --map: 188px;
+  --map-edge: 40px;
+}
+
 .minimap {
   position: fixed;
-  right: 16px;
-  bottom: 16px;
+  right: var(--map-edge);
+  bottom: var(--map-edge);
   border-radius: 50%;
   border: 3px solid rgb(255 255 255 / 0.85);
   box-shadow: 0 6px 18px rgb(0 0 0 / 0.35);
@@ -776,10 +781,42 @@ kbd {
 }
 
 @media (max-width: 600px) {
+  :root {
+    --map: 120px;
+    --map-edge: 36px;
+  }
+
   .minimap {
     width: 120px !important;
     height: 120px !important;
   }
+}
+
+/* The compass: an arrow circling the map, turned toward where the job in hand sends the player. */
+.minimap-compass {
+  position: fixed;
+  right: calc(var(--map-edge) - 26px);
+  bottom: calc(var(--map-edge) - 26px);
+  width: calc(var(--map) + 6px + 52px);
+  height: calc(var(--map) + 6px + 52px);
+  pointer-events: none;
+}
+
+.minimap-compass-ring {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+.minimap-compass-arrow {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 28px;
+  height: 28px;
+  margin-left: -14px;
+  filter: drop-shadow(0 2px 3px rgb(0 0 0 / 0.45));
 }
 
 /* Getting in a vehicle, and its controls while driving. */
@@ -1339,6 +1376,21 @@ kbd {
 .status .stars {
   color: #ffd23f;
   font-weight: 600;
+}
+
+/* The hat just put on, after H changes hats. */
+.hat-note {
+  position: fixed;
+  left: 50%;
+  bottom: 48px;
+  transform: translateX(-50%);
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--ink);
+  font-size: 17px;
+  font-weight: 600;
+  pointer-events: none;
 }
 
 /* The cheer when a job is done. */

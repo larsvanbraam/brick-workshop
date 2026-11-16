@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useFrame } from '@react-three/fiber';
+import { Vector3 } from 'three';
 import type { WalkProbe } from '@brick-workshop/walk/walk-view';
 import { LANDMARKS } from './world/island/map.ts';
 import {
@@ -30,6 +31,12 @@ export interface MapPosition {
   z: number;
   /** The camera's heading, as the walk view keeps it: 0 looks toward world +z, positive turns left. */
   yaw: number;
+  /**
+   * Where the camera looks on the map, as an angle with x east and y south (so a turn to the
+   * right is clockwise), taken from its real direction: the yaw alone is unreliable past a
+   * quarter turn.
+   */
+  heading: number;
 }
 
 /** The walker's position for the map, a few times a second. */
@@ -64,10 +71,14 @@ export function MapProbe({
   store: MapStore;
   buildArea: number;
 }) {
+  const [direction] = useState(() => new Vector3());
   useFrame((state) => {
     const walker = probe.current?.walker;
     if (!walker) return;
+    // The scene's z runs the other way to the world's.
+    state.camera.getWorldDirection(direction);
     store.publish({
+      heading: Math.atan2(-direction.z, direction.x),
       x: walker.x + buildArea / 2,
       z: buildArea / 2 - walker.z,
       yaw: state.camera.rotation.y,
@@ -153,6 +164,68 @@ function drawPin(
   context.fillStyle = '#ffffff';
   context.strokeText(label, x, y + size * 1.35);
   context.fillText(label, x, y + size * 1.35);
+}
+
+/** The compass hides once the goal is this close, in studs, and with no job on it only points at a helper this near. */
+const COMPASS_STOP = 14;
+const COMPASS_RANGE = 90;
+
+/**
+ * A gold arrow that circles the corner map and points the way the job in hand sends the walker,
+ * as seen from where the walker looks (up is straight ahead), whatever way the map is turned.
+ * With no job on it points at the nearest helper with a job, within range. It hides once the
+ * goal is close.
+ */
+function Compass({ store, pins }: { store: MapStore; pins?: readonly MapPin[] }) {
+  const ring = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const update = () => {
+      const element = ring.current;
+      const position = store.position;
+      if (!element || !position) return;
+      // With a job on, the arrow leads to where it sends the walker; otherwise to the nearest
+      // helper with a job to give, if one is within range.
+      const all = pins ?? [];
+      const goals = all.some((each) => each.target)
+        ? all.filter((each) => each.target)
+        : all.filter(
+            (each) => Math.hypot(each.x - position.x, each.z - position.z) <= COMPASS_RANGE,
+          );
+      let nearest: { dx: number; dz: number; studs: number } | null = null;
+      for (const each of goals) {
+        const studs = Math.hypot(each.x - position.x, each.z - position.z);
+        if (!nearest || studs < nearest.studs)
+          nearest = { dx: each.x - position.x, dz: each.z - position.z, studs };
+      }
+      if (!nearest || nearest.studs < COMPASS_STOP) {
+        element.style.opacity = '0';
+        return;
+      }
+      // Up is the way the walker looks. The scene is the world mirrored in z, so a turn to the
+      // right on screen is a turn counterclockwise on the map: the arrow turns by the angle from
+      // the goal back to the heading, and a goal to the right points right.
+      const bearing = Math.atan2(nearest.dz, nearest.dx);
+      element.style.opacity = '1';
+      element.style.transform = `rotate(${((position.heading - bearing) * 180) / Math.PI}deg)`;
+    };
+    update();
+    return store.subscribe(update);
+  }, [store, pins]);
+  return (
+    <div className="minimap-compass" aria-hidden>
+      <div className="minimap-compass-ring" ref={ring}>
+        <svg viewBox="0 0 24 24" className="minimap-compass-arrow">
+          <path
+            d="M12 1.5 L22 21 L12 15.5 L2 21 Z"
+            fill="#ffd23f"
+            stroke="#3a2a00"
+            strokeWidth="2"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </div>
+    </div>
+  );
 }
 
 /** Studs across the corner map. */
@@ -270,6 +343,7 @@ export function Minimap({
 
   return (
     <>
+      {!open && <Compass store={store} pins={pins} />}
       <canvas
         ref={corner}
         className="minimap"
