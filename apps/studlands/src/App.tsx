@@ -56,6 +56,7 @@ import {
   loadDistance,
   loadHotbar,
   loadMusic,
+  loadSimpleControls,
   loadLocale,
   loadVoices,
   loadSave,
@@ -66,6 +67,7 @@ import {
   saveDistance,
   saveHotbar,
   saveMusic,
+  saveSimpleControls,
   saveLocale,
   saveVoices,
   saveSeed,
@@ -737,6 +739,8 @@ function Game({
 
   // Talking to people: T (B on a controller) beside someone has them say their next line, shown
   // in a bubble over their head and voiced in Simlish or the device's speech.
+  const [simpleControls, setSimpleControls] = useState(() => loadSimpleControls() === true);
+  useEffect(() => saveSimpleControls(simpleControls), [simpleControls]);
   const [voiceMode, setVoiceMode] = useState<VoiceMode>(() => {
     const saved = loadVoices();
     return isVoiceMode(saved) ? saved : 'simlish';
@@ -1353,6 +1357,8 @@ function Game({
     onDistance: setDistanceName,
     music: musicLevel,
     onMusic: setMusicLevel,
+    simpleControls,
+    onSimpleControls: setSimpleControls,
     voices: voiceMode,
     onVoices: setVoiceMode,
     locale,
@@ -1377,6 +1383,7 @@ function Game({
         onFlyingChange={setFlying}
         onViewChange={setView}
         gamepad={playing ? 'build' : 'off'}
+        simpleControls={simpleControls}
         ghost={playing && game().building ? ghost : null}
         ghostValid={ghostValid}
         onAim={onAim}

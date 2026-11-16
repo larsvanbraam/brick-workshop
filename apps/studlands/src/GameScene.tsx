@@ -88,6 +88,8 @@ export interface GameSceneProps {
   onViewChange: (view: WalkCamera) => void;
   /** Which controller buttons walking takes: off while a panel is open over the game. */
   gamepad: 'build' | 'off';
+  /** One-stick controls for small children (see `simple` on the walk view). */
+  simpleControls: boolean;
   ghost: Brick | null;
   ghostValid: boolean;
   onAim: (aim: Aim | null) => void;
@@ -206,6 +208,7 @@ export function GameScene(props: GameSceneProps) {
         onFlyingChange={props.onFlyingChange}
         onViewChange={props.onViewChange}
         gamepad={props.gamepad}
+        simple={props.simpleControls}
         start={start}
         probe={probe}
         riding={props.driving !== null}

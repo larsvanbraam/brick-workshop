@@ -56,6 +56,9 @@ export interface MenuProps {
   /** How loud the background piano plays. */
   music: MusicLevel;
   onMusic: (level: MusicLevel) => void;
+  /** One-stick controls for small children. */
+  simpleControls: boolean;
+  onSimpleControls: (on: boolean) => void;
   voices: VoiceMode;
   onVoices: (mode: VoiceMode) => void;
   /** The language people speak. */
@@ -249,6 +252,8 @@ export function Settings({
   onDistance,
   music,
   onMusic,
+  simpleControls,
+  onSimpleControls,
   voices,
   onVoices,
   locale,
@@ -300,6 +305,27 @@ export function Settings({
         </div>
       </div>
       <p className="note">Ambient piano while you play, following the day and the night.</p>
+      <div className="setting">
+        <span id="controls-label">Controls</span>
+        <div className="choices" role="radiogroup" aria-labelledby="controls-label">
+          {([false, true] as const).map((simple) => (
+            <button
+              key={String(simple)}
+              type="button"
+              role="radio"
+              aria-checked={simpleControls === simple}
+              className={simpleControls === simple ? 'tab selected' : 'tab'}
+              onClick={() => onSimpleControls(simple)}
+            >
+              {simple ? 'Simple' : 'Standard'}
+            </button>
+          ))}
+        </div>
+      </div>
+      <p className="note">
+        Simple uses one stick (or <kbd>A</kbd> and <kbd>D</kbd>): up and down walk, left and right
+        turn, and the view stays level, so there is no looking up or down.
+      </p>
       <div className="setting">
         <span id="voices-label">Voices</span>
         <div className="choices" role="radiogroup" aria-labelledby="voices-label">

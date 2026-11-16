@@ -16,7 +16,7 @@ import {
   stepWalker,
 } from './walk';
 import type { Walker } from './walk';
-import { LOOK_RATE, readGamepads } from './walk-gamepad';
+import { LOOK_RATE, SIMPLE_TURN_RATE, readGamepads } from './walk-gamepad';
 import type { GamepadLayout } from './walk-gamepad';
 import { WalkSounds } from './walk-sounds';
 
@@ -44,6 +44,8 @@ export interface WalkStart {
 }
 
 const LOOK_SPEED = 0.0022;
+/** Where simple controls keep the view, a little downward so the ground ahead shows. */
+const SIMPLE_PITCH = -0.12;
 const MAX_PITCH = Math.PI / 2 - 0.05;
 /** How far behind the minifigure the third-person camera hangs. */
 const FOLLOW_DISTANCE = 8;
@@ -120,6 +122,7 @@ export function WalkMode({
   onViewChange,
   onExit,
   gamepad = 'walk',
+  simple = false,
   sound = true,
   start,
   probe,
@@ -143,6 +146,12 @@ export function WalkMode({
    * controller alone, as while a game's menu is open over the scene.
    */
   gamepad?: GamepadLayout | 'off';
+  /**
+   * Simple controls for small children: one stick (or A and D) steers, left and right turn the
+   * minifigure and up and down walk, and the view stays level, with no strafing and no looking up
+   * or down.
+   */
+  simple?: boolean;
   sound?: boolean;
   /** Where the minifigure starts (see `WalkStart`); the front of the board when left out. */
   start?: WalkStart;
@@ -248,8 +257,10 @@ export function WalkMode({
     onViewChange,
     onExit,
     gamepad,
+    simple,
   });
   useEffect(() => {
+    pad.current.simple = simple;
     pad.current.onViewChange = onViewChange;
     pad.current.onExit = onExit;
     pad.current.gamepad = gamepad;
@@ -347,6 +358,7 @@ export function WalkMode({
       if (ridingRef.current || !activeRef.current) return;
       if (document.pointerLockElement !== element && !dragging) return;
       look.current.yaw -= event.movementX * LOOK_SPEED;
+      if (pad.current.simple) return;
       look.current.pitch = clampPitch(look.current.pitch - event.movementY * LOOK_SPEED);
     };
     // Capture: runs before the camera rig's listeners on the window.
@@ -391,6 +403,13 @@ export function WalkMode({
     let strafe = (pressed(KEYS.right) ? 1 : 0) - (pressed(KEYS.left) ? 1 : 0);
     let rise = (pressed(KEYS.jump) ? 1 : 0) - (pressed(KEYS.sink) ? 1 : 0);
     let run = fly.current.sprint || (!airborne && pressed(KEYS.run));
+    const simple = pad.current.simple;
+    // Simple controls: sideways turns instead of strafing.
+    let turn = 0;
+    if (simple) {
+      turn = -strafe;
+      strafe = 0;
+    }
 
     const pads = typeof navigator !== 'undefined' ? navigator.getGamepads?.() : undefined;
     const layout = pad.current.gamepad;
@@ -402,16 +421,20 @@ export function WalkMode({
     if (gamepad) {
       // The keyboard wins where both are pushed; a half-tilted stick walks slowly.
       if (forward === 0) forward = gamepad.forward;
-      if (strafe === 0) strafe = gamepad.strafe;
+      if (simple) {
+        if (turn === 0) turn = -gamepad.strafe;
+      } else if (strafe === 0) strafe = gamepad.strafe;
       if (rise === 0) rise = gamepad.rise;
       if (gamepad.pressed.leftStick) pad.current.sprint = true;
       if (gamepad.forward === 0 && gamepad.strafe === 0) pad.current.sprint = false;
       if (pad.current.sprint || (!airborne && gamepad.run)) run = true;
       // Cubed, so small pushes aim finely and a full push turns fast.
-      look.current.yaw -= gamepad.lookX ** 3 * LOOK_RATE.yaw * delta;
-      look.current.pitch = clampPitch(
-        look.current.pitch + gamepad.lookY ** 3 * LOOK_RATE.pitch * delta,
-      );
+      if (!simple) {
+        look.current.yaw -= gamepad.lookX ** 3 * LOOK_RATE.yaw * delta;
+        look.current.pitch = clampPitch(
+          look.current.pitch + gamepad.lookY ** 3 * LOOK_RATE.pitch * delta,
+        );
+      }
       if (gamepad.pressed.a) {
         jumpQueued.current = true;
         pressJump(fly.current, performance.now());
@@ -420,6 +443,12 @@ export function WalkMode({
       if (gamepad.pressed.view)
         pad.current.onViewChange?.(viewRef.current === 'first' ? 'third' : 'first');
       if (gamepad.pressed.menu) pad.current.onExit?.();
+    }
+
+    if (simple) {
+      // Turning is the steering, and the view settles back to level on its own.
+      look.current.yaw += turn * SIMPLE_TURN_RATE * delta;
+      look.current.pitch += (SIMPLE_PITCH - look.current.pitch) * Math.min(1, delta * 4);
     }
 
     const wasGrounded = current.grounded;

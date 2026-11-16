@@ -155,6 +155,10 @@ export const saveDistance = (name: string) => write('distance', name);
 export const loadMusic = () => read<string>('music');
 export const saveMusic = (name: string) => write('music', name);
 
+/** Whether the simple one-stick controls are on, for small children. */
+export const loadSimpleControls = () => read<boolean>('simpleControls');
+export const saveSimpleControls = (on: boolean) => write('simpleControls', on);
+
 export const loadVoices = () => read<string>('voices');
 export const saveVoices = (name: string) => write('voices', name);
 
