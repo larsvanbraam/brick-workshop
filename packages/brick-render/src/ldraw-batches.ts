@@ -140,6 +140,22 @@ function fill(color: Color, count: number, alpha?: number) {
   return out;
 }
 
+/** How far an edge's colour is pulled toward the colour of the part it outlines: 0 keeps LDraw's edge colour, 1 hides the line. */
+const EDGE_BLEND = 0.55;
+
+/** `fill` for an edge, with its colour pulled toward `base` so light outlines don't glare on dark parts. */
+function fillEdge(color: Color, base: Color | undefined, count: number, alpha?: number) {
+  const out = fill(color, count, alpha);
+  if (!base) return out;
+  const size = alpha === undefined ? 3 : 4;
+  for (let vertex = 0; vertex < count; vertex++) {
+    out[vertex * size] += (base.r - color.r) * EDGE_BLEND;
+    out[vertex * size + 1] += (base.g - color.g) * EDGE_BLEND;
+    out[vertex * size + 2] += (base.b - color.b) * EDGE_BLEND;
+  }
+  return out;
+}
+
 const itemSize = (name: string) => (name === 'color' ? 4 : 3);
 
 /**
@@ -241,6 +257,16 @@ type Chunks = Map<string, Float32Array[]>;
 type Split = { body: Chunks; studs: Map<string, Chunks> };
 /** The region key of a part's hollow underside: its inner walls, ceiling and tubes. */
 const UNDERSIDE = 'under';
+/** Marks a look whose studs are drawn as eight-sided prisms without edges, for chunks at a middle distance. */
+const LOW_STUDS = 'low';
+/** Markers for the looks further out: four-sided studs, and no studs at all. */
+const TINY_STUDS = 'tiny';
+const NO_STUDS = 'far';
+/** Triangles a body needs before simplifying it is worth the blur: boxes and plates are left alone. */
+const SIMPLIFY_FROM = 120;
+const MARKERS = new Set([UNDERSIDE, LOW_STUDS, TINY_STUDS, NO_STUDS]);
+/** How much of a brick a chunk draws, by distance: full studs, eight sides, four sides, none. */
+export type StudLevel = 'full' | 'low' | 'tiny' | 'none';
 /** How thick a part's top and walls are, in LDU, with a little slack. */
 const SHELL = 3.9;
 /** What a part model looks like where it matters for hiding: its studs and its footprint. */
@@ -356,10 +382,151 @@ function splitPrimitives(
   push(runStud, runStart, primitives);
 }
 
-/** The body plus every stud not in `covered`, attribute by attribute. */
-function gather(split: Split, covered: ReadonlySet<string>) {
-  const parts = [split.body];
-  for (const [stud, chunks] of split.studs) if (!covered.has(stud)) parts.push(chunks);
+/**
+ * A stud with its 16 sides pulled onto 8: every vertex on its rim is moved to the nearest
+ * eighth of a turn, and the triangles that collapse go. Half the triangles, near enough the
+ * same silhouette at the distance this is used.
+ */
+function simplifyStud(chunks: Chunks, key: string, sides: number): Chunks {
+  const [centerX, centerZ] = key.split(':').map(Number);
+  const positions = chunks.get('position') ?? [];
+  const out: Chunks = new Map();
+  const step = (Math.PI * 2) / sides;
+  positions.forEach((points, index) => {
+    const snapped = Float32Array.from(points);
+    for (let vertex = 0; vertex < snapped.length; vertex += 3) {
+      const x = snapped[vertex] - centerX;
+      const z = snapped[vertex + 2] - centerZ;
+      const radius = Math.hypot(x, z);
+      if (radius < 4.5) continue;
+      const angle = Math.round(Math.atan2(z, x) / step) * step;
+      snapped[vertex] = centerX + Math.cos(angle) * radius;
+      snapped[vertex + 2] = centerZ + Math.sin(angle) * radius;
+    }
+    const same = (a: number, b: number) =>
+      Math.abs(snapped[a] - snapped[b]) < 1e-3 &&
+      Math.abs(snapped[a + 1] - snapped[b + 1]) < 1e-3 &&
+      Math.abs(snapped[a + 2] - snapped[b + 2]) < 1e-3;
+    const kept: number[] = [];
+    for (let triangle = 0; triangle < snapped.length / 9; triangle++) {
+      const a = triangle * 9;
+      if (!same(a, a + 3) && !same(a, a + 6) && !same(a + 3, a + 6)) kept.push(triangle);
+    }
+    for (const [name, list] of chunks) {
+      const source = name === 'position' ? snapped : list[index];
+      const width = (source.length / (snapped.length / 3)) | 0;
+      const data = new Float32Array(kept.length * 3 * width);
+      kept.forEach((triangle, to) =>
+        data.set(source.subarray(triangle * 3 * width, (triangle + 1) * 3 * width), to * 3 * width),
+      );
+      const target = out.get(name) ?? [];
+      target.push(data);
+      out.set(name, target);
+    }
+  });
+  return out;
+}
+
+/**
+ * Merges the vertices of triangles that fall in the same `cell` (in LDU) of a grid, and drops the
+ * triangles that collapse: leaves, round bricks and lamp posts keep their blob and lose most of
+ * their triangles, which is all that shows from far off.
+ */
+function clusterTriangles(chunks: Chunks, cell: number): Chunks {
+  const positions = chunks.get('position') ?? [];
+  const out: Chunks = new Map();
+  positions.forEach((points, index) => {
+    const vertices = points.length / 3;
+    const ids = new Int32Array(vertices);
+    const lookup = new Map<string, number>();
+    const sums: number[] = [];
+    for (let vertex = 0; vertex < vertices; vertex++) {
+      const key = `${Math.floor(points[vertex * 3] / cell)},${Math.floor(points[vertex * 3 + 1] / cell)},${Math.floor(points[vertex * 3 + 2] / cell)}`;
+      let id = lookup.get(key);
+      if (id === undefined) {
+        id = lookup.size;
+        lookup.set(key, id);
+        sums.push(0, 0, 0, 0);
+      }
+      ids[vertex] = id;
+      sums[id * 4] += points[vertex * 3];
+      sums[id * 4 + 1] += points[vertex * 3 + 1];
+      sums[id * 4 + 2] += points[vertex * 3 + 2];
+      sums[id * 4 + 3]++;
+    }
+    const kept: number[] = [];
+    for (let triangle = 0; triangle < vertices / 3; triangle++) {
+      const a = ids[triangle * 3];
+      const b = ids[triangle * 3 + 1];
+      const c = ids[triangle * 3 + 2];
+      if (a !== b && b !== c && a !== c) kept.push(triangle);
+    }
+    for (const [name, list] of chunks) {
+      const source = list[index];
+      const width = (source.length / vertices) | 0;
+      const data = new Float32Array(kept.length * 3 * width);
+      kept.forEach((triangle, to) => {
+        for (let corner = 0; corner < 3; corner++) {
+          const from = triangle * 3 + corner;
+          const target = (to * 3 + corner) * width;
+          if (name === 'position') {
+            const id = ids[from];
+            for (let axis = 0; axis < 3; axis++)
+              data[target + axis] = sums[id * 4 + axis] / sums[id * 4 + 3];
+          } else data.set(source.subarray(from * width, (from + 1) * width), target);
+        }
+      });
+      const list2 = out.get(name) ?? [];
+      list2.push(data);
+      out.set(name, list2);
+    }
+  });
+  return out;
+}
+
+/**
+ * A detailed body (plants, round bricks, lamp posts) merged into coarser triangles, the cells
+ * growing until it is down to a share of what it was: a blob of leaves from far off needs few.
+ * Boxes and plates are left alone.
+ */
+function simplifyBody(body: Chunks, near: boolean, from = SIMPLIFY_FROM): Chunks {
+  const before = triangleCount(body);
+  if (before <= from) return body;
+  const [cells, share] = near ? ([[4, 6], 0.6] as const) : ([[7, 10, 14, 20], 0.3] as const);
+  let result = body;
+  for (const cell of cells) {
+    result = clusterTriangles(body, cell);
+    if (triangleCount(result) <= before * share) break;
+  }
+  return result;
+}
+
+const triangleCount = (chunks: Chunks) =>
+  (chunks.get('position') ?? []).reduce((sum, points) => sum + points.length / 9, 0);
+
+/**
+ * The body plus every stud not in `covered`, attribute by attribute. A look further out draws
+ * the studs simplified (eight sides, then four) and without their edges, and a detailed body
+ * (plants, round bricks) merged into coarser triangles.
+ */
+function gather(split: Split, covered: ReadonlySet<string>, kind?: 'faces' | 'lines') {
+  const sides = covered.has(TINY_STUDS) ? 4 : covered.has(LOW_STUDS) ? 8 : 0;
+  const body =
+    kind === 'faces' && (sides || covered.has(NO_STUDS))
+      ? simplifyBody(split.body, covered.has(LOW_STUDS))
+      : split.body;
+  const parts = [body];
+  for (const [stud, chunks] of split.studs) {
+    if (covered.has(stud)) continue;
+    if (!sides) parts.push(chunks);
+    else if (kind === 'faces')
+      // A plain stud is 48 triangles; more means the "stud" is really part of a leaf or a lamp.
+      parts.push(
+        triangleCount(chunks) > 64
+          ? simplifyBody(chunks, covered.has(LOW_STUDS), 0)
+          : simplifyStud(chunks, stud, sides),
+      );
+  }
   const out = new Map<string, Float32Array>();
   for (const name of new Set(parts.flatMap((chunks) => [...chunks.keys()])))
     out.set(name, concat(parts.flatMap((chunks) => chunks.get(name) ?? [])));
@@ -387,6 +554,18 @@ function bakePart(
 ): Baked {
   const colored = colorize(model, color);
   colored.updateMatrixWorld(true);
+  // The colour of the part's biggest opaque surface, which its edges are blended toward.
+  let body: Color | undefined;
+  let bodyCount = 0;
+  colored.traverse((object) => {
+    if (!(object instanceof Mesh)) return;
+    const count = object.geometry.getAttribute('position').count;
+    for (const group of drawGroups(object, count))
+      if (!group.material.transparent && group.count > bodyCount) {
+        bodyCount = group.count;
+        body = (group.material as MeshStandardMaterial).color;
+      }
+  });
   const faces = new Map<string, { material: MeshStandardMaterial; split: Split }>();
   const lines = Object.fromEntries(LINE_KINDS.map((kind) => [kind, emptySplit()])) as Record<
     LineKind,
@@ -457,7 +636,7 @@ function bakePart(
             : 'edge';
         const attributes: Record<string, Float32Array> = {
           position: slice('position', group.start, group.count, 'point'),
-          color: fill(tint, group.count, group.material.opacity),
+          color: fillEdge(tint, glass ? undefined : body, group.count, group.material.opacity),
         };
         if (conditional) {
           attributes.control0 = slice('control0', group.start, group.count, 'point');
@@ -484,7 +663,7 @@ function bakePart(
 function bakeLook(baked: Baked, covered: ReadonlySet<string>, key: string): Look {
   const surfaces: Surface[] = [];
   for (const { finish, material, split } of baked.faces) {
-    const attributes = gather(split, covered);
+    const attributes = gather(split, covered, 'faces');
     if (!attributes.get('position')?.length) continue;
     // Indexed, also for the BVH: `indirect` leaves the welded index as it is.
     const geometry = weld(attributes);
@@ -494,7 +673,7 @@ function bakeLook(baked: Baked, covered: ReadonlySet<string>, key: string): Look
     surfaces.push({ key: `${key}:${finish}`, finish, material, geometry });
   }
   const lineGeometry = (kind: LineKind) => {
-    const attributes = gather(baked.lines[kind], covered);
+    const attributes = gather(baked.lines[kind], covered, 'lines');
     if (!attributes.get('position')?.length) return null;
     // Plain edges share their ends; conditional ones carry per-segment controls, so can't.
     if (INDEXED_LINES.has(kind)) {
@@ -944,7 +1123,7 @@ export class LDrawBatch {
   private readonly solidGround: boolean;
   private readonly gap: number;
   private readonly cullEach: boolean;
-  private studless = false;
+  private studLevel: StudLevel = 'full';
   private edgeLevel: 'all' | 'plain' | 'none' = 'all';
   private readonly reserve: { instances: number; vertices: number; indices: number } | undefined;
 
@@ -1240,18 +1419,30 @@ export class LDrawBatch {
     for (const id of affected) {
       const current = tracked.get(id)!;
       let covered = '';
-      const stripStuds = this.studless && !explode;
-      if (stripStuds || (coverable && current.studSites.length + Number(current.closable) > 0)) {
+      const far = this.studLevel !== 'full' && !explode;
+      const stripStuds = far && this.studLevel === 'none';
+      if (far || (coverable && current.studSites.length + Number(current.closable) > 0)) {
         const { studs } = this.shapeOf(current.model);
-        // A far look leaves every stud out; otherwise only the ones a brick sits on.
+        // A far look leaves every stud out; a middle one draws them simplified; otherwise only
+        // the ones a brick sits on are left out.
         const hidden = stripStuds
           ? [...studs]
-          : studs.filter((_, index) => this.receiverSites.has(current.studSites[index]));
+          : coverable
+            ? studs.filter((_, index) => this.receiverSites.has(current.studSites[index]))
+            : [];
+        if (far)
+          hidden.push(
+            this.studLevel === 'low'
+              ? LOW_STUDS
+              : this.studLevel === 'tiny'
+                ? TINY_STUDS
+                : NO_STUDS,
+          );
         // Hollow undersides (walls and tubes, a few hundred triangles on a long brick) are out
         // of sight from above, and from far off.
         if (
           current.closable &&
-          (stripStuds ||
+          (far ||
             (coverable &&
               ((this.solidGround && current.brick.y === 0) ||
                 (current.receivers.length > 0 &&
@@ -1278,13 +1469,14 @@ export class LDrawBatch {
   }
 
   /**
-   * Draws every stud and every hollow underside left out, for a chunk far from the camera: a stud
+   * `low` draws studs as eight-sided prisms without edges, `none` leaves every stud out, and both
+   * leave out the hollow undersides, for a chunk far from the camera: a stud
    * is a few dozen triangles and a ring of edge segments, and at that distance it is a pixel or two. Bricks are rewritten
    * on the next update (`changes` counts them), which can be sliced like any other.
    */
-  setStudless(studless: boolean) {
-    if (this.studless === studless) return;
-    this.studless = studless;
+  setStudLevel(level: StudLevel) {
+    if (this.studLevel === level) return;
+    this.studLevel = level;
     this.trackedFor = undefined;
   }
 
@@ -1421,7 +1613,7 @@ export class LDrawBatch {
     return {
       bricks: this.placements.size,
       looks: this.looks.size,
-      coveredStuds: hidden.filter((region) => region !== UNDERSIDE).length,
+      coveredStuds: hidden.filter((region) => !MARKERS.has(region)).length,
       closedUndersides: hidden.filter((region) => region === UNDERSIDE).length,
       edgeSegments: segments('edge') + segments('glassEdge'),
       conditionalSegments: segments('conditional') + segments('glassConditional'),

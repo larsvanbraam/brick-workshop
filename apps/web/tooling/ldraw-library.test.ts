@@ -278,13 +278,25 @@ describe('local LDraw assets', () => {
     expect(batch.stats().coveredStuds).toBe(0);
 
     // Far away every stud goes, though nothing sits on it; the next update rewrites the bricks.
-    batch.setStudless(true);
+    batch.setStudLevel('none');
     expect(batch.changes(entries, 16)).toBe(1);
     batch.update(entries, 16);
     expect(batch.stats().coveredStuds).toBe(1);
 
+    // At a middle distance the studs stay, simplified, and count as not covered.
+    batch.setStudLevel('low');
+    batch.update(entries, 16);
+    expect(batch.stats().coveredStuds).toBe(0);
+    expect(batch.stats().bricks).toBe(1);
+
+    // Further out the studs have four sides, still not counted as covered.
+    batch.setStudLevel('tiny');
+    batch.update(entries, 16);
+    expect(batch.stats().coveredStuds).toBe(0);
+    expect(batch.stats().bricks).toBe(1);
+
     // Near again, they return.
-    batch.setStudless(false);
+    batch.setStudLevel('full');
     batch.update(entries, 16);
     expect(batch.stats().coveredStuds).toBe(0);
 

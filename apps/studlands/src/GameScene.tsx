@@ -324,7 +324,20 @@ const CHUNK_LOOKS = new LookCache();
  * edge segments; without studs it is a fifth of the triangles and half the edges, and edges
  * and studs are a pixel or two across well before the world's reach.
  */
-const STUDLESS = { from: 20, back: 14 } as const;
+const STUDS = { low: 20, tiny: 44, none: 90, margin: 5 } as const;
+type StudLevel = 'full' | 'low' | 'tiny' | 'none';
+const STUD_LEVELS: readonly StudLevel[] = ['full', 'low', 'tiny', 'none'];
+const STUD_LINES = [STUDS.low, STUDS.tiny, STUDS.none];
+/** The stud level for a distance, holding on to `was` for a margin so a chunk on the line doesn't flip. */
+function studLevel(distance: number, was: StudLevel): StudLevel {
+  const held = STUD_LEVELS.indexOf(was);
+  let level = 0;
+  STUD_LINES.forEach((line, index) => {
+    // A line is crossed outwards at the line and back inwards a margin before it.
+    if (distance > line - (held > index ? STUDS.margin : 0)) level = index + 1;
+  });
+  return STUD_LEVELS[level];
+}
 /** Conditional edges go first, then every edge. */
 const EDGES = { all: 14, plain: 28 } as const;
 
@@ -416,14 +429,14 @@ const ChunkView = memo(function ChunkView({
   // The first chunks mount before the walker has moved the camera off r3f's default, so they
   // judge from where the walk starts: judging from the default would build every chunk wrongly
   // and rebuild it a moment later.
-  const [far, setFar] = useState(() => {
+  const [far, setFar] = useState<StudLevel>(() => {
     const here = camera.position.y === DEFAULT_CAMERA_HEIGHT ? focus : camera.position;
-    return chunkDistance(chunk, buildArea, here) > STUDLESS.from;
+    return studLevel(chunkDistance(chunk, buildArea, here), 'full');
   });
   useFrame(() => {
     const distance = chunkDistance(chunk, buildArea, camera.position);
     native.setEdges(distance < EDGES.all ? 'all' : distance < EDGES.plain ? 'plain' : 'none');
-    setFar((was) => (was ? distance > STUDLESS.back : distance > STUDLESS.from));
+    setFar((was) => studLevel(distance, was));
   });
   useEffect(() => {
     drawings.set(chunk, { native, objects: [native.object, simple.object] });
@@ -440,7 +453,7 @@ const ChunkView = memo(function ChunkView({
   useEffect(() => () => shown.delete(chunk), [shown, chunk]);
   useLayoutEffect(() => {
     const entries = split.batched;
-    native.setStudless(far);
+    native.setStudLevel(far);
     const redraw = () => {
       requestShadows();
       invalidate();

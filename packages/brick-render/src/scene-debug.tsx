@@ -61,6 +61,11 @@ function isTyping(target: EventTarget | null) {
   );
 }
 
+/** Plain edge lines and the batch's edge layers, which are batched meshes that say they are lines. */
+const isLines = (object: Object3D) =>
+  object instanceof LineSegments ||
+  (object as { isLineSegments?: boolean }).isLineSegments === true;
+
 export function useDebugOptions(storageKey = 'brick-workshop-debug-v1') {
   const [options, setOptions] = useState(() => loadOptions(storageKey));
   useEffect(() => {
@@ -229,7 +234,7 @@ export function DebugProbe({
     if (options.wireframe || options.hideEdges)
       state.scene.traverse((object) => {
         if (object.userData.debug) return;
-        if (options.hideEdges && object instanceof LineSegments && object.visible) {
+        if (options.hideEdges && isLines(object) && object.visible) {
           object.visible = false;
           hidden.current.add(object);
         }
