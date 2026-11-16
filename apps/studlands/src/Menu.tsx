@@ -129,7 +129,9 @@ export function Controls({ edits, onReset, onReturnVehicles, onNewWorld }: MenuP
         <dt>Move</dt>
         <dd>WASD, Space to jump, Shift to run</dd>
         <dt>Fly</dt>
-        <dd>F or double Space; Space up, C down</dd>
+        <dd>Double Space; Space up, C down</dd>
+        <dt>Fullscreen</dt>
+        <dd>F</dd>
         {game().vehicles.length > 0 && (
           <>
             <dt>Vehicles</dt>

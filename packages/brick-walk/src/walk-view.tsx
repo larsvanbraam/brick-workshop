@@ -66,11 +66,10 @@ const KEYS = {
   run: ['ShiftLeft', 'ShiftRight'],
   /** In the air Shift sinks, as Space climbs. */
   sink: ['KeyC', 'ShiftLeft', 'ShiftRight'],
-  fly: ['KeyF'],
 };
 /**
- * Two taps of Space this close together take off or land, as F does; two taps of forward sprint
- * until it is let go.
+ * Two taps of Space this close together take off or land; two taps of forward sprint until it is
+ * let go.
  */
 const DOUBLE_TAP = 300;
 const HANDLED = new Set(Object.values(KEYS).flat());
@@ -107,7 +106,7 @@ function clampPitch(pitch: number) {
 
 /**
  * Walks a minifigure through the build: WASD or the arrows move, the mouse looks round once the
- * pointer is locked by a click, Space jumps and Shift runs. F or a double tap of Space takes off;
+ * pointer is locked by a click, Space jumps and Shift runs. A double tap of Space takes off;
  * in the air Space climbs and C sinks. A game controller works too (see `walk-gamepad.ts`).
  * Takes the camera over while mounted. With `sound` on, steps, jumps and landings click like
  * plastic.
@@ -305,8 +304,6 @@ export function WalkMode({
       // Keeps the workshop's own shortcuts (Space pans, F frames) out of it.
       event.stopImmediatePropagation();
       sounds.wake();
-      const toggle = () => fly.current.onFlyingChange(!fly.current.flying);
-      if (KEYS.fly.includes(event.code) && !event.repeat) toggle();
       if (KEYS.jump.includes(event.code) && !event.repeat) {
         jumpQueued.current = true;
         pressJump(fly.current, performance.now());

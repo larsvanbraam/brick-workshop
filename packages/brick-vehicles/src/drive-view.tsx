@@ -202,7 +202,7 @@ export function Vehicles({
       }
       if (!live.driving || !DRIVING.has(event.code)) return;
       event.preventDefault();
-      // Keeps walking's own keys (Space jumps, F flies) out of it.
+      // Keeps walking's own keys (Space jumps) out of it.
       event.stopImmediatePropagation();
       if (KEYS.horn.includes(event.code) && !event.repeat) live.honk = true;
       held.current.add(event.code);

@@ -157,8 +157,22 @@ const TITLE_TURN = 0.04;
 const TITLE_EASE = 3;
 
 export function App() {
-  // Starts fullscreen on the first click or key press; the corner button toggles it after.
+  // Starts fullscreen on the first click or key press; F or the corner button toggles it after.
   const fullscreen = useFullscreen(true);
+  const { toggle } = fullscreen;
+  useEffect(() => {
+    const keydown = (event: KeyboardEvent) => {
+      if (event.code !== 'KeyF' || event.repeat || event.metaKey || event.ctrlKey) return;
+      if (
+        event.target instanceof HTMLElement &&
+        /^(INPUT|TEXTAREA|SELECT)$/.test(event.target.tagName)
+      )
+        return;
+      toggle();
+    };
+    window.addEventListener('keydown', keydown);
+    return () => window.removeEventListener('keydown', keydown);
+  }, [toggle]);
   const fixed = game().seed;
   const [seed, setSeed] = useState(() => fixed ?? loadSeed() ?? newSeed());
   /** The save game being played, in a game with save slots. */

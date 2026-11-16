@@ -1739,7 +1739,7 @@ export default function App() {
                     ? 'Flying · A or RT to rise · B or LT to sink · click the left stick to sprint · sink to the ground or press Y to land · Menu to stop'
                     : 'Left stick to walk · right stick to look · A to jump · LB to run · double-tap A to fly · View to switch view · Menu to stop'
                   : flying
-                    ? 'Flying · Space to rise · Shift to sink · double-tap W to sprint · sink to the ground or press F to land · Esc to stop'
+                    ? 'Flying · Space to rise · Shift to sink · double-tap W to sprint · sink to the ground to land · Esc to stop'
                     : 'Click or drag to look around · WASD to walk · Space to jump · Shift to run · double-tap Space to fly · V to switch view · M to mute · Esc to stop'}
               </div>
               {walk === 'first' && <div className="walk-crosshair" aria-hidden="true" />}
@@ -1788,7 +1788,7 @@ export default function App() {
               {walk && (
                 <button
                   className="icon-button"
-                  title="Fly (F, or double-tap Space)"
+                  title="Fly (double-tap Space)"
                   aria-label="Fly"
                   aria-pressed={flying}
                   onClick={() => setFlying(!flying)}
