@@ -24,6 +24,7 @@ export const MINIFIG_HEADS = Object.freeze([
   '3626bp02',
   '3626bp08',
   '3626bp09',
+  '3626cpd8k',
 ]);
 
 /** Hair and hats. */
@@ -38,7 +39,10 @@ export const MINIFIG_HAIR = Object.freeze([
   '92083',
   '87990',
 ]);
-export const MINIFIG_HATS = Object.freeze(['3624', '3878', '3833', '3629', '86035']);
+export const MINIFIG_HATS = Object.freeze(['3624', '3878', '3833', '3629', '86035', '90541']);
+
+/** Printed torsos: jail stripes with a prisoner number. */
+export const MINIFIG_TORSOS = Object.freeze(['973p7k']);
 
 /** Every minifigure part the library ships. */
 export const MINIFIG_PARTS = Object.freeze([
@@ -46,4 +50,5 @@ export const MINIFIG_PARTS = Object.freeze([
   ...MINIFIG_HEADS,
   ...MINIFIG_HAIR,
   ...MINIFIG_HATS,
+  ...MINIFIG_TORSOS,
 ]);

@@ -14,6 +14,8 @@ export interface MinifigOutfit {
   head: string;
   skin: number;
   torso: number;
+  /** A printed torso's part, in place of the plain one: a uniform or stripes. */
+  torsoPart?: string;
   arms: number;
   hips: number;
   legs: number;
@@ -77,7 +79,7 @@ export function buildMinifig(
 ) {
   const part = (id: string, color: number) => coloredLDrawModel(models[id], color);
   const body = new Group();
-  body.add(part('973', outfit.torso));
+  body.add(part(models[outfit.torsoPart ?? ''] ? outfit.torsoPart! : '973', outfit.torso));
   // The head turns on the neck and carries its hair or hat along.
   const neck = new Group();
   neck.position.set(0, -24, 0);

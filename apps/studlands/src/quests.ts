@@ -133,9 +133,13 @@ const FLAME: Look = [
   { part: '3062b', color: 14, y: 6 },
 ];
 
-/** A burglar: a black cap, sunglasses and a black top, and a thief in an orange jumpsuit. */
-const BURGLAR: MinifigOutfit = outfit(0, 0, { part: '86035', color: 0 }, '3626bp03');
-const CONVICT: MinifigOutfit = outfit(25, 0, { part: '86035', color: 0 }, '3626bp04');
+/** Two thieves in black beanies and jail stripes: white sleeves, dark grey trousers. */
+const stripes = (head: string): MinifigOutfit => ({
+  ...outfit(15, 72, { part: '90541', color: 0 }, head),
+  torsoPart: '973p7k',
+});
+const BURGLAR = stripes('3626cpd8k');
+const CONVICT = stripes('3626bp04');
 
 export const QUESTS: readonly Quest[] = [
   {

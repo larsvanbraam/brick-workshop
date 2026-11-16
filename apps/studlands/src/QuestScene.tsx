@@ -231,7 +231,7 @@ export function QuestMarks({
         goal.spots.forEach((spot, index) => {
           if (progress.found.includes(index)) return;
           const crook = goal.crooks?.[index];
-          const figure = crook ? buildFigure(crook, models, 1.3) : null;
+          const figure = crook ? buildFigure(crook, models) : null;
           const object =
             figure?.object ?? buildLook(goal.look, models, goal.reach ? 1.6 : FIND_SCALE);
           root.add(object);
@@ -271,7 +271,7 @@ export function QuestMarks({
           if (count && goal.build.figures) {
             // Each thief in the cell, waving from behind the bars.
             for (const figure of goal.build.figures.slice(0, count)) {
-              const made = buildFigure(figure.outfit, models, 1.3);
+              const made = buildFigure(figure.outfit, models);
               root.add(made.object);
               fixed.push({ spot: figure, object: made.object, rig: made.rig });
             }
