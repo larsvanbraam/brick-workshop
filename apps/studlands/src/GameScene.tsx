@@ -25,7 +25,7 @@ import type { Tide } from './tide.ts';
 import type { Chunks } from './chunks.ts';
 import { chunkAt } from './streaming.ts';
 import type { RenderDistance } from './streaming.ts';
-import { FarLayer } from './FarView.tsx';
+import { FarLayer, ShownChunks } from './FarView.tsx';
 import type { FarStore } from './FarView.tsx';
 import { CHUNK, chunkKey } from './chunks.ts';
 import type { WalkCamera, WalkProbe, WalkStart } from '@brick-workshop/walk/walk-view';
@@ -141,6 +141,8 @@ export function GameScene(props: GameSceneProps) {
   );
   // One map for the scene's lifetime: chunks register their batches in it as they mount.
   const [drawings] = useState(() => new Map<string, ChunkDrawing>());
+  // Which chunks are built and drawn in full, so their far look can give way.
+  const [shown] = useState(() => new ShownChunks());
   // The debug window's batch figures, summed over every chunk's batch.
   const [summed] = useState(() => ({ current: new SummedBatches(drawings) }));
   const ownProbe = useRef<WalkProbe | null>(null);
@@ -173,9 +175,10 @@ export function GameScene(props: GameSceneProps) {
           models={models}
           buildArea={buildArea}
           drawings={drawings}
+          shown={shown}
         />
       ))}
-      <FarLayer store={props.farChunks} loaded={chunks} />
+      <FarLayer store={props.farChunks} shown={shown} />
       <WalkMode
         bricks={EMPTY}
         world={props.walkWorld}
@@ -300,12 +303,14 @@ const ChunkView = memo(function ChunkView({
   models,
   buildArea,
   drawings,
+  shown,
 }: {
   chunk: string;
   pieces: readonly Brick[];
   models: Record<string, Group>;
   buildArea: number;
   drawings: Map<string, ChunkDrawing>;
+  shown: ShownChunks;
 }) {
   // The library hands over a new set of models whenever any part loads; the chunk is redrawn
   // only when one of the models its own pieces use has changed, not on every load elsewhere.
@@ -357,12 +362,21 @@ const ChunkView = memo(function ChunkView({
   const invalidate = useThree((state) => state.invalidate);
   /** Whether the batch has been filled once: a new chunk is built later, edits at once. */
   const filled = useRef(false);
+  // A new chunk stays hidden while it is built a slice a frame, its far look standing in, and
+  // shows whole in the frame the far look goes: no hole, and no chunk filling in piece by piece.
+  const [ready, setReady] = useState(false);
+  useEffect(() => () => shown.delete(chunk), [shown, chunk]);
   useLayoutEffect(() => {
     const entries = split.batched;
-    const done = (complete: boolean) => {
-      if (!complete) return;
+    const redraw = () => {
       requestShadows();
       invalidate();
+    };
+    const done = (complete: boolean) => {
+      if (!complete) return;
+      setReady(true);
+      shown.add(chunk);
+      redraw();
     };
     let cancelled = false;
     const build = () =>
@@ -381,11 +395,11 @@ const ChunkView = memo(function ChunkView({
       native.update(entries, buildArea);
       done(true);
     } else void build();
-    if (simple.update(split.fallback, buildArea)) done(true);
+    if (simple.update(split.fallback, buildArea)) redraw();
     return () => {
       cancelled = true;
     };
-  }, [native, simple, split, buildArea, invalidate]);
+  }, [native, simple, split, buildArea, invalidate, shown, chunk]);
   useEffect(
     () => () => {
       native.dispose();
@@ -395,8 +409,8 @@ const ChunkView = memo(function ChunkView({
   );
   return (
     <>
-      <primitive object={native.object} dispose={null} />
-      <primitive object={simple.object} dispose={null} />
+      <primitive object={native.object} visible={ready} dispose={null} />
+      <primitive object={simple.object} visible={ready} dispose={null} />
     </>
   );
 });

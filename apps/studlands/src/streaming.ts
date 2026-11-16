@@ -61,6 +61,10 @@ export function chunksAround(cx: number, cz: number, radius: number): string[] {
  * What to do as the walker moves: the chunks round it not yet loaded, nearest first (some may be
  * on their way already), and the loaded chunks now far enough away to drop. Likewise for the ring
  * of far chunks past them.
+ *
+ * A full chunk past the margin is only dropped once its far look is there to take its place (or
+ * it is past the far ring too), so a quick flight never leaves a hole where the far chunk is still
+ * waiting its turn behind the full ones.
  */
 export function plan(
   cx: number,
@@ -75,9 +79,11 @@ export function plan(
   const near = new Set(nearby);
   return {
     request: nearby.filter((key) => !loaded.has(key)),
-    unload: [...loaded].filter(
-      (key) => chunkDistance(key, cx, cz) > (trim ? distance.load : unloadRadius(distance)),
-    ),
+    unload: [...loaded].filter((key) => {
+      const away = chunkDistance(key, cx, cz);
+      if (trim) return away > distance.load;
+      return away > unloadRadius(distance) && (far.has(key) || away > farDrop(distance));
+    }),
     farRequest: chunksAround(cx, cz, distance.far).filter((key) => !near.has(key) && !far.has(key)),
     // A far chunk inside the full ring stays: it fills the gap until the full chunk arrives.
     farUnload: [...far].filter(

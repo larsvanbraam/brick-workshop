@@ -282,20 +282,38 @@ function Game({
   const receive = useCallback((chunk: ChunkMessage) => {
     arrived.current.push(chunk);
   }, []);
+  const dropChunk = useCallback(
+    (key: string) => {
+      for (const brick of chunksRef.current.get(key) ?? []) index.remove(brick.id);
+      walk.removeGroup(key);
+      const next = new Map(chunksRef.current);
+      next.delete(key);
+      chunksRef.current = next;
+      setChunks(next);
+      setRevision((current) => current + 1);
+    },
+    [index, walk],
+  );
   /** The ring of chunks past those loaded in full, drawn plainly from afar. */
   const [farStore] = useState(() => new FarStore());
   const farArrived = useRef<FarMessage[]>([]);
   const receiveFar = useCallback((chunk: FarMessage) => {
     farArrived.current.push(chunk);
   }, []);
-  /** A far chunk put in the ring, unless the walker has gone on too far for it meanwhile. */
+  /**
+   * A far chunk put in the ring, unless the walker has gone on too far for it meanwhile. A full
+   * chunk past the margin that was kept only until this far look arrived goes now.
+   */
   const addFar = useCallback(
     (chunk: FarMessage) => {
       const [cx, cz] = centreRef.current;
-      if (chunkDistance(chunk.key, cx, cz) > farDrop(distanceRef.current)) return;
+      const away = chunkDistance(chunk.key, cx, cz);
+      if (away > farDrop(distanceRef.current)) return;
       farStore.set(new Map(farStore.current).set(chunk.key, chunk));
+      if (chunksRef.current.has(chunk.key) && away > unloadRadius(distanceRef.current))
+        dropChunk(chunk.key);
     },
-    [farStore],
+    [farStore, dropChunk],
   );
   /** A chunk from the loader, with the player's edits to it laid over, put into the world. */
   const addChunk = useCallback(
@@ -319,18 +337,6 @@ function Game({
         for (const brick of fresh) next.add(brick.partId);
         return next;
       });
-      setChunks(next);
-      setRevision((current) => current + 1);
-    },
-    [index, walk],
-  );
-  const dropChunk = useCallback(
-    (key: string) => {
-      for (const brick of chunksRef.current.get(key) ?? []) index.remove(brick.id);
-      walk.removeGroup(key);
-      const next = new Map(chunksRef.current);
-      next.delete(key);
-      chunksRef.current = next;
       setChunks(next);
       setRevision((current) => current + 1);
     },

@@ -50,21 +50,56 @@ export class FarStore {
   }
 }
 
-/** Every far chunk not yet loaded in full, each its own mesh. */
+/**
+ * The chunks built in full and on show. A chunk goes in the world some frames before it is drawn
+ * (it waits its turn and is built a slice a frame), so its far look stays until it is in here:
+ * hiding the far look sooner would leave a hole while the full chunk is built.
+ */
+export class ShownChunks {
+  private keys: ReadonlySet<string> = new Set();
+  private readonly listeners = new Set<() => void>();
+
+  subscribe = (listener: () => void) => {
+    this.listeners.add(listener);
+    return () => {
+      this.listeners.delete(listener);
+    };
+  };
+  getSnapshot = () => this.keys;
+
+  add(key: string) {
+    if (this.keys.has(key)) return;
+    this.keys = new Set(this.keys).add(key);
+    this.changed();
+  }
+
+  delete(key: string) {
+    if (!this.keys.has(key)) return;
+    const next = new Set(this.keys);
+    next.delete(key);
+    this.keys = next;
+    this.changed();
+  }
+
+  private changed() {
+    for (const listener of this.listeners) listener();
+  }
+}
+
+/** Every far chunk not yet shown in full, each its own mesh. */
 export const FarLayer = memo(function FarLayer({
   store,
-  loaded,
+  shown,
 }: {
   store: FarStore;
-  /** Chunks loaded in full: their far look is hidden. */
-  loaded: ReadonlyMap<string, unknown>;
+  /** Chunks shown in full: their far look is hidden. */
+  shown: ShownChunks;
 }) {
   const chunks = useSyncExternalStore(store.subscribe, store.getSnapshot);
+  const full = useSyncExternalStore(shown.subscribe, shown.getSnapshot);
   return (
     <>
-      {[...chunks].map(([key, far]) =>
-        loaded.has(key) ? null : <FarView key={key} chunk={far} />,
-      )}
+      {[...chunks].map(([key, far]) => (full.has(key) ? null : <FarView key={key} chunk={far} />))}
     </>
   );
 });

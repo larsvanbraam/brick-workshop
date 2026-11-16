@@ -34,10 +34,15 @@ describe('streaming', () => {
       `${10 + UNLOAD_RADIUS},-4`,
       `${11 + UNLOAD_RADIUS},-4`,
     ]);
-    const { request, unload } = plan(10, -4, loaded);
+    const gone = `${11 + UNLOAD_RADIUS},-4`;
+    const { request, unload } = plan(10, -4, loaded, new Set([gone]));
     expect(request).not.toContain('10,-4');
     expect(request[0]).toMatch(/^(9|10|11),(-5|-4|-3)$/);
-    expect(unload).toEqual([`${11 + UNLOAD_RADIUS},-4`]);
+    expect(unload).toEqual([gone]);
+    // Without its far look yet, the chunk stays until the far one can take its place.
+    expect(plan(10, -4, loaded).unload).toEqual([]);
+    // Past the far ring as well, nothing would take its place, so it goes.
+    expect(plan(10 - FAR_RADIUS, -4, loaded).unload).toContain(gone);
     expect(chunkDistance('13,-1', 10, -4)).toBe(3);
   });
 });
@@ -63,7 +68,7 @@ describe('far chunks', () => {
     // Shortening the reach drops what is now too far, a chunk past the new edge.
     const loaded = new Set(['0,0', '2,0', '3,0']);
     const far = new Set(['4,0', '5,0']);
-    const { unload, farUnload } = plan(0, 0, loaded, far, DISTANCES.short);
+    const { unload, farUnload } = plan(0, 0, loaded, new Set([...far, '3,0']), DISTANCES.short);
     expect(unload).toEqual(['3,0']);
     expect(farUnload).toEqual(['5,0']);
     // Switching to it trims to the reach itself, without the margin.
