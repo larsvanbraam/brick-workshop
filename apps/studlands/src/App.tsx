@@ -49,6 +49,9 @@ import { STARTER_HOTBAR } from './hotbar.ts';
 import { BrickBox, PART_DRAG, PartImage, colorHex, colorName } from './BrickBox.tsx';
 import { colorsFor, getSnap, nextRotation } from './catalog.ts';
 import { Key, PadProvider } from './input-hint.tsx';
+import { TouchControls } from './TouchControls.tsx';
+import { isTouchSetting, touchShown } from './touch-pad.ts';
+import type { TouchSetting } from './touch-pad.ts';
 import { PadPresses, isPadActive, readPads } from './gamepad.ts';
 import type { PadButton, PadState } from './gamepad.ts';
 import { PAD_CLASS, moveFocus, pressFocused, scrollPanel, switchTab } from './pad-ui.ts';
@@ -59,6 +62,8 @@ import {
   loadHotbar,
   loadMusic,
   loadSimpleControls,
+  loadTouchControls,
+  saveTouchControls,
   loadLocale,
   loadVoices,
   loadSave,
@@ -754,6 +759,12 @@ function Game({
   // in a bubble over their head and voiced in Simlish or the device's speech.
   const [simpleControls, setSimpleControls] = useState(() => loadSimpleControls() === true);
   useEffect(() => saveSimpleControls(simpleControls), [simpleControls]);
+  const [touchControls, setTouchControls] = useState<TouchSetting>(() => {
+    const saved = loadTouchControls();
+    return isTouchSetting(saved) ? saved : 'auto';
+  });
+  useEffect(() => saveTouchControls(touchControls), [touchControls]);
+  const showTouch = touchShown(touchControls);
   const [voiceMode, setVoiceMode] = useState<VoiceMode>(() => {
     const saved = loadVoices();
     return isVoiceMode(saved) ? saved : 'simlish';
@@ -1425,6 +1436,8 @@ function Game({
     onMusic: setMusicLevel,
     simpleControls,
     onSimpleControls: setSimpleControls,
+    touchControls,
+    onTouchControls: setTouchControls,
     voices: voiceMode,
     onVoices: setVoiceMode,
     locale,
@@ -1432,7 +1445,7 @@ function Game({
   };
   return (
     <PadProvider value={padInUse}>
-      <div className="game" data-screen={screen}>
+      <div className={showTouch ? 'game touch' : 'game'} data-screen={screen}>
         <GameScene
           chunks={chunks}
           farChunks={farStore}
@@ -1506,6 +1519,9 @@ function Game({
               clock={clock}
             />
           </DebugOverlay>
+        )}
+        {playing && showTouch && (
+          <TouchControls building={game().building} minimap={game().minimap} />
         )}
         {game().building && <div className="crosshair" aria-hidden />}
         {playing && game().building && ghostCheck && !ghostCheck.ok && (

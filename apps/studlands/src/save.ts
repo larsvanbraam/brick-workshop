@@ -159,6 +159,10 @@ export const saveMusic = (name: string) => write('music', name);
 export const loadSimpleControls = () => read<boolean>('simpleControls');
 export const saveSimpleControls = (on: boolean) => write('simpleControls', on);
 
+/** Whether the on-screen touch controls show: auto (on touch screens), on or off. */
+export const loadTouchControls = () => read<string>('touchControls');
+export const saveTouchControls = (name: string) => write('touchControls', name);
+
 export const loadVoices = () => read<string>('voices');
 export const saveVoices = (name: string) => write('voices', name);
 

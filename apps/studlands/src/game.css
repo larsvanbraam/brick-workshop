@@ -1627,3 +1627,107 @@ kbd {
 .title-page .backup .note {
   margin: 0 0 10px;
 }
+
+/* Touch controls: a thumbstick, look-drag area and buttons for screens without a keyboard. */
+.touch-controls {
+  position: fixed;
+  inset: 0;
+  z-index: 6;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.touch-controls * {
+  touch-action: none;
+}
+
+.touch-look {
+  position: absolute;
+  inset: 0;
+  pointer-events: auto;
+}
+
+.touch-stick {
+  position: absolute;
+  left: max(24px, env(safe-area-inset-left));
+  bottom: max(24px, env(safe-area-inset-bottom));
+  width: 130px;
+  height: 130px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: rgb(255 255 255 / 0.14);
+  border: 2px solid rgb(255 255 255 / 0.3);
+  pointer-events: auto;
+}
+
+.touch-knob {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: rgb(255 255 255 / 0.5);
+  pointer-events: none;
+}
+
+.touch-button {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  padding: 0;
+  border: 2px solid rgb(255 255 255 / 0.35);
+  border-radius: 50%;
+  background: rgb(0 0 0 / 0.35);
+  color: #fff;
+  font-size: 22px;
+  line-height: 1;
+  pointer-events: auto;
+}
+
+.touch-button:active {
+  background: rgb(255 255 255 / 0.4);
+}
+
+.touch-button.big {
+  width: 72px;
+  height: 72px;
+  font-size: 30px;
+}
+
+.touch-actions,
+.touch-extras,
+.touch-top {
+  position: absolute;
+  display: flex;
+  gap: 10px;
+}
+
+.touch-actions {
+  right: max(20px, env(safe-area-inset-right));
+  bottom: max(20px, env(safe-area-inset-bottom));
+  flex-wrap: wrap-reverse;
+  justify-content: flex-end;
+  align-items: flex-end;
+  max-width: 190px;
+}
+
+.touch-extras {
+  right: max(20px, env(safe-area-inset-right));
+  bottom: calc(max(20px, env(safe-area-inset-bottom)) + 170px);
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  max-width: 150px;
+}
+
+.touch-top {
+  right: max(16px, env(safe-area-inset-right));
+  top: max(12px, env(safe-area-inset-top));
+}
+
+/* The hotbar moves up out of the stick's way on touch. */
+.game.touch .hotbar {
+  bottom: auto;
+  top: 12px;
+}

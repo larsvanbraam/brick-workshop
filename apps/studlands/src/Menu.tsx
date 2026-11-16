@@ -1,3 +1,5 @@
+import { TOUCH_LABELS, TOUCH_SETTINGS } from './touch-pad.ts';
+import type { TouchSetting } from './touch-pad.ts';
 import { useEffect, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { Logo, logoLetters } from './Logo.tsx';
@@ -64,6 +66,9 @@ export interface MenuProps {
   /** One-stick controls for small children. */
   simpleControls: boolean;
   onSimpleControls: (on: boolean) => void;
+  /** The on-screen thumbsticks and buttons. */
+  touchControls: TouchSetting;
+  onTouchControls: (setting: TouchSetting) => void;
   voices: VoiceMode;
   onVoices: (mode: VoiceMode) => void;
   /** The language people speak. */
@@ -389,6 +394,8 @@ export function Settings({
   music,
   onMusic,
   simpleControls,
+  touchControls,
+  onTouchControls,
   onSimpleControls,
   voices,
   onVoices,
@@ -461,6 +468,27 @@ export function Settings({
       <p className="note">
         Simple uses one stick (or <kbd>A</kbd> and <kbd>D</kbd>): up and down walk, left and right
         turn, and the view stays level, so there is no looking up or down.
+      </p>
+      <div className="setting">
+        <span id="touch-label">Touch controls</span>
+        <div className="choices" role="radiogroup" aria-labelledby="touch-label">
+          {TOUCH_SETTINGS.map((setting) => (
+            <button
+              key={setting}
+              type="button"
+              role="radio"
+              aria-checked={touchControls === setting}
+              className={touchControls === setting ? 'tab selected' : 'tab'}
+              onClick={() => onTouchControls(setting)}
+            >
+              {TOUCH_LABELS[setting]}
+            </button>
+          ))}
+        </div>
+      </div>
+      <p className="note">
+        Thumbsticks and buttons on the screen, for phones and tablets: the left stick walks and
+        dragging anywhere else looks round. Auto shows them on touch screens only.
       </p>
       <div className="setting">
         <span id="voices-label">Voices</span>
