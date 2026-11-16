@@ -88,7 +88,14 @@ import type { ChunkMessage, FarMessage } from './world/worker.ts';
 import { FarStore } from './FarView.tsx';
 import { MapStore, Minimap } from './Minimap.tsx';
 import { createVehicles, parkedVehicles, returnVehicles, vehicleAction } from './vehicles.ts';
-import { DEFAULT_MUSIC, MENU_SHARE, MUSIC_LEVELS, isMusicLevel } from './music.ts';
+import {
+  DEFAULT_MUSIC,
+  MENU_SHARE,
+  MUSIC_LEVELS,
+  STYLE_DWELL,
+  STYLE_OF_BIOME,
+  isMusicLevel,
+} from './music.ts';
 import type { MusicLevel } from './music.ts';
 import { lineFor, personality } from './dialogue.ts';
 import { LOCALES, defaultLocale, isLocale } from './locale.ts';
@@ -730,6 +737,18 @@ function Game({
     mood();
     return clock.subscribe(mood);
   }, [music, clock]);
+  // Each kind of ground has its own song, once the player has stayed a little while.
+  const placeStyle = useMemo(
+    () =>
+      STYLE_OF_BIOME[
+        terrain.column(centre[0] * CHUNK + CHUNK / 2, centre[1] * CHUNK + CHUNK / 2).biome
+      ],
+    [terrain, centre],
+  );
+  useEffect(() => {
+    const timer = setTimeout(() => music.setStyle(placeStyle), STYLE_DWELL);
+    return () => clearTimeout(timer);
+  }, [music, placeStyle]);
 
   // Talking to people: T (B on a controller) beside someone has them say their next line, shown
   // in a bubble over their head and voiced in Simlish or the device's speech.

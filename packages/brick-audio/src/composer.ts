@@ -17,6 +17,26 @@ export type Mood = 'day' | 'night';
 export type Texture = 'drift' | 'song' | 'ripple' | 'bells';
 export const TEXTURES: readonly Texture[] = ['drift', 'song', 'ripple', 'bells'];
 
+/** The instrument that plays a note: see `music.ts`. */
+export type Timbre = 'piano' | 'pluck' | 'marimba' | 'bell' | 'pad';
+
+/**
+ * The song for a kind of place. Each style has its own scale, chords, tempo, instruments and
+ * register, so the meadow's felt piano, the desert's low drones and the snow's music box sound
+ * like different pieces, not one piece in another key.
+ */
+export type Style =
+  | 'meadow'
+  | 'forest'
+  | 'beach'
+  | 'sea'
+  | 'desert'
+  | 'snow'
+  | 'marsh'
+  | 'rock'
+  | 'volcanic'
+  | 'town';
+
 export interface Note {
   /** Seconds from the start of the piece. */
   time: number;
@@ -27,15 +47,17 @@ export interface Note {
   /** Seconds until the key is let go and the damper falls. */
   length: number;
   part: 'bass' | 'chord' | 'melody';
+  timbre: Timbre;
 }
 
 export interface Section {
   /** Seconds from the start of the piece. */
   start: number;
   mood: Mood;
+  style: Style;
   /** Semitones above D, -5 to 6. */
   key: number;
-  /** Which of the mood's progressions. */
+  /** Which of the style's progressions for the mood. */
   progression: number;
   texture: Texture;
 }
@@ -77,12 +99,196 @@ export const PROGRESSIONS: Record<Mood, Chord[][]> = {
   ],
 };
 
-const TEMPO: Record<Mood, number> = { day: 66, night: 54 };
 /** How far a section's tempo strays from its mood's, either way. */
 const TEMPO_SPREAD = 5;
 /** How much the tempo may change from one chord to the next, in beats a minute. */
 const TEMPO_GLIDE = 1.5;
 const BEATS_PER_CHORD = 8;
+
+const MINOR_PENTATONIC = [0, 3, 5, 7, 10];
+/** Hirajoshi: a Japanese scale with a bright, glassy sadness, for snow. */
+const HIRAJOSHI = [0, 2, 3, 7, 8];
+/** A Phrygian pentatonic, dark and tense, for volcanoes. */
+const PHRYGIAN = [0, 1, 5, 7, 8];
+/** A Lydian pentatonic, open and floating, for the sea. */
+const LYDIAN = [0, 2, 4, 6, 9];
+
+interface StyleDef {
+  /** The scale the melody keeps to, semitones above the key. */
+  scale: number[];
+  progressions: Record<Mood, Chord[][]>;
+  /** Beats a minute, by mood. */
+  tempo: Record<Mood, number>;
+  textures: readonly Texture[];
+  timbres: { bass: Timbre; chord: Timbre; melody: Timbre };
+  /** Semitones the melody's range moves up or down. */
+  shift: number;
+}
+
+export const STYLES: Record<Style, StyleDef> = {
+  meadow: {
+    scale: SCALE,
+    progressions: PROGRESSIONS,
+    tempo: { day: 66, night: 54 },
+    textures: TEXTURES,
+    timbres: { bass: 'piano', chord: 'piano', melody: 'piano' },
+    shift: 0,
+  },
+  forest: {
+    scale: SCALE,
+    progressions: {
+      day: [
+        [chord(0, ADD9), chord(4, MIN7), chord(9, MIN7), chord(2, SUS6)],
+        [chord(0, MAJ7), chord(7, SUS6), chord(5, MAJ7), chord(0, ADD9)],
+        [chord(9, MIN7), chord(5, ADD9), chord(0, ADD9), chord(7, SUS)],
+      ],
+      night: [
+        [chord(9, MINADD9), chord(7, SUS6), chord(5, MAJ7), chord(9, MIN7)],
+        [chord(4, MIN7), chord(9, MIN9), chord(5, ADD9), chord(0, MAJ7)],
+      ],
+    },
+    tempo: { day: 76, night: 60 },
+    textures: ['ripple', 'song', 'drift'],
+    timbres: { bass: 'pad', chord: 'pluck', melody: 'pluck' },
+    shift: 0,
+  },
+  beach: {
+    scale: SCALE,
+    progressions: {
+      day: [
+        [chord(0, ADD9), chord(5, MAJ7), chord(0, ADD9), chord(7, SUS6)],
+        [chord(5, ADD9), chord(0, MAJ7), chord(7, SUS6), chord(9, MIN7)],
+      ],
+      night: [
+        [chord(0, MAJ7), chord(9, MIN7), chord(5, MAJ7), chord(7, SUS)],
+        [chord(9, MIN7), chord(5, ADD9), chord(0, ADD9), chord(7, SUS6)],
+      ],
+    },
+    tempo: { day: 90, night: 70 },
+    textures: ['song', 'ripple'],
+    timbres: { bass: 'pluck', chord: 'marimba', melody: 'marimba' },
+    shift: 0,
+  },
+  sea: {
+    scale: LYDIAN,
+    progressions: {
+      day: [
+        [chord(0, MAJ9), chord(2, SUS6), chord(0, MAJ7), chord(9, MIN7)],
+        [chord(2, SUS6), chord(0, MAJ9), chord(9, MIN9), chord(0, ADD9)],
+      ],
+      night: [
+        [chord(0, MAJ7), chord(9, MINADD9), chord(2, SUS6), chord(0, MAJ9)],
+        [chord(9, MIN9), chord(0, MAJ9), chord(2, SUS6), chord(4, MIN7)],
+      ],
+    },
+    tempo: { day: 54, night: 46 },
+    textures: ['bells', 'drift', 'ripple'],
+    timbres: { bass: 'pad', chord: 'pad', melody: 'bell' },
+    shift: 3,
+  },
+  desert: {
+    scale: MINOR_PENTATONIC,
+    progressions: {
+      day: [
+        [chord(0, MINADD9), chord(10, ADD9), chord(8, MAJ7), chord(10, ADD9)],
+        [chord(0, MIN7), chord(8, MAJ7), chord(10, ADD9), chord(7, MIN7)],
+      ],
+      night: [
+        [chord(0, MIN9), chord(8, MAJ7), chord(3, MAJ7), chord(10, SUS)],
+        [chord(0, MINADD9), chord(7, MIN7), chord(8, MAJ7), chord(7, MIN7)],
+      ],
+    },
+    tempo: { day: 62, night: 50 },
+    textures: ['drift', 'song'],
+    timbres: { bass: 'pad', chord: 'pad', melody: 'pluck' },
+    shift: -2,
+  },
+  snow: {
+    scale: HIRAJOSHI,
+    progressions: {
+      day: [
+        [chord(0, MINADD9), chord(8, MAJ7), chord(3, MAJ9), chord(10, ADD9)],
+        [chord(0, MIN9), chord(5, SUS), chord(8, MAJ7), chord(7, MIN7)],
+      ],
+      night: [
+        [chord(0, MINADD9), chord(8, MAJ7), chord(0, MIN9), chord(3, MAJ9)],
+        [chord(8, MAJ7), chord(0, MINADD9), chord(5, SUS), chord(0, MIN9)],
+      ],
+    },
+    tempo: { day: 56, night: 46 },
+    textures: ['bells', 'drift'],
+    timbres: { bass: 'piano', chord: 'pad', melody: 'bell' },
+    shift: 5,
+  },
+  marsh: {
+    scale: MINOR_PENTATONIC,
+    progressions: {
+      day: [
+        [chord(0, MIN9), chord(5, MIN7), chord(0, MIN7), chord(10, ADD9)],
+        [chord(0, MINADD9), chord(3, MAJ7), chord(8, MAJ7), chord(10, SUS)],
+      ],
+      night: [
+        [chord(0, MIN9), chord(8, MAJ7), chord(5, MIN7), chord(0, MIN7)],
+        [chord(0, MINADD9), chord(10, SUS), chord(8, MAJ7), chord(0, MIN9)],
+      ],
+    },
+    tempo: { day: 50, night: 42 },
+    textures: ['drift', 'ripple'],
+    timbres: { bass: 'pad', chord: 'pad', melody: 'marimba' },
+    shift: -5,
+  },
+  rock: {
+    scale: SCALE,
+    progressions: {
+      day: [
+        [chord(0, SUS6), chord(7, SUS), chord(5, SUS6), chord(7, SUS6)],
+        [chord(0, SUS), chord(10, SUS), chord(5, SUS), chord(7, SUS)],
+      ],
+      night: [
+        [chord(9, SUS), chord(7, SUS), chord(5, SUS6), chord(9, SUS)],
+        [chord(0, SUS), chord(9, SUS), chord(5, SUS), chord(7, SUS)],
+      ],
+    },
+    tempo: { day: 58, night: 48 },
+    textures: ['song', 'drift'],
+    timbres: { bass: 'pad', chord: 'pad', melody: 'piano' },
+    shift: -3,
+  },
+  volcanic: {
+    scale: PHRYGIAN,
+    progressions: {
+      day: [
+        [chord(0, MIN7), chord(1, MAJ7), chord(0, MIN7), chord(8, MAJ7)],
+        [chord(0, SUS), chord(1, MAJ7), chord(8, MAJ7), chord(7, MIN7)],
+      ],
+      night: [
+        [chord(0, MIN9), chord(1, MAJ7), chord(8, MAJ7), chord(0, MIN7)],
+        [chord(0, MINADD9), chord(8, MAJ7), chord(1, MAJ7), chord(0, MIN7)],
+      ],
+    },
+    tempo: { day: 72, night: 60 },
+    textures: ['ripple', 'drift'],
+    timbres: { bass: 'pad', chord: 'pad', melody: 'marimba' },
+    shift: -12,
+  },
+  town: {
+    scale: SCALE,
+    progressions: {
+      day: [
+        [chord(0, ADD9), chord(9, MIN7), chord(2, MIN7), chord(7, SUS6)],
+        [chord(0, MAJ7), chord(5, MAJ7), chord(2, MIN9), chord(7, SUS6)],
+      ],
+      night: [
+        [chord(9, MINADD9), chord(2, MIN7), chord(5, MAJ7), chord(0, ADD9)],
+        [chord(0, ADD9), chord(9, MIN7), chord(5, ADD9), chord(7, SUS)],
+      ],
+    },
+    tempo: { day: 84, night: 66 },
+    textures: ['song', 'ripple', 'bells'],
+    timbres: { bass: 'piano', chord: 'piano', melody: 'bell' },
+    shift: 0,
+  },
+};
 /** A section lasts this many chords, give or take. */
 const SECTION_CHORDS = [8, 12];
 
@@ -116,6 +322,8 @@ export function random(seed: number) {
 export class Composer {
   /** The mood the next chord is written in; a change starts a new section from that chord. */
   mood: Mood;
+  /** The style the next chord is written in; a change starts a new section from that chord. */
+  style: Style;
   /** The sections played so far, the latest last (only the most recent are kept). */
   readonly sections: Section[] = [];
   private readonly rand: () => number;
@@ -132,10 +340,11 @@ export class Composer {
   /** The melody's last note, so it moves on by steps from there, even into a new key. */
   private pitch = 74;
 
-  constructor(seed = 1, mood: Mood = 'day') {
+  constructor(seed = 1, mood: Mood = 'day', style: Style = 'meadow') {
     this.rand = random(seed);
     this.mood = mood;
-    this.tempo = this.target = TEMPO[mood];
+    this.style = style;
+    this.tempo = this.target = STYLES[style].tempo[mood];
   }
 
   /** The notes that start before `until` seconds, in order; each is handed out once. */
@@ -153,13 +362,17 @@ export class Composer {
 
   /** Starts the next section: something changes, but not everything at once. */
   private newSection() {
-    const { rand, mood } = this;
+    const { rand, mood, style } = this;
+    const def = STYLES[style];
     const last = this.sections.at(-1);
-    const progressions = PROGRESSIONS[mood].map((_, i) => i);
+    const progressions = def.progressions[mood].map((_, i) => i);
     let key = last?.key ?? 0;
-    let texture: Texture = last ? this.pick(TEXTURES, last.texture) : 'drift';
-    let progression = this.pick(progressions, last?.progression);
-    if (last && last.mood !== mood) {
+    let texture: Texture = last ? this.pick(def.textures, last.texture) : def.textures[0];
+    let progression = this.pick(progressions, last?.style === style ? last.progression : undefined);
+    if (last && last.style !== style) {
+      // A new place has its own song: a fresh texture and chords, in the same key.
+      progression = this.pick(progressions);
+    } else if (last && last.mood !== mood) {
       // A change of mood keeps the key and the texture: only the chords turn.
       texture = last.texture;
       progression = this.pick(progressions);
@@ -168,24 +381,26 @@ export class Composer {
       key += rand() < 0.5 ? 7 : -7;
       key = ((((key + 5) % 12) + 12) % 12) - 5;
     }
-    this.section = { start: this.next, mood, key, progression, texture };
+    this.section = { start: this.next, mood, style, key, progression, texture };
     this.sections.push(this.section);
     if (this.sections.length > 64) this.sections.shift();
     this.left =
       SECTION_CHORDS[0] + Math.floor(rand() * (SECTION_CHORDS[1] - SECTION_CHORDS[0] + 1));
     this.chord = 0;
-    this.target = TEMPO[mood] + (rand() * 2 - 1) * TEMPO_SPREAD;
+    this.target = def.tempo[mood] + (rand() * 2 - 1) * TEMPO_SPREAD;
   }
 
   private writeChord() {
-    if (!this.left || this.section.mood !== this.mood) this.newSection();
+    if (!this.left || this.section.mood !== this.mood || this.section.style !== this.style)
+      this.newSection();
     const { rand, section } = this;
     this.tempo += Math.max(-TEMPO_GLIDE, Math.min(TEMPO_GLIDE, this.target - this.tempo));
     const beat = 60 / this.tempo;
     const start = this.next;
     const span = BEATS_PER_CHORD * beat;
     const key = HOME + section.key;
-    const { root, tones } = PROGRESSIONS[section.mood][section.progression][this.chord % 4];
+    const def = STYLES[section.style];
+    const { root, tones } = def.progressions[section.mood][section.progression][this.chord % 4];
     const notes: Note[] = [];
     const add = (note: Note) => notes.push(note);
 
@@ -196,6 +411,7 @@ export class Composer {
       velocity: 0.5 + rand() * 0.1,
       length: span,
       part: 'bass',
+      timbre: def.timbres.bass,
     });
     // Three of the chord's tones round middle C.
     const voicing = tones.map((tone) => above(50, key + root + tone));
@@ -212,6 +428,8 @@ export class Composer {
           velocity: (i % 4 === 0 ? 0.24 : 0.17) + rand() * 0.05,
           length: beat * 2.5,
           part: 'chord',
+          // Broken chords are rhythm: the lead instrument plays them, not a slow pad.
+          timbre: def.timbres.melody,
         });
     } else {
       // Rolled upwards, slowly at night and under bells, which want a held wash.
@@ -225,6 +443,7 @@ export class Composer {
           velocity: 0.22 + rand() * 0.1,
           length: span * 0.95,
           part: 'chord',
+          timbre: def.timbres.chord,
         });
       }
     }
@@ -233,8 +452,8 @@ export class Composer {
     // chord, and always sitting out the last of a section so the change breathes.
     const melody = MELODY[section.texture];
     const scale: number[] = [];
-    for (let midi = melody.low; midi <= melody.high; midi++)
-      if (SCALE.includes(pitchClass(midi - key))) scale.push(midi);
+    for (let midi = melody.low + def.shift; midi <= melody.high + def.shift; midi++)
+      if (def.scale.includes(pitchClass(midi - key))) scale.push(midi);
     if (this.left > 1 && rand() > melody.rests) {
       let at = start + beat * (1 + Math.floor(rand() * 3));
       // Carry on from the last note, moved to the nearest note of this key and range.
@@ -253,6 +472,7 @@ export class Composer {
           velocity: melody.velocity + rand() * 0.2,
           length: beat * (1.5 + rand() * 2),
           part: 'melody',
+          timbre: def.timbres.melody,
         });
         const gaps = [0.5, 1, 1, 1.5, 2, 2, 3];
         at += (this.pick(gaps) / melody.density) * beat;

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vite-plus/test';
-import { Composer, PROGRESSIONS, SCALE } from './composer.ts';
+import { Composer, PROGRESSIONS, SCALE, STYLES } from './composer.ts';
+import type { Style } from './composer.ts';
 import type { Section } from './composer.ts';
 
 const pitchClass = (midi: number) => ((midi % 12) + 12) % 12;
@@ -104,5 +105,44 @@ describe('the composer', () => {
     const late = chords.at(-1)! - chords.at(-2)!;
     expect(480 / late).toBeGreaterThanOrEqual(49 - 1e-9);
     expect(480 / late).toBeLessThanOrEqual(59 + 1e-9);
+  });
+
+  it('plays every style in its own scale and instruments, each a different song', () => {
+    const timbres = new Map<string, Style>();
+    for (const [name, def] of Object.entries(STYLES) as [Style, (typeof STYLES)[Style]][]) {
+      for (const mood of ['day', 'night'] as const) {
+        const composer = new Composer(4, mood, name);
+        const notes = composer.take(10 * 60);
+        const melody = notes.filter((note) => note.part === 'melody');
+        expect(melody.length).toBeGreaterThan(40);
+        for (const note of melody) {
+          const { key } = sectionAt(composer.sections, note.time);
+          expect(def.scale).toContain(pitchClass(note.midi - 62 - key));
+          expect(note.timbre).toBe(def.timbres.melody);
+          expect(note.velocity).toBeLessThanOrEqual(0.6);
+          expect(note.midi).toBeGreaterThanOrEqual(30);
+          expect(note.midi).toBeLessThanOrEqual(100);
+        }
+        expect(
+          notes.every((note) => note.timbre in { piano: 1, pluck: 1, marimba: 1, bell: 1, pad: 1 }),
+        ).toBe(true);
+      }
+      timbres.set(JSON.stringify([def.timbres, def.scale, def.tempo]), name);
+    }
+    expect(timbres.size).toBe(Object.keys(STYLES).length);
+  });
+
+  it('changes to another place’s song from the next chord, keeping the key', () => {
+    const composer = new Composer(2);
+    composer.take(1);
+    const before = composer.sections[0];
+    composer.style = 'snow';
+    const notes = composer.take(5 * 60);
+    const after = composer.sections[1];
+    expect(after.style).toBe('snow');
+    expect(after.key).toBe(before.key);
+    expect(STYLES.snow.textures).toContain(after.texture);
+    const melody = notes.filter((note) => note.part === 'melody' && note.time >= after.start);
+    expect(melody.every((note) => note.timbre === 'bell')).toBe(true);
   });
 });
