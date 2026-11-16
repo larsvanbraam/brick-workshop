@@ -177,6 +177,7 @@ export class Voices {
   private noise: AudioBuffer | null = null;
   private playing: AudioScheduledSourceNode[] = [];
   private done: (() => void) | null = null;
+  private utterance: SpeechSynthesisUtterance | null = null;
   private timer: ReturnType<typeof setTimeout> | null = null;
   /** Counts lines, so a cut-off line's late end does not end the next one. */
   private line = 0;
@@ -216,7 +217,10 @@ export class Voices {
         // Already stopped.
       }
     this.playing = [];
-    if (Voices.deviceSpeech && speechSynthesis.speaking) speechSynthesis.cancel();
+    if (this.utterance) this.utterance.onend = this.utterance.onerror = null;
+    this.utterance = null;
+    if (Voices.deviceSpeech && (speechSynthesis.speaking || speechSynthesis.pending))
+      speechSynthesis.cancel();
     this.finish();
   }
 
@@ -235,20 +239,30 @@ export class Voices {
   private speakDevice(text: string, voice: VoiceTraits) {
     const utterance = new SpeechSynthesisUtterance(text);
     const language = (navigator.language || 'en').slice(0, 2);
-    const voices = deviceVoicesFor(
-      speechSynthesis.getVoices().filter((entry) => entry.lang.startsWith(language)),
-      voice.register,
-    );
+    const installed = speechSynthesis
+      .getVoices()
+      .filter((entry) => entry.lang.startsWith(language));
+    // Network voices (Chrome's "Google ..." ones) stall or cut off, so prefer the device's own.
+    const local = installed.filter((entry) => entry.localService);
+    const voices = deviceVoicesFor(local.length ? local : installed, voice.register);
     if (voices.length) utterance.voice = voices[Math.floor(voice.pick * voices.length)];
     // The babble's pitch, 95 to 260 Hz, onto the device's 0 to 2 around 1.
     utterance.pitch = Math.max(0.3, Math.min(1.8, 0.5 + (voice.pitch - 95) / 165));
     utterance.rate = voice.rate;
     utterance.volume = this.volume;
     const line = this.line;
+    // Held on `this`: Chrome may collect an utterance still being said, and then it falls silent.
+    this.utterance = utterance;
     utterance.onend = utterance.onerror = () => {
       if (line === this.line) this.finish();
     };
-    speechSynthesis.speak(utterance);
+    // Chrome drops a line spoken in the same tick as a cancel, so let the cancel settle first.
+    this.timer = setTimeout(() => {
+      this.timer = null;
+      if (line !== this.line) return;
+      speechSynthesis.resume();
+      speechSynthesis.speak(utterance);
+    }, 60);
   }
 
   private speakBabble(text: string, voice: VoiceTraits) {
