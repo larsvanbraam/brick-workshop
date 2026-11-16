@@ -260,13 +260,19 @@ type Split = { body: Chunks; studs: Map<string, Chunks> };
 const UNDERSIDE = 'under';
 /** Marks a look whose studs are drawn as eight-sided prisms without edges, for chunks at a middle distance. */
 const LOW_STUDS = 'low';
-/** Markers for the looks further out: four-sided studs, and no studs at all. */
+/** Markers for the looks further out: six-sided studs, and no studs at all. */
 const TINY_STUDS = 'tiny';
 const NO_STUDS = 'far';
 /** Triangles a body needs before simplifying it is worth the blur: boxes and plates are left alone. */
 const SIMPLIFY_FROM = 120;
+/**
+ * How far a far body (past the eight-sided stud level) is merged: the cell (in LDU) grows
+ * through these until the body is down to this share of its triangles, or the cells run out.
+ */
+const BODY_CELLS = [3, 4.5, 6, 9] as const;
+const BODY_SHARE = 0.6;
 const MARKERS = new Set([UNDERSIDE, LOW_STUDS, TINY_STUDS, NO_STUDS]);
-/** How much of a brick a chunk draws, by distance: full studs, eight sides, four sides, none. */
+/** How much of a brick a chunk draws, by distance: full studs, eight sides, six sides, none. */
 export type StudLevel = 'full' | 'low' | 'tiny' | 'none';
 /** How thick a part's top and walls are, in LDU, with a little slack. */
 const SHELL = 3.9;
@@ -491,13 +497,14 @@ function clusterTriangles(chunks: Chunks, cell: number): Chunks {
  * Boxes and plates are left alone.
  */
 function simplifyBody(body: Chunks, near: boolean, from = SIMPLIFY_FROM): Chunks {
+  // Close enough to see leaves as leaves, the body is left as it is.
+  if (near) return body;
   const before = triangleCount(body);
   if (before <= from) return body;
-  const [cells, share] = near ? ([[4, 6], 0.6] as const) : ([[7, 10, 14, 20], 0.3] as const);
   let result = body;
-  for (const cell of cells) {
+  for (const cell of BODY_CELLS) {
     result = clusterTriangles(body, cell);
-    if (triangleCount(result) <= before * share) break;
+    if (triangleCount(result) <= before * BODY_SHARE) break;
   }
   return result;
 }
@@ -507,11 +514,11 @@ const triangleCount = (chunks: Chunks) =>
 
 /**
  * The body plus every stud not in `covered`, attribute by attribute. A look further out draws
- * the studs simplified (eight sides, then four) and without their edges, and a detailed body
+ * the studs simplified (eight sides, then six) and without their edges, and a detailed body
  * (plants, round bricks) merged into coarser triangles.
  */
 function gather(split: Split, covered: ReadonlySet<string>, kind?: 'faces' | 'lines') {
-  const sides = covered.has(TINY_STUDS) ? 4 : covered.has(LOW_STUDS) ? 8 : 0;
+  const sides = covered.has(TINY_STUDS) ? 6 : covered.has(LOW_STUDS) ? 8 : 0;
   const body =
     kind === 'faces' && (sides || covered.has(NO_STUDS))
       ? simplifyBody(split.body, covered.has(LOW_STUDS))

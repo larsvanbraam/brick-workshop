@@ -371,7 +371,7 @@ describe('local LDraw assets', () => {
     expect(batch.stats().coveredStuds).toBe(0);
     expect(batch.stats().bricks).toBe(1);
 
-    // Further out the studs have four sides, still not counted as covered.
+    // Further out the studs have six sides, still not counted as covered.
     batch.setStudLevel('tiny');
     batch.update(entries, 16);
     expect(batch.stats().coveredStuds).toBe(0);

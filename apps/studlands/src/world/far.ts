@@ -10,7 +10,8 @@ const CELLS = CHUNK / FAR_STEP;
 const LAYER = 3 * PLATE_HEIGHT;
 /** Sides darken a little, so steps read against the tops. */
 const SIDE_SHADE = 0.72;
-const CROWN = 0x184632;
+/** Crown greens, a tree taking one by where it stands so a wood is not one flat colour. */
+const CROWNS = [0x184632, 0x1d5237, 0x24603a, 0x2c6b3a] as const;
 const TRUNK = 0x582a12;
 
 /**
@@ -186,7 +187,11 @@ export function farChunk(terrain: Terrain, cx: number, cz: number, frame: number
   for (const tree of terrain.treesIn(cx * CHUNK, cz * CHUNK, (cx + 1) * CHUNK, (cz + 1) * CHUNK)) {
     const base = tree.base * LAYER;
     box(tree.x, tree.z, tree.x + 1, tree.z + 1, base, base + 6, TRUNK);
-    box(tree.x - 4, tree.z - 4, tree.x + 5, tree.z + 5, base + 5, base + 11, CROWN);
+    // A crown as three steps narrowing upward, a dome from afar instead of a block.
+    const crown = CROWNS[Math.abs(Math.imul(tree.x, 73856093) ^ Math.imul(tree.z, 19349663)) % 4];
+    box(tree.x - 4, tree.z - 4, tree.x + 5, tree.z + 5, base + 5, base + 7.5, crown);
+    box(tree.x - 3, tree.z - 3, tree.x + 4, tree.z + 4, base + 7.5, base + 9.5, crown);
+    box(tree.x - 1, tree.z - 1, tree.x + 2, tree.z + 2, base + 9.5, base + 11, crown);
   }
   // Buildings as plain blocks in their main colour, owned like their pieces by their anchor's chunk.
   for (const structure of terrain.structuresIn(
