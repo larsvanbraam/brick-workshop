@@ -20,10 +20,21 @@ if (existsSync(resolve(target, 'LDConfig.ldr'))) {
 }
 
 console.log(`Downloading LDraw library from ${LIBRARY_URL}…`);
-const response = await fetch(LIBRARY_URL);
-if (!response.ok)
-  throw new Error(`LDraw download failed: ${response.status} ${response.statusText}`);
-const archive = new Uint8Array(await response.arrayBuffer());
+// The download can drop mid-stream on build machines, so retry a few times.
+const ATTEMPTS = 5;
+let archive: Uint8Array | undefined;
+for (let attempt = 1; !archive; attempt++) {
+  try {
+    const response = await fetch(LIBRARY_URL, { signal: AbortSignal.timeout(120_000) });
+    if (!response.ok)
+      throw new Error(`LDraw download failed: ${response.status} ${response.statusText}`);
+    archive = new Uint8Array(await response.arrayBuffer());
+  } catch (error) {
+    if (attempt >= ATTEMPTS) throw error;
+    console.warn(`Download attempt ${attempt} failed (${String(error)}); retrying…`);
+    await new Promise((done) => setTimeout(done, attempt * 2000));
+  }
+}
 
 // The archive nests everything under ldraw/. Only the root files, parts/ and p/ are used.
 const keep = (name: string) => {
