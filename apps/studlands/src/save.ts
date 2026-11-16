@@ -158,6 +158,10 @@ export const saveMusic = (name: string) => write('music', name);
 export const loadVoices = () => read<string>('voices');
 export const saveVoices = (name: string) => write('voices', name);
 
+/** The language people speak, by the code picked in the settings. */
+export const loadLocale = () => read<string>('locale');
+export const saveLocale = (name: string) => write('locale', name);
+
 export const loadHotbar = () => read<Held[]>('hotbar');
 export const saveHotbar = (slots: readonly Held[]) => write('hotbar', slots);
 

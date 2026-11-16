@@ -9,6 +9,7 @@ import {
   advance,
   isQuestProgress,
   questById,
+  questWords,
   reminder,
   startQuest,
   targets,
@@ -60,6 +61,21 @@ describe('Brick Island jobs', () => {
     for (const quest of QUESTS)
       for (const line of [...quest.ask, quest.thanks, quest.task])
         expect(line.split(/\s+/).length, line).toBeLessThanOrEqual(9);
+  });
+
+  it('has the words of every job in Dutch, as short as the English', () => {
+    for (const quest of QUESTS) {
+      const words = questWords(quest, 'nl');
+      expect(words.giver).not.toBe('');
+      expect(words.ask).toHaveLength(quest.ask.length);
+      for (const line of [...words.ask, words.thanks, words.task])
+        expect(line.split(/\s+/).length, line).toBeLessThanOrEqual(9);
+      if (quest.goal.kind === 'take') expect(words.to && words.thing).toBeTruthy();
+    }
+    const eggs = QUESTS[0];
+    expect(taskLine(eggs, { id: eggs.id, step: 'go', found: [], built: 0 }, 'nl')).toBe(
+      'Vind de eieren',
+    );
   });
 
   it('finds things, goes back and is done', () => {

@@ -24,6 +24,16 @@ describe('dialogue', () => {
     expect(lineFor(talker, day, 12)).toBe(lines[4]);
   });
 
+  it('speaks Dutch or English, each the same every time', () => {
+    const talker = { seed: 5, biome: 'meadow' as const, figure: 'woman' as const };
+    const dutch = conversation(talker, day, 'nl');
+    expect(dutch).toEqual(conversation(talker, day, 'nl'));
+    expect(dutch).toHaveLength(5);
+    expect(dutch).not.toEqual(conversation(talker, day, 'en'));
+    expect(conversation(talker, day)).toEqual(conversation(talker, day, 'en'));
+    expect(lineFor(talker, day, 99, 'nl')).toBe(dutch[4]);
+  });
+
   it('names women and men to suit them', () => {
     const women = new Set<string>();
     const men = new Set<string>();

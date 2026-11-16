@@ -54,6 +54,7 @@ import {
   loadDistance,
   loadHotbar,
   loadMusic,
+  loadLocale,
   loadVoices,
   loadSave,
   loadSeed,
@@ -63,6 +64,7 @@ import {
   saveDistance,
   saveHotbar,
   saveMusic,
+  saveLocale,
   saveVoices,
   saveSeed,
   saveSlot,
@@ -83,6 +85,8 @@ import { createVehicles, parkedVehicles, returnVehicles, vehicleAction } from '.
 import { DEFAULT_MUSIC, MENU_SHARE, MUSIC_LEVELS, isMusicLevel } from './music.ts';
 import type { MusicLevel } from './music.ts';
 import { lineFor, personality } from './dialogue.ts';
+import { LOCALES, defaultLocale, isLocale } from './locale.ts';
+import type { Locale } from './locale.ts';
 import { residentById } from './npcs.ts';
 import { SpeechBubble } from './SpeechBubble.tsx';
 import { TIDE_LINES, Tide } from './tide.ts';
@@ -92,6 +96,8 @@ import {
   giverId,
   isQuestProgress,
   questById,
+  helperLine,
+  questWords,
   reminder,
   startQuest,
   takerId,
@@ -494,7 +500,16 @@ function Game({
   const [askCounts] = useState(() => new Map<string, number>());
   /** The cheer when a job is done. */
   const [cheer, setCheer] = useState<{ icon: string; name: string; text: string } | null>(null);
-  const mapPins = useMemo(() => questPins(questDone, activeQuest), [questDone, activeQuest]);
+  // The language people speak: the saved choice, else the browser's own where we have it.
+  const [locale, setLocale] = useState<Locale>(() => {
+    const saved = loadLocale();
+    return isLocale(saved) ? saved : defaultLocale();
+  });
+  useEffect(() => saveLocale(locale), [locale]);
+  const mapPins = useMemo(
+    () => questPins(questDone, activeQuest, locale),
+    [questDone, activeQuest, locale],
+  );
   useEffect(() => {
     if (!cheer) return;
     const timer = setTimeout(() => setCheer(null), 5000);
@@ -658,10 +673,10 @@ function Game({
   const [talkCounts] = useState(() => new Map<string, number>());
   const lineNumber = useRef(0);
   const nearbyName = useMemo(() => {
-    if (nearbyPerson && isHelper(nearbyPerson)) return helperName(nearbyPerson);
+    if (nearbyPerson && isHelper(nearbyPerson)) return helperName(nearbyPerson, locale);
     const resident = nearbyPerson ? residentById(terrain, nearbyPerson) : null;
     return resident ? personality(resident).name : null;
-  }, [nearbyPerson, terrain]);
+  }, [nearbyPerson, terrain, locale]);
   /** Has someone say a line: in a bubble over their head and out loud, till said and read. */
   const speak = (id: string, name: string, text: string, voice: VoiceTraits) => {
     const line = ++lineNumber.current;
@@ -669,9 +684,11 @@ function Game({
     talk.say(id);
     // The bubble stays while the line is said, and long enough to read it.
     const reading = new Promise((resolve) => setTimeout(resolve, 1600 + text.length * 50));
-    void Promise.all([voices.speak(text, voice, voiceMode), reading]).then(() => {
-      if (lineNumber.current === line) talk.say(null);
-    });
+    void Promise.all([voices.speak(text, voice, voiceMode, LOCALES[locale].tag), reading]).then(
+      () => {
+        if (lineNumber.current === line) talk.say(null);
+      },
+    );
   };
   /** A job is done: a cheer, a star, and thanks from whoever it was for. */
   const finishQuest = (quest: Quest) => {
@@ -683,10 +700,11 @@ function Game({
     setQuestDone(questRef.current.done);
     const { goal } = quest;
     const who = goal.kind === 'take' && 'outfit' in goal.to ? takerId(quest) : giverId(quest);
-    const name = helperName(who) ?? quest.giver.name;
-    setCheer({ icon: quest.icon, name, text: quest.thanks });
+    const name = helperName(who, locale) ?? quest.giver.name;
+    const { thanks } = questWords(quest, locale);
+    setCheer({ icon: quest.icon, name, text: thanks });
     chime('done');
-    speak(who, name, quest.thanks, helperVoice(who));
+    speak(who, name, thanks, helperVoice(who));
   };
   /** Something happened on a job: picked up, back with it all, arrived, a brick put on. */
   const onQuestEvent = (event: QuestEvent) => {
@@ -704,8 +722,8 @@ function Game({
       chime('all');
       return speak(
         giverId(quest),
-        quest.giver.name,
-        'Yay! Now we build!',
+        questWords(quest, locale).giver,
+        helperLine('build', locale),
         helperVoice(giverId(quest)),
       );
     }
@@ -723,19 +741,20 @@ function Game({
     if (!quest) return;
     const { active, done } = questRef.current;
     const mine = active?.id === quest.id ? active : null;
-    const name = helperName(id) ?? quest.giver.name;
+    const name = helperName(id, locale) ?? quest.giver.name;
     if (role === 'to') {
       // Someone to take a thing to: arriving hands it over (see the scene), so this is a hello.
-      const text = done.has(quest.id) ? 'Thank you again!' : 'Hello there!';
+      const text = helperLine(done.has(quest.id) ? 'thanksAgain' : 'hello', locale);
       return speak(id, name, text, helperVoice(id));
     }
     if (mine?.step === 'build') return onQuestEvent({ kind: 'place' });
     if (mine?.step === 'back') return onQuestEvent({ kind: 'giver' });
-    if (mine) return speak(id, name, reminder(quest, mine), helperVoice(id));
+    if (mine) return speak(id, name, reminder(quest, mine, locale), helperVoice(id));
     const count = askCounts.get(quest.id) ?? 0;
     const last = count >= quest.ask.length - 1;
     askCounts.set(quest.id, last ? 0 : count + 1);
-    speak(id, name, quest.ask[Math.min(count, quest.ask.length - 1)], helperVoice(id));
+    const { ask } = questWords(quest, locale);
+    speak(id, name, ask[Math.min(count, ask.length - 1)], helperVoice(id));
     if (!last) return;
     const started = startQuest(quest);
     questRef.current = { ...questRef.current, active: started };
@@ -752,7 +771,7 @@ function Game({
     talkCounts.set(id, count + 1);
     const context = { daytime: isDaytime(clock.time), island: game().world === 'island' };
     const voice = voiceFor(resident.seed, resident.figure === 'woman' ? 'high' : 'low');
-    speak(id, personality(resident).name, lineFor(resident, context, count), voice);
+    speak(id, personality(resident).name, lineFor(resident, context, count, locale), voice);
   };
   const talkRef = useRef(talkTo);
   useEffect(() => {
@@ -1232,6 +1251,8 @@ function Game({
     onMusic: setMusicLevel,
     voices: voiceMode,
     onVoices: setVoiceMode,
+    locale,
+    onLocale: setLocale,
   };
   return (
     <div className="game" data-screen={screen}>
@@ -1343,7 +1364,7 @@ function Game({
       )}
       {playing && drivingKind && <DriveHint kind={drivingKind} pad={padInUse} />}
       {playing && shownQuest && activeQuest && (
-        <QuestCard quest={shownQuest} progress={activeQuest} talkKey={talkKey} />
+        <QuestCard quest={shownQuest} progress={activeQuest} talkKey={talkKey} locale={locale} />
       )}
       {playing && cheer && (
         <div className="cheer" role="status">
@@ -1445,12 +1466,13 @@ function Game({
 const isHelper = (id: string) => id.startsWith('quest:');
 
 /** A helper's name from their wanderer ID (see `giverId`, `takerId`). */
-function helperName(id: string) {
+function helperName(id: string, locale: Locale) {
   const [, questId, role] = id.split(':');
   const quest = questById(questId);
   if (!quest) return null;
-  if (role !== 'to') return quest.giver.name;
-  return quest.goal.kind === 'take' ? quest.goal.to.name : null;
+  const words = questWords(quest, locale);
+  if (role !== 'to') return words.giver;
+  return quest.goal.kind === 'take' ? (words.to ?? quest.goal.to.name) : null;
 }
 
 /** A helper's voice, the same every time, high or low as the helper says. */
@@ -1469,10 +1491,19 @@ function helperVoice(id: string) {
  * Pins for the map: a ❗ on each helper with a job to give, and where to go for the job being
  * done.
  */
-function questPins(done: ReadonlySet<string>, active: QuestProgress | null): MapPin[] {
+function questPins(
+  done: ReadonlySet<string>,
+  active: QuestProgress | null,
+  locale: Locale,
+): MapPin[] {
   const pins: MapPin[] = QUESTS.filter(
     (quest) => !done.has(quest.id) && quest.id !== active?.id,
-  ).map((quest) => ({ x: quest.giver.x, z: quest.giver.z, icon: '❗', name: quest.giver.name }));
+  ).map((quest) => ({
+    x: quest.giver.x,
+    z: quest.giver.z,
+    icon: '❗',
+    name: questWords(quest, locale).giver,
+  }));
   const quest = active ? questById(active.id) : null;
   if (quest && active)
     for (const spot of targets(quest, active))
@@ -1488,10 +1519,12 @@ function QuestCard({
   quest,
   progress,
   talkKey,
+  locale,
 }: {
   quest: Quest;
   progress: QuestProgress;
   talkKey: string;
+  locale: Locale;
 }) {
   const { goal } = quest;
   const things =
@@ -1512,7 +1545,7 @@ function QuestCard({
               Press <kbd>{talkKey}</kbd> to build!
             </>
           ) : (
-            `${taskLine(quest, progress)}!`
+            `${taskLine(quest, progress, locale)}!`
           )}
         </strong>
         {things && (

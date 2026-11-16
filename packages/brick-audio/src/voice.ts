@@ -192,15 +192,16 @@ export class Voices {
 
   /**
    * Says `text` in `voice`, as babble or in the device's speech, and resolves once it is said,
-   * or at once when off or cut off.
+   * or at once when off or cut off. `language` is a BCP 47 tag for the device's speech ("nl-NL"),
+   * the browser's own when left out.
    */
-  speak(text: string, voice: VoiceTraits, mode: VoiceMode): Promise<void> {
+  speak(text: string, voice: VoiceTraits, mode: VoiceMode, language?: string): Promise<void> {
     this.stop();
     this.line++;
     if (mode === 'off') return Promise.resolve();
     return new Promise((resolve) => {
       this.done = resolve;
-      if (mode === 'device' && Voices.deviceSpeech) this.speakDevice(text, voice);
+      if (mode === 'device' && Voices.deviceSpeech) this.speakDevice(text, voice, language);
       else this.speakBabble(text, voice);
     });
   }
@@ -236,9 +237,12 @@ export class Voices {
     done?.();
   }
 
-  private speakDevice(text: string, voice: VoiceTraits) {
+  private speakDevice(text: string, voice: VoiceTraits, tag?: string) {
     const utterance = new SpeechSynthesisUtterance(text);
-    const language = (navigator.language || 'en').slice(0, 2);
+    const wanted = tag ?? navigator.language ?? 'en';
+    const language = wanted.slice(0, 2);
+    // Without a voice installed for the language the browser still reads it in its closest one.
+    utterance.lang = wanted;
     const installed = speechSynthesis
       .getVoices()
       .filter((entry) => entry.lang.startsWith(language));

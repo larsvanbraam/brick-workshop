@@ -18,6 +18,8 @@ import type { DistanceName } from './streaming.ts';
 import { MUSIC_LEVELS } from './music.ts';
 import type { MusicLevel } from './music.ts';
 import { Voices } from '@brick-workshop/audio/voice';
+import { LOCALES } from './locale.ts';
+import type { Locale } from './locale.ts';
 import type { VoiceMode } from '@brick-workshop/audio/voice';
 import { game } from './game.ts';
 import { LANDMARKS } from './world/island/map.ts';
@@ -56,6 +58,9 @@ export interface MenuProps {
   onMusic: (level: MusicLevel) => void;
   voices: VoiceMode;
   onVoices: (mode: VoiceMode) => void;
+  /** The language people speak. */
+  locale: Locale;
+  onLocale: (locale: Locale) => void;
 }
 
 const ago = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' });
@@ -239,7 +244,16 @@ const VOICE_LABELS: Record<VoiceMode, string> = {
   off: 'Off',
 };
 
-export function Settings({ distance, onDistance, music, onMusic, voices, onVoices }: MenuProps) {
+export function Settings({
+  distance,
+  onDistance,
+  music,
+  onMusic,
+  voices,
+  onVoices,
+  locale,
+  onLocale,
+}: MenuProps) {
   const voiceModes = (Object.keys(VOICE_LABELS) as VoiceMode[]).filter(
     (mode) => mode !== 'device' || Voices.deviceSpeech,
   );
@@ -307,6 +321,24 @@ export function Settings({ distance, onDistance, music, onMusic, voices, onVoice
         How people sound when you talk to them (<kbd>T</kbd>): made-up babble, or your device
         reading their lines aloud.
       </p>
+      <div className="setting">
+        <span id="locale-label">Language</span>
+        <div className="choices" role="radiogroup" aria-labelledby="locale-label">
+          {(Object.keys(LOCALES) as Locale[]).map((name) => (
+            <button
+              key={name}
+              type="button"
+              role="radio"
+              aria-checked={locale === name}
+              className={locale === name ? 'tab selected' : 'tab'}
+              onClick={() => onLocale(name)}
+            >
+              {LOCALES[name].label}
+            </button>
+          ))}
+        </div>
+      </div>
+      <p className="note">The language people speak. The menus stay in English.</p>
     </div>
   );
 }

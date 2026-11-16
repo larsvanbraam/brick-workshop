@@ -1,5 +1,6 @@
 import type { MinifigOutfit } from '@brick-workshop/walk/minifig';
 import type { VoiceRegister } from '@brick-workshop/audio/voice';
+import type { Locale } from './locale.ts';
 
 /**
  * Brick Island's little jobs: one helper in each part of the island asks for a hand with
@@ -401,13 +402,148 @@ export function advance(
   return progress;
 }
 
-/** What to do now, in a few words, for the screen. */
-export function taskLine(quest: Quest, progress: QuestProgress): string {
+/** What a job's people say, in a language other than the English written on the quest. */
+interface QuestWords {
+  giver: string;
+  ask: readonly string[];
+  task: string;
+  thanks: string;
+  /** For a job of taking something: what is carried and who or where it goes to. */
+  thing?: string;
+  to?: string;
+  /** For a job of finding: what is left to find, as in "Find 3 more eggs!". */
+  things?: string;
+}
+
+const DUTCH: Record<string, QuestWords> = {
+  eggs: {
+    giver: 'Boer Fien',
+    ask: [
+      'Hallo! Ik ben Boer Fien.',
+      'Oh nee! Mijn kippen zijn hun eieren kwijt.',
+      'Vind jij 5 eieren voor me?',
+    ],
+    task: 'Vind de eieren',
+    thanks: 'Dank je! De kippen zijn zo blij!',
+    things: 'eieren',
+  },
+  flowers: {
+    giver: 'Rosa',
+    ask: [
+      'Hoi! Ik verkoop bloemen.',
+      'Opa Ben in de haven wil er een paar.',
+      'Breng jij ze naar hem?',
+    ],
+    task: 'Breng de bloemen naar Ben',
+    thanks: 'Bloemen! Voor mij? Dank je!',
+    thing: 'de bloemen',
+    to: 'Opa Ben',
+  },
+  tower: {
+    giver: 'Bouwer Max',
+    ask: [
+      'Hoi! Ik ben Bouwer Max.',
+      'Laten we samen een toren bouwen!',
+      'Zoek eerst 4 stenen voor me.',
+    ],
+    task: 'Vind de stenen',
+    thanks: 'Wat een mooie toren! Jij bent een bouwer!',
+    things: 'stenen',
+  },
+  race: {
+    giver: 'Racer Zoë',
+    ask: ['Vroem! Ik ben Racer Zoë.', 'Spring in de racewagen!', 'Rij door alle 4 de vlaggen!'],
+    task: 'Rij door de vlaggen',
+    thanks: 'Gelukt! Supersnel!',
+    things: 'vlaggen',
+  },
+  shells: {
+    giver: 'Pim',
+    ask: ['Hoi! Ik ben dol op het strand.', 'Vind jij 4 schelpen in het zand?'],
+    task: 'Vind de schelpen',
+    thanks: 'Zo mooi! Dank je!',
+    things: 'schelpen',
+  },
+  ducks: {
+    giver: 'Ada',
+    ask: ['Kwak kwak! Hallo!', 'Mijn 3 kleine eendjes zijn weg.', 'Kun jij ze voor me zoeken?'],
+    task: 'Vind de eendjes',
+    thanks: 'Mijn eendjes zijn thuis! Kwak!',
+    things: 'eendjes',
+  },
+  lamp: {
+    giver: 'Wachter Lou',
+    ask: [
+      'Hallo! Ik pas op de vuurtoren.',
+      'Oei, mijn lamp is kapot!',
+      'Een nieuwe lamp ligt in de haven.',
+      'Kun jij hem voor me halen?',
+    ],
+    task: 'Haal de lamp',
+    thanks: 'Hoera! Mijn licht kan weer schijnen!',
+    things: 'lamp',
+  },
+  summit: {
+    giver: 'Wandelaar Hugo',
+    ask: ['Hoi! Ik hou van klimmen.', 'Zet jij mijn vlag op de bergtop?', 'Volg de weg omhoog!'],
+    task: 'Breng de vlag naar de top',
+    thanks: 'Je hebt de top gehaald! Hoera!',
+    thing: 'de vlag',
+    to: 'de top',
+  },
+};
+
+/** Small lines the helpers say that are not part of a quest's own words. */
+const HELPER_LINES: Record<
+  Locale,
+  Record<'hello' | 'thanksAgain' | 'build' | 'pressToBuild' | 'oneMore', string>
+> = {
+  en: {
+    hello: 'Hello there!',
+    thanksAgain: 'Thank you again!',
+    build: 'Yay! Now we build!',
+    pressToBuild: 'Press again to put on a brick!',
+    oneMore: 'Just 1 more to find!',
+  },
+  nl: {
+    hello: 'Hallo daar!',
+    thanksAgain: 'Nog bedankt!',
+    build: 'Hoera! Nu gaan we bouwen!',
+    pressToBuild: 'Druk nog eens om een steen te plaatsen!',
+    oneMore: 'Nog maar 1 te vinden!',
+  },
+};
+
+/** One of the small lines helpers say, in a language. */
+export const helperLine = (key: keyof (typeof HELPER_LINES)['en'], locale: Locale) =>
+  HELPER_LINES[locale][key];
+
+/** What a job's people say and show in a language. English is what is written on the quest. */
+export function questWords(quest: Quest, locale: Locale): QuestWords {
+  const dutch = locale === 'nl' ? DUTCH[quest.id] : undefined;
+  if (dutch) return dutch;
   const { goal } = quest;
-  if (goal.kind === 'take') return quest.task;
-  if (progress.step === 'back') return `Go back to ${quest.giver.name}`;
-  if (progress.step === 'build') return 'Press to put a brick on';
-  return quest.task;
+  return {
+    giver: quest.giver.name,
+    ask: quest.ask,
+    task: quest.task,
+    thanks: quest.thanks,
+    thing: goal.kind === 'take' ? goal.thing : undefined,
+    to: goal.kind === 'take' ? goal.to.name : undefined,
+    things: goal.kind === 'find' ? goal.things : undefined,
+  };
+}
+
+/** What to do now, in a few words, for the screen. */
+export function taskLine(quest: Quest, progress: QuestProgress, locale: Locale = 'en'): string {
+  const { goal } = quest;
+  const words = questWords(quest, locale);
+  if (goal.kind === 'take') return words.task;
+  if (progress.step === 'back')
+    return locale === 'nl' ? `Ga terug naar ${words.giver}` : `Go back to ${words.giver}`;
+  if (progress.step === 'build')
+    return locale === 'nl' ? 'Druk om een steen te plaatsen' : 'Press to put a brick on';
+  return words.task;
 }
 
 /** The count to show, as "2 / 5", or null where there is nothing to count. */
@@ -422,13 +558,19 @@ export function taskCount(quest: Quest, progress: QuestProgress): string | null 
 }
 
 /** What a helper says when talked to again while their job is on. */
-export function reminder(quest: Quest, progress: QuestProgress): string {
+export function reminder(quest: Quest, progress: QuestProgress, locale: Locale = 'en'): string {
   const { goal } = quest;
-  if (goal.kind === 'take') return `Please take ${goal.thing} to ${goal.to.name}!`;
-  if (progress.step === 'build') return 'Press again to put on a brick!';
+  const words = questWords(quest, locale);
+  if (goal.kind === 'take')
+    return locale === 'nl'
+      ? `Breng ${words.thing} alsjeblieft naar ${words.to}!`
+      : `Please take ${words.thing} to ${words.to}!`;
+  if (progress.step === 'build') return helperLine('pressToBuild', locale);
   const left = goal.spots.length - progress.found.length;
-  if (left === 1) return `Just 1 more to find!`;
-  return `Find ${left} more ${goal.things}!`;
+  if (left === 1) return helperLine('oneMore', locale);
+  return locale === 'nl'
+    ? `Vind nog ${left} ${words.things}!`
+    : `Find ${left} more ${words.things}!`;
 }
 
 /** Where to go next, in world studs: what is left to find, the helper, or where to take it. */
