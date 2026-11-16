@@ -506,7 +506,7 @@ function isTyping(target: EventTarget | null) {
 }
 
 export default function App() {
-  const fullscreen = useFullscreen(true);
+  const fullscreen = useFullscreen();
   // Restored once: the last session's build, with the library parts it needs registered.
   const [autosave] = useState(readAutosave);
   const [runtimeParts, setRuntimeParts] = useState<Part[]>(() => autosave?.parts ?? []);

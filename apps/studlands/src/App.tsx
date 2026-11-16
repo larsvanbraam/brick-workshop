@@ -157,8 +157,8 @@ const TITLE_TURN = 0.04;
 const TITLE_EASE = 3;
 
 export function App() {
-  // Starts fullscreen on the first click or key press; F or the corner button toggles it after.
-  const fullscreen = useFullscreen(true);
+  // F or the corner button toggles fullscreen.
+  const fullscreen = useFullscreen();
   const { toggle } = fullscreen;
   useEffect(() => {
     const keydown = (event: KeyboardEvent) => {
