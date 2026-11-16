@@ -538,6 +538,8 @@ function Game({
   const [helperPositions] = useState<Positions>(() => new Map());
   /** How far through asking each helper has got, so each press says the next line. */
   const [askCounts] = useState(() => new Map<string, number>());
+  /** Goes up when every job is done, to set off the fireworks. */
+  const [fireworks, setFireworks] = useState(0);
   /** The cheer when a job is done. */
   const [cheer, setCheer] = useState<{
     icon: string;
@@ -787,6 +789,8 @@ function Game({
     const { thanks } = questWords(quest, locale);
     setCheer({ icon: quest.icon, name, text: thanks, gift: giftOf(quest) !== null });
     chime('done');
+    if (QUESTS.every((each) => questRef.current.done.has(each.id)))
+      setTimeout(() => setFireworks((count) => count + 1), 1800);
     const finish = quest.sounds?.done;
     if (finish) setTimeout(() => chime(finish), 900);
     speak(who, name, thanks, helperVoice(who));
@@ -1420,7 +1424,7 @@ function Game({
           outfit={questsOn ? wornOutfit : undefined}
           quests={
             questsOn
-              ? { view: questView, onEvent: questEvents, positions: helperPositions }
+              ? { view: questView, onEvent: questEvents, positions: helperPositions, fireworks }
               : undefined
           }
           debug={{
