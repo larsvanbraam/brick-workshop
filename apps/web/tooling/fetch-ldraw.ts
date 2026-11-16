@@ -1,9 +1,11 @@
 /**
  * Downloads and extracts the official LDraw library for hosted builds (e.g. Vercel),
  * where the Git-ignored data/ldraw folder does not exist. Skips the download when a
- * library is already present at LDRAW_LIBRARY_PATH (default data/ldraw).
+ * library is already present at LDRAW_LIBRARY_PATH (default data/ldraw). The extracted
+ * library is also kept in node_modules/.cache, which Vercel restores between deploys, so
+ * only a build without the build cache downloads it.
  */
-import { existsSync } from 'node:fs';
+import { cpSync, existsSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -16,6 +18,13 @@ const target = resolve(workspaceRoot, process.env.LDRAW_LIBRARY_PATH || 'data/ld
 
 if (existsSync(resolve(target, 'LDConfig.ldr'))) {
   console.log(`LDraw library already present at ${target}; skipping download.`);
+  process.exit(0);
+}
+
+const cache = resolve(workspaceRoot, 'node_modules/.cache/ldraw-library');
+if (existsSync(resolve(cache, 'LDConfig.ldr'))) {
+  cpSync(cache, target, { recursive: true });
+  console.log(`Restored the LDraw library from the build cache (${cache}).`);
   process.exit(0);
 }
 
@@ -53,3 +62,10 @@ for (const [name, data] of Object.entries(files)) {
   count++;
 }
 console.log(`Extracted ${count} LDraw files to ${target}.`);
+
+// Keep a copy for the next build. A failure here must not fail the deploy.
+try {
+  cpSync(target, cache, { recursive: true });
+} catch (error) {
+  console.warn(`Could not cache the LDraw library (${String(error)}).`);
+}
