@@ -2,6 +2,7 @@ import {
   BatchedMesh,
   BufferAttribute,
   BufferGeometry,
+  Box3,
   Group,
   LineBasicMaterial,
   LineSegments,
@@ -13,7 +14,7 @@ import {
   Vector2,
   Vector3,
 } from 'three';
-import type { Color, Intersection, Material, Raycaster } from 'three';
+import type { Color, Frustum, Intersection, Material, Raycaster } from 'three';
 import { MeshBVH, acceleratedRaycast } from 'three-mesh-bvh';
 import { LDrawConditionalLineMaterial } from 'three/addons/materials/LDrawConditionalLineMaterial.js';
 import {
@@ -969,6 +970,7 @@ function cullForShadows(mesh: BatchedMesh) {
     geometry,
     depthMaterial,
   ) {
+    const before = this.perObjectFrustumCulled;
     this.perObjectFrustumCulled = true;
     this.onBeforeRender(
       renderer,
@@ -978,7 +980,7 @@ function cullForShadows(mesh: BatchedMesh) {
       depthMaterial,
       null as never,
     );
-    this.perObjectFrustumCulled = false;
+    this.perObjectFrustumCulled = before;
     (this as unknown as { _visibilityChanged: boolean })._visibilityChanged = true;
   };
 }
@@ -1197,7 +1199,7 @@ export class LDrawBatch {
           INDEXED_LINES.has(kind),
         ) as unknown as BatchedMesh;
         mesh.visible = false;
-        mesh.perObjectFrustumCulled = cullEach;
+        mesh.perObjectFrustumCulled = cullEach || this.partial;
         if (fadeEdges) {
           // Faded edges blend, so they join the transparent queue: ahead of glass, which draws
           // over them, as the opaque edges they are.
@@ -1575,6 +1577,47 @@ export class LDrawBatch {
     }
   }
 
+  /** Whether bricks are culled one by one: while the batch is only partly in view. */
+  private partial = false;
+  private readonly world = new Box3();
+  private readonly layerBox = new Box3();
+
+  /**
+   * Culls brick by brick while the batch is only partly inside `frustum`, and as a whole once it
+   * is wholly inside: the bricks of a chunk beside or behind the camera are then not drawn, and
+   * the work of testing each brick is only spent on the few chunks at the edge of the view.
+   * Batches that cull each brick anyway (`cullEach`) are left as they are.
+   */
+  cullPartially(frustum: Frustum) {
+    if (this.cullEach) return;
+    const box = this.world.makeEmpty();
+    for (const { mesh } of this.layers.values()) {
+      if (!mesh.boundingBox) continue;
+      box.union(this.layerBox.copy(mesh.boundingBox).applyMatrix4(mesh.matrixWorld));
+    }
+    // Wholly inside when, for every plane, the box's corner furthest outside it is still inside.
+    const inside =
+      !box.isEmpty() &&
+      frustum.planes.every(({ normal, constant }) => {
+        const x = normal.x >= 0 ? box.min.x : box.max.x;
+        const y = normal.y >= 0 ? box.min.y : box.max.y;
+        const z = normal.z >= 0 ? box.min.z : box.max.z;
+        return normal.x * x + normal.y * y + normal.z * z + constant >= 0;
+      });
+    const partial = !inside;
+    if (partial === this.partial) return;
+    this.partial = partial;
+    const meshes = [
+      ...[...this.layers.values()].map((layer) => layer.mesh),
+      ...LINE_KINDS.map((kind) => this.lineLayers[kind].mesh),
+    ];
+    for (const mesh of meshes) {
+      mesh.perObjectFrustumCulled = partial;
+      // Back to one draw list for the whole batch, as three would after a change.
+      (mesh as unknown as { _visibilityChanged: boolean })._visibilityChanged = true;
+    }
+  }
+
   private refreshBounds() {
     for (const layer of this.layers.values()) {
       layer.mesh.computeBoundingBox();
@@ -1715,7 +1758,7 @@ export class LDrawBatch {
       ? new BatchedMesh(room.instances, room.vertices, room.indices, material)
       : new BatchedMesh(64, 8192, 8192, material);
     if (!this.cullEach) {
-      mesh.perObjectFrustumCulled = false;
+      mesh.perObjectFrustumCulled = this.partial;
       mesh.sortObjects = glass;
       cullForShadows(mesh);
     }

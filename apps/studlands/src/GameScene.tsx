@@ -1,7 +1,7 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { BoxGeometry, EdgesGeometry, Raycaster, Vector2, Vector3 } from 'three';
-import type { Color, Group, Object3D } from 'three';
+import { BoxGeometry, EdgesGeometry, Frustum, Matrix4, Raycaster, Vector2, Vector3 } from 'three';
+import type { Camera, Color, Group, Object3D } from 'three';
 import { PLATE_HEIGHT, footprint } from '@brick-workshop/engine';
 import type { Brick } from '@brick-workshop/engine';
 import { getCinematicDpr } from '@brick-workshop/render/cinematic-look';
@@ -341,6 +341,20 @@ function studLevel(distance: number, was: StudLevel): StudLevel {
 /** Conditional edges go first, then every edge. */
 const EDGES = { all: 14, plain: 28 } as const;
 
+/** Studs from the camera within which a chunk can cast into the shadows (they cover about 48). */
+const SHADOW_REACH = 56;
+
+/** The camera's view as a frustum, worked out once a frame however many chunks ask. */
+const sharedFrustum = { time: -1, frustum: new Frustum(), matrix: new Matrix4() };
+function viewFrustum(camera: Camera, time: number) {
+  if (sharedFrustum.time !== time) {
+    sharedFrustum.time = time;
+    sharedFrustum.matrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+    sharedFrustum.frustum.setFromProjectionMatrix(sharedFrustum.matrix);
+  }
+  return sharedFrustum.frustum;
+}
+
 /** The height the ground mostly stays under, in scene units: above it, height adds distance. */
 const GROUND_TOP = 12;
 /** The canvas camera's height before anything moves it (see `camera` on the Canvas). */
@@ -433,7 +447,8 @@ const ChunkView = memo(function ChunkView({
     const here = camera.position.y === DEFAULT_CAMERA_HEIGHT ? focus : camera.position;
     return studLevel(chunkDistance(chunk, buildArea, here), 'full');
   });
-  useFrame(() => {
+  useFrame((state) => {
+    native.cullPartially(viewFrustum(state.camera, state.clock.elapsedTime));
     const distance = chunkDistance(chunk, buildArea, camera.position);
     native.setEdges(distance < EDGES.all ? 'all' : distance < EDGES.plain ? 'plain' : 'none');
     setFar((was) => studLevel(distance, was));
@@ -455,7 +470,9 @@ const ChunkView = memo(function ChunkView({
     const entries = split.batched;
     native.setStudLevel(far);
     const redraw = () => {
-      requestShadows();
+      // A chunk past the reach of the shadows changes nothing in them: asking for them would
+      // draw every caster again, a frame of twice the work, for each chunk that arrives.
+      if (chunkDistance(chunk, buildArea, camera.position) < SHADOW_REACH) requestShadows();
       invalidate();
     };
     const done = (complete: boolean) => {
@@ -485,7 +502,7 @@ const ChunkView = memo(function ChunkView({
     return () => {
       cancelled = true;
     };
-  }, [native, simple, split, buildArea, invalidate, shown, chunk, far]);
+  }, [native, simple, split, buildArea, invalidate, shown, chunk, far, camera]);
   useEffect(
     () => () => {
       native.dispose();
