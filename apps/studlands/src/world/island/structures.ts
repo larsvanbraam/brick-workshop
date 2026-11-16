@@ -3,12 +3,22 @@ import type { Brick } from '@brick-workshop/engine';
 import { hash2, random } from '../noise.ts';
 import type { Structure } from '../terrain.ts';
 import { CHANNEL, islandColumn, nearestRiver, nearestRoad } from './column.ts';
+import { buildFireStation, buildPoliceStation, FIRE_STATION, POLICE_STATION } from './civic.ts';
 import { buildHouse, turnPieces } from './houses.ts';
 import type { HousePlan, Piece } from './houses.ts';
-import { FARM, LIGHTHOUSE, ROADS, SQUARE, TOWN } from './map.ts';
+import {
+  FARM,
+  FIRE_STATION_AT,
+  LIGHTHOUSE,
+  POLICE_STATION_AT,
+  ROADS,
+  SQUARE,
+  TOWN,
+} from './map.ts';
 
 /**
- * What stands on Brick Island: the town's houses along its streets, the farmhouse and barn,
+ * What stands on Brick Island: the town's houses along its streets, the fire station and the
+ * police station on Main Street, the farmhouse and barn,
  * the lighthouse on its point and the flower stall in the square (two of the workshop's example
  * builds), bridges where roads cross the river, and lampposts along the streets.
  */
@@ -44,6 +54,8 @@ interface Placed {
   height: number;
   color: number;
   build: () => readonly Piece[];
+  /** Studs round it that street furniture keeps clear of: a doorway or bays on the pavement. */
+  clear?: number;
 }
 
 const columnOf = (seed: number, x: number, z: number) => islandColumn(seed, x, z);
@@ -180,6 +192,31 @@ function example(
   };
 }
 
+/** A hand-built town building on Main Street, its front on the pavement. */
+function civic(
+  seed: number,
+  id: string,
+  at: { x: number; z: number },
+  size: { width: number; depth: number },
+  color: number,
+  build: (next: () => number) => Piece[],
+): Placed {
+  const next = random(Math.floor(hash2(seed + 617, at.x, at.z) * 1e9));
+  const pieces = build(next);
+  return {
+    id,
+    x: at.x,
+    z: at.z,
+    width: size.width,
+    depth: size.depth,
+    y: TOWN.layer * 3,
+    height: Math.max(...pieces.map((piece) => getWorldBounds({ ...piece, id: '' }).maxY)),
+    color,
+    build: () => pieces,
+    clear: 4,
+  };
+}
+
 /** Where roads cross the river: a deck over the water, and a low parapet along each side. */
 function bridges(seed: number): Placed[] {
   const cells = new Map<string, { x: number; z: number; layer: number; edge: boolean }>();
@@ -297,7 +334,7 @@ function lamps(seed: number, placed: readonly Placed[]): Placed[] {
           const column = columnOf(seed, x + dx, z + dz);
           if (column.biome !== 'pavement' || column.height !== TOWN.layer) level = false;
         }
-      if (level && [...placed, ...found].every((other) => !overlaps(lamp, other, 0)))
+      if (level && [...placed, ...found].every((other) => !overlaps(lamp, other, other.clear ?? 0)))
         found.push(lamp);
     }
   }
@@ -316,6 +353,8 @@ function layout(seed: number): Placed[] {
       69,
     ),
     example('stall', 'flower-stall', SQUARE.x0 + 18, SQUARE.z0 + 10, TOWN.layer, 4, 40),
+    civic(seed, 'fire-station', FIRE_STATION_AT, FIRE_STATION, 4, buildFireStation),
+    civic(seed, 'police-station', POLICE_STATION_AT, POLICE_STATION, 71, buildPoliceStation),
   ];
   // The farm: a farmhouse by the lane and a big red barn behind it.
   const farmhouse = housePlan(seed, 900, 10, 8);

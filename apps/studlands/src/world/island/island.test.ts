@@ -5,6 +5,7 @@ import { findSpawn, generateChunk } from '../generate.ts';
 import { MAX_LAYERS } from '../terrain.ts';
 import { createTerrain } from '../worlds.ts';
 import { islandColumn } from './column.ts';
+import { buildFireStation, buildPoliceStation } from './civic.ts';
 import { buildHouse, turnPieces } from './houses.ts';
 import { VEHICLES } from '@brick-workshop/vehicles/vehicle';
 import { ROADS, VEHICLE_SPAWNS } from './map.ts';
@@ -113,6 +114,55 @@ describe('Brick Island', () => {
           validateAssembly({ name: 'house', bricks: [...base, ...pieces], buildArea: 16 }),
         ).toEqual([]);
       }
+  });
+
+  it('builds a fire station and a police station, with a jail, that stand up', () => {
+    for (const [name, build] of [
+      ['fire-station', buildFireStation],
+      ['police-station', buildPoliceStation],
+    ] as const) {
+      let seed = 1;
+      const next = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+      const base: Brick[] = [];
+      for (let x = 0; x < 32; x += 2)
+        for (let z = 0; z < 32; z += 2)
+          base.push({ id: `base${x}-${z}`, partId: '3022', color: 2, x, y: 0, z, rotation: 0 });
+      const pieces = build(next).map((piece, index) => ({
+        ...piece,
+        id: `${name}${index}`,
+        x: piece.x + 2,
+        y: piece.y + 1,
+        z: piece.z + 2,
+      }));
+      expect(validateAssembly({ name, bricks: [...base, ...pieces], buildArea: 32 })).toEqual([]);
+      // The police station's cells: bars, and benches behind them.
+      if (name === 'police-station')
+        expect(pieces.filter((piece) => piece.partId === '15332').length).toBeGreaterThanOrEqual(9);
+    }
+  });
+
+  it('puts the fire station and the police station on level town ground, off the roads', () => {
+    const structures = islandStructures(SEED);
+    for (const id of ['fire-station', 'police-station']) {
+      const building = structures.find((structure) => structure.id === id)!;
+      expect(building, id).toBeDefined();
+      const { x0, z0, x1, z1 } = building.bounds;
+      for (let z = z0; z < z1; z++)
+        for (let x = x0; x < x1; x++) {
+          const column = islandColumn(SEED, x, z);
+          expect(column.biome, `${id} at ${x},${z}`).toBe('yard');
+          expect(column.height, `${id} at ${x},${z}`).toBe(4);
+        }
+      for (const other of structures)
+        if (other !== building)
+          expect(
+            x0 < other.bounds.x1 &&
+              other.bounds.x0 < x1 &&
+              z0 < other.bounds.z1 &&
+              other.bounds.z0 < z1,
+            `${id} and ${other.id}`,
+          ).toBe(false);
+    }
   });
 
   it('fills the town with houses that keep off the roads and each other', () => {

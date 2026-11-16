@@ -129,6 +129,13 @@ export const HARBOUR = { x0: 300, z0: 456, x1: 342, z1: 540 } as const;
 /** The town square, paved, with the flower stall in it. */
 export const SQUARE = { x0: 326, z0: 401, x1: 379, z1: 438 } as const;
 
+/**
+ * The fire station and the police station, on the north side of Main Street either side of
+ * Church Street, their fronts on the pavement: the corner of each nearest the town's north-west.
+ */
+export const FIRE_STATION_AT = { x: 332, z: 370 } as const;
+export const POLICE_STATION_AT = { x: 280, z: 370 } as const;
+
 export const FARM: Flat = { x0: 95, z0: 282, x1: 190, z1: 352, layer: 5, blend: 10 };
 /** The crop fields on the farm. */
 export const FIELDS: readonly { x0: number; z0: number; x1: number; z1: number; turn: boolean }[] =
@@ -351,6 +358,8 @@ export interface Landmark {
 export const LANDMARKS: readonly Landmark[] = [
   { name: 'Harbour Town', x: 290, z: 368, icon: '🏠' },
   { name: 'Flower Stall', x: 352, z: 419, icon: '🌷' },
+  { name: 'Fire Station', x: 345, z: 377, icon: '🚒' },
+  { name: 'Police Station', x: 290, z: 377, icon: '🚓' },
   { name: 'Harbour', x: 321, z: 488, icon: '⚓' },
   { name: 'Lighthouse Point', x: 541, z: 462, icon: '💡' },
   { name: 'Speedway', x: 508, z: 232, icon: '🏁' },
