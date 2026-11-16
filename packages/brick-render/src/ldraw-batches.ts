@@ -1308,6 +1308,25 @@ export class LDrawBatch {
     }
   }
 
+  /**
+   * About how many bricks `entries` would change, without working out coverage (`changes` does,
+   * for the whole batch): bricks added, moved or gone, or every one when a far look switches
+   * or the board changes size. To choose between updating at once and in slices cheaply.
+   */
+  likelyChanges(entries: readonly BatchEntry[], buildArea: number, explode = false) {
+    const last = this.trackedFor;
+    if (!last || last.buildArea !== buildArea || last.explode !== explode || this.trackBroken)
+      return Infinity;
+    let added = 0;
+    let count = 0;
+    for (const { brick, model } of entries) {
+      const current = this.tracked.get(brick.id);
+      if (!current) added++;
+      if (!current || current.model !== model || !samePlacement(current.brick, brick)) count++;
+    }
+    return count + Math.max(0, this.tracked.size - (entries.length - added));
+  }
+
   /** How many changed bricks `entries` would place, to decide between the two ways to update. */
   changes(entries: readonly BatchEntry[], buildArea: number, explode = false) {
     const tracked = this.track(entries, buildArea, explode);

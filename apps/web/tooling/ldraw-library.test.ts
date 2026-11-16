@@ -250,6 +250,13 @@ describe('local LDraw assets', () => {
     whole.update(entries(0), 32);
     const expected = counts(whole);
     expect(expected.coveredStuds).toBeGreaterThan(50);
+    // A cheap guess at what an update would change, without working out coverage.
+    expect(whole.likelyChanges(entries(0), 32)).toBe(0);
+    expect(whole.likelyChanges(entries(5), 32)).toBe(5);
+    expect(whole.likelyChanges(entries(0).slice(10), 32)).toBe(10);
+    whole.setStudLevel('low');
+    expect(whole.likelyChanges(entries(0), 32)).toBe(Infinity);
+    whole.setStudLevel('full');
     const sliced = new LDrawBatch((part) => part);
     await sliced.updateInSlices(entries(0), 32, false, { budget: 0, pause: async () => {} });
     expect(counts(sliced)).toEqual(expected);

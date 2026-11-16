@@ -493,7 +493,7 @@ const ChunkView = memo(function ChunkView({
       // never lands in the frame that adds it to the world, nor alongside other chunks.
       filled.current = true;
       void build();
-    } else if (native.changes(entries, buildArea) < 200) {
+    } else if (native.likelyChanges(entries, buildArea) < 200) {
       // An edit touches a piece or two and shows in the same frame.
       native.update(entries, buildArea);
       done(true);

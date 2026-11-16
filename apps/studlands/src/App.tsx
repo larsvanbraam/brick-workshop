@@ -337,7 +337,7 @@ function Game({
       jobs.current.push((deadline) => {
         while (next < bricks.length) {
           index.remove(bricks[next++].id);
-          if (next % 32 === 0 && performance.now() > deadline) return false;
+          if (performance.now() > deadline) return false;
         }
         walk.removeGroup(key);
         const chunks = new Map(chunksRef.current);
@@ -388,7 +388,7 @@ function Game({
         }
         while (filed < bricks.length) {
           index.add(bricks[filed++]);
-          if (filed % 32 === 0 && performance.now() > deadline) return false;
+          if (performance.now() > deadline) return false;
         }
         walk.setGroup(chunk.key, bricks);
         const next = new Map(chunksRef.current).set(chunk.key, bricks);
