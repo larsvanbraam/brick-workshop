@@ -3,6 +3,7 @@ import { useFrame } from '@react-three/fiber';
 import { Vector3 } from 'three';
 import type { WalkProbe } from '@brick-workshop/walk/walk-view';
 import { LANDMARKS } from './world/island/map.ts';
+import { Key } from './input-hint.tsx';
 import {
   MAP_BOUNDS,
   MAP_HEIGHT,
@@ -357,7 +358,7 @@ export function Minimap({
             <h2>Brick Island</h2>
             <canvas ref={full} className="island-map-canvas" />
             <p>
-              <kbd>N</kbd> or <kbd>Esc</kbd> to close
+              <Key k="N" pad="D-pad ↓" /> or <Key k="Esc" pad="B" /> to close
             </p>
           </div>
         </div>

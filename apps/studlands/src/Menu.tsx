@@ -22,6 +22,7 @@ import { LOCALES } from './locale.ts';
 import type { Locale } from './locale.ts';
 import type { VoiceMode } from '@brick-workshop/audio/voice';
 import { game } from './game.ts';
+import { Key } from './input-hint.tsx';
 import { LANDMARKS } from './world/island/map.ts';
 
 type Tab = 'play' | 'saves' | 'worlds' | 'export' | 'settings';
@@ -91,7 +92,7 @@ export function Menu(props: MenuProps) {
         {game().seed === undefined && <p>World {props.seed}</p>}
         {game().saveSlots && <p>Game {props.slot + 1}</p>}
         <button type="button" className="play" onClick={props.onPlay} data-pad-start>
-          {props.started ? 'Resume' : props.resumable ? 'Continue' : 'Play'} <kbd>Esc</kbd>
+          {props.started ? 'Resume' : props.resumable ? 'Continue' : 'Play'} <Key k="Esc" pad="B" />
         </button>
         <div className="tabs" role="tablist" data-pad-tabs>
           {TABS.filter(
@@ -149,9 +150,9 @@ export function Controls({ edits, onReset, onReturnVehicles, onNewWorld }: MenuP
         {game().building && (
           <>
             <dt>Build</dt>
-            <dd>Right click places, left click takes a piece off</dd>
+            <dd>Right click or Enter places, left click or Backspace takes a piece off</dd>
             <dt>Pieces</dt>
-            <dd>1–9 or wheel; Q/E colour, R turn, middle click copies</dd>
+            <dd>1–9 or wheel; Q/E colour, R turn, middle click or G copies</dd>
             <dt>Bricks</dt>
             <dd>B opens the brick box to fill the bar; B or Esc closes it</dd>
           </>
@@ -160,6 +161,12 @@ export function Controls({ edits, onReset, onReturnVehicles, onNewWorld }: MenuP
           <>
             <dt>Map</dt>
             <dd>N opens the island map, N or Esc closes it</dd>
+          </>
+        )}
+        {game().world === 'island' && (
+          <>
+            <dt>Hats</dt>
+            <dd>H changes the hat you wear</dd>
           </>
         )}
         <dt>Talk</dt>
@@ -195,12 +202,20 @@ export function Controls({ edits, onReset, onReturnVehicles, onNewWorld }: MenuP
             <dd>D-pad ▼ opens the island map, B closes it</dd>
           </>
         )}
+        {game().world === 'island' && (
+          <>
+            <dt>Hats</dt>
+            <dd>D-pad ▲ changes the hat you wear</dd>
+          </>
+        )}
         <dt>Talk</dt>
         <dd>B beside someone; B again for their next line</dd>
         <dt>Camera</dt>
         <dd>View for over the shoulder</dd>
         <dt>Menu</dt>
         <dd>Menu opens it; stick moves, A presses, LB/RB tabs, B closes</dd>
+        <dt>Fullscreen</dt>
+        <dd>Y, while a menu is open</dd>
       </dl>
       {(game().building || game().vehicles.length > 0) && (
         <div className="actions">
@@ -344,8 +359,8 @@ export function Settings({
         </div>
       </div>
       <p className="note">
-        How people sound when you talk to them (<kbd>T</kbd>): made-up babble, or your device
-        reading their lines aloud.
+        How people sound when you talk to them (<Key k="T" pad="B" />
+        ): made-up babble, or your device reading their lines aloud.
       </p>
       <div className="setting">
         <span id="locale-label">Language</span>

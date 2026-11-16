@@ -47,6 +47,7 @@ import { DayClock, START_TIME, clockTime, isDaytime } from './sky.ts';
 import { STARTER_HOTBAR } from './hotbar.ts';
 import { BrickBox, PART_DRAG, PartImage, colorHex, colorName } from './BrickBox.tsx';
 import { colorsFor, getSnap, nextRotation } from './catalog.ts';
+import { Key, PadProvider } from './input-hint.tsx';
 import { PadPresses, isPadActive, readPads } from './gamepad.ts';
 import type { PadButton, PadState } from './gamepad.ts';
 import { PAD_CLASS, moveFocus, pressFocused, scrollPanel, switchTab } from './pad-ui.ts';
@@ -1076,6 +1077,10 @@ function Game({
   const turnHeld = () =>
     updateHeld((slot) => ({ ...slot, rotation: nextRotation(slot.partId, slot.rotation) }));
   const stepSlot = (step: number) => setSelected((current) => (current + step + 9) % 9);
+  const actRef = useRef(onMouse);
+  useEffect(() => {
+    actRef.current = onMouse;
+  });
   useEffect(() => {
     const keydown = (event: KeyboardEvent) => {
       if (event.metaKey || event.ctrlKey || event.altKey) return;
@@ -1112,6 +1117,15 @@ function Game({
         else if (event.code === 'KeyM') show('menu');
         return;
       }
+      // Place, take off and copy, as the mouse buttons and the controller's triggers do.
+      const act = { Enter: 'place', Backspace: 'break', Delete: 'break', KeyG: 'pick' }[
+        event.code as 'Enter'
+      ] as MouseAction | undefined;
+      if (act) {
+        event.preventDefault();
+        if (!event.repeat || act !== 'pick') actRef.current(act);
+        return;
+      }
       if (/^Digit[1-9]$/.test(event.code)) setSelected(Number(event.code.slice(5)) - 1);
       else if (event.code === 'KeyQ' || event.code === 'KeyE')
         stepColor(event.code === 'KeyE' ? 1 : -1);
@@ -1142,6 +1156,7 @@ function Game({
   const onPad = (state: PadState, pressed: Set<PadButton>, seconds: number) => {
     if (screen === 'playing' && !game().building) {
       if (pressed.has('menu')) show('menu');
+      if (pressed.has('up')) hatKeyRef.current();
       if (game().minimap && pressed.has('down')) setMapOpen((current) => !current);
       if (game().minimap && pressed.has('b') && mapOpen) setMapOpen(false);
       else if (pressed.has('b')) talkRef.current();
@@ -1161,6 +1176,7 @@ function Game({
       if (pressed.has('menu')) show('menu');
       return;
     }
+    if (pressed.has('y')) document.querySelector<HTMLElement>('.fullscreen-toggle')?.click();
     const root = document.querySelector<HTMLElement>(
       screen === 'box' ? '.box' : screen === 'title' ? '.title-screen' : '.menu .panel',
     );
@@ -1332,7 +1348,6 @@ function Game({
   /** Whether the press beside the nearby helper puts a brick on. */
   const building =
     shownQuest !== null && activeQuest?.step === 'build' && nearbyPerson === giverId(shownQuest);
-  const talkKey = padInUse ? 'B' : 'T';
   const drivingKind = vehicles.find((vehicle) => vehicle.id === driving)?.kind ?? null;
   // Pieces of the player's still standing, not every one ever put down.
   const built = placedCount;
@@ -1365,223 +1380,230 @@ function Game({
     onLocale: setLocale,
   };
   return (
-    <div className="game" data-screen={screen}>
-      <GameScene
-        chunks={chunks}
-        farChunks={farStore}
-        bricks={index.bricks}
-        walkWorld={walk}
-        revision={revision}
-        models={library.models}
-        buildArea={FRAME}
-        distance={distance}
-        spawn={spawn}
-        probe={probe}
-        onChunk={onChunk}
-        view={view}
-        flying={flying}
-        onFlyingChange={setFlying}
-        onViewChange={setView}
-        gamepad={playing ? 'build' : 'off'}
-        simpleControls={simpleControls}
-        ghost={playing && game().building ? ghost : null}
-        ghostValid={ghostValid}
-        onAim={onAim}
-        onMouse={onMouse}
-        map={game().minimap ? mapStore : undefined}
-        playing={playing}
-        clock={clock}
-        volcano={volcano}
-        glows={glows}
-        terrain={terrain}
-        centre={centre}
-        vehicles={vehicles}
-        driving={driving}
-        onDrive={onDrive}
-        onNear={setNearVehicle}
-        talk={talk}
-        tide={tide}
-        outfit={questsOn ? wornOutfit : undefined}
-        quests={
-          questsOn
-            ? { view: questView, onEvent: questEvents, positions: helperPositions }
-            : undefined
-        }
-        debug={{
-          options: debugOptions,
-          store: debugStore,
-          player: playerStore,
-          collision,
-          borders: borders ? terrain : null,
-        }}
-      />
-      {debugOptions.enabled && (
-        <DebugOverlay
-          title={`${game().title} debug`}
-          store={debugStore}
-          options={debugOptions}
-          onChange={setDebugOptions}
-          switches={['wireframe', 'hideEdges', 'axes']}
-          counts={debugCounts}
-        >
-          <GameDebugPanel
-            player={playerStore}
-            aim={aim}
-            ghost={ghost}
-            ghostReason={ghostCheck && !ghostCheck.ok ? ghostCheck.reason : null}
-            edit={lastEdit}
-            world={worldInfo}
-            collision={collision}
-            onCollision={setCollision}
-            borders={borders}
-            onBorders={setBorders}
-            streaming={readStreaming}
-            clock={clock}
-          />
-        </DebugOverlay>
-      )}
-      {game().building && <div className="crosshair" aria-hidden />}
-      {playing && game().building && ghostCheck && !ghostCheck.ok && (
-        <div className="hint">{ghostCheck.reason}</div>
-      )}
-      {playing && !driving && (nearVehicle || nearbyName) && (
-        <div className="vehicle-hint">
-          {nearVehicle && (
-            <span>
-              <kbd>{padInUse ? 'X' : 'E'}</kbd> {vehicleAction(nearVehicle)}
-            </span>
-          )}
-          {nearbyName && (
-            <span>
-              <kbd>{talkKey}</kbd>{' '}
-              {building
-                ? 'Put on a brick'
-                : saying?.id === nearbyPerson
-                  ? 'Carry on'
-                  : `Talk to ${nearbyName}`}
-            </span>
-          )}
-        </div>
-      )}
-      {playing && saying && (
-        <SpeechBubble
-          key={`${saying.id}:${saying.text}`}
-          anchor={talk.anchor}
-          name={saying.name}
-          text={saying.text}
+    <PadProvider value={padInUse}>
+      <div className="game" data-screen={screen}>
+        <GameScene
+          chunks={chunks}
+          farChunks={farStore}
+          bricks={index.bricks}
+          walkWorld={walk}
+          revision={revision}
+          models={library.models}
+          buildArea={FRAME}
+          distance={distance}
+          spawn={spawn}
+          probe={probe}
+          onChunk={onChunk}
+          view={view}
+          flying={flying}
+          onFlyingChange={setFlying}
+          onViewChange={setView}
+          gamepad={playing ? 'build' : 'off'}
+          simpleControls={simpleControls}
+          ghost={playing && game().building ? ghost : null}
+          ghostValid={ghostValid}
+          onAim={onAim}
+          onMouse={onMouse}
+          map={game().minimap ? mapStore : undefined}
+          playing={playing}
+          clock={clock}
+          volcano={volcano}
+          glows={glows}
+          terrain={terrain}
+          centre={centre}
+          vehicles={vehicles}
+          driving={driving}
+          onDrive={onDrive}
+          onNear={setNearVehicle}
+          talk={talk}
+          tide={tide}
+          outfit={questsOn ? wornOutfit : undefined}
+          quests={
+            questsOn
+              ? { view: questView, onEvent: questEvents, positions: helperPositions }
+              : undefined
+          }
+          debug={{
+            options: debugOptions,
+            store: debugStore,
+            player: playerStore,
+            collision,
+            borders: borders ? terrain : null,
+          }}
         />
-      )}
-      {playing && tide && tideLine && !saying && (
-        <SpeechBubble key={tideLine} anchor={tide.anchor} name="You" text={tideLine} />
-      )}
-      {playing && drivingKind && <DriveHint kind={drivingKind} pad={padInUse} />}
-      {playing && shownQuest && activeQuest && (
-        <QuestCard quest={shownQuest} progress={activeQuest} talkKey={talkKey} locale={locale} />
-      )}
-      {playing && hatNote && (
-        <div className="hat-note" role="status">
-          🎩 {hatNote}
-        </div>
-      )}
-      {playing && cheer && (
-        <div className="cheer" role="status">
-          <div className="cheer-star" aria-hidden>
-            ⭐
+        {debugOptions.enabled && (
+          <DebugOverlay
+            title={`${game().title} debug`}
+            store={debugStore}
+            options={debugOptions}
+            onChange={setDebugOptions}
+            switches={['wireframe', 'hideEdges', 'axes']}
+            counts={debugCounts}
+          >
+            <GameDebugPanel
+              player={playerStore}
+              aim={aim}
+              ghost={ghost}
+              ghostReason={ghostCheck && !ghostCheck.ok ? ghostCheck.reason : null}
+              edit={lastEdit}
+              world={worldInfo}
+              collision={collision}
+              onCollision={setCollision}
+              borders={borders}
+              onBorders={setBorders}
+              streaming={readStreaming}
+              clock={clock}
+            />
+          </DebugOverlay>
+        )}
+        {game().building && <div className="crosshair" aria-hidden />}
+        {playing && game().building && ghostCheck && !ghostCheck.ok && (
+          <div className="hint">{ghostCheck.reason}</div>
+        )}
+        {playing && !driving && (nearVehicle || nearbyName) && (
+          <div className="vehicle-hint">
+            {nearVehicle && (
+              <span>
+                <Key k="E" pad="X" /> {vehicleAction(nearVehicle)}
+              </span>
+            )}
+            {nearbyName && (
+              <span>
+                <Key k="T" pad="B" />{' '}
+                {building
+                  ? 'Put on a brick'
+                  : saying?.id === nearbyPerson
+                    ? 'Carry on'
+                    : `Talk to ${nearbyName}`}
+              </span>
+            )}
           </div>
+        )}
+        {playing && saying && (
+          <SpeechBubble
+            key={`${saying.id}:${saying.text}`}
+            anchor={talk.anchor}
+            name={saying.name}
+            text={saying.text}
+          />
+        )}
+        {playing && tide && tideLine && !saying && (
+          <SpeechBubble key={tideLine} anchor={tide.anchor} name="You" text={tideLine} />
+        )}
+        {playing && drivingKind && <DriveHint kind={drivingKind} pad={padInUse} />}
+        {playing && shownQuest && activeQuest && (
+          <QuestCard quest={shownQuest} progress={activeQuest} locale={locale} />
+        )}
+        {playing && hatNote && (
+          <div className="hat-note" role="status">
+            🎩 {hatNote}
+          </div>
+        )}
+        {playing && cheer && (
+          <div className="cheer" role="status">
+            <div className="cheer-star" aria-hidden>
+              ⭐
+            </div>
+            <strong>
+              {cheer.icon} Well done! {cheer.icon}
+            </strong>
+            <span>
+              {cheer.name}: {cheer.text}
+            </span>
+            {cheer.gift && (
+              <em className="cheer-gift">
+                🎩 {locale === 'nl' ? 'Je hebt een nieuwe hoed!' : 'You got a new hat!'}{' '}
+                <Key k="H" pad="D-pad ▲" /> {locale === 'nl' ? 'wisselt van hoed' : 'changes hats'}
+              </em>
+            )}
+          </div>
+        )}
+        <div className="status">
           <strong>
-            {cheer.icon} Well done! {cheer.icon}
+            {game().seed === undefined ? `World ${seed}` : game().title}
+            {game().fixedTime === undefined && <ClockLabel clock={clock} />}
           </strong>
           <span>
-            {cheer.name}: {cheer.text}
+            {pieceCount.toLocaleString()} pieces{game().building ? ` · ${built} placed` : ''}
+            {drivingKind ? ` · ${vehicleAction(drivingKind, true)}` : flying ? ' · flying' : ''}
           </span>
-          {cheer.gift && (
-            <em className="cheer-gift">
-              🎩 {locale === 'nl' ? 'Je hebt een nieuwe hoed!' : 'You got a new hat!'} <kbd>H</kbd>{' '}
-              {locale === 'nl' ? 'wisselt van hoed' : 'changes hats'}
-            </em>
+          {questsOn && (
+            <span className="stars" title="Jobs done">
+              ⭐ {questDone.size} of {QUESTS.length}
+            </span>
           )}
         </div>
-      )}
-      <div className="status">
-        <strong>
-          {game().seed === undefined ? `World ${seed}` : game().title}
-          {game().fixedTime === undefined && <ClockLabel clock={clock} />}
-        </strong>
-        <span>
-          {pieceCount.toLocaleString()} pieces{game().building ? ` · ${built} placed` : ''}
-          {drivingKind ? ` · ${vehicleAction(drivingKind, true)}` : flying ? ' · flying' : ''}
-        </span>
-        {questsOn && (
-          <span className="stars" title="Jobs done">
-            ⭐ {questDone.size} of {QUESTS.length}
-          </span>
+        {toast && <div className="toast">{toast}</div>}
+        {playing && (
+          <div className="top-buttons">
+            {game().building && (
+              <button type="button" onClick={() => show('box')}>
+                Bricks <Key k="B" pad="D-pad ↓" />
+              </button>
+            )}
+            <button type="button" onClick={() => show('menu')}>
+              Menu <Key k="M" pad="≡" />
+            </button>
+          </div>
         )}
+        {screen === 'box' && (
+          <BrickBox
+            slots={slots}
+            selected={selected}
+            onAssign={assign}
+            onColor={(color) =>
+              setSlots((current) =>
+                current.map((held, index) => (index === selected ? { ...held, color } : held)),
+              )
+            }
+            onClose={play}
+          />
+        )}
+        {game().building && (
+          <div className="hotbar" role="toolbar" aria-label="Pieces">
+            {slots.map((slot, index) => (
+              <button
+                key={index}
+                type="button"
+                className={index === selected ? 'slot selected' : 'slot'}
+                onClick={() => setSelected(index)}
+                onDragOver={(event) => {
+                  if (event.dataTransfer.types.includes(PART_DRAG)) event.preventDefault();
+                }}
+                onDrop={(event) => {
+                  const partId = event.dataTransfer.getData(PART_DRAG);
+                  if (partId) assign(index, partId);
+                }}
+                title={`${getPart(slot.partId).name}, ${colorName(slot.color)}`}
+              >
+                <span className="key">{index + 1}</span>
+                <PartImage partId={slot.partId} />
+                <span className="swatch" style={{ background: colorHex(slot.color) }} />
+              </button>
+            ))}
+          </div>
+        )}
+        {game().minimap && playing && (
+          <Minimap
+            seed={seed}
+            store={mapStore}
+            open={mapOpen}
+            onClose={closeMap}
+            pins={questsOn ? mapPins : undefined}
+          />
+        )}
+        {screen === 'menu' && <Menu {...menuProps} />}
+        {titleShown && (
+          <TitleScreen
+            {...menuProps}
+            save={saved}
+            leaving={screen !== 'title'}
+            onGone={hideTitle}
+          />
+        )}
+        {loading}
       </div>
-      {toast && <div className="toast">{toast}</div>}
-      {playing && (
-        <div className="top-buttons">
-          {game().building && (
-            <button type="button" onClick={() => show('box')}>
-              Bricks <kbd>{padInUse ? 'D-pad ↓' : 'B'}</kbd>
-            </button>
-          )}
-          <button type="button" onClick={() => show('menu')}>
-            Menu <kbd>{padInUse ? '≡' : 'M'}</kbd>
-          </button>
-        </div>
-      )}
-      {screen === 'box' && (
-        <BrickBox
-          slots={slots}
-          selected={selected}
-          onAssign={assign}
-          onColor={(color) =>
-            setSlots((current) =>
-              current.map((held, index) => (index === selected ? { ...held, color } : held)),
-            )
-          }
-          onClose={play}
-        />
-      )}
-      {game().building && (
-        <div className="hotbar" role="toolbar" aria-label="Pieces">
-          {slots.map((slot, index) => (
-            <button
-              key={index}
-              type="button"
-              className={index === selected ? 'slot selected' : 'slot'}
-              onClick={() => setSelected(index)}
-              onDragOver={(event) => {
-                if (event.dataTransfer.types.includes(PART_DRAG)) event.preventDefault();
-              }}
-              onDrop={(event) => {
-                const partId = event.dataTransfer.getData(PART_DRAG);
-                if (partId) assign(index, partId);
-              }}
-              title={`${getPart(slot.partId).name}, ${colorName(slot.color)}`}
-            >
-              <span className="key">{index + 1}</span>
-              <PartImage partId={slot.partId} />
-              <span className="swatch" style={{ background: colorHex(slot.color) }} />
-            </button>
-          ))}
-        </div>
-      )}
-      {game().minimap && playing && (
-        <Minimap
-          seed={seed}
-          store={mapStore}
-          open={mapOpen}
-          onClose={closeMap}
-          pins={questsOn ? mapPins : undefined}
-        />
-      )}
-      {screen === 'menu' && <Menu {...menuProps} />}
-      {titleShown && (
-        <TitleScreen {...menuProps} save={saved} leaving={screen !== 'title'} onGone={hideTitle} />
-      )}
-      {loading}
-    </div>
+    </PadProvider>
   );
 }
 
@@ -1641,12 +1663,10 @@ function questPins(
 function QuestCard({
   quest,
   progress,
-  talkKey,
   locale,
 }: {
   quest: Quest;
   progress: QuestProgress;
-  talkKey: string;
   locale: Locale;
 }) {
   const { goal } = quest;
@@ -1665,7 +1685,7 @@ function QuestCard({
         <strong>
           {progress.step === 'build' ? (
             <>
-              Press <kbd>{talkKey}</kbd> to build!
+              Press <Key k="T" pad="B" /> to build!
             </>
           ) : (
             `${taskLine(quest, progress, locale)}!`

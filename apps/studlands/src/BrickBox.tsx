@@ -3,6 +3,7 @@ import { COLORS, getPart } from '@brick-workshop/engine';
 import { displayHex } from '@brick-workshop/render/ldraw-materials';
 import { usePartThumbnail } from '@brick-workshop/render/part-thumbnails';
 import type { Held } from './build.ts';
+import { Key } from './input-hint.tsx';
 import { CATEGORIES, categoryOf, colorsFor, placeableParts } from './catalog.ts';
 import type { Category } from './catalog.ts';
 
@@ -102,7 +103,7 @@ export function BrickBox({ slots, selected, onAssign, onColor, onClose }: BrickB
             autoFocus
           />
           <button type="button" className="close" onClick={onClose} aria-label="Close">
-            <kbd>B</kbd>
+            <Key k="B" pad="B" />
           </button>
         </header>
         <nav className="categories" data-pad-tabs>

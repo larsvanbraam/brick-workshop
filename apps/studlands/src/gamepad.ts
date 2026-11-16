@@ -5,7 +5,8 @@
  *
  * Playing: RT places, LT takes a piece off, X copies the piece aimed at, LB and RB step through
  * the bar, d-pad left and right step through the held part's colours, d-pad up turns it, d-pad
- * down opens the brick box and Menu the menu.
+ * down opens the brick box and Menu the menu. Without building (Brick Island) d-pad up changes
+ * hats and d-pad down opens the map. In a panel Y toggles fullscreen.
  *
  * While playing the left stick only walks, so pulling it back never opens the box.
  *

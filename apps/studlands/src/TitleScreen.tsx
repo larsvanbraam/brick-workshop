@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
+import { Key } from './input-hint.tsx';
 import { Controls, Saves, Settings, Worlds, describeSave } from './Menu.tsx';
 import type { MenuProps } from './Menu.tsx';
 import type { SaveGame } from './save.ts';
@@ -148,7 +149,7 @@ export function TitleScreen(props: TitleScreenProps) {
             data-pad-start
           >
             <span>{props.resumable ? 'Continue' : 'Play'}</span>
-            <kbd>Enter</kbd>
+            <Key k="Enter" pad="A" />
           </button>
           {subtitle && (
             <p className="title-subtitle" style={step()}>
@@ -174,7 +175,7 @@ export function TitleScreen(props: TitleScreenProps) {
           <header>
             <h2>{PAGE_TITLES[page]}</h2>
             <button type="button" onClick={() => setPage(null)} data-pad-back>
-              Back <kbd>Esc</kbd>
+              Back <Key k="Esc" pad="B" />
             </button>
           </header>
           {page === 'saves' && <Saves {...props} />}
