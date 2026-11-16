@@ -728,13 +728,6 @@ function Game({
       if (look) look.yaw -= turned;
     };
   }, [titleShown]);
-  useEffect(
-    () =>
-      music.setVolume(
-        MUSIC_LEVELS[musicLevel] * (screen === 'menu' || screen === 'title' ? MENU_SHARE : 1),
-      ),
-    [music, musicLevel, screen],
-  );
   useEffect(() => {
     const mood = () => music.setMood(isDaytime(clock.time) ? 'day' : 'night');
     mood();
@@ -753,6 +746,18 @@ function Game({
   const [talk] = useState(() => new TalkLink());
   const nearbyPerson = useSyncExternalStore(talk.subscribe, () => talk.nearby);
   const speaker = useSyncExternalStore(talk.subscribe, () => talk.speaker);
+  const speaking = speaker !== null;
+  useEffect(
+    () =>
+      music.setVolume(
+        MUSIC_LEVELS[musicLevel] *
+          (screen === 'menu' || screen === 'title' ? MENU_SHARE : 1) *
+          // Music dips under a voice so the words come through.
+          (speaking && voiceMode !== 'off' ? 0.3 : 1),
+        speaking ? 0.4 : 1.5,
+      ),
+    [music, musicLevel, screen, speaking, voiceMode],
+  );
   const [speech, setSpeech] = useState<{ id: string; name: string; text: string } | null>(null);
   /** How many lines each person has said, so they carry on from where they left off. */
   const [talkCounts] = useState(() => new Map<string, number>());

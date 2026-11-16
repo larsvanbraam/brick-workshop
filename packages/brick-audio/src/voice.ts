@@ -181,7 +181,7 @@ export class Voices {
   private timer: ReturnType<typeof setTimeout> | null = null;
   /** Counts lines, so a cut-off line's late end does not end the next one. */
   private line = 0;
-  volume = 0.8;
+  volume = 1;
 
   /** Whether the device can speak lines aloud itself. */
   static get deviceSpeech() {
@@ -250,9 +250,12 @@ export class Voices {
     const local = installed.filter((entry) => entry.localService);
     const voices = deviceVoicesFor(local.length ? local : installed, voice.register);
     if (voices.length) utterance.voice = voices[Math.floor(voice.pick * voices.length)];
-    // The babble's pitch, 95 to 260 Hz, onto the device's 0 to 2 around 1.
-    utterance.pitch = Math.max(0.3, Math.min(1.8, 0.5 + (voice.pitch - 95) / 165));
-    utterance.rate = voice.rate;
+    // The babble's pitch, 95 to 260 Hz, onto a narrow band around 1: the extremes of the
+    // device's range distort its voices and blur the words.
+    utterance.pitch = Math.max(0.75, Math.min(1.35, 0.75 + (voice.pitch - 95) / 275));
+    // Real words want a calmer pace than babble: 0.85 to 1.2 syllables a second becomes
+    // 0.8 to 0.95 of the voice's normal speed.
+    utterance.rate = 0.8 + (voice.rate - 0.85) * 0.43;
     utterance.volume = this.volume;
     const line = this.line;
     // Held on `this`: Chrome may collect an utterance still being said, and then it falls silent.
