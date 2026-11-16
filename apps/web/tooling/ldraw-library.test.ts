@@ -223,6 +223,55 @@ describe('local LDraw assets', () => {
     expect(error).not.toHaveBeenCalled();
     error.mockRestore();
   });
+  it('works out coverage in slices as it would in one go, even when a build is cut short', async () => {
+    const body = new BoxGeometry(20, 24, 20).translate(0, 12, 0);
+    const stud = new CylinderGeometry(6, 6, 4, 16).translate(0, -2, 0);
+    const model = new Group().add(
+      new Mesh(body, new MeshStandardMaterial()),
+      new Mesh(stud, new MeshStandardMaterial()),
+    );
+    // A field of 1 x 1 bricks, every third one with a second brick on top.
+    const bricks = (extra: number) =>
+      Array.from({ length: 300 }, (_, index) => index).flatMap((index) => {
+        const base = { partId: '3005', color: 4, rotation: 0 as const };
+        const at = { x: 1 + (index % 20), z: 1 + Math.floor(index / 20) };
+        return [
+          { id: `b${index}`, ...base, ...at, y: 0 },
+          ...(index % 3 === 0 ? [{ id: `t${index}`, ...base, ...at, y: 3 }] : []),
+          ...(index < extra ? [{ id: `x${index}`, ...base, ...at, y: 6 }] : []),
+        ];
+      });
+    const entries = (extra: number) => bricks(extra).map((brick) => ({ brick, model }));
+    const counts = (batch: LDrawBatch) => {
+      const { bricks, looks, coveredStuds } = batch.stats();
+      return { bricks, looks, coveredStuds };
+    };
+    const whole = new LDrawBatch((part) => part);
+    whole.update(entries(0), 32);
+    const expected = counts(whole);
+    expect(expected.coveredStuds).toBeGreaterThan(50);
+    const sliced = new LDrawBatch((part) => part);
+    await sliced.updateInSlices(entries(0), 32, false, { budget: 0, pause: async () => {} });
+    expect(counts(sliced)).toEqual(expected);
+    // Cut short half way through working out coverage, then built again with other bricks.
+    const cut = new LDrawBatch((part) => part);
+    let pauses = 0;
+    const first = entries(0);
+    const stopped = await cut.updateInSlices(first, 32, false, {
+      budget: 0,
+      pause: async () => {
+        if (++pauses === 3) cut.update(entries(40), 32);
+      },
+    });
+    expect(stopped).toBe(false);
+    const fresh = new LDrawBatch((part) => part);
+    fresh.update(entries(40), 32);
+    expect(counts(cut)).toEqual(counts(fresh));
+    whole.dispose();
+    sliced.dispose();
+    cut.dispose();
+    fresh.dispose();
+  });
   it('leaves out studs that an opaque brick sits on', () => {
     // A 1 x 1 brick: a 24 LDU body below the top (LDraw y = 0) and a stud standing on it.
     const body = new BoxGeometry(20, 24, 20).translate(0, 12, 0);

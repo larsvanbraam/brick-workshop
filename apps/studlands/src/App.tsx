@@ -324,15 +324,29 @@ function Game({
   const receive = useCallback((chunk: ChunkMessage) => {
     arrived.current.push(chunk);
   }, []);
+  /**
+   * Work on the world index waits here and is done a few milliseconds a frame: filing or
+   * unfiling the pieces of a whole chunk is thousands of engine lookups, and in one go it is a
+   * frame of its own. A job returns whether it finished before the deadline it is given.
+   */
+  const jobs = useRef<Array<(deadline: number) => boolean>>([]);
   const dropChunk = useCallback(
     (key: string) => {
-      for (const brick of chunksRef.current.get(key) ?? []) index.remove(brick.id);
-      walk.removeGroup(key);
-      const next = new Map(chunksRef.current);
-      next.delete(key);
-      chunksRef.current = next;
-      setChunks(next);
-      setRevision((current) => current + 1);
+      const bricks = chunksRef.current.get(key) ?? [];
+      let next = 0;
+      jobs.current.push((deadline) => {
+        while (next < bricks.length) {
+          index.remove(bricks[next++].id);
+          if (next % 32 === 0 && performance.now() > deadline) return false;
+        }
+        walk.removeGroup(key);
+        const chunks = new Map(chunksRef.current);
+        chunks.delete(key);
+        chunksRef.current = chunks;
+        setChunks(chunks);
+        setRevision((current) => current + 1);
+        return true;
+      });
     },
     [index, walk],
   );
@@ -360,27 +374,37 @@ function Game({
   /** A chunk from the loader, with the player's edits to it laid over, put into the world. */
   const addChunk = useCallback(
     (chunk: ChunkMessage) => {
-      const [cx, cz] = centreRef.current;
-      if (
-        chunksRef.current.has(chunk.key) ||
-        chunkDistance(chunk.key, cx, cz) > unloadRadius(distanceRef.current)
-      )
-        return;
-      const bricks = withEdits(chunk.key, chunk.bricks, editsRef.current);
-      for (const brick of bricks) index.add(brick);
-      walk.setGroup(chunk.key, bricks);
-      const next = new Map(chunksRef.current).set(chunk.key, bricks);
-      chunksRef.current = next;
-      setChunkTimes((current) => [...current.slice(-15), chunk.ms]);
-      setPartsSeen((current) => {
-        const fresh = bricks.filter((brick) => !current.has(brick.partId));
-        if (!fresh.length) return current;
-        const next = new Set(current);
-        for (const brick of fresh) next.add(brick.partId);
-        return next;
+      let bricks: readonly Brick[] | undefined;
+      let filed = 0;
+      jobs.current.push((deadline) => {
+        if (!bricks) {
+          const [cx, cz] = centreRef.current;
+          if (
+            chunksRef.current.has(chunk.key) ||
+            chunkDistance(chunk.key, cx, cz) > unloadRadius(distanceRef.current)
+          )
+            return true;
+          bricks = withEdits(chunk.key, chunk.bricks, editsRef.current);
+        }
+        while (filed < bricks.length) {
+          index.add(bricks[filed++]);
+          if (filed % 32 === 0 && performance.now() > deadline) return false;
+        }
+        walk.setGroup(chunk.key, bricks);
+        const next = new Map(chunksRef.current).set(chunk.key, bricks);
+        chunksRef.current = next;
+        setChunkTimes((current) => [...current.slice(-15), chunk.ms]);
+        setPartsSeen((current) => {
+          const fresh = bricks!.filter((brick) => !current.has(brick.partId));
+          if (!fresh.length) return current;
+          const seen = new Set(current);
+          for (const brick of fresh) seen.add(brick.partId);
+          return seen;
+        });
+        setChunks(next);
+        setRevision((current) => current + 1);
+        return true;
       });
-      setChunks(next);
-      setRevision((current) => current + 1);
     },
     [index, walk],
   );
@@ -389,11 +413,21 @@ function Game({
   useEffect(() => {
     // One arrival a frame: a full chunk if one is waiting, else a far one.
     let frame = requestAnimationFrame(function next() {
-      const chunk = arrived.current.shift();
-      if (chunk) addChunk(chunk);
-      else {
-        const far = farArrived.current.shift();
-        if (far) addFar(far);
+      // Not more than a job or two ahead: arrivals wait in their own lists until the index has
+      // caught up.
+      if (jobs.current.length < 2) {
+        const chunk = arrived.current.shift();
+        if (chunk) addChunk(chunk);
+        else {
+          const far = farArrived.current.shift();
+          if (far) addFar(far);
+        }
+      }
+      const deadline = performance.now() + 4;
+      while (jobs.current.length) {
+        if (!jobs.current[0](deadline)) break;
+        jobs.current.shift();
+        if (performance.now() > deadline) break;
       }
       frame = requestAnimationFrame(next);
     });

@@ -743,6 +743,12 @@ export class LookCache {
  * per coverage pattern, which is still far less than drawing every covered stud. The side of a stud is also within reach of the next grid point over, so a
  * point only counts as a stud when its faces wrap all the way around it.
  */
+/**
+ * Every model's shape, read once however many batches draw it: a world in chunks has a batch for
+ * each, and reading a part's faces again for each of them was a share of every chunk's cost.
+ */
+const SHAPES = new WeakMap<Group, PartShape>();
+
 function readShape(model: Group): PartShape {
   model.updateMatrixWorld(true);
   const box = { minX: Infinity, maxX: -Infinity, minZ: Infinity, maxZ: -Infinity };
@@ -1127,7 +1133,6 @@ export class LDrawBatch {
   private readonly users = new Map<Look, number>();
   /** Looks no placement uses since the last update, freed when it finishes. */
   private readonly idle = new Set<Look>();
-  private readonly shapes = new WeakMap<Group, PartShape>();
   /** Each brick's coverage and placement key, kept up to date for the last entries. */
   private readonly tracked = new Map<string, Tracked>();
   private trackedFor?: { entries: readonly BatchEntry[]; buildArea: number; explode: boolean };
@@ -1319,10 +1324,10 @@ export class LDrawBatch {
 
   /** A part model's studs and footprint, read once per model. */
   private shapeOf(model: Group) {
-    let shape = this.shapes.get(model);
+    let shape = SHAPES.get(model);
     if (!shape) {
       shape = readShape(model);
-      this.shapes.set(model, shape);
+      SHAPES.set(model, shape);
     }
     return shape;
   }
@@ -1336,14 +1341,33 @@ export class LDrawBatch {
    * worked out again.
    */
   private track(entries: readonly BatchEntry[], buildArea: number, explode: boolean) {
+    const steps = this.trackSteps(entries, buildArea, explode);
+    for (;;) {
+      const step = steps.next();
+      if (step.done) return step.value;
+    }
+  }
+
+  /** Set while a sliced `trackSteps` is unfinished: what it left half done is worked out afresh. */
+  private trackBroken = false;
+
+  /**
+   * `track` in steps, yielding every few dozen bricks so a build in slices can stop between them:
+   * working out a whole chunk's coverage is a long task on its own.
+   */
+  private *trackSteps(
+    entries: readonly BatchEntry[],
+    buildArea: number,
+    explode: boolean,
+  ): Generator<void, Map<string, Tracked>> {
     const last = this.trackedFor;
     const tracked = this.tracked;
     if (last?.entries === entries && last.buildArea === buildArea && last.explode === explode)
       return tracked;
     // A new board size or exploding changes every key, and exploding every coverage.
     const rekey = !last || last.buildArea !== buildArea || last.explode !== explode;
-    const recover = !last || last.explode !== explode;
-    this.trackedFor = { entries, buildArea, explode };
+    const recover = !last || last.explode !== explode || this.trackBroken;
+    this.trackBroken = true;
     const changed: BatchEntry[] = [];
     const seen = new Set<string>();
     // How many tracked bricks are still there: a bigger build can still have left some out.
@@ -1379,7 +1403,9 @@ export class LDrawBatch {
           tracked.delete(id);
         }
     const coverable = this.hideCovered && !explode;
+    let work = 0;
     for (const { brick, model, hidden } of changed) {
+      if (++work % 48 === 0) yield;
       const current = tracked.get(brick.id);
       if (current) forget(brick.id, current);
       const opaque = OPAQUE_COLORS.has(brick.color);
@@ -1439,6 +1465,7 @@ export class LDrawBatch {
         for (const id of ownersOf(this.underOwners, key)) affected.add(id);
     }
     for (const id of affected) {
+      if (++work % 96 === 0) yield;
       const current = tracked.get(id)!;
       let covered = '';
       const far = this.studLevel !== 'full' && !explode;
@@ -1478,7 +1505,8 @@ export class LDrawBatch {
         current.key = '';
       }
     }
-    for (const current of tracked.values())
+    for (const current of tracked.values()) {
+      if (++work % 192 === 0) yield;
       if (rekey || !current.key)
         current.key = placementKey(
           current.brick,
@@ -1487,6 +1515,9 @@ export class LDrawBatch {
           explode,
           current.covered || undefined,
         );
+    }
+    this.trackedFor = { entries, buildArea, explode };
+    this.trackBroken = false;
     return tracked;
   }
 
@@ -1529,7 +1560,7 @@ export class LDrawBatch {
     explode: boolean,
     progress = { done: 0, total: 0 },
   ): Generator<void, void> {
-    const tracked = this.track(entries, buildArea, explode);
+    const tracked = yield* this.trackSteps(entries, buildArea, explode);
     const changed: BatchEntry[] = [];
     for (const entry of entries)
       if (
