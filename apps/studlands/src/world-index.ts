@@ -12,17 +12,35 @@ export const MAX_CASCADE = 24;
 export type CheckResult = { ok: true } | { ok: false; reason: string };
 export type BreakResult = { ok: true; removed: string[] } | { ok: false; reason: string };
 
-function addTo(map: Map<string, Set<string>>, key: string, id: string) {
-  let ids = map.get(key);
-  if (!ids) map.set(key, (ids = new Set()));
-  ids.add(id);
-}
+/**
+ * Who stands at each site: one id as a plain string, the common case, and a set only when
+ * several do. Most sites have a single owner, and a set for each is most of the cost of indexing
+ * a chunk (allocation, then collection).
+ */
+type Owners = Map<string, string | Set<string>>;
 
-function removeFrom(map: Map<string, Set<string>>, key: string, id: string) {
+function addTo(map: Owners, key: string, id: string) {
   const ids = map.get(key);
-  if (!ids) return;
+  if (ids === undefined) map.set(key, id);
+  else if (typeof ids === 'string') {
+    if (ids !== id) map.set(key, new Set([ids, id]));
+  } else ids.add(id);
+}
+function removeFrom(map: Owners, key: string, id: string) {
+  const ids = map.get(key);
+  if (ids === undefined) return;
+  if (typeof ids === 'string') {
+    if (ids === id) map.delete(key);
+    return;
+  }
   ids.delete(id);
-  if (!ids.size) map.delete(key);
+  if (ids.size === 1) map.set(key, ids.values().next().value!);
+  else if (!ids.size) map.delete(key);
+}
+/** The ids at a site, if any. */
+function ownersOf(map: Owners, key: string): Iterable<string> {
+  const ids = map.get(key);
+  return ids === undefined ? [] : typeof ids === 'string' ? [ids] : ids;
 }
 
 /**
@@ -38,9 +56,9 @@ function removeFrom(map: Map<string, Set<string>>, key: string, id: string) {
  */
 export class WorldIndex {
   readonly bricks = new Map<string, Brick>();
-  private readonly tops = new Map<string, Set<string>>();
-  private readonly bottoms = new Map<string, Set<string>>();
-  private readonly columns = new Map<string, Set<string>>();
+  private readonly tops = new Map<string, string | Set<string>>();
+  private readonly bottoms = new Map<string, string | Set<string>>();
+  private readonly columns = new Map<string, string | Set<string>>();
   private readonly bounds = new Map<string, Bounds>();
   /**
    * The keys each piece is filed under, kept so taking it out only deletes them: working them out
@@ -100,7 +118,7 @@ export class WorldIndex {
     reach.minZ -= margin;
     reach.maxZ += margin;
     for (const column of this.columnsOf(reach))
-      for (const id of this.columns.get(column) ?? []) found.add(id);
+      for (const id of ownersOf(this.columns, column)) found.add(id);
     return [...found].map((id) => this.bricks.get(id)!);
   }
 
@@ -108,9 +126,8 @@ export class WorldIndex {
   private held(brick: Brick, gone: ReadonlySet<string> = new Set()) {
     if (brick.y === 0) return true;
     return getConnectionSites(brick, 'bottom').some((site) => {
-      const owners = this.tops.get(siteKey(site));
-      if (!owners) return false;
-      for (const owner of owners) if (owner !== brick.id && !gone.has(owner)) return true;
+      for (const owner of ownersOf(this.tops, siteKey(site)))
+        if (owner !== brick.id && !gone.has(owner)) return true;
       return false;
     });
   }
@@ -170,7 +187,7 @@ export class WorldIndex {
     while (frontier.length) {
       const removed = this.bricks.get(frontier.pop()!)!;
       for (const site of getConnectionSites(removed, 'top'))
-        for (const above of this.bottoms.get(siteKey(site)) ?? []) {
+        for (const above of ownersOf(this.bottoms, siteKey(site))) {
           if (gone.has(above)) continue;
           if (this.held(this.bricks.get(above)!, gone)) continue;
           gone.add(above);

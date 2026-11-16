@@ -918,16 +918,35 @@ type Tracked = {
 const samePlacement = (first: Brick, second: Brick) =>
   first === second || PLACEMENT_KEYS.every((name) => first[name] === second[name]);
 
-function addTo(map: Map<string, Set<string>>, key: string, id: string) {
+/**
+ * Who stands at each site: one id as a plain string, the common case, and a set only when
+ * several do. Most sites have a single owner, and a set for each is most of the cost of indexing
+ * a chunk (allocation, then collection).
+ */
+type Owners = Map<string, string | Set<string>>;
+
+function addTo(map: Owners, key: string, id: string) {
   const ids = map.get(key);
-  if (ids) ids.add(id);
-  else map.set(key, new Set([id]));
+  if (ids === undefined) map.set(key, id);
+  else if (typeof ids === 'string') {
+    if (ids !== id) map.set(key, new Set([ids, id]));
+  } else ids.add(id);
 }
-function removeFrom(map: Map<string, Set<string>>, key: string, id: string) {
+function removeFrom(map: Owners, key: string, id: string) {
   const ids = map.get(key);
-  if (!ids) return;
+  if (ids === undefined) return;
+  if (typeof ids === 'string') {
+    if (ids === id) map.delete(key);
+    return;
+  }
   ids.delete(id);
-  if (!ids.size) map.delete(key);
+  if (ids.size === 1) map.set(key, ids.values().next().value!);
+  else if (!ids.size) map.delete(key);
+}
+/** The ids at a site, if any. */
+function ownersOf(map: Owners, key: string): Iterable<string> {
+  const ids = map.get(key);
+  return ids === undefined ? [] : typeof ids === 'string' ? [ids] : ids;
 }
 
 const nextTask = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -1113,11 +1132,11 @@ export class LDrawBatch {
   private readonly tracked = new Map<string, Tracked>();
   private trackedFor?: { entries: readonly BatchEntry[]; buildArea: number; explode: boolean };
   /** Opaque bricks' receivers and studs by site key, with the bricks that have one there. */
-  private readonly receiverSites = new Map<string, Set<string>>();
-  private readonly studSites = new Map<string, Set<string>>();
+  private readonly receiverSites = new Map<string, string | Set<string>>();
+  private readonly studSites = new Map<string, string | Set<string>>();
   /** Bricks by the sites of their model studs, and by their receivers when closable. */
-  private readonly studOwners = new Map<string, Set<string>>();
-  private readonly underOwners = new Map<string, Set<string>>();
+  private readonly studOwners = new Map<string, string | Set<string>>();
+  private readonly underOwners = new Map<string, string | Set<string>>();
   private readonly placements = new Map<string, Placement>();
   private readonly lineLayers: Record<LineKind, Layer>;
 
@@ -1415,9 +1434,9 @@ export class LDrawBatch {
     );
     if (!recover) {
       for (const key of receiversMoved)
-        for (const id of this.studOwners.get(key) ?? []) affected.add(id);
+        for (const id of ownersOf(this.studOwners, key)) affected.add(id);
       for (const key of studsMoved)
-        for (const id of this.underOwners.get(key) ?? []) affected.add(id);
+        for (const id of ownersOf(this.underOwners, key)) affected.add(id);
     }
     for (const id of affected) {
       const current = tracked.get(id)!;
