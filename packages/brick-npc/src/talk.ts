@@ -14,6 +14,15 @@ export class TalkLink {
   readonly anchor = { x: 0, y: 0, visible: false };
   private readonly listeners = new Set<() => void>();
 
+  /** How the animal being petted takes it: it enjoys it, or it does not and gets away. */
+  petMood: 'love' | 'hate' = 'love';
+
+  /** Has the animal `id` react to being petted. */
+  pet(id: string, mood: 'love' | 'hate') {
+    this.petMood = mood;
+    this.say(id);
+  }
+
   /** Starts `id` speaking, or ends whoever is when null. */
   say(id: string | null) {
     if (this.speaker === id) return;

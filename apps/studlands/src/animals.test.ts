@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vite-plus/test';
 import { ANIMAL_PARTS } from '@brick-workshop/render/animal-parts';
-import { SPECIES, farmAnimals, wildlifeOf } from './animals.ts';
+import { ANIMAL_WORDS, SPECIES, farmAnimals, pettable, wildlifeOf } from './animals.ts';
 import { FARM, FIELDS } from './world/island/map.ts';
 import { Terrain } from './world/terrain.ts';
 import { createTerrain } from './world/worlds.ts';
@@ -51,11 +51,10 @@ describe('the animals', () => {
 });
 
 describe('petting', () => {
-  it('lets the calm animals be petted and every one of them has words in both languages', async () => {
-    const { SPECIES, ANIMAL_WORDS, pettable } = await import('./animals.ts');
+  it('works on every animal, each with words in both languages', () => {
     for (const kind of Object.values(SPECIES)) {
-      expect(pettable(kind)).toBe(kind.temper === 'calm');
-      if (pettable(kind)) expect(ANIMAL_WORDS[kind.name].nl).toBeTruthy();
+      expect(pettable(kind)).toBe(true);
+      expect(ANIMAL_WORDS[kind.name].nl).toBeTruthy();
     }
   });
 });

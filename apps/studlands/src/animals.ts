@@ -87,23 +87,36 @@ const WILD_CHANCE = 0.3;
 const WILD_LEASH = 12;
 const HERD_LEASH = 9;
 
-/** What each kind is called, and the sound it makes, in Dutch (English is the species name). */
-export const ANIMAL_WORDS: Record<string, { nl: string; sound: { en: string; nl: string } }> = {
-  cow: { nl: 'koe', sound: { en: 'Moo!', nl: 'Boe!' } },
-  pig: { nl: 'varken', sound: { en: 'Oink!', nl: 'Knor!' } },
-  piglet: { nl: 'big', sound: { en: 'Oink!', nl: 'Knor!' } },
-  lamb: { nl: 'lammetje', sound: { en: 'Baa!', nl: 'Mè!' } },
-  goat: { nl: 'geit', sound: { en: 'Meh!', nl: 'Mè!' } },
-  chicken: { nl: 'kip', sound: { en: 'Cluck!', nl: 'Tok tok!' } },
-  horse: { nl: 'paard', sound: { en: 'Neigh!', nl: 'Hihihi!' } },
-  foal: { nl: 'veulen', sound: { en: 'Neigh!', nl: 'Hihihi!' } },
-  crab: { nl: 'krab', sound: { en: 'Click click!', nl: 'Klik klik!' } },
-  penguin: { nl: 'pinguïn', sound: { en: 'Honk!', nl: 'Toet!' } },
-  camel: { nl: 'kameel', sound: { en: 'Grumph!', nl: 'Bwoeh!' } },
+/**
+ * What each kind is called and the sound it makes (English is the species name), and how it takes
+ * being petted: most love it, a few do not and get away.
+ */
+export const ANIMAL_WORDS: Record<
+  string,
+  { nl: string; sound: { en: string; nl: string }; mood: 'love' | 'hate' }
+> = {
+  cow: { nl: 'koe', sound: { en: 'Moo!', nl: 'Boe!' }, mood: 'love' },
+  pig: { nl: 'varken', sound: { en: 'Oink!', nl: 'Knor!' }, mood: 'love' },
+  piglet: { nl: 'big', sound: { en: 'Oink!', nl: 'Knor!' }, mood: 'love' },
+  lamb: { nl: 'lammetje', sound: { en: 'Baa!', nl: 'Mè!' }, mood: 'love' },
+  goat: { nl: 'geit', sound: { en: 'Meh!', nl: 'Mè!' }, mood: 'love' },
+  chicken: { nl: 'kip', sound: { en: 'Cluck!', nl: 'Tok tok!' }, mood: 'love' },
+  horse: { nl: 'paard', sound: { en: 'Neigh!', nl: 'Hihihi!' }, mood: 'love' },
+  foal: { nl: 'veulen', sound: { en: 'Neigh!', nl: 'Hihihi!' }, mood: 'love' },
+  duckling: { nl: 'eendje', sound: { en: 'Quack!', nl: 'Kwak!' }, mood: 'love' },
+  rabbit: { nl: 'konijn', sound: { en: 'Squeak!', nl: 'Piep!' }, mood: 'love' },
+  fawn: { nl: 'hertenkalfje', sound: { en: 'Bleat!', nl: 'Mè!' }, mood: 'love' },
+  squirrel: { nl: 'eekhoorn', sound: { en: 'Chitter!', nl: 'Tsjirp!' }, mood: 'love' },
+  penguin: { nl: 'pinguïn', sound: { en: 'Honk!', nl: 'Toet!' }, mood: 'love' },
+  camel: { nl: 'kameel', sound: { en: 'Grumph!', nl: 'Bwoeh!' }, mood: 'love' },
+  crab: { nl: 'krab', sound: { en: 'Snip snip!', nl: 'Knip knip!' }, mood: 'hate' },
+  seagull: { nl: 'meeuw', sound: { en: 'Squawk!', nl: 'Krijs!' }, mood: 'hate' },
+  hedgehog: { nl: 'egel', sound: { en: 'Hiss!', nl: 'Sssst!' }, mood: 'hate' },
+  frog: { nl: 'kikker', sound: { en: 'Ribbit!', nl: 'Kwaak!' }, mood: 'hate' },
 };
 
-/** Whether the player can pet this kind: the calm ones stay put; the shy ones run off. */
-export const pettable = (kind: Species) => kind.temper === 'calm' && kind.name in ANIMAL_WORDS;
+/** Whether the player can pet this kind: every one, though not every one likes it. */
+export const pettable = (kind: Species) => kind.name in ANIMAL_WORDS;
 
 export interface Animal {
   id: string;

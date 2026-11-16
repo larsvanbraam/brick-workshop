@@ -858,17 +858,17 @@ function Game({
     setActiveQuest(started);
     chime(quest.sounds?.start ?? 'start');
   };
-  /** Petting an animal: it stands for it, bounces about and a heart shows over its head. */
+  /** Petting an animal: it stands for it and bounces about with a heart over its head, or does not like it and runs off. */
   const petAnimal = (id: string, kind: string) => {
     const line = ++lineNumber.current;
     const words = ANIMAL_WORDS[kind];
     setSpeech({
       id,
       name: locale === 'nl' ? words.nl : kind,
-      text: `♥ ${words.sound[locale]}`,
+      text: `${words.mood === 'love' ? '♥' : '💢'} ${words.sound[locale]}`,
     });
-    talk.say(id);
-    chime('pick');
+    talk.pet(id, words.mood);
+    chime(words.mood === 'love' ? 'pick' : 'clang');
     setTimeout(() => {
       if (lineNumber.current === line) talk.say(null);
     }, 1800);

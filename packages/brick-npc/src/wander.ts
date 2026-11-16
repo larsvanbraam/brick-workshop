@@ -48,6 +48,8 @@ export interface Wanderer {
    * Whoever holds the conversation keeps topping it up.
    */
   talking: number;
+  /** Seconds left running from the player whatever its temper: it did not like being touched. */
+  startled: number;
   /** A seeded 0 to 1 generator: its choices are its own. */
   next: () => number;
 }
@@ -100,6 +102,7 @@ export function createWanderer(
     look: 0,
     greeting: 0,
     talking: 0,
+    startled: 0,
     next,
   };
 }
@@ -144,9 +147,16 @@ export function stepWanderer(
   const { walker } = npc;
   const talking = npc.talking > 0 && player !== null;
   npc.talking = Math.max(0, npc.talking - delta);
+  const startled = npc.startled > 0 && player !== null;
+  npc.startled = Math.max(0, npc.startled - delta);
   // What the player's coming near sets off, if its temper reacts at all.
   const reaction = npc.temper === 'friendly' ? 'greet' : npc.temper === 'shy' ? 'flee' : null;
-  if (talking) {
+  if (startled) {
+    npc.mode = 'flee';
+  } else if (!reaction && npc.mode === 'flee') {
+    npc.mode = 'idle';
+    npc.timer = 1 + npc.next() * 2;
+  } else if (talking) {
     // Stands and listens; a friendly one carries on facing the player afterwards, without
     // waving again, and the rest go back to strolling a moment after.
     npc.mode = npc.temper === 'friendly' ? 'greet' : 'idle';

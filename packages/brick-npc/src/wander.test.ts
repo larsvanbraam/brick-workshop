@@ -163,4 +163,19 @@ describe('wanderers', () => {
       Math.abs(Math.atan2(Math.sin(shy.yaw - facing), Math.cos(shy.yaw - facing))),
     ).toBeLessThan(0.05);
   });
+
+  it('runs from the player for a while once startled, even when calm', () => {
+    const world = new WalkWorld([], SIZE, Infinity);
+    const player = { x: 1.5, y: 0, z: 0 };
+    const calm = createWanderer({ x: 0, y: 0, z: 0, velocityY: 0, grounded: true }, seeded(3), {
+      temper: 'calm',
+    });
+    calm.startled = 1;
+    for (let t = 0; t < 0.5; t += 1 / 30)
+      stepWanderer(world, calm, { leash: 30, canWalk: () => true }, player, 1 / 30);
+    expect(calm.mode).toBe('flee');
+    for (let t = 0; t < 1; t += 1 / 30)
+      stepWanderer(world, calm, { leash: 30, canWalk: () => true }, player, 1 / 30);
+    expect(calm.mode).not.toBe('flee');
+  });
 });

@@ -181,7 +181,8 @@ export function Wanderers({
       root.visible = active;
       if (!active) continue;
       const speaker = talk?.speaker === id;
-      if (speaker) npc.talking = LINGER;
+      if (speaker && talk?.petMood === 'hate' && person.pet) npc.startled = 2.5;
+      else if (speaker) npc.talking = LINGER;
       stepWanderer(world, npc, person.rules ?? rules, at, delta, walkers);
       // Lifted out of reach (a piece arrived where it stood, and it landed on top): it leaves.
       if (walker.y > person.home + MINIFIG.height) {
