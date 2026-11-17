@@ -6,6 +6,7 @@ import {
   COLORS,
   FACINGS,
   TILT_ANGLES,
+  YAW_ANGLES,
   DEFAULT_PART_COLOR_EVIDENCE,
   MAX_HEIGHT,
   PARTS,
@@ -98,6 +99,12 @@ const placementProperties = {
     required: ['toward', 'angle', 'y', 'at'],
     additionalProperties: false,
   },
+  yaw: {
+    type: 'number',
+    enum: YAW_ANGLES,
+    description:
+      "Omit unless turning a train track section (74746 straight, 74747 curve, 75541-f1/-f2 and 75542-f1/-f2 switches) off the quarter turns, in degrees on top of `rotation`, about the middle of its cells. Track has no studs, so x and z are free of the stud grid (the 0.1 stud steps here put joints within 0.07 stud, and ends within 0.3 stud join) and it rests on the ground or on the top of what lies under it. Each section's ends are the middle of its end faces and lead out along its rails; sections join where an end meets another at the same height, pointing opposite ways. A curve turns 22.5 degrees, so each curve in a line is a further 22.5 degrees of yaw, offset by half a turn (11.25) from the line it joins.",
+  },
   strung: {
     type: 'object',
     description:
@@ -130,6 +137,7 @@ const BRICK_COLUMNS = [
   'upsideDown',
   'tilt',
   'strung',
+  'yaw',
 ] as const;
 /**
  * Catalogue overview columns; one row per part instead of repeated keys. connectorFit is left

@@ -896,6 +896,7 @@ const PLACEMENT_KEYS = [
   'upsideDown',
   'tilt',
   'strung',
+  'yaw',
 ] as const;
 
 /** Everything a brick's placement depends on; the same key means nothing to redo. */

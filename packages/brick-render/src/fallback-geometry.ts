@@ -145,7 +145,8 @@ export function createFallbackGeometry(brick: Brick) {
   } else {
     geometry = new BoxGeometry(part.width - 0.035, height - 0.025, part.depth - 0.035);
   }
-  geometry.rotateY((brick.rotation * Math.PI) / 180);
+  // A yawed piece turns about the middle of its cells, in the same sense as its quarter turn.
+  geometry.rotateY(((brick.rotation + (brick.yaw ?? 0)) * Math.PI) / 180);
   return mirrorDepth(geometry);
 }
 

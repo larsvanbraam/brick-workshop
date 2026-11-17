@@ -267,6 +267,7 @@ function pieceTransform(brick: Brick) {
     facing: undefined,
     tilt: undefined,
     upsideDown: undefined,
+    yaw: undefined,
   });
   return ([u, v, w]: Vec): Vec => {
     const local = turnBack(home.matrix, [u * 20 - home.x, -v * 8 - home.y, w * 20 - home.z]);
