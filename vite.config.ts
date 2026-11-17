@@ -6,7 +6,7 @@ export default defineConfig({
     include: [
       'packages/**/*.test.ts',
       'apps/brick-studio/tooling/**/*.test.ts',
-      'apps/brick-world/src/**/*.test.ts',
+      'packages/brick-game/src/**/*.test.ts',
     ],
   },
   lint: {

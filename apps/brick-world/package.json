@@ -3,30 +3,16 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "exports": {
-    "./start": {
-      "types": "./src/start.tsx",
-      "import": "./src/start.tsx"
-    }
-  },
   "scripts": {
     "dev": "vp dev",
     "build": "tsc -b && vp build",
     "preview": "vp preview"
   },
   "dependencies": {
-    "@brick-workshop/audio": "workspace:*",
-    "@brick-workshop/engine": "workspace:*",
-    "@brick-workshop/npc": "workspace:*",
+    "@brick-workshop/game": "workspace:*",
     "@brick-workshop/render": "workspace:*",
-    "@brick-workshop/vehicles": "workspace:*",
-    "@brick-workshop/walk": "workspace:*",
-    "@react-three/fiber": "^9.8.2",
-    "@react-three/postprocessing": "^3.2.2",
-    "postprocessing": "^6.39.6",
     "react": "^19.3.1",
-    "react-dom": "^19.3.1",
-    "three": "^0.183.0"
+    "react-dom": "^19.3.1"
   },
   "devDependencies": {
     "@types/node": "^24.19.2",

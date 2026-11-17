@@ -188,103 +188,18 @@ importers:
 
   apps/brick-island:
     dependencies:
-      '@brick-workshop/audio':
+      '@brick-workshop/game':
         specifier: workspace:*
-        version: link:../../packages/brick-audio
-      '@brick-workshop/engine':
-        specifier: workspace:*
-        version: link:../../packages/brick-engine
+        version: link:../../packages/brick-game
       '@brick-workshop/render':
         specifier: workspace:*
         version: link:../../packages/brick-render
-      '@brick-workshop/brick-world':
-        specifier: workspace:*
-        version: link:../brick-world
-      '@brick-workshop/vehicles':
-        specifier: workspace:*
-        version: link:../../packages/brick-vehicles
-      '@brick-workshop/walk':
-        specifier: workspace:*
-        version: link:../../packages/brick-walk
-      '@react-three/fiber':
-        specifier: ^9.8.2
-        version: 9.8.2(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(three@0.183.2)
-      '@react-three/postprocessing':
-        specifier: ^3.2.2
-        version: 3.2.2(@react-three/fiber@9.8.2(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(three@0.183.2))(@types/three@0.183.1)(postprocessing@6.39.6(three@0.183.2))(react@19.3.1)(three@0.183.2)
-      postprocessing:
-        specifier: ^6.39.6
-        version: 6.39.6(three@0.183.2)
       react:
         specifier: ^19.3.1
         version: 19.3.1
       react-dom:
         specifier: ^19.3.1
         version: 19.3.1(react@19.3.1)
-      three:
-        specifier: ^0.183.0
-        version: 0.183.2
-    devDependencies:
-      '@types/node':
-        specifier: ^24.19.2
-        version: 24.19.2
-      '@types/react':
-        specifier: ^19.3.0
-        version: 19.3.0
-      '@types/react-dom':
-        specifier: ^19.3.0
-        version: 19.3.0(@types/react@19.3.0)
-      '@types/three':
-        specifier: ^0.183.0
-        version: 0.183.1
-      '@vitejs/plugin-react':
-        specifier: ^6.1.2
-        version: 6.1.2(@voidzero-dev/vite-plus-core@1.4.0(@types/node@24.19.2)(typescript@7.0.2))
-      typescript:
-        specifier: ~7.0.2
-        version: 7.0.2
-      vite-plus:
-        specifier: 1.4.0
-        version: 1.4.0(@opentelemetry/api@1.10.0)(@types/node@24.19.2)(@vitest/ui@5.0.5)(typescript@7.0.2)
-
-  apps/brick-world:
-    dependencies:
-      '@brick-workshop/audio':
-        specifier: workspace:*
-        version: link:../../packages/brick-audio
-      '@brick-workshop/engine':
-        specifier: workspace:*
-        version: link:../../packages/brick-engine
-      '@brick-workshop/npc':
-        specifier: workspace:*
-        version: link:../../packages/brick-npc
-      '@brick-workshop/render':
-        specifier: workspace:*
-        version: link:../../packages/brick-render
-      '@brick-workshop/vehicles':
-        specifier: workspace:*
-        version: link:../../packages/brick-vehicles
-      '@brick-workshop/walk':
-        specifier: workspace:*
-        version: link:../../packages/brick-walk
-      '@react-three/fiber':
-        specifier: ^9.8.2
-        version: 9.8.2(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(three@0.183.2)
-      '@react-three/postprocessing':
-        specifier: ^3.2.2
-        version: 3.2.2(@react-three/fiber@9.8.2(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(three@0.183.2))(@types/three@0.183.1)(postprocessing@6.39.6(three@0.183.2))(react@19.3.1)(three@0.183.2)
-      postprocessing:
-        specifier: ^6.39.6
-        version: 6.39.6(three@0.183.2)
-      react:
-        specifier: ^19.3.1
-        version: 19.3.1
-      react-dom:
-        specifier: ^19.3.1
-        version: 19.3.1(react@19.3.1)
-      three:
-        specifier: ^0.183.0
-        version: 0.183.2
     devDependencies:
       '@types/node':
         specifier: ^24.19.2
@@ -384,6 +299,43 @@ importers:
         specifier: 1.4.0
         version: 1.4.0(@opentelemetry/api@1.10.0)(@types/node@24.19.2)(@vitest/ui@5.0.5)(typescript@7.0.2)
 
+  apps/brick-world:
+    dependencies:
+      '@brick-workshop/game':
+        specifier: workspace:*
+        version: link:../../packages/brick-game
+      '@brick-workshop/render':
+        specifier: workspace:*
+        version: link:../../packages/brick-render
+      react:
+        specifier: ^19.3.1
+        version: 19.3.1
+      react-dom:
+        specifier: ^19.3.1
+        version: 19.3.1(react@19.3.1)
+    devDependencies:
+      '@types/node':
+        specifier: ^24.19.2
+        version: 24.19.2
+      '@types/react':
+        specifier: ^19.3.0
+        version: 19.3.0
+      '@types/react-dom':
+        specifier: ^19.3.0
+        version: 19.3.0(@types/react@19.3.0)
+      '@types/three':
+        specifier: ^0.183.0
+        version: 0.183.1
+      '@vitejs/plugin-react':
+        specifier: ^6.1.2
+        version: 6.1.2(@voidzero-dev/vite-plus-core@1.4.0(@types/node@24.19.2)(typescript@7.0.2))
+      typescript:
+        specifier: ~7.0.2
+        version: 7.0.2
+      vite-plus:
+        specifier: 1.4.0
+        version: 1.4.0(@opentelemetry/api@1.10.0)(@types/node@24.19.2)(@vitest/ui@5.0.5)(typescript@7.0.2)
+
   packages/brick-audio:
     devDependencies:
       vite-plus:
@@ -399,6 +351,64 @@ importers:
       highs:
         specifier: 1.15.4
         version: 1.15.4
+      vite-plus:
+        specifier: 1.4.0
+        version: 1.4.0(@opentelemetry/api@1.10.0)(@types/node@24.19.2)(@vitest/ui@5.0.5)(typescript@7.0.2)
+
+  packages/brick-game:
+    dependencies:
+      '@brick-workshop/audio':
+        specifier: workspace:*
+        version: link:../brick-audio
+      '@brick-workshop/engine':
+        specifier: workspace:*
+        version: link:../brick-engine
+      '@brick-workshop/npc':
+        specifier: workspace:*
+        version: link:../brick-npc
+      '@brick-workshop/render':
+        specifier: workspace:*
+        version: link:../brick-render
+      '@brick-workshop/vehicles':
+        specifier: workspace:*
+        version: link:../brick-vehicles
+      '@brick-workshop/walk':
+        specifier: workspace:*
+        version: link:../brick-walk
+      '@react-three/fiber':
+        specifier: ^9.8.2
+        version: 9.8.2(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(three@0.183.2)
+      '@react-three/postprocessing':
+        specifier: ^3.2.2
+        version: 3.2.2(@react-three/fiber@9.8.2(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(three@0.183.2))(@types/three@0.183.1)(postprocessing@6.39.6(three@0.183.2))(react@19.3.1)(three@0.183.2)
+      postprocessing:
+        specifier: ^6.39.6
+        version: 6.39.6(three@0.183.2)
+      react:
+        specifier: ^19.3.1
+        version: 19.3.1
+      react-dom:
+        specifier: ^19.3.1
+        version: 19.3.1(react@19.3.1)
+      three:
+        specifier: ^0.183.0
+        version: 0.183.2
+    devDependencies:
+      '@types/node':
+        specifier: ^24.19.2
+        version: 24.19.2
+      '@types/react':
+        specifier: ^19.3.0
+        version: 19.3.0
+      '@types/react-dom':
+        specifier: ^19.3.0
+        version: 19.3.0(@types/react@19.3.0)
+      '@types/three':
+        specifier: ^0.183.0
+        version: 0.183.1
+      typescript:
+        specifier: ~7.0.2
+        version: 7.0.2
       vite-plus:
         specifier: 1.4.0
         version: 1.4.0(@opentelemetry/api@1.10.0)(@types/node@24.19.2)(@vitest/ui@5.0.5)(typescript@7.0.2)

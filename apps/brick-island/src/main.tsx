@@ -1,3 +1,3 @@
-import { BRICK_ISLAND, startGame } from '@brick-workshop/brick-world/start';
+import { BRICK_ISLAND, startGame } from '@brick-workshop/game/start';
 
 startGame(BRICK_ISLAND);
