@@ -1139,7 +1139,7 @@ export const westernTown: ExampleDefinition = {
     }
 
     // ---- Horses with saddles, and cowboys: a standing figure is legs, torso, head and a hat,
-    // all turned to face the street; the riders' hips sit on the saddle's studs.
+    // all turned to face the street; the rider's feet stand on the saddle's studs.
     const figure = (c: Cowboy, y: number) => {
       const lift = 5;
       add('3815c01', c.legs, c.x + 1, y, c.z, 180);
@@ -1151,8 +1151,9 @@ export const westernTown: ExampleDefinition = {
     for (const [x, z, turn, coat, rider] of HORSES) {
       add('4493c01', coat, x, G, z, turn);
       const [dx, dz] = SADDLE[turn];
-      add('4491b', 4, x + dx, G + 2, z + dz, turn);
-      if (rider) figure({ x: x - 2, z: z + 3.5, legs: 272, shirt: DARK_RED, hat: TIMBER }, G + 3);
+      add('4491b', 4, x + dx, G + 11.5, z + dz, turn);
+      if (rider)
+        figure({ x: x - 1, z: z + 3.5, legs: 272, shirt: DARK_RED, hat: TIMBER }, G + 12.5);
     }
     for (const c of COWBOYS) figure(c, G);
     figure(SHERIFF_FIGURE, G + 4);

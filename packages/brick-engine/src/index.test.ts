@@ -1104,12 +1104,12 @@ describe('architectural part families', () => {
       importAssembly({ name: 'Legacy pane', bricks: [support, frame, legacy] }).bricks[2],
     ).toMatchObject({ partId: '60602', x: 0, z: 0 });
   });
-  it('stands a horse on its hooves, clips a saddle on its back and seats a rider on the saddle', () => {
+  it('stands a horse on its hooves, clips a saddle on its back and stands a rider on the saddle studs', () => {
     const ground = { ...base, id: 'ground', partId: '91405', color: 72, x: 0, y: 0, z: 0 };
     const horse = { ...base, id: 'horse', partId: '4493c01', x: 4, y: 1, z: 2 };
-    const saddle = { ...base, id: 'saddle', partId: '4491b', x: 3, y: 3, z: 6.5 };
-    const hips = { ...base, id: 'hips', partId: '3815c01', x: 4, y: 4, z: 6.5 };
-    const torso = { ...base, id: 'torso', partId: '76382p00', x: 3, y: 9, z: 6.5 };
+    const saddle = { ...base, id: 'saddle', partId: '4491b', x: 3, y: 12.5, z: 6.5 };
+    const hips = { ...base, id: 'hips', partId: '3815c01', x: 4, y: 13.5, z: 6.5 };
+    const torso = { ...base, id: 'torso', partId: '76382p00', x: 3, y: 18.5, z: 6.5 };
     const area = { name: 'Horse', buildArea: 16 };
     expect(validateAssembly({ ...area, bricks: [ground, horse] })).toEqual([]);
     expect(validateAssembly({ ...area, bricks: [ground, horse, saddle, hips, torso] })).toEqual([]);
@@ -2278,6 +2278,10 @@ describe('mixed-part engine builds', () => {
       8,
     );
     expect(of('4493c01')).toHaveLength(3);
+    // The rider's hips sit over the middle of the dark horse's back, not beside it.
+    const rider = of('3815c01').find((brick) => brick.y === 17.5);
+    const mount = of('4493c01').find((brick) => brick.color === 308);
+    expect(rider?.x).toBe(mount?.x);
     expect(of('4491b')).toHaveLength(3);
     // Five figures, four of them in felt hats and one with a bob of hair.
     expect(of('3815c01')).toHaveLength(5);

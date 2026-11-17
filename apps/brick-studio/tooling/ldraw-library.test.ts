@@ -23,7 +23,12 @@ import {
   Vector3,
 } from 'three';
 import type { Material, ShaderMaterial } from 'three';
-import { LDrawBatch, LookCache, canBatchLDrawModel } from '@brick-workshop/render/ldraw-batches';
+import {
+  FLUSH_LEAVES,
+  LDrawBatch,
+  LookCache,
+  canBatchLDrawModel,
+} from '@brick-workshop/render/ldraw-batches';
 import { createFallbackGeometry } from '@brick-workshop/render/fallback-geometry';
 import {
   LDRAW_SCALE,
@@ -54,7 +59,17 @@ import {
  * Wheel pins hang under their plate the same way, minifigure hips and necks rise into the
  * piece above, and hair and hats fall round the head below their base.
  */
-const OVERHANGING_PARTS = ['4493c01', '4491b'];
+/**
+ * Parts whose drawn shape deliberately reaches past their box. A horse's neck and head and a
+ * saddle's flaps rise above theirs (see "Horses and riders" in the README), so their height is not checked.
+ */
+const OVERHANGING_HEIGHT = ['4493c01', '4491b'];
+/** A sail's hemmed luff reaches this far (LDraw units) past its box on the mast's side, as cloth wraps one. */
+const OVERHANGING_SIDES: Readonly<
+  Record<string, Partial<Record<'x' | 'z', readonly [number, number]>>>
+> = {
+  u66: { x: [37, 0] },
+};
 const CLIP_DIPS: Readonly<Record<string, number>> = {
   '4081b': 2,
   '60470a': 2,
@@ -826,8 +841,10 @@ describe('local LDraw assets', () => {
               // The full LDraw turn: some parts show upside down when turned half round.
               const [a, b, c, d, e, f, g, h, i] = getLDrawTransform(brick).matrix;
               native.matrixAutoUpdate = false;
+              // A door leaf stands a hair proud of its frame in the batch (see `FLUSH_LEAVES`).
+              const proud = FLUSH_LEAVES[part.id] ?? 0;
               native.matrix
-                .set(a, b, c, 0, d, e, f, 0, g, h, i, 0, 0, 0, 0, 1)
+                .set(a, b, c, a * proud, d, e, f, d * proud, g, h, i, g * proud, 0, 0, 0, 1)
                 .premultiply(new Matrix4().makeScale(...LDRAW_SCALE));
               native.traverse((object) => {
                 object.userData.brickId = brick.id;
@@ -901,17 +918,16 @@ describe('local LDraw assets', () => {
               ['z', (quarterTurn ? part.width : part.depth) * 20],
             ] as const) {
               const center = part.ldrawCenter?.[axis] ?? 0;
+              const [before, after] = OVERHANGING_SIDES[part.id]?.[axis] ?? [0, 0];
               expect(
                 bounds.min[axis],
                 `${part.id} reserved ${axis} minimum`,
-              ).toBeGreaterThanOrEqual(center - extent / 2 - 0.005);
+              ).toBeGreaterThanOrEqual(center - extent / 2 - before - 0.005);
               expect(bounds.max[axis], `${part.id} reserved ${axis} maximum`).toBeLessThanOrEqual(
-                center + extent / 2 + 0.005,
+                center + extent / 2 + after + 0.005,
               );
             }
-            // A horse's neck and head rise past its box, and a saddle's flaps past its seat: they
-            // are drawn over what a rider's legs share space with (see `astride`).
-            if (OVERHANGING_PARTS.includes(part.id)) {
+            if (OVERHANGING_HEIGHT.includes(part.id)) {
               model.traverse((object) => {
                 if ('geometry' in object) (object.geometry as { dispose(): void }).dispose();
               });

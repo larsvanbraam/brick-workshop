@@ -120,16 +120,6 @@ export interface Part {
   /** Half of a hinge, which lets the pieces on its top tilt. */
   hinge?: Hinge;
   /**
-   * A saddle: a rider's hips stand on its studs, and legs `astride` hang down over it and the
-   * piece it is clipped to.
-   */
-  seat?: true;
-  /**
-   * Hips and legs that sit in a `seat`: the legs hang down beside what the seat is clipped to, so
-   * the two may share space.
-   */
-  astride?: true;
-  /**
    * Stands on whatever its base touches, without studs, the way a wheel stands on the road: a
    * piece resting on a held piece's top is held itself, and can hold what clips onto it.
    */
@@ -264,8 +254,6 @@ function sculptedPart(
       | 'sideStuds'
       | 'hinge'
       | 'rests'
-      | 'seat'
-      | 'astride'
       | 'flexible'
     >
   > = {},
@@ -1963,7 +1951,6 @@ export const PARTS: readonly Part[] = [
   // Each faces -z at rotation 0. Hips and neck rise into the piece above, and hair falls round
   // the head below its own base, as clips dip under their plates.
   sculptedPart('3815c01', 'Minifigure hips and legs', 2, 2, 5, 'detail', {
-    astride: true,
     ldrawCenter: { x: 0, z: -10 },
     ldrawBaseY: 40,
     connections: { topStuds: spans(null, [0, 1]), bottomReceivers: spans(null, [0, 1]) },
@@ -1994,26 +1981,24 @@ export const PARTS: readonly Part[] = [
     connections: { topStuds: [], bottomReceivers: [{ x: 1, z: 1 }] },
   }),
   // A horse, two studs wide and ten long, facing -z, standing on its hooves the way a wheel
-  // stands on the road. Its box stops at the back, 6 plates up, so a rider fits over it; the
-  // neck and head rise past the box. A bar across the back holds the saddle's two clips.
-  sculptedPart('4493c01', 'Horse', 2, 10, 6, 'detail', {
+  // stands on the road. Its box reaches the top of its back, 12 plates up; the neck and head rise
+  // past it. A bar across the back, a little above it, holds the saddle's two clips.
+  sculptedPart('4493c01', 'Horse', 2, 10, 12, 'detail', {
     rests: true,
     ldrawBaseY: 57,
     ldrawCenter: { x: 0, z: -5 },
-    bars: [{ from: [-0.6, 8.25, 6.2], to: [2.6, 8.25, 6.2] }],
+    bars: [{ from: [-0.6, 13.75, 6.2], to: [2.6, 13.75, 6.2] }],
   }),
-  // The saddle clips onto the horse's back and holds a rider's hips on two studs, four studs wide
-  // with a flap either side of the rider's legs. Its box sits 4 plates below the drawn saddle, so
-  // the studs stand where a minifigure's feet must be for its hips to sit in the seat; legs
-  // hanging down inside the flaps share space with the horse (see `astride`).
+  // The saddle clips onto the horse's back and holds a rider's hips on two studs. Its seat is one
+  // plate thick; the flaps either side rise round the rider's legs. It is four studs wide, a stud
+  // either side of the horse.
   sculptedPart('4491b', 'Horse saddle with two clips', 4, 2, 1, 'detail', {
-    seat: true,
-    ldrawBaseY: 40,
+    ldrawBaseY: 8,
     ldrawCenter: { x: 0, z: 4 },
     connections: { topStuds: spans(null, [1, 2]), bottomReceivers: [] },
     clips: [
-      { at: [0.575, 6.25, 1.7], axis: 'x' },
-      { at: [3.425, 6.25, 1.7], axis: 'x' },
+      { at: [0.575, 2.25, 1.7], axis: 'x' },
+      { at: [3.425, 2.25, 1.7], axis: 'x' },
     ],
   }),
   // Braided string pulled straight between its end studs, which are round one-plate plugs with
@@ -3385,15 +3370,6 @@ function computeValidation(assembly: Assembly): Validation {
     hasClipsOrBars(getPart(first.partId)) &&
     hasClipsOrBars(getPart(second.partId)) &&
     hasClipConnection(first, second);
-  // Legs astride a saddle hang down over it and the piece it is clipped to.
-  const astride = (rider: Brick, other: Brick) =>
-    !!getPart(rider.partId).astride &&
-    valid.some(
-      (seat) =>
-        !!getPart(seat.partId).seat &&
-        hasStudConnection(seat, rider) &&
-        (seat === other || hasClipConnection(seat, other)),
-    );
   for (let brickIndex = 0; brickIndex < valid.length; brickIndex += 1) {
     const brick = valid[brickIndex];
     const size = bounds[brickIndex];
@@ -3411,9 +3387,7 @@ function computeValidation(assembly: Assembly): Validation {
         !isArchInfill(other, brick) &&
         !holds(brick, other) &&
         !holds(other, brick) &&
-        !clipped(brick, other) &&
-        !astride(brick, other) &&
-        !astride(other, brick)
+        !clipped(brick, other)
       ) {
         issues.push({
           brickId: brick.id,

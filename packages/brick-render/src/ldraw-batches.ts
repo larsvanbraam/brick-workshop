@@ -837,7 +837,7 @@ const siteKey = (x: number, y: number, z: number) => `${half(x)}:${half(y)}:${ha
  * Each stands this far (in LDraw units, along its own x, where the leaf's outer face points)
  * proud of the frame, too little to see but enough for the depth test.
  */
-const FLUSH_LEAVES: Readonly<Record<string, number>> = { '3193a': 0.5, '3192a': -0.5 };
+export const FLUSH_LEAVES: Readonly<Record<string, number>> = { '3193a': 0.5, '3192a': -0.5 };
 
 /**
  * Where a brick's part sits in the batch. With a `gap` (in LDraw units) an upright brick is
