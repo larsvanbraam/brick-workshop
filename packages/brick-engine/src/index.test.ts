@@ -356,6 +356,7 @@ describe('catalogue-reported weights', () => {
         'u66',
         '4600',
         '4624c01',
+        '2878c01',
         '74746',
         '74747',
         '75541-f1',
@@ -990,7 +991,7 @@ describe('architectural part families', () => {
     const included = assembly.bricks.filter((brick) =>
       architecturalParts.some((part) => part.id === brick.partId),
     );
-    expect(included).toHaveLength(188);
+    expect(included).toHaveLength(189);
     expect(new Set(included.map((brick) => brick.partId))).toEqual(
       new Set(architecturalParts.map((part) => part.id)),
     );
@@ -1596,9 +1597,9 @@ describe('upright brick engine', () => {
       ).toEqual(expected);
     }
   });
-  it('contains 278 unique building and foliage parts with explicit connection sites', () => {
-    expect(PARTS).toHaveLength(278);
-    expect(new Set(PARTS.map((part) => part.id)).size).toBe(278);
+  it('contains 279 unique building and foliage parts with explicit connection sites', () => {
+    expect(PARTS).toHaveLength(279);
+    expect(new Set(PARTS.map((part) => part.id)).size).toBe(279);
     expect(PARTS.filter((part) => part.family === 'tall')).toHaveLength(10);
     expect(PARTS.filter((part) => part.family === 'slope')).toHaveLength(35);
     expect(PARTS.filter((part) => part.family === 'round')).toHaveLength(38);
@@ -1608,7 +1609,7 @@ describe('upright brick engine', () => {
       ['cone', 5],
       ['door', 7],
       ['window', 16],
-      ['detail', 74],
+      ['detail', 75],
       ['foliage', 11],
     ] as const)
       expect(PARTS.filter((part) => part.family === family)).toHaveLength(count);
@@ -2011,7 +2012,7 @@ describe('upright brick engine', () => {
 
 describe('mixed-part engine builds', () => {
   it('lays complete catalogue and tile displays on one larger board without stacking', () => {
-    for (const [id, count] of [['catalog-sampler', 278]] as const) {
+    for (const [id, count] of [['catalog-sampler', 279]] as const) {
       const assembly = createExampleAssembly(id);
       expect(assembly.buildArea).toBe(112);
       expect(assembly.bricks).toHaveLength(count);
@@ -2320,6 +2321,7 @@ describe('mixed-part engine builds', () => {
       'hill-valley',
       'western-town',
       'train-track-yard',
+      'steam-train',
     ]);
     expect(new Set(EXAMPLES.map((example) => example.id)).size).toBe(EXAMPLES.length);
     for (const example of SMALL_EXAMPLES) {

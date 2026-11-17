@@ -557,7 +557,9 @@ function bearingRectangles(brick: Brick, surface: 'top' | 'bottom'): Rectangle[]
       start = next;
     }
   }
-  if (!runs.length) return surface === 'bottom' ? [floorRectangle(brick)] : [];
+  // Track, which has no studs, carries the wheels standing on it across its whole body.
+  if (!runs.length)
+    return surface === 'bottom' || getPart(brick.partId).yawable ? [floorRectangle(brick)] : [];
   const merged: Rectangle[] = [];
   for (const run of runs) {
     const above = merged.find(

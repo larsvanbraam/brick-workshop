@@ -2052,6 +2052,14 @@ export const PARTS: readonly Part[] = [
     ldrawBaseY: 8,
     connections: { topStuds: [], bottomReceivers: [] },
   }),
+  // A single-axle train bogie with its wheelset, 6 studs across the rails and 3 along them, eight
+  // plates from the foot of its wheels to the top. It stands on the rails like a wheel stands on the
+  // road, and carries a car on the studs of its top, which stand in for a bogie plate clipped on.
+  sculptedPart('2878c01', 'Train bogie, single axle', 6, 3, 8, 'detail', {
+    rests: true,
+    ldrawBaseY: 63,
+    connections: { topStuds: spans([0, 5], [0, 5], [0, 5]), bottomReceivers: [] },
+  }),
   // A 9V curved section: 22.5 degrees of a wide bend, the same rails and sleepers as the straight.
   // Placed only at the four quarter turns, its box is the curve's own bounds (the bend bulges 6 studs
   // towards -z at rotation 0, hence the offset centre), so it ends a line or makes a lone bend.

@@ -1,5 +1,6 @@
 import { layPlateFloor } from '../board.ts';
 import { addAreaMap, bottomUp, layTrack } from './layout.ts';
+import { addSteamTrain } from './steam-train.ts';
 import { addTree } from './trees.ts';
 import type { Box } from './trees.ts';
 import type { ExampleDefinition } from './types.ts';
@@ -58,7 +59,7 @@ export const trainTrackYard: ExampleDefinition = {
   id: 'train-track-yard',
   name: 'Train Track Yard',
   tags: ['train', 'track', 'landscape', 'curves', 'switch'],
-  expectedPieceCount: 1119,
+  expectedPieceCount: 1239,
   buildArea: SIZE,
   build(emit) {
     const { add, flush } = bottomUp(emit);
@@ -71,6 +72,10 @@ export const trainTrackYard: ExampleDefinition = {
     // ---- The railway: the loop, and the siding laid from the switch's branch.
     const loop = layTrack(add, TRACK, { x: LOOP.x, y: G, z: LOOP.z, angle: 0 }, MAIN);
     layTrack(add, TRACK, loop.branches[0]!, 'SS');
+
+    // ---- A locomotive and its tender standing at the platform on the back straight, facing -x: the
+    // straight is 32 studs long, which has room for them but not for a wagon as well.
+    addSteamTrain(add, { x: 77, y: G + 3, z: LOOP.z + 80, heading: 180, wagons: 0 });
 
     // ---- The platform: two plate courses and a top of tiles, with a white edge on the track side
     // and open studs where posts, lamps and the bench stand.

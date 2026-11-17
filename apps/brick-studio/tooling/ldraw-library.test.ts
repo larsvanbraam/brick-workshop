@@ -70,6 +70,11 @@ const OVERHANGING_SIDES: Readonly<
 > = {
   u66: { x: [37, 0] },
   '74746': { x: [9, 9] },
+  // A switch's command rod and tongue reach a few LDU past the end of its route's box.
+  '75541-f1': { x: [0, 5] },
+  '75541-f2': { x: [0, 5] },
+  '75542-f1': { x: [0, 5] },
+  '75542-f2': { x: [0, 5] },
 };
 const CLIP_DIPS: Readonly<Record<string, number>> = {
   '4081b': 2,
