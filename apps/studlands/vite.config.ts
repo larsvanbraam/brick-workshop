@@ -14,6 +14,17 @@ export default defineConfig(({ mode }) => {
     preview: { host: '127.0.0.1' },
     // The world is generated in a worker that imports the engine as a module.
     worker: { format: 'es' as const },
+    build: {
+      // three.js and React rarely change, so they get their own chunk: a deploy then only
+      // invalidates the small app chunk in returning visitors' caches. The chunks are still
+      // all needed at startup, so the limit only quiets the size warning.
+      chunkSizeWarningLimit: 1500,
+      rolldownOptions: {
+        output: {
+          codeSplitting: { groups: [{ name: 'vendor', test: /node_modules/ }] },
+        },
+      },
+    },
     plugins: [
       react(),
       splashPlugin({
