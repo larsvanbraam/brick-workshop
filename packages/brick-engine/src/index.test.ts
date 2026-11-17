@@ -2213,6 +2213,51 @@ describe('mixed-part engine builds', () => {
     ]);
   });
 
+  it('builds a western main street: three false-fronted buildings on boardwalks, a street and a mesa', () => {
+    const assembly = createExampleAssembly('western-town');
+    expect(assembly.name).toBe('Western Main Street');
+    expect(assembly.bricks).toHaveLength(2356);
+    expect(assembly.buildArea).toBe(48);
+    expect(validateAssembly(assembly)).toEqual([]);
+    const of = (partId: string) => assembly.bricks.filter((brick) => brick.partId === partId);
+    // A ragged desert base, not a board: the corners of the board stay bare.
+    for (const [x, z] of [
+      [0, 0],
+      [47, 0],
+      [0, 47],
+      [47, 47],
+    ])
+      expect(
+        assembly.bricks.some((brick) => {
+          const size = footprint(brick);
+          return (
+            brick.x <= x && x < brick.x + size.width && brick.z <= z && z < brick.z + size.depth
+          );
+        }),
+      ).toBe(false);
+    // Plank doors in frames: one at the sheriff's and the store's, a pair each side of the
+    // saloon's swing doors, and a back door; the saloon's balcony doors open on the upper floor.
+    expect(of('3579')).toHaveLength(7);
+    expect(of('3193a').length + of('3192a').length).toBe(7);
+    expect(of('60593')).toHaveLength(21);
+    expect(of('60594')).toHaveLength(1);
+    // Posts under the verandas, a white balcony railing and striped awnings.
+    expect(of('30055')).toHaveLength(6);
+    expect(of('3298')).toHaveLength(12);
+    expect(of('3298').filter((brick) => brick.color === 4)).toHaveLength(3);
+    // A flag on the saloon's pediment, past every other roofline.
+    const [flag] = of('2335');
+    expect(flag.y).toBe(Math.max(...assembly.bricks.map((brick) => brick.y)));
+    // A wagon stands on its four wheels in the street; a water tank rises on a trestle.
+    expect(of('4624c01')).toHaveLength(4);
+    expect(of('4600')).toHaveLength(2);
+    expect(of('87081')).toHaveLength(3);
+    expect(of('3943b')).toHaveLength(1);
+    // Cacti in green and olive round bricks.
+    expect(of('3062b').filter((brick) => brick.color === 330).length).toBeGreaterThan(10);
+    expect(of('3062b').filter((brick) => brick.color === 2).length).toBeGreaterThan(10);
+  });
+
   it('provides named, valid examples with independent assembly instances', () => {
     expect(EXAMPLES.map((example) => example.id)).toEqual([
       'courtyard-house',
@@ -2222,6 +2267,7 @@ describe('mixed-part engine builds', () => {
       'nordiska-museet',
       'castle',
       'hill-valley',
+      'western-town',
     ]);
     expect(new Set(EXAMPLES.map((example) => example.id)).size).toBe(EXAMPLES.length);
     for (const example of SMALL_EXAMPLES) {

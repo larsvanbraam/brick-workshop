@@ -107,8 +107,10 @@ hand. Smoothing pieces count towards `expectedPieceCount`.
    Read the subject's group in [docs/rebrickable-benchmarks.md](docs/rebrickable-benchmarks.md)
    for the piece count, part mix and palette real sets of that kind use. Pick the setting the
    base follows (landscape, street, desert or waterfront, in the build standard): a town
-   house goes on a street, not an island. The catalogue has no road, cactus or wheel parts;
-   lay roads from plates and tiles and build cacti from round bricks with side-stud arms.
+   house goes on a street, not an island. The catalogue has no road or cactus parts: lay
+   roads from tiles (kept as plates where props stand, since tiles have no studs) and build
+   cacti from round bricks with arms on rounded plates (`35480`). `western-town.ts` is the
+   worked desert setting, with a wagon on `4624c01` wheels and `4600` pin plates.
 2. **Plan.** Draw top-down character maps per layer (see `SQUARE` in `flower-stall.ts` and
    the castle's plans), with the front at high z and x running left to right as seen from the
    front. Wrap `add` in `reflectToFront` (`layout.ts`) so the front faces the default camera

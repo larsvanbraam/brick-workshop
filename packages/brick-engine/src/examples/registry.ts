@@ -9,6 +9,7 @@ import { flowerStall } from './flower-stall.ts';
 import { nordiskaMuseet } from './nordiska-museet.ts';
 import { castle } from './castle.ts';
 import { hillValley } from './hill-valley.ts';
+import { westernTown } from './western-town.ts';
 
 export function createExampleRegistry(definitions: readonly ExampleDefinition[]) {
   const byId = new Map<string, ExampleDefinition>();
@@ -104,6 +105,7 @@ const registry = createExampleRegistry([
   nordiskaMuseet,
   castle,
   hillValley,
+  westernTown,
 ]);
 export const EXAMPLES = registry.examples;
 export const createExampleAssembly = registry.createAssembly;
