@@ -1980,6 +1980,27 @@ export const PARTS: readonly Part[] = [
     ldrawBaseY: 0,
     connections: { topStuds: [], bottomReceivers: [{ x: 1, z: 1 }] },
   }),
+  // A horse, two studs wide and nine long, facing -z, standing on its hooves the way a wheel
+  // stands on the road. Its box stops at the back so a saddle and rider fit over it; the neck and
+  // head rise past it. A bar across the back, 4 plates under the saddle's top, holds the saddle's
+  // two clips.
+  sculptedPart('4493c01', 'Horse', 2, 9, 12, 'detail', {
+    rests: true,
+    ldrawBaseY: 57,
+    ldrawCenter: { x: 0, z: -5 },
+    bars: [{ from: [-0.6, 8.25, 5.7], to: [2.6, 8.25, 5.7] }],
+  }),
+  // The saddle clips onto the horse's back and holds a rider's hips on two studs between its
+  // pommel and cantle. It is four studs wide, a stud either side of the horse.
+  sculptedPart('4491b', 'Horse saddle with two clips', 4, 2, 6, 'detail', {
+    ldrawBaseY: 8,
+    ldrawCenter: { x: 0, z: 4 },
+    connections: { topStuds: spans(null, [1, 2]), bottomReceivers: [] },
+    clips: [
+      { at: [0.575, 2.25, 1.7], axis: 'x' },
+      { at: [3.425, 2.25, 1.7], axis: 'x' },
+    ],
+  }),
   // Braided string pulled straight between its end studs, which are round one-plate plugs with
   // a stud on top and a hollow below, so either end can sit on a stud or carry a piece. The cord
   // runs along x between them, just under their tops.

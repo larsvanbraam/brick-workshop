@@ -68,7 +68,7 @@ const naturalKey = (piece: Pick<Brick, 'partId' | 'x' | 'y' | 'z'>) =>
 const [IX, IZ] = [23.5, 24.5];
 const MESA = { x0: 26, x1: 45, z0: 1, z1: 11 };
 /** The railway crosses the front of the base, on its own strip of ground. */
-const RAIL = { z0: 41, z1: 44 };
+const RAIL = { z0: 42, z1: 45 };
 /** How far a cell lies towards the base's edge: 1 on the outline. */
 function reach(x: number, z: number) {
   const [dx, dz] = [(x + 0.5 - IX) / 22.2, (z + 0.5 - IZ) / 22.2];
@@ -306,7 +306,7 @@ const wallRows = (b: Building, k: number) =>
 
 // Posts under each veranda, at the boardwalk's front edge.
 const POSTS: Readonly<Record<string, readonly number[]>> = {
-  sheriff: [4, 13],
+  sheriff: [3, 13],
   saloon: [17, 20, 27, 30],
   store: [33, 36, 42],
 };
@@ -318,7 +318,7 @@ const reserve = (x: number, z: number, width = 1, depth = 1) => {
 };
 for (const xs of Object.values(POSTS)) for (const x of xs) reserve(x, 26);
 const DECK_BARRELS: readonly (readonly [number, number])[] = [
-  [4, 24],
+  [2, 24],
   [16, 24],
   [34, 24],
 ];
@@ -423,10 +423,7 @@ const LAMPS: readonly (readonly [number, number])[] = [
   [2, 28],
 ];
 for (const [x, z] of LAMPS) greserve(x, z, 2, 2);
-const BARRELS: readonly (readonly [number, number])[] = [
-  [13, 30],
-  [31, 31],
-];
+const BARRELS: readonly (readonly [number, number])[] = [[11, 30]];
 for (const [x, z] of BARRELS) greserve(x, z, 2, 2);
 const CACTI: readonly (readonly [number, number, number])[] = [
   [6, 39, 6],
@@ -476,32 +473,52 @@ const SCRUB: readonly (readonly [number, number])[] = [
 for (const [x, z] of SCRUB) greserve(x, z, 2, 2);
 /** Boulders: bands of stacked, narrowing courses at the mesa's foot and the corners of the base. */
 const ROCKS: readonly (readonly [number, number, number, number, number, number])[] = [
-  [21, 39, 4, 2, NOUGAT, SAND],
+  [26, 39, 4, 2, NOUGAT, SAND],
 ];
 for (const [x, z, w, d] of ROCKS) greserve(x, z, w, d);
 
-// Horses: two tied at the hitching rails, one loose in the street. Each faces +x; its four
-// legs stand on open studs.
-const HORSES: readonly (readonly [number, number, number, number])[] = [
-  // x, z, coat, mane
-  [17, 30, TIMBER, DARK_TIMBER],
-  [27, 30, WHITE, DARK_TIMBER],
-  [22, 35, DARK_TIMBER, BLACK],
+// Horses, each with a saddle clipped on its back: two stand at the hitching rails, side on, and a
+// rider comes down the street head on. x, z and the turn are the horse's; a horse is two studs
+// wide and nine long, and faces -z at turn 0.
+const HORSES: readonly (readonly [number, number, Rotation, number, boolean])[] = [
+  [15, 31, 90, TIMBER, false],
+  [25, 31, 270, WHITE, false],
+  [22, 33, 180, DARK_TIMBER, true],
 ];
-for (const [x, z] of HORSES)
-  for (const [dx, dz] of [
-    [0, 0],
-    [3, 0],
-    [0, 1],
-    [3, 1],
-  ])
-    greserve(x + dx, z + dz);
+/** Where the saddle clips on, from the horse's corner, for each way the horse faces. */
+const SADDLE: Readonly<Record<Rotation, readonly [number, number]>> = {
+  0: [-1, 4],
+  90: [4, -1],
+  180: [-1, 3],
+  270: [3, -1],
+};
+
+interface Cowboy {
+  /** The torso's corner, and the plan's y of the stand. */
+  x: number;
+  z: number;
+  legs: number;
+  shirt: number;
+  /** A hat colour, or a bob of hair for the saloon girl. */
+  hat: number;
+  bob?: true;
+}
+// Figures facing the street (+z in the plan), with their feet on open studs: two cowboys in the
+// street, the sheriff on his boardwalk and a girl on the saloon's balcony.
+const COWBOYS: readonly Cowboy[] = [
+  { x: 17, z: 36, legs: 272, shirt: 4, hat: TIMBER },
+  { x: 41, z: 33, legs: 308, shirt: 14, hat: BLACK },
+];
+for (const c of COWBOYS) greserve(c.x + 1, c.z, 2, 2);
+const SHERIFF_FIGURE: Cowboy = { x: 4, z: 25, legs: 272, shirt: 15, hat: SAND };
+reserve(SHERIFF_FIGURE.x + 1, SHERIFF_FIGURE.z, 2, 2);
+const SALOON_GIRL: Cowboy = { x: 22, z: 25, legs: DARK_RED, shirt: 4, hat: DARK_TIMBER, bob: true };
 
 export const westernTown: ExampleDefinition = {
   id: 'western-town',
   name: 'Western Main Street',
   tags: ['western', 'desert', 'saloon', 'sheriff', 'general-store', 'boardwalk', 'mesa', 'street'],
-  expectedPieceCount: 3258,
+  expectedPieceCount: 3265,
   buildArea: SIZE,
   brickIdPrefix: 'western',
   smooth: [{ only: (brick) => NATURAL.has(naturalKey(brick)) }],
@@ -1121,21 +1138,24 @@ export const westernTown: ExampleDefinition = {
       addRun(add, 'plate', DARK_STONE, 'x', 0, G + 1, z, SIZE);
     }
 
-    // ---- Horses: four legs, a brick body, a neck and a sloping head, with a saddle blanket.
-    for (const [x, z, coat, mane] of HORSES) {
-      for (const [dx, dz] of [
-        [0, 0],
-        [3, 0],
-        [0, 1],
-        [3, 1],
-      ])
-        add('3005', coat, x + dx, G, z + dz);
-      add('3001', coat, x, G + 3, z, 90);
-      add('3005', mane, x + 3, G + 6, z);
-      add('3040b', coat, x + 3, G + 9, z, 270);
-      add('3069b', 4, x + 1, G + 6, z, 90);
-      add('3070b', mane, x, G + 6, z + 1);
+    // ---- Horses with saddles, and cowboys: a standing figure is legs, torso, head and a hat,
+    // all turned to face the street; the riders' hips sit on the saddle's studs.
+    const figure = (c: Cowboy, y: number) => {
+      add('3815c01', c.legs, c.x + 1, y, c.z, 180);
+      add('76382p00', c.shirt, c.x, y + 5, c.z, 180);
+      add('3626bp01', 14, c.x + 1, y + 9, c.z - 0.5, 180);
+      if (c.bob) add('29633', c.hat, c.x + 1, y + 12, c.z - 0.5, 180);
+      else add('13565', c.hat, c.x + 0.5, y + 12, c.z - 1, 180);
+    };
+    for (const [x, z, turn, coat, rider] of HORSES) {
+      add('4493c01', coat, x, G, z, turn);
+      const [dx, dz] = SADDLE[turn];
+      add('4491b', 4, x + dx, G + 6, z + dz, turn);
+      if (rider) figure({ x: x - 2, z: z + 3, legs: 272, shirt: DARK_RED, hat: TIMBER }, G + 12);
     }
+    for (const c of COWBOYS) figure(c, G);
+    figure(SHERIFF_FIGURE, G + 4);
+    figure(SALOON_GIRL, G + 23);
 
     // ---- Side-stud details: a host brick in the wall, then a poster or a shutter on its stud.
     const mount = (host: Piece, partId: string, color: number, facing: Facing) => {
