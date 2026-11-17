@@ -1236,9 +1236,7 @@ function Game({
       return;
     }
     if (pressed.has('y')) document.querySelector<HTMLElement>('.fullscreen-toggle')?.click();
-    const root = document.querySelector<HTMLElement>(
-      screen === 'box' ? '.box' : screen === 'title' ? '.title-screen' : '.menu .panel',
-    );
+    const root = document.querySelector<HTMLElement>(screen === 'box' ? '.box' : '.title-screen');
     if (!root) return;
     for (const direction of DIRECTIONS) if (pressed.has(direction)) moveFocus(root, direction);
     if (pressed.has('a')) pressFocused(root);
