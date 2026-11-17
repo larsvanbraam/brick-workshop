@@ -1664,7 +1664,7 @@ describe('upright brick engine', () => {
         expect(
           placeBrick(
             { ...empty, bricks: [brick] },
-            { ...brick, id: 'collision', x: size.width - 1 },
+            { ...brick, id: 'collision', x: part.bodies ? 1 : size.width - 1 },
           ).ok,
         ).toBe(false);
         expect(

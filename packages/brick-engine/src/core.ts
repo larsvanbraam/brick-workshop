@@ -129,6 +129,14 @@ export interface Part {
    * bend. Such a part has no studs, so its position is free of the stud grid.
    */
   yawable?: true;
+  /** Where the rails of a track part end, in the part's own LDraw frame (see `trackEnds`). */
+  trackEnds?: readonly TrackModelEnd[];
+  /**
+   * The solid bodies of a part that fills only a little of its box, as turned boxes in the part's
+   * own LDraw frame, so a bend or a switch collides with what lies in it and not with the empty
+   * ground in its corners. Without bodies the part fills its whole box.
+   */
+  bodies?: readonly ModelBody[];
   /**
    * Bends like a braided string: besides lying straight, it can be strung (`Brick.strung`) from
    * its first end stud to its last anywhere within its length, the cord running straight between.
@@ -260,6 +268,8 @@ function sculptedPart(
       | 'hinge'
       | 'rests'
       | 'yawable'
+      | 'trackEnds'
+      | 'bodies'
       | 'flexible'
     >
   > = {},
@@ -400,6 +410,81 @@ function coneConnections(width: number, topWidth: number): Part['connections'] {
       (site) => Math.hypot(site.x + 0.5 - width / 2, site.z + 0.5 - width / 2) < width / 2,
     ),
   };
+}
+
+/** An end of a track part's rails: LDU from the part's origin, and degrees from +x towards +z. */
+export interface TrackModelEnd {
+  x: number;
+  z: number;
+  angle: number;
+}
+
+/** A turned box of a part, LDU in its own frame: its length runs along `angle` from +x. */
+export interface ModelBody {
+  x: number;
+  z: number;
+  length: number;
+  width: number;
+  angle: number;
+}
+
+// Track geometry, in LDU in the parts' own frames: rails run along x, 160 wide.
+const TRACK_WIDTH = 160;
+const CURVE_RADIUS = 800;
+const CURVE_HALF = 11.25;
+const radians = (degrees: number) => (degrees * Math.PI) / 180;
+const STRAIGHT_ENDS: readonly TrackModelEnd[] = [
+  { x: -160, z: 0, angle: 180 },
+  { x: 160, z: 0, angle: 0 },
+];
+/** The 9V curve turns towards +z: its ends lie on its chord, each leading 11.25 degrees round. */
+const CURVE_ENDS: readonly TrackModelEnd[] = [
+  { x: -CURVE_RADIUS * Math.sin(radians(CURVE_HALF)), z: 0, angle: 180 - CURVE_HALF },
+  { x: CURVE_RADIUS * Math.sin(radians(CURVE_HALF)), z: 0, angle: CURVE_HALF },
+];
+/** The curve as four straight boxes along its arc. */
+const CURVE_BODIES: readonly ModelBody[] = [0, 1, 2, 3].map((index) => {
+  const step = (2 * CURVE_HALF) / 4;
+  const turn = -CURVE_HALF + step * (index + 0.5);
+  return {
+    x: CURVE_RADIUS * Math.sin(radians(turn)),
+    z: CURVE_RADIUS * (Math.cos(radians(CURVE_HALF)) - Math.cos(radians(turn))),
+    length: 2 * CURVE_RADIUS * Math.sin(radians(step / 2)),
+    width: TRACK_WIDTH,
+    angle: turn,
+  };
+});
+/**
+ * A 9V switch's route is 32 studs long, ends at x = -320 and 320; its branch leaves 22.5 degrees off
+ * the route at (326, 259) to -z (right) or +z (left), the end measured from the model to a few LDU.
+ */
+function switchEnds(sign: 1 | -1): readonly TrackModelEnd[] {
+  return [
+    { x: -320, z: 0, angle: 180 },
+    { x: 320, z: 0, angle: 0 },
+    { x: 326, z: sign * 259, angle: sign * 22.5 },
+  ];
+}
+/** The route as one box, the branch as boxes along its centre line, which runs from the route. */
+function switchBodies(sign: 1 | -1): readonly ModelBody[] {
+  const line: [number, number][] = [
+    [-170, 0],
+    [-40, -63],
+    [80, -134],
+    [200, -208],
+    [326, -259],
+  ].map(([x, z]) => [x!, sign * -z!]);
+  const boxes = line.slice(1).map(([x, z], index) => {
+    const [x0, z0] = line[index]!;
+    return {
+      x: (x0 + x!) / 2,
+      z: (z0 + z!) / 2,
+      length: Math.hypot(x! - x0, z! - z0),
+      width: TRACK_WIDTH,
+      angle: (Math.atan2(z! - z0, x! - x0) * 180) / Math.PI,
+    };
+  });
+  return [{ x: 0, z: 0, length: 640, width: TRACK_WIDTH, angle: 0 }, ...boxes];
 }
 
 export const PARTS: readonly Part[] = [
@@ -1958,6 +2043,7 @@ export const PARTS: readonly Part[] = [
   sculptedPart('74746', 'Train track straight 8 x 16', 8, 16, 3, 'detail', {
     rests: true,
     yawable: true,
+    trackEnds: STRAIGHT_ENDS,
     ldrawRotation: 90,
     ldrawBaseY: 8,
     connections: { topStuds: [], bottomReceivers: [] },
@@ -1968,6 +2054,8 @@ export const PARTS: readonly Part[] = [
   sculptedPart('74747', 'Train track curved 9 x 18', 9, 18, 3, 'detail', {
     rests: true,
     yawable: true,
+    trackEnds: CURVE_ENDS,
+    bodies: CURVE_BODIES,
     ldrawRotation: 90,
     ldrawBaseY: 8,
     ldrawCenter: { x: 0, z: -7 },
@@ -1979,6 +2067,8 @@ export const PARTS: readonly Part[] = [
   sculptedPart('75541-f1', 'Train track 9V switch, right, set straight', 21, 36, 5, 'detail', {
     rests: true,
     yawable: true,
+    trackEnds: switchEnds(-1),
+    bodies: switchBodies(-1),
     ldrawRotation: 90,
     ldrawBaseY: 8,
     ldrawCenter: { x: 0, z: -130 },
@@ -1987,6 +2077,8 @@ export const PARTS: readonly Part[] = [
   sculptedPart('75541-f2', 'Train track 9V switch, right, set branching', 21, 36, 5, 'detail', {
     rests: true,
     yawable: true,
+    trackEnds: switchEnds(-1),
+    bodies: switchBodies(-1),
     ldrawRotation: 90,
     ldrawBaseY: 8,
     ldrawCenter: { x: 0, z: -130 },
@@ -1995,6 +2087,8 @@ export const PARTS: readonly Part[] = [
   sculptedPart('75542-f1', 'Train track 9V switch, left, set straight', 21, 36, 5, 'detail', {
     rests: true,
     yawable: true,
+    trackEnds: switchEnds(1),
+    bodies: switchBodies(1),
     ldrawRotation: 90,
     ldrawBaseY: 8,
     ldrawCenter: { x: 0, z: 130 },
@@ -2003,6 +2097,8 @@ export const PARTS: readonly Part[] = [
   sculptedPart('75542-f2', 'Train track 9V switch, left, set branching', 21, 36, 5, 'detail', {
     rests: true,
     yawable: true,
+    trackEnds: switchEnds(1),
+    bodies: switchBodies(1),
     ldrawRotation: 90,
     ldrawBaseY: 8,
     ldrawCenter: { x: 0, z: 130 },
@@ -2324,12 +2420,15 @@ function apply(matrix: Matrix, [x, y, z]: Point): Point {
 // ---------------------------------------------------------------------------------------------
 // Tilted frames. Worked in "level" LDU: x and z as in LDraw, y up (LDraw's -y).
 
+/** Whether a part fills less than its box, so its turned bodies, not its cells, decide collisions. */
+const hasBodies = (brick: Brick) => !!getPart(brick.partId).bodies;
+
 /** Pieces with equal keys share a tilted frame. */
 const tiltKey = (tilt: Tilt) => `${tilt.toward}:${tilt.angle}:${tilt.y}:${tilt.at}`;
 
 /** Whether two pieces stand in the same frame: both untilted, or tilted alike. */
 function sameFrame(first: Brick, second: Brick): boolean {
-  if (first.yaw || second.yaw) return false;
+  if (first.yaw || second.yaw || hasBodies(first) || hasBodies(second)) return false;
   if (!first.tilt || !second.tilt) return !first.tilt && !second.tilt;
   return tiltKey(first.tilt) === tiltKey(second.tilt);
 }
@@ -2415,6 +2514,33 @@ interface Box {
   center: Point;
   axes: readonly [Point, Point, Point];
   half: Point;
+}
+
+/** A part's solid bodies as turned boxes in the world; a part without any fills its whole box. */
+function bodyBoxes(brick: Brick): Box[] {
+  const bodies = getPart(brick.partId).bodies;
+  if (!bodies || brick.tilt || brick.facing) return [bodyBox(brick)];
+  const { x, z, matrix } = getLDrawTransform(brick);
+  const height = footprint(brick).height;
+  return bodies.map((body) => {
+    const lead = radians(body.angle);
+    const [lx, lz] = [Math.cos(lead), Math.sin(lead)];
+    // The matrix turns the part's x and z; a vector (a, b) lands on (m0 a + m2 b, m6 a + m8 b).
+    const turn = (a: number, b: number): Point => [
+      matrix[0] * a + matrix[2] * b,
+      0,
+      matrix[6] * a + matrix[8] * b,
+    ];
+    return {
+      center: [
+        x + matrix[0] * body.x + matrix[2] * body.z,
+        (brick.y + height / 2) * 8,
+        z + matrix[6] * body.x + matrix[8] * body.z,
+      ],
+      half: [body.length / 2, height * 4, body.width / 2],
+      axes: [turn(lx, lz), [0, 1, 0], turn(-lz, lx)],
+    };
+  });
 }
 
 function bodyBox(brick: Brick): Box {
@@ -3237,7 +3363,19 @@ function collides(brick: Brick, size: Size, other: Brick, otherSize: Size): bool
   if (isHingePair(brick, other) || isHingePair(other, brick)) return false;
   if (swingsOn(brick, other) || swingsOn(other, brick)) return false;
   if (sameFrame(brick, other)) return overlaps(brick, size, other, otherSize);
-  return boxesOverlap(bodyBox(brick), bodyBox(other));
+  return bodyBoxes(brick).some((first) =>
+    bodyBoxes(other).some((second) => boxesOverlap(first, second)),
+  );
+}
+
+/** Track sections whose ends meet share the joint, where their turned bodies press together. */
+function jointed(first: Brick, second: Brick): boolean {
+  const ends = getPart(first.partId).trackEnds && trackEnds(first);
+  return (
+    !!ends &&
+    !!getPart(second.partId).trackEnds &&
+    trackEnds(second).some((end) => ends.some((other) => endsMeet(end, other)))
+  );
 }
 
 function overlaps(brick: Brick, size: Size, other: Brick, otherSize: Size): boolean {
@@ -3496,6 +3634,7 @@ function computeValidation(assembly: Assembly): Validation {
         !isMatchingInsertFrame(other, brick) &&
         !isArchInfill(brick, other) &&
         !isArchInfill(other, brick) &&
+        !jointed(brick, other) &&
         !holds(brick, other) &&
         !holds(other, brick) &&
         !clipped(brick, other)
@@ -3628,11 +3767,12 @@ export function validateAddition(
     for (const otherIndex of [...candidates].sort((first, second) => first - second)) {
       const other = index.bricks[otherIndex];
       if (
-        overlaps(other, index.bounds[otherIndex], brick, size) &&
+        collides(other, index.bounds[otherIndex], brick, size) &&
         !isMatchingInsertFrame(other, brick) &&
         !isMatchingInsertFrame(brick, other) &&
         !isArchInfill(other, brick) &&
         !isArchInfill(brick, other) &&
+        !jointed(other, brick) &&
         !chain?.has(other.id)
       ) {
         issues.push({
@@ -3835,6 +3975,61 @@ export function getLDrawTransform(brick: Brick): {
     matrix: turnY(turn),
   };
 }
+
+/** One end of a track section: the middle of its end face, and the way it leads out. */
+export interface TrackEnd {
+  brickId: string;
+  /** Studs, at the section's own height `y` (plates). */
+  x: number;
+  y: number;
+  z: number;
+  /** Degrees the rails lead out, from +x towards +z, in [0, 360). */
+  angle: number;
+}
+
+const normaliseAngle = (angle: number) => ((angle % 360) + 360) % 360;
+/** How far apart two angles are, in degrees, round the circle. */
+export const angleApart = (a: number, b: number) => {
+  const gap = Math.abs(normaliseAngle(a) - normaliseAngle(b));
+  return Math.min(gap, 360 - gap);
+};
+
+/** The ends of a track section, wherever it lies and however it is turned; none for other parts. */
+export function trackEnds(brick: Brick): TrackEnd[] {
+  const ends = getPart(brick.partId).trackEnds;
+  if (!ends) return [];
+  const { x, z, matrix } = getLDrawTransform(brick);
+  const round = (value: number, places = 1000) => Math.round(value * places) / places + 0;
+  return ends.map((end) => {
+    // The matrix turns the part's x and z: world x = m0 x + m2 z, world z = m6 x + m8 z.
+    const lead = radians(end.angle);
+    const [hx, hz] = [Math.cos(lead), Math.sin(lead)];
+    return {
+      brickId: brick.id,
+      x: round((x + matrix[0] * end.x + matrix[2] * end.z) / 20),
+      y: brick.y,
+      z: round((z + matrix[6] * end.x + matrix[8] * end.z) / 20),
+      angle: round(
+        normaliseAngle(
+          (Math.atan2(matrix[6] * hx + matrix[8] * hz, matrix[0] * hx + matrix[2] * hz) * 180) /
+            Math.PI,
+        ),
+        100,
+      ),
+    };
+  });
+}
+
+/** Ends this close (in studs) that lead opposite ways meet: a switch's branch is measured to a few LDU. */
+export const TRACK_MEET = 0.3;
+/** Opposite headings may differ by this many degrees. */
+export const TRACK_IN_LINE = 1;
+
+export const endsMeet = (a: TrackEnd, b: TrackEnd) =>
+  a.brickId !== b.brickId &&
+  a.y === b.y &&
+  Math.hypot(a.x - b.x, a.z - b.z) <= TRACK_MEET &&
+  angleApart(a.angle, b.angle + 180) <= TRACK_IN_LINE;
 
 export function exportLDraw(assembly: Assembly): string {
   const issues = validateAssembly(assembly);

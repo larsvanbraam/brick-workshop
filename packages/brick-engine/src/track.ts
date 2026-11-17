@@ -1,5 +1,5 @@
-import { SWITCH_TRACKS, getLDrawTransform } from './core.ts';
-import type { Assembly, Brick } from './core.ts';
+import { TRACK_IN_LINE, TRACK_MEET, angleApart, endsMeet, trackEnds } from './core.ts';
+import type { Assembly, TrackEnd } from './core.ts';
 
 /** Straight 9V track: one section, 16 studs from end to end. */
 export const STRAIGHT_TRACK = '74746';
@@ -8,99 +8,6 @@ export const TRACK_LENGTH = 16;
 /** The 9V curved section: 22.5 degrees of a 40 stud radius, its ends tipped 11.25 degrees. */
 export const CURVED_TRACK = '74747';
 
-/** An end of a part's rails in the part's own LDraw frame. */
-interface ModelEnd {
-  /** LDraw units from the part's origin. */
-  x: number;
-  z: number;
-  /** Degrees the rails lead out, from the part's +x towards its +z. */
-  angle: number;
-}
-
-const CURVE_RADIUS = 800;
-const HALF_CURVE = 11.25;
-const curveHalfChord = CURVE_RADIUS * Math.sin((HALF_CURVE * Math.PI) / 180);
-
-/**
- * The lateral reach of a 9V switch's branch end: measured from the model, where the branch ends
- * 22.5 degrees off the route, about 16.3 studs on and 13 studs aside. Good to a few LDU.
- */
-const BRANCH = { x: 326, z: 259, angle: 22.5 };
-
-/**
- * Where the rails of each track part end, in the part's own frame. A switch has the two ends of its
- * straight route, 32 studs long, and the end of its branch, which leaves to -z (right) or +z (left).
- */
-const MODEL_ENDS: Readonly<Record<string, readonly ModelEnd[]>> = {
-  [STRAIGHT_TRACK]: [
-    { x: -160, z: 0, angle: 180 },
-    { x: 160, z: 0, angle: 0 },
-  ],
-  // The bend turns towards +z: both ends lead away 11.25 degrees round it.
-  [CURVED_TRACK]: [
-    { x: -curveHalfChord, z: 0, angle: 180 - HALF_CURVE },
-    { x: curveHalfChord, z: 0, angle: HALF_CURVE },
-  ],
-  ...Object.fromEntries(
-    SWITCH_TRACKS.map((id) => {
-      const right = id.startsWith('75541');
-      const sign = right ? -1 : 1;
-      return [
-        id,
-        [
-          { x: -320, z: 0, angle: 180 },
-          { x: 320, z: 0, angle: 0 },
-          { x: BRANCH.x, z: sign * BRANCH.z, angle: sign * BRANCH.angle },
-        ],
-      ];
-    }),
-  ),
-};
-
-/** One end of a track section: the middle of its end face, and the way it leads out. */
-export interface TrackEnd {
-  brickId: string;
-  /** Studs, at the section's own height `y` (plates). */
-  x: number;
-  y: number;
-  z: number;
-  /** Degrees the rails lead out, from +x towards +z, in [0, 360). */
-  angle: number;
-}
-
-const normalise = (angle: number) => ((angle % 360) + 360) % 360;
-/** How far apart two angles are, in degrees, round the circle. */
-const apart = (a: number, b: number) => {
-  const gap = Math.abs(normalise(a) - normalise(b));
-  return Math.min(gap, 360 - gap);
-};
-
-/** The ends of a track section, wherever it lies and however it is turned. */
-export function trackEnds(brick: Brick): TrackEnd[] {
-  const ends = MODEL_ENDS[brick.partId];
-  if (!ends) return [];
-  const { x, z, matrix } = getLDrawTransform(brick);
-  const round = (value: number, places = 1000) => Math.round(value * places) / places + 0;
-  return ends.map((end) => {
-    // The matrix turns the part's x and z: world x = m0 x + m2 z, world z = m6 x + m8 z.
-    const lead = (end.angle * Math.PI) / 180;
-    const [hx, hz] = [Math.cos(lead), Math.sin(lead)];
-    return {
-      brickId: brick.id,
-      x: round((x + matrix[0] * end.x + matrix[2] * end.z) / 20),
-      y: brick.y,
-      z: round((z + matrix[6] * end.x + matrix[8] * end.z) / 20),
-      angle: round(
-        normalise(
-          (Math.atan2(matrix[6] * hx + matrix[8] * hz, matrix[0] * hx + matrix[2] * hz) * 180) /
-            Math.PI,
-        ),
-        100,
-      ),
-    };
-  });
-}
-
 export interface TrackLinks {
   /** Pairs of section ids that meet end to end, in line and at the same height. */
   links: [string, string][];
@@ -108,16 +15,7 @@ export interface TrackLinks {
   loose: TrackEnd[];
 }
 
-/** Ends this close (in studs) that lead opposite ways meet: switch branch ends are measured only to a few LDU. */
-const MEET = 0.3;
-/** Opposite headings may differ by this many degrees. */
-const IN_LINE = 1;
-
-const isLinked = (a: TrackEnd, b: TrackEnd) =>
-  a.brickId !== b.brickId &&
-  a.y === b.y &&
-  Math.hypot(a.x - b.x, a.z - b.z) <= MEET &&
-  apart(a.angle, b.angle + 180) <= IN_LINE;
+const isLinked = endsMeet;
 
 /**
  * Which track sections meet. Two ends link when they share a point (to a fraction of a stud) and a
@@ -189,13 +87,13 @@ export function trackWarnings(assembly: Pick<Assembly, 'bricks'>): TrackWarning[
       const [dx, dz, dy] = [b.x - a.x, b.z - a.z, b.y - a.y];
       if (Math.hypot(dx, dz) > NEAR || Math.abs(dy) > NEAR * 2.5) continue;
       const reasons: string[] = [];
-      const turn = apart(a.angle, b.angle + 180);
-      if (turn > IN_LINE) reasons.push(`they are ${turn}° out of line`);
+      const turn = angleApart(a.angle, b.angle + 180);
+      if (turn > TRACK_IN_LINE) reasons.push(`they are ${turn}° out of line`);
       if (dy) reasons.push(`one is ${plural(Math.abs(dy), 'plate')} higher`);
       const lead = (a.angle * Math.PI) / 180;
       const along = dx * Math.cos(lead) + dz * Math.sin(lead);
       const across = -dx * Math.sin(lead) + dz * Math.cos(lead);
-      const [far, side] = [Math.abs(along) > MEET, Math.abs(across) > MEET];
+      const [far, side] = [Math.abs(along) > TRACK_MEET, Math.abs(across) > TRACK_MEET];
       if (side)
         reasons.push(
           `they are ${plural(Math.round(Math.abs(across) * 100) / 100, 'stud')} out of line sideways`,

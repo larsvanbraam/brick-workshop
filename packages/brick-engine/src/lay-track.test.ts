@@ -96,3 +96,55 @@ describe('layTrack', () => {
     expect(() => lay({ x: 4, y: 0, z: 4, angle: 0 }, 'SX')).toThrow(/Unknown track step/);
   });
 });
+
+describe('track collisions', () => {
+  const codes = (bricks: Brick[], buildArea = 96) =>
+    validateAssembly({ name: 't', bricks, buildArea }).map((issue) => issue.code);
+
+  it('lets a whole ring of curves stand, joints and all', () => {
+    // A ring of radius 40 studs, so it needs the larger board.
+    const { bricks } = lay({ x: 60, y: 0, z: 20, angle: 0 }, 'R'.repeat(16));
+    expect(codes(bricks, 128)).toEqual([]);
+  });
+
+  it('lets an S bend and a switch with its branch stand', () => {
+    expect(codes(lay({ x: 10, y: 0, z: 40, angle: 0 }, 'SRLS').bricks)).toEqual([]);
+    const { bricks, branches } = lay({ x: 4, y: 0, z: 40, angle: 0 }, 'SrS');
+    const spur = lay(branches[0]!, 'SS').bricks.map((brick) => ({ ...brick, id: `s${brick.id}` }));
+    expect(codes([...bricks, ...spur])).toEqual([]);
+  });
+
+  it('lets a brick stand in the empty corner of a switch box, but not on the rails', () => {
+    // A right switch at (10, 10): its box reaches the branch side, where the route's far
+    // corner is open ground.
+    const { bricks } = lay({ x: 4, y: 0, z: 40, angle: 0 }, 'r');
+    const sw = bricks[0]!;
+    const brick = (id: string, x: number, z: number): Brick => ({
+      id,
+      partId: '3001',
+      color: 4,
+      x,
+      y: 0,
+      z,
+      rotation: 0,
+    });
+    // A switch's route runs through z = 40 from x = 4; its branch leaves toward -z.
+    expect(codes([sw, brick('on', 20, 38)])).toContain('collision');
+    expect(codes([sw, brick('corner', 36, 55)])).toEqual([]);
+  });
+
+  it('still collides with a brick across a curve', () => {
+    const { bricks } = lay({ x: 40, y: 0, z: 40, angle: 0 }, 'R');
+    const brick: Brick = { id: 'w', partId: '3001', color: 4, x: 48, y: 0, z: 38, rotation: 0 };
+    expect(codes([...bricks, brick])).toContain('collision');
+  });
+
+  it('still collides with track that does not join it', () => {
+    const { bricks } = lay({ x: 4, y: 0, z: 40, angle: 0 }, 'S');
+    const crossing = lay({ x: 12, y: 0, z: 30, angle: 90 }, 'S').bricks.map((brick) => ({
+      ...brick,
+      id: `x${brick.id}`,
+    }));
+    expect(codes([...bricks, ...crossing])).toContain('collision');
+  });
+});

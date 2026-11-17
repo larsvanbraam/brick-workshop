@@ -7,7 +7,8 @@ import {
   getPart,
 } from '../core.ts';
 import type { Brick, Facing, Rotation } from '../core.ts';
-import { CURVED_TRACK, STRAIGHT_TRACK, TRACK_LENGTH, trackEnds } from '../track.ts';
+import { trackEnds } from '../core.ts';
+import { CURVED_TRACK, STRAIGHT_TRACK, TRACK_LENGTH } from '../track.ts';
 import type { ExampleBrickAdder } from './types.ts';
 
 /** Run kinds: `short` lays bricks no longer than three studs, for finer stonework. */

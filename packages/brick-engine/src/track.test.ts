@@ -1,9 +1,7 @@
 import { describe, expect, it } from 'vite-plus/test';
-import { createExampleAssembly } from './index.ts';
-import type { Brick, Rotation } from './index.ts';
-import { SWITCH_TRACKS } from './index.ts';
-import { findTrackLinks, trackEnds, trackWarnings } from './track.ts';
-import type { TrackEnd } from './track.ts';
+import { SWITCH_TRACKS, createExampleAssembly, trackEnds } from './index.ts';
+import type { Brick, Rotation, TrackEnd } from './index.ts';
+import { findTrackLinks, trackWarnings } from './track.ts';
 
 const section = (
   id: string,
