@@ -30,6 +30,7 @@ import { QUESTS, giverId, takerId } from './quests.ts';
 import type { Helper, QuestEvent } from './quests.ts';
 import { QuestMarks } from './QuestScene.tsx';
 import { Fireworks } from './Fireworks.tsx';
+import { Sharks } from './Sharks.tsx';
 import type { Positions, QuestView } from './QuestScene.tsx';
 import { hash2 } from './world/noise.ts';
 import { Vehicles } from '@brick-workshop/vehicles/drive-view';
@@ -263,6 +264,7 @@ export function GameScene(props: GameSceneProps) {
         />
       )}
       {props.quests && <Fireworks show={props.quests.fireworks} probe={probe} />}
+      {props.tide && <Sharks terrain={props.terrain} probe={probe} size={buildArea} />}
       {props.vehicles.length > 0 && (
         <Vehicles
           vehicles={props.vehicles}
