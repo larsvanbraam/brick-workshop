@@ -1,5 +1,6 @@
 import { BUILD_AREA, FACINGS, footprint, getConnectionSites, getPart } from '../core.ts';
 import type { Brick, Facing, Rotation } from '../core.ts';
+import { STRAIGHT_TRACK, TRACK_LENGTH } from '../track.ts';
 import type { ExampleBrickAdder } from './types.ts';
 
 /** Run kinds: `short` lays bricks no longer than three studs, for finer stonework. */
@@ -41,6 +42,30 @@ const RUN_PARTS: Readonly<Record<RunKind, readonly (readonly [number, string])[]
     [1, '3005'],
   ],
 };
+
+/**
+ * Lays `sections` straight track sections end to end, the first with its min corner at x, z and
+ * the line running along `axis`. Each section's end meets the next one's (see `findTrackLinks`).
+ */
+export function addTrack(
+  add: ExampleBrickAdder,
+  color: number,
+  axis: 'x' | 'z',
+  x: number,
+  y: number,
+  z: number,
+  sections: number,
+) {
+  for (let i = 0; i < sections; i++)
+    add(
+      STRAIGHT_TRACK,
+      color,
+      axis === 'x' ? x + i * TRACK_LENGTH : x,
+      y,
+      axis === 'x' ? z : z + i * TRACK_LENGTH,
+      axis === 'x' ? 90 : 0,
+    );
+}
 
 /** Adds one straight 1-wide run, split into the longest catalogue pieces that fit. */
 export function addRun(

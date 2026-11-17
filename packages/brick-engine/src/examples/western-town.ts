@@ -6,6 +6,7 @@ import {
   addRing,
   addRowMap,
   addRun,
+  addTrack,
   bottomUp,
   glazeWindows,
 } from './layout.ts';
@@ -1133,7 +1134,7 @@ export const westernTown: ExampleDefinition = {
     }
 
     // ---- The railway: three 16-stud sections of real train track laid end to end on the strip of sand.
-    for (let x = 0; x < SIZE; x += 16) add('74746', DARK_STONE, x, G, RAIL.z0, 90);
+    addTrack(add, DARK_STONE, 'x', 0, G, RAIL.z0, SIZE / 16);
 
     // ---- Horses with saddles, and cowboys: a standing figure is legs, torso, head and a hat,
     // all turned to face the street; the rider's feet stand on the saddle's studs, the saddle on the horse's.

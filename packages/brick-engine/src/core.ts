@@ -1955,6 +1955,16 @@ export const PARTS: readonly Part[] = [
     ldrawBaseY: 8,
     connections: { topStuds: [], bottomReceivers: [] },
   }),
+  // A 9V curved section: 22.5 degrees of a wide bend, the same rails and sleepers as the straight.
+  // Placed only at the four quarter turns, its box is the curve's own bounds (the bend bulges 6 studs
+  // towards -z at rotation 0, hence the offset centre), so it ends a line or makes a lone bend.
+  sculptedPart('74747', 'Train track curved 9 x 18', 9, 18, 3, 'detail', {
+    rests: true,
+    ldrawRotation: 90,
+    ldrawBaseY: 8,
+    ldrawCenter: { x: 0, z: -7 },
+    connections: { topStuds: [], bottomReceivers: [] },
+  }),
   // Minifigures, stacked like the real thing: hips and legs on two studs, the torso (with arms
   // and yellow hands) on the hips, the head on the neck and hair or a hat on the head's stud.
   // Each faces -z at rotation 0. Hips and neck rise into the piece above, and hair falls round

@@ -180,6 +180,7 @@ const PART_USES: Record<string, string> = {
   '13565': 'minifigure fedora, hat with brim, on a head 3626bp01',
   '74746':
     'train track, railway, rails, railroad, sleepers, 8 studs wide and 16 long, lies on the ground',
+  '74747': 'curved train track, railway bend, 22.5 degree curve, lies on the ground next to 74746',
   '4493c01':
     'horse, animal, rides a cowboy, stands on its hooves, carries saddle 4491b on its back studs',
   '4491b':
