@@ -1,11 +1,11 @@
 import { defineConfig } from 'vite-plus';
 
 export default defineConfig({
-  defaultPackage: './apps/web',
+  defaultPackage: './apps/brick-studio',
   test: {
     include: [
       'packages/**/*.test.ts',
-      'apps/web/tooling/**/*.test.ts',
+      'apps/brick-studio/tooling/**/*.test.ts',
       'apps/brick-world/src/**/*.test.ts',
     ],
   },

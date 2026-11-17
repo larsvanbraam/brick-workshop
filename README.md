@@ -32,7 +32,7 @@ pnpm fmt     # format the workspace
   instructions and the example builds. No UI or rendering dependencies.
 - `packages/claude-adapter`: Claude tool sessions over the engine, the local
   generation CLI and the workshop server.
-- `apps/web`: the workshop (viewer, part picker, editing, undo/redo, imports and
+- `apps/brick-studio`: the workshop (viewer, part picker, editing, undo/redo, imports and
   exports, full-library browser) and the building instructions tool.
 - `data`: the local, Git-ignored LDraw library and inventory downloads.
 
@@ -202,7 +202,7 @@ the reference sets (modular buildings, Architecture landmarks, Ideas and Icons c
 cottages) by piece count, part-category mix, small-part share and palette. It also ranks
 the parts those sets use that the catalogue lacks, and the supported parts the examples
 underuse. The reference sets and the example each group benchmarks are `REFERENCE_GROUPS`
-in [rebrickable-report.ts](apps/web/tooling/rebrickable-report.ts). Regenerate with:
+in [rebrickable-report.ts](apps/brick-studio/tooling/rebrickable-report.ts). Regenerate with:
 
 ```sh
 pnpm rebrickable:report

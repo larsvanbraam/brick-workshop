@@ -308,7 +308,7 @@ importers:
         specifier: 1.4.0
         version: 1.4.0(@opentelemetry/api@1.10.0)(@types/node@24.19.2)(@vitest/ui@5.0.5)(typescript@7.0.2)
 
-  apps/web:
+  apps/brick-studio:
     dependencies:
       '@brick-workshop/audio':
         specifier: workspace:*

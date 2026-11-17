@@ -22,7 +22,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
   const output = process.argv[2];
   if (!output)
     throw new Error(
-      'Usage: node apps/web/tooling/import-masses.ts output.json [engineId=catalogueId ...]. Review names and variants before adding records to the snapshot.',
+      'Usage: node apps/brick-studio/tooling/import-masses.ts output.json [engineId=catalogueId ...]. Review names and variants before adding records to the snapshot.',
     );
   const requests =
     process.argv.length > 3
