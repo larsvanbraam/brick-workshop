@@ -440,7 +440,7 @@ export const westernTown: ExampleDefinition = {
   id: 'western-town',
   name: 'Western Main Street',
   tags: ['western', 'desert', 'saloon', 'sheriff', 'general-store', 'boardwalk', 'mesa', 'street'],
-  expectedPieceCount: 2383,
+  expectedPieceCount: 2416,
   buildArea: SIZE,
   brickIdPrefix: 'western',
   smooth: [{ only: (brick) => NATURAL.has(naturalKey(brick)) }],
@@ -536,7 +536,7 @@ export const westernTown: ExampleDefinition = {
         return kept ? 'q' : 'h';
       return 's';
     });
-    addAreaMap(natural, ground, 4, {
+    addAreaMap(add, ground, 4, {
       s: ['plate', SAND],
       e: ['plate', HARDPAN],
       n: ['plate', NOUGAT],
@@ -902,6 +902,124 @@ export const westernTown: ExampleDefinition = {
         add('87081', color, x, G + 16 + i * 3, z),
       );
       add('3943b', DARK_STONE, x, G + 25, z);
+    }
+
+    // ---- Interiors, seen through the windows: a plank floor on a hidden fill, with furniture
+    // standing on the open studs kept for it.
+    const furnish = (b: Building, kept: Set<string>) => {
+      const inside = (x: number, z: number) => x > b.x0 && x < b.x1 && z > b.z0 && z < b.z1;
+      addAreaMap(
+        add,
+        plan((x, z) => (inside(x, z) ? 'f' : ' ')),
+        G,
+        { f: ['brick', DARK_TIMBER] },
+      );
+      addAreaMap(
+        add,
+        plan((x, z) => {
+          if (!inside(x, z)) return ' ';
+          if (kept.has(`${x},${z}`)) return 'p';
+          const roll = hash(Math.floor(x / 2), z, 61 + b.x0);
+          return roll < 0.3 ? 'b' : roll < 0.5 ? 'c' : 'a';
+        }),
+        G + 3,
+        {
+          a: ['tile', TIMBER],
+          b: ['tile', DARK_TIMBER],
+          c: ['tile', NOUGAT],
+          p: ['plate', TIMBER],
+        },
+      );
+    };
+    {
+      const Y = G + 4;
+      const kept = new Set<string>();
+      const keep = (x: number, z: number, width = 1, depth = 1) => {
+        for (let dx = 0; dx < width; dx++)
+          for (let dz = 0; dz < depth; dz++) kept.add(`${x + dx},${z + dz}`);
+      };
+      keep(18, 15, 1, 6);
+      keep(20, 15, 1, 6);
+      const tables: readonly (readonly [number, number])[] = [
+        [23, 17],
+        [26, 17],
+      ];
+      const stools: readonly (readonly [number, number])[] = [
+        [22, 17],
+        [23, 19],
+        [24, 16],
+        [28, 18],
+        [26, 19],
+        [27, 16],
+      ];
+      for (const [x, z] of tables) keep(x, z, 2, 2);
+      for (const [x, z] of stools) keep(x, z);
+      furnish(SALOON, kept);
+      // The bar: a counter with a tile top, and a back bar with a row of bottles.
+      for (const z of [15, 18]) {
+        add('3622', DARK_TIMBER, 18, Y, z, 0);
+        add('3622', TIMBER, 20, Y, z, 0);
+        add('63864', NOUGAT, 20, Y + 3, z, 0);
+      }
+      [2, 14, 4, 2, 6, 14].forEach((color, i) => add('3062b', color, 18, Y + 3, 15 + i));
+      for (const [x, z] of tables) {
+        add('3941', TIMBER, x, Y, z);
+        add('4032a', NOUGAT, x, Y + 3, z);
+      }
+      for (const [x, z] of stools) {
+        add('3062b', DARK_TIMBER, x, Y, z);
+        add('6141', 4, x, Y + 3, z);
+      }
+    }
+
+    // The sheriff's office: a desk and chair by the window, and a cell with a cot at the back.
+    {
+      const Y = G + 4;
+      const kept = new Set<string>();
+      const keep = (x: number, z: number, width = 1, depth = 1) => {
+        for (let dx = 0; dx < width; dx++)
+          for (let dz = 0; dz < depth; dz++) kept.add(`${x + dx},${z + dz}`);
+      };
+      keep(5, 20, 3, 2);
+      keep(6, 19, 2, 1);
+      keep(9, 14, 1, 4);
+      keep(9, 18, 4, 1);
+      keep(11, 14, 2, 4);
+      furnish(SHERIFF, kept);
+      for (const z of [20, 21]) {
+        add('3622', TIMBER, 5, Y, z, 90);
+        add('63864', DARK_TIMBER, 5, Y + 3, z, 90);
+      }
+      add('3062b', DARK_TIMBER, 6, Y, 19);
+      add('6141', 4, 6, Y + 3, 19);
+      add('3062b', 46, 7, Y, 19);
+      add('4589', BLACK, 7, Y + 3, 19);
+      add('3633', DARK_STONE, 9, Y, 14, 0);
+      add('3633', DARK_STONE, 9, Y, 18, 90);
+      add('3020', 272, 11, Y, 14);
+      add('3023b', WHITE, 12, Y + 1, 14);
+    }
+
+    // The general store: a counter, shelves of goods along the back wall, crates and sacks.
+    {
+      const Y = G + 4;
+      const kept = new Set<string>();
+      const keep = (x: number, z: number, width = 1, depth = 1) => {
+        for (let dx = 0; dx < width; dx++)
+          for (let dz = 0; dz < depth; dz++) kept.add(`${x + dx},${z + dz}`);
+      };
+      keep(35, 18, 6, 1);
+      keep(34, 14, 8, 1);
+      keep(40, 20, 2, 2);
+      keep(34, 21, 2, 1);
+      furnish(STORE, kept);
+      add('3009', TIMBER, 35, Y, 18, 90);
+      add('6636', NOUGAT, 35, Y + 3, 18, 90);
+      for (const x of [34, 38]) add('3010', DARK_TIMBER, x, Y, 14, 90);
+      [4, 14, 2, 15, 6, 4, 25, 14].forEach((color, i) => add('3062b', color, 34 + i, Y + 3, 14));
+      add('3003', NOUGAT, 40, Y, 20);
+      add('3068b', TIMBER, 40, Y + 3, 20);
+      for (const x of [34, 35]) add('3062b', SAND, x, Y, 21);
     }
 
     order.flush();
