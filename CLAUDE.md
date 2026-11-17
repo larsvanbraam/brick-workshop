@@ -11,11 +11,11 @@ controller). The [README](README.md) covers the engine's rules (coordinates, par
 physics); read it before placing pieces.
 
 ```sh
-pnpm dev       # workshop on http://localhost:5173
-pnpm brick-world # Brick World on http://localhost:5173 (or the next free port)
-pnpm test      # Vitest
-pnpm check     # format, lint and typecheck; run before every commit
-pnpm fmt       # format the workspace
+pnpm dev:studio  # workshop on http://localhost:5173
+pnpm dev:world   # Brick World on http://localhost:5173 (or the next free port)
+pnpm test        # Vitest
+pnpm check       # format, lint and typecheck; run before every commit
+pnpm fmt         # format the workspace
 ```
 
 Commit straight to `main`; this repo has no feature branches. Commit only when asked.
@@ -130,7 +130,7 @@ hand. Smoothing pieces count towards `expectedPieceCount`.
    build it with `createExampleRegistry([{ ...definition, expectedPieceCount: 0 }])` in a
    scratch script and read the error. A wrong count throws in the app too, and the workshop
    then hangs on "Preparing build…".
-7. **Look.** Run `pnpm dev`, open the example from **File**, check the badge reads
+7. **Look.** Run `pnpm dev:studio`, open the example from **File**, check the badge reads
    "<n> pieces · Valid", and look at it from every side, including the back and from above.
    The workshop autosaves the build it shows, so after each change reopen the example from
    **File**. Orbit by dragging (the angle per drag varies, so check where you ended up);

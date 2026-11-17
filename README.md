@@ -12,7 +12,7 @@ Requires Node.js 22.18+, 24.11+ or 26+ and pnpm 12.16.1.
 ```sh
 pnpm install
 pnpm ldraw:fetch   # optional: download the LDraw library into data/ldraw
-pnpm dev           # http://localhost:5173
+pnpm dev:studio    # http://localhost:5173
 ```
 
 Without the LDraw library the viewer falls back to simplified procedural
@@ -62,7 +62,7 @@ Generation needs the workshop server next to the dev server:
 
 ```sh
 pnpm workshop:server
-pnpm dev
+pnpm dev:studio
 ```
 
 Set `ANTHROPIC_API_KEY` in the server's environment or the ignored root `.env`

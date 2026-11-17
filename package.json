@@ -4,9 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vp -C apps/brick-studio dev",
-    "brick-world": "vp -C apps/brick-world dev",
-    "island": "vp -C apps/brick-island dev",
+    "dev:studio": "vp -C apps/brick-studio dev",
+    "dev:world": "vp -C apps/brick-world dev",
+    "dev:island": "vp -C apps/brick-island dev",
     "build": "pnpm typecheck && vp -C apps/brick-studio build && vp -C apps/brick-world build && vp -C apps/brick-island build && vp -C packages/brick-engine pack && vp -C packages/claude-adapter pack",
     "test": "vp test",
     "check": "vp check && pnpm typecheck",
