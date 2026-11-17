@@ -1,9 +1,27 @@
 # Brick Studio
 
-A LEGO assembly playground: a 3D workshop for building with real LDraw parts, a
-UI-free engine that validates every placement, and a Claude adapter that builds
-through the same engine. pnpm monorepo with Vite Plus, React 19, TypeScript and
-Three.js.
+<p align="center">
+  <a href="https://brick-studio.larsvanbraam.nl"><img src="apps/brick-studio/public/og-image.jpg" alt="Brick Studio" width="32%"></a>
+  <a href="https://brick-world.larsvanbraam.nl"><img src="apps/brick-world/public/og-image.jpg" alt="Brick World" width="32%"></a>
+  <a href="https://brick-island.larsvanbraam.nl"><img src="apps/brick-island/public/og-image.jpg" alt="Brick Island" width="32%"></a>
+</p>
+
+A LEGO playground built on real LDraw parts. One UI-free engine decides what can be
+built, and three apps sit on top of it: a **workshop** for building and editing, and two
+**games**, Brick World and Brick Island, where a minifigure walks around a 3D world. A
+Claude adapter builds through the same engine. pnpm monorepo with Vite Plus, React 19,
+TypeScript and Three.js.
+
+## The apps
+
+| App                               | What it is                                                                                                                 | Run               | Live demo                                                            |
+| --------------------------------- | -------------------------------------------------------------------------------------------------------------------------- | ----------------- | -------------------------------------------------------------------- |
+| [Brick Studio](apps/brick-studio) | The workshop: place, edit and validate builds, import and export, make building instructions, generate builds with Claude. | `pnpm dev:studio` | [brick-studio.larsvanbraam.nl](https://brick-studio.larsvanbraam.nl) |
+| [Brick World](apps/brick-world)   | Game: an endless generated world to explore, with real bricks to build it up with.                                         | `pnpm dev:world`  | [brick-world.larsvanbraam.nl](https://brick-world.larsvanbraam.nl)   |
+| [Brick Island](apps/brick-island) | Game: one hand-drawn island with a harbour town, a farm, a lake and a mountain. Explore and drive; no building.            | `pnpm dev:island` | [brick-island.larsvanbraam.nl](https://brick-island.larsvanbraam.nl) |
+
+Each dev server starts on http://localhost:5173, or the next free port. See [Games](#games)
+for how the two games differ.
 
 ## Run
 
@@ -12,10 +30,10 @@ Requires Node.js 22.18+, 24.11+ or 26+ and pnpm 12.16.1.
 ```sh
 pnpm install
 pnpm ldraw:fetch   # optional: download the LDraw library into data/ldraw
-pnpm dev:studio    # http://localhost:5173
+pnpm dev:studio    # or dev:world, dev:island
 ```
 
-Without the LDraw library the viewer falls back to simplified procedural
+Without the LDraw library the apps fall back to simplified procedural
 geometry. See [data/README.md](data/README.md) to use a library elsewhere.
 
 ```sh
@@ -26,16 +44,39 @@ pnpm build:studio   # one app only: also build:world, build:island, build:packag
 pnpm fmt     # format the workspace
 ```
 
-## Workspace
+## What's in the repository
+
+Everything builds on `brick-engine`. The rendering and game packages add `brick-render`,
+`brick-game` pulls them all together, and the three apps sit on top.
+
+**Engine and tools**
 
 - `packages/brick-engine`: part catalogue, placement, collision and support
   validation, static gravity analysis, atomic edits, LDraw export, building
   instructions and the example builds. No UI or rendering dependencies.
 - `packages/claude-adapter`: Claude tool sessions over the engine, the local
   generation CLI and the workshop server.
+
+**Rendering and game building blocks**
+
+- `packages/brick-render`: LDraw loading, batched drawing, the cinematic look, the
+  loading card and the LDraw library's Vite plugin. Both game apps and the workshop draw with it.
+- `packages/brick-walk`: the minifigure controller (walking, jumping, gamepad, footsteps).
+- `packages/brick-npc`: wandering townsfolk and animals, and their talk.
+- `packages/brick-vehicles`: drivable vehicles, their models and sounds.
+- `packages/brick-audio`: the music composer and voices.
+- `packages/brick-game`: the game itself: world generation, chunks, building, menus,
+  saves, minimap and quests. Started with a `GameConfig`.
+
+**Apps and data**
+
 - `apps/brick-studio`: the workshop (viewer, part picker, editing, undo/redo, imports and
   exports, full-library browser) and the building instructions tool.
+- `apps/brick-world`, `apps/brick-island`: thin shells that call `startGame` from
+  `packages/brick-game` with their own `GameConfig`.
 - `data`: the local, Git-ignored LDraw library and inventory downloads.
+- `docs`: the [build standard](docs/build-standard.md) and the
+  [benchmarks against real sets](docs/rebrickable-benchmarks.md).
 
 ## Workshop
 
@@ -71,6 +112,25 @@ Set `ANTHROPIC_API_KEY` in the server's environment or the ignored root `.env`
 server runs through your local Claude Code login instead, which is for personal
 local use only. The server binds to `127.0.0.1:8787` (`WORKSHOP_API_PORT`) and
 Vite proxies `/api/workshop` to it.
+
+## Games
+
+Both games are one codebase ([packages/brick-game](packages/brick-game)); an app picks its
+game by passing a `GameConfig` to `startGame`. The config sets what shapes the world and
+which features are on:
+
+| Setting     | Brick World                                      | Brick Island                            |
+| ----------- | ------------------------------------------------ | --------------------------------------- |
+| `world`     | generated from any seed                          | one hand-drawn island (seed 7)          |
+| `building`  | on: hotbar, brick box, place and take off pieces | off: a game for walking round           |
+| `fixedTime` | day and night                                    | always a bright morning                 |
+| `minimap`   | off                                              | on, with landmarks (`N` opens it full)  |
+| `saveSlots` | worlds, each with its building                   | save games that remember where you were |
+| `vehicles`  | none                                             | parked round the island to drive        |
+
+Saves live in the browser under each game's own prefix, so the two never read each
+other's. To add a game, add a `GameConfig` next to `BRICK_WORLD` and `BRICK_ISLAND` in
+[game.ts](packages/brick-game/src/game.ts) and a shell app that starts it.
 
 ## Engine
 
@@ -277,11 +337,10 @@ library, packages only the supported parts with their attribution and licences,
 and sets `VITE_WORKSHOP_GENERATION=false` to hide generation. Saving to
 `builds/` and previews of arbitrary library parts need the local server.
 
-Brick World (the game, first called Brick Island) deploys as a second Vercel
-project from the same repository: set its **Root Directory** to `apps/brick-world`
-(leave "Include files outside the root directory" on) and
-`apps/brick-world/vercel.json` does the rest. It fetches the same LDraw library,
-builds the game as a static site into `apps/brick-world/dist` and needs no
+The games deploy as their own Vercel projects from the same repository. Set a project's
+**Root Directory** to `apps/brick-world` or `apps/brick-island` (leave "Include files
+outside the root directory" on) and that app's `vercel.json` does the rest. It fetches the
+same LDraw library, builds the game as a static site into the app's `dist` and needs no
 environment variables.
 
 The LDraw library is community-maintained, not LEGO-authored; keep its
