@@ -1107,8 +1107,8 @@ describe('architectural part families', () => {
     const ground = { ...base, id: 'ground', partId: '91405', color: 72, x: 0, y: 0, z: 0 };
     const horse = { ...base, id: 'horse', partId: '4493c01', x: 4, y: 1, z: 2 };
     const saddle = { ...base, id: 'saddle', partId: '4491b', x: 3, y: 8, z: 6 };
-    const hips = { ...base, id: 'hips', partId: '3815c01', x: 4, y: 9, z: 6 };
-    const torso = { ...base, id: 'torso', partId: '76382p00', x: 3, y: 14, z: 6 };
+    const hips = { ...base, id: 'hips', partId: '3815c01', x: 4, y: 9, z: 5 };
+    const torso = { ...base, id: 'torso', partId: '76382p00', x: 3, y: 14, z: 5 };
     const area = { name: 'Horse', buildArea: 16 };
     expect(validateAssembly({ ...area, bricks: [ground, horse] })).toEqual([]);
     expect(validateAssembly({ ...area, bricks: [ground, horse, saddle, hips, torso] })).toEqual([]);

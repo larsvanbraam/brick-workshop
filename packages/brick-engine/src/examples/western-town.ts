@@ -1152,7 +1152,7 @@ export const westernTown: ExampleDefinition = {
       add('4493c01', coat, x, G, z, turn);
       const [dx, dz] = SADDLE[turn];
       add('4491b', 4, x + dx, G + 7, z + dz, turn);
-      if (rider) figure({ x: x - 1, z: z + 4, legs: 272, shirt: DARK_RED, hat: TIMBER }, G + 8);
+      if (rider) figure({ x: x - 1, z: z + 5, legs: 272, shirt: DARK_RED, hat: TIMBER }, G + 8);
     }
     for (const c of COWBOYS) figure(c, G);
     figure(SHERIFF_FIGURE, G + 4);

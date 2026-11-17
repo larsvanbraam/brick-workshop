@@ -1990,12 +1990,12 @@ export const PARTS: readonly Part[] = [
     connections: { topStuds: spans(null, null, null, null, null, [0, 1]), bottomReceivers: [] },
   }),
   // The saddle sits on the studs of the horse's back, its seat one plate thick, and holds a rider's
-  // feet on two studs of its own, with a flap either side of the rider's legs. It is four studs
-  // wide, a stud either side of the horse.
+  // feet on two studs of its own, a row ahead of the ones it sits on so the legs clear the cantle
+  // behind them, with a flap either side. It is four studs wide, a stud either side of the horse.
   sculptedPart('4491b', 'Horse saddle', 4, 2, 1, 'detail', {
     ldrawBaseY: 8,
     ldrawCenter: { x: 0, z: 4 },
-    connections: { topStuds: spans(null, [1, 2]), bottomReceivers: spans(null, [1, 2]) },
+    connections: { topStuds: spans([1, 2]), bottomReceivers: spans(null, [1, 2]) },
   }),
   // Braided string pulled straight between its end studs, which are round one-plate plugs with
   // a stud on top and a hollow below, so either end can sit on a stud or carry a piece. The cord
