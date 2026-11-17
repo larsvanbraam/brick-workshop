@@ -140,10 +140,10 @@ and pieces may stand on both plugs. Nothing may cross the cord, except that it
 drapes over the edge of what its plugs stand on or carry. The physics solve
 weighs a strung string at its middle.
 
-**Horses and riders.** A horse (`4493c01`) stands on its hooves like a wheel, with a bar just
-above its back. A saddle (`4491b`) clips onto that bar, its seat resting on the horse's back, and
-carries a rider's hips and legs (`3815c01`) on its studs: the rider's feet stand on the saddle
-and the flaps either side rise round his legs.
+**Horses and riders.** A horse (`4493c01`) stands on its hooves like a wheel, with two studs on
+its back. A saddle (`4491b`) sits on those studs and carries a rider's hips and legs
+(`3815c01`) on two studs of its own: the rider's feet stand on the saddle, and the flaps either
+side rise round his legs.
 
 **Hinges and tilted frames.** A hinge brick base (`3937`) holds a hinge top (`3938`)
 one plate up at the same position and turn; the top turns about the pair's long axis.

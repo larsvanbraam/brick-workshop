@@ -477,7 +477,7 @@ const ROCKS: readonly (readonly [number, number, number, number, number, number]
 ];
 for (const [x, z, w, d] of ROCKS) greserve(x, z, w, d);
 
-// Horses, each with a saddle clipped on its back: two stand at the hitching rails, side on, and a
+// Horses, each with a saddle on the studs of its back: two stand at the hitching rails, side on, and a
 // rider comes down the street head on. x, z and the turn are the horse's; a horse is two studs
 // wide and ten long, and faces -z at turn 0.
 const HORSES: readonly (readonly [number, number, Rotation, number, boolean])[] = [
@@ -487,10 +487,10 @@ const HORSES: readonly (readonly [number, number, Rotation, number, boolean])[] 
 ];
 /** Where the saddle clips on, from the horse's corner, for each way the horse faces. */
 const SADDLE: Readonly<Record<Rotation, readonly [number, number]>> = {
-  0: [-1, 4.5],
-  90: [4.5, -1],
-  180: [-1, 3.5],
-  270: [3.5, -1],
+  0: [-1, 4],
+  90: [4, -1],
+  180: [-1, 4],
+  270: [4, -1],
 };
 
 interface Cowboy {
@@ -1139,7 +1139,7 @@ export const westernTown: ExampleDefinition = {
     }
 
     // ---- Horses with saddles, and cowboys: a standing figure is legs, torso, head and a hat,
-    // all turned to face the street; the rider's feet stand on the saddle's studs.
+    // all turned to face the street; the rider's feet stand on the saddle's studs, the saddle on the horse's.
     const figure = (c: Cowboy, y: number) => {
       const lift = 5;
       add('3815c01', c.legs, c.x + 1, y, c.z, 180);
@@ -1151,9 +1151,8 @@ export const westernTown: ExampleDefinition = {
     for (const [x, z, turn, coat, rider] of HORSES) {
       add('4493c01', coat, x, G, z, turn);
       const [dx, dz] = SADDLE[turn];
-      add('4491b', 4, x + dx, G + 11.5, z + dz, turn);
-      if (rider)
-        figure({ x: x - 1, z: z + 3.5, legs: 272, shirt: DARK_RED, hat: TIMBER }, G + 12.5);
+      add('4491b', 4, x + dx, G + 7, z + dz, turn);
+      if (rider) figure({ x: x - 1, z: z + 4, legs: 272, shirt: DARK_RED, hat: TIMBER }, G + 8);
     }
     for (const c of COWBOYS) figure(c, G);
     figure(SHERIFF_FIGURE, G + 4);
