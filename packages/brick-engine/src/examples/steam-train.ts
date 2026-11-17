@@ -132,34 +132,29 @@ function locomotive(add: ExampleBrickAdder, y: number) {
   chassis(add, y, length, BLACK);
   const deck = y + 10;
 
-  // The cab: three courses of walls with a window through the second, and a roof of plates.
-  addAreaMap(
-    add,
-    rectMap(4, (x, z) => (x === 0 || z === 0 || z === TRAIN_WIDTH - 1 ? 'c' : ' ')),
-    deck,
-    { c: ['brick', DARK_RED] },
-  );
-  addAreaMap(
-    add,
-    rectMap(4, (x, z) =>
-      (x === 0 || ((z === 0 || z === TRAIN_WIDTH - 1) && (x === 1 || x === 3 || x === 0))) &&
-      !(x === 0 && z > 0 && z < TRAIN_WIDTH - 1 && z % 2 === 0)
-        ? 'c'
-        : ' ',
+  // The cab: a minifigure (12 plates tall) stands inside on the 3 x 4 studs of the floor. Walls climb
+  // four courses, the middle two open into side windows, and a roof of plates closes the top.
+  const wall = (x: number, z: number) => x === 0 || z === 0 || z === TRAIN_WIDTH - 1;
+  const windowed = (x: number, z: number) =>
+    (x === 0 || ((z === 0 || z === TRAIN_WIDTH - 1) && (x === 1 || x === 3))) &&
+    !(x === 0 && z > 0 && z < TRAIN_WIDTH - 1 && z % 2 === 0);
+  [
+    [wall, DARK_RED],
+    [windowed, DARK_RED],
+    [windowed, DARK_RED],
+    [wall, BLACK],
+  ].forEach(([keep, color], course) =>
+    addAreaMap(
+      add,
+      rectMap(4, (x, z) => ((keep as typeof wall)(x, z) ? 'c' : ' ')),
+      deck + course * 3,
+      { c: ['brick', color as number] },
     ),
-    deck + 3,
-    { c: ['brick', DARK_RED] },
-  );
-  addAreaMap(
-    add,
-    rectMap(4, (x, z) => (x === 0 || z === 0 || z === TRAIN_WIDTH - 1 ? 'c' : ' ')),
-    deck + 6,
-    { c: ['brick', BLACK] },
   );
   addAreaMap(
     add,
     rectMap(4, () => 'r'),
-    deck + 9,
+    deck + 12,
     { r: ['plate', BLACK] },
   );
 
@@ -262,13 +257,16 @@ function wagon(add: ExampleBrickAdder, y: number, planks: readonly [number, numb
   const deck = y + 10;
   const pick = random(seed);
   const side = (): number => (pick() < 0.35 ? planks[1] : planks[0]);
-  walls(add, deck, length, [side(), side(), planks[0]]);
+  walls(add, deck, length, [side(), side(), side(), planks[0]]);
   for (const x of [0, length - 1])
-    for (const z of [0, TRAIN_WIDTH - 1]) add('3005', DARK_TIMBER, x, deck + 9, z);
-  // A load of crates under a lashed tile, in the middle.
+    for (const z of [0, TRAIN_WIDTH - 1]) add('3005', DARK_TIMBER, x, deck + 12, z);
+  // A plank floor across the whole bed, with room for a minifigure (12 plates tall) to stand in
+  // it: the bed is 7 x 4 studs inside and the walls reach its chest.
   addAreaMap(
     add,
-    rectMap(length, (x, z) => (x >= 2 && x <= 6 && z >= 1 && z <= 4 ? 'f' : ' ')),
+    rectMap(length, (x, z) =>
+      x > 0 && x < length - 1 && z > 0 && z < TRAIN_WIDTH - 1 ? 'f' : ' ',
+    ),
     deck,
     { f: ['plate', DARK_TIMBER] },
   );

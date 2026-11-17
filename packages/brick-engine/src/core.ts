@@ -2053,11 +2053,13 @@ export const PARTS: readonly Part[] = [
     connections: { topStuds: [], bottomReceivers: [] },
   }),
   // A single-axle train bogie with its wheelset, 6 studs across the rails and 3 along them, eight
-  // plates from the foot of its wheels to the top. It stands on the rails like a wheel stands on the
-  // road, and carries a car on the studs of its top, which stand in for a bogie plate clipped on.
+  // plates from the tread of its wheels to the top. It stands on the rails like a wheel stands on the
+  // road, and carries a car on the studs of its top, which stand in for a bogie plate clipped on. The
+  // wheel flanges hang a plate lower than the treads, beside the rails, so the model's base is the tread
+  // (55 LDU), not the flange's foot (63).
   sculptedPart('2878c01', 'Train bogie, single axle', 6, 3, 8, 'detail', {
     rests: true,
-    ldrawBaseY: 63,
+    ldrawBaseY: 55,
     connections: { topStuds: spans([0, 5], [0, 5], [0, 5]), bottomReceivers: [] },
   }),
   // A 9V curved section: 22.5 degrees of a wide bend, the same rails and sleepers as the straight.
