@@ -12,13 +12,32 @@ export interface SplashOptions {
 
 const escape = (text: string) => text.replace(/[&<>"]/g, (char) => `&#${char.charCodeAt(0)};`);
 
-/** The four bricks of the stack: colour, left stud, row, length in studs and start delay. */
-const BRICKS = [
-  ['#c91a09', 0, 0, 4, 0],
-  ['#0055bf', 4, 0, 4, 0.22],
-  ['#f2cd37', 2, 1, 4, 0.44],
-  ['#237841', 3, 2, 2, 0.66],
+/** The logo's brick colours and the ink on each, the same run as Brick World's title logo. */
+const LETTER_BRICKS = [
+  ['#c91a09', '#fff6ec'],
+  ['#0055bf', '#f2f6ff'],
+  ['#f2cd37', '#3b2d07'],
+  ['#237841', '#effaf1'],
+  ['#fe8a18', '#3a1d02'],
+  ['#f4f4f4', '#2a2a2a'],
 ] as const;
+
+/** The title as words of tilted, coloured letter bricks, which drop in one by one. */
+function logoMarkup(title: string) {
+  let at = 0;
+  const words = title.split(' ').map((word) => {
+    const letters = [...word]
+      .map((letter) => {
+        const index = at++;
+        const [color, ink] = LETTER_BRICKS[index % LETTER_BRICKS.length];
+        const tilt = (((index * 37) % 7) - 3) * 0.9;
+        return `<span class="splash-letter" style="--c: ${color}; --ink: ${ink}; --i: ${index}; --tilt: ${tilt}deg">${escape(letter)}</span>`;
+      })
+      .join('');
+    return `<span class="splash-word" aria-hidden="true">${letters}</span>`;
+  });
+  return `<h1 class="splash-logo" aria-label="${escape(title)}" style="--letters: ${at}">${words.join('')}</h1>`;
+}
 
 /**
  * Puts the stacking-bricks splash into the app's index.html, so it shows before any script has
@@ -36,14 +55,12 @@ export function splashPlugin({ title, message, colors = {} }: SplashOptions): Pl
     .filter(([, value]) => value)
     .map(([name, value]) => `${name}: ${value}`)
     .join('; ');
-  const bricks = BRICKS.map(
-    ([color, at, row, studs, delay]) =>
-      `<span style="--c: ${color}; --at: ${at}; --row: ${row}; --studs: ${studs}; --d: ${delay}s"></span>`,
-  ).join('');
   const markup =
     `<div id="app-splash" role="status" aria-live="polite"${vars ? ` style="${vars}"` : ''}>` +
-    `<h1>${escape(title)}</h1>` +
-    `<div class="splash-bricks" role="progressbar" aria-label="Loading ${escape(title)}">${bricks}</div>` +
+    logoMarkup(title) +
+    `<div class="splash-studs" role="progressbar" aria-label="Loading ${escape(title)}">` +
+    '<span></span>'.repeat(5) +
+    `</div>` +
     `<p data-splash-message>${escape(message)}</p>` +
     `</div>`;
   return {

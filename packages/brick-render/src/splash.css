@@ -6,7 +6,7 @@
   z-index: 1000;
   display: grid;
   place-content: center;
-  gap: 18px;
+  gap: 22px;
   padding: 24px;
   background: var(--splash-bg, #f8f9f7);
   color: var(--splash-ink, #303832);
@@ -18,119 +18,139 @@
   opacity: 0;
   pointer-events: none;
 }
-#app-splash h1 {
-  margin: 0;
-  font-size: 24px;
-  font-weight: 600;
-}
 #app-splash p {
   margin: 0;
   font-size: 14px;
   color: var(--splash-muted, #7b847e);
 }
-/* Bricks drop in and stack, then lift away and start over. Transform and opacity only, so it
-   stays on the compositor and keeps moving while part parsing and shader compilation block the
-   main thread. */
-/* Real brick proportions on a 16px stud pitch: a brick is 1.2 pitches tall, a stud 0.6 wide and
-   about 0.2 high. Every brick sits on studs: two 1 x 4s, a 1 x 4 across their joint and a 1 x 2
-   on its middle two studs. */
-#app-splash .splash-bricks {
+/* The title in lettered bricks, the same look as Brick World's title screen: each letter drops
+   in 70ms after the last, bounces once, then the whole logo floats while the app loads. */
+#app-splash .splash-logo {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.08em 0.32em;
+  margin: 0;
+  padding-top: 0.12em;
+  font-size: clamp(36px, 7vw, 76px);
+  font-weight: 800;
+  line-height: 1;
+  animation: splash-float 6s ease-in-out calc(400ms + var(--letters, 12) * 70ms + 400ms) infinite;
+}
+#app-splash .splash-word {
+  display: flex;
+  gap: 0.05em;
+}
+/* One letter on one brick: studs on top, a lighter top edge and a darker skirt below. */
+#app-splash .splash-letter {
+  --light: color-mix(in srgb, var(--c), white 30%);
+  --dark: color-mix(in srgb, var(--c), black 25%);
   position: relative;
-  width: 128px;
-  height: 62px;
-  margin: 36px auto 4px;
-}
-#app-splash .splash-bricks::after {
-  content: '';
-  position: absolute;
-  left: -8px;
-  right: -8px;
-  bottom: -7px;
-  height: 10px;
-  border-radius: 50%;
-  background: radial-gradient(
-    closest-side,
-    var(--splash-shadow, rgb(48 56 50 / 0.16)),
-    transparent
-  );
-}
-#app-splash .splash-bricks span {
-  --light: color-mix(in srgb, var(--c), white 28%);
-  --dark: color-mix(in srgb, var(--c), black 22%);
-  position: absolute;
-  z-index: 1;
-  bottom: calc(var(--row) * 19px);
-  left: calc(var(--at) * 16px);
-  width: calc(var(--studs) * 16px);
-  height: 19px;
-  border-radius: 1.5px;
+  display: grid;
+  place-items: center;
+  min-width: 0.8em;
+  height: 1.06em;
+  padding: 0 0.1em 0.06em;
+  border-radius: 0.05em;
+  color: var(--ink);
+  text-shadow: 0 0.025em 0 rgb(0 0 0 / 0.22);
   background: linear-gradient(
-    var(--light) 0 2px,
-    var(--c) 2px calc(100% - 5px),
-    var(--dark) calc(100% - 5px)
+    var(--light) 0 0.04em,
+    var(--c) 0.04em calc(100% - 0.13em),
+    var(--dark) calc(100% - 0.13em)
   );
   box-shadow:
-    inset 1px 0 rgb(255 255 255 / 0.18),
-    inset -1px 0 rgb(0 0 0 / 0.18);
-  opacity: 0;
+    inset 0.025em 0 rgb(255 255 255 / 0.22),
+    inset -0.025em 0 rgb(0 0 0 / 0.2),
+    0 0.1em 0.22em var(--splash-shadow, rgb(48 56 50 / 0.3));
+  transform: rotate(var(--tilt));
   will-change: transform, opacity;
-  animation: splash-brick-drop 2.8s cubic-bezier(0.5, 0, 0.75, 0) var(--d) infinite both;
+  animation: splash-drop 720ms cubic-bezier(0.55, 0, 0.8, 0.2) calc(150ms + var(--i) * 70ms) both;
 }
-/* Studs, one per 16px cell, shaded like a cylinder lit from the left. */
-#app-splash .splash-bricks span::before {
+#app-splash .splash-letter::before {
   content: '';
   position: absolute;
-  inset: -3px 0 auto;
-  height: 3px;
-  background: repeating-linear-gradient(
-    90deg,
-    transparent 0 3px,
-    var(--light) 3px 6px,
-    var(--c) 6px 10px,
-    var(--dark) 10px 13px,
-    transparent 13px 16px
-  );
+  inset: -0.08em 0.1em auto;
+  height: 0.08em;
+  background: linear-gradient(90deg, var(--light) 0 22%, var(--c) 22% 66%, var(--dark) 66% 100%)
+    center / 0.2em 100% space;
+  border-radius: 0.02em 0.02em 0 0;
 }
-@keyframes splash-brick-drop {
+/* Five studs that light up in turn, so a long load still shows life. */
+#app-splash .splash-studs {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 6px;
+}
+#app-splash .splash-studs span {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--splash-muted, #7b847e);
+  opacity: 0.25;
+  animation: splash-stud 1.4s ease-in-out infinite both;
+}
+#app-splash .splash-studs span:nth-child(2) {
+  animation-delay: 0.14s;
+}
+#app-splash .splash-studs span:nth-child(3) {
+  animation-delay: 0.28s;
+}
+#app-splash .splash-studs span:nth-child(4) {
+  animation-delay: 0.42s;
+}
+#app-splash .splash-studs span:nth-child(5) {
+  animation-delay: 0.56s;
+}
+@keyframes splash-drop {
   0% {
     opacity: 0;
-    transform: translateY(-44px);
+    transform: translateY(-70vh) rotate(calc(var(--tilt) * -4));
   }
-  7% {
+  12% {
     opacity: 1;
   }
-  13% {
-    transform: translateY(0);
+  62% {
+    transform: translateY(0) rotate(var(--tilt));
     animation-timing-function: ease-out;
   }
-  17% {
-    transform: translateY(-4px);
+  78% {
+    transform: translateY(-0.12em) rotate(calc(var(--tilt) * 1.6));
     animation-timing-function: ease-in;
   }
-  21%,
-  68% {
-    opacity: 1;
-    transform: translateY(0);
-    animation-timing-function: ease-in;
-  }
-  80%,
   100% {
-    opacity: 0;
-    transform: translateY(-14px);
+    opacity: 1;
+    transform: translateY(0) rotate(var(--tilt));
+  }
+}
+@keyframes splash-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
+@keyframes splash-stud {
+  0%,
+  100% {
+    opacity: 0.25;
+    transform: scale(0.8);
+  }
+  30% {
+    opacity: 1;
+    transform: scale(1);
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  #app-splash .splash-bricks span {
-    animation: splash-brick-fade 2.8s ease-in-out var(--d) infinite both;
+  #app-splash .splash-logo,
+  #app-splash .splash-letter {
+    animation: none;
   }
-  @keyframes splash-brick-fade {
-    0%,
-    100% {
-      opacity: 0.25;
-    }
-    30%,
-    60% {
-      opacity: 1;
-    }
+  #app-splash .splash-studs span {
+    animation: none;
+    opacity: 0.6;
   }
 }
