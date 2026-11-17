@@ -1955,6 +1955,13 @@ export const PARTS: readonly Part[] = [
     ldrawBaseY: 40,
     connections: { topStuds: spans(null, [0, 1]), bottomReceivers: spans(null, [0, 1]) },
   }),
+  // Sitting legs, for a rider: the thighs lie forward, so the hips ride 2 plates lower than
+  // standing ones and the legs reach over the stud row in front.
+  sculptedPart('3815c02', 'Minifigure hips and legs, sitting', 2, 2, 3, 'detail', {
+    ldrawCenter: { x: 0, z: -10 },
+    ldrawBaseY: 21,
+    connections: { topStuds: spans(null, [0, 1]), bottomReceivers: spans(null, [0, 1]) },
+  }),
   sculptedPart('76382p00', 'Minifigure torso with arms and hands', 4, 2, 4, 'detail', {
     ldrawCenter: { x: 0, z: -10 },
     ldrawBaseY: 32,

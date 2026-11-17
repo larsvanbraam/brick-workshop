@@ -1140,18 +1140,21 @@ export const westernTown: ExampleDefinition = {
 
     // ---- Horses with saddles, and cowboys: a standing figure is legs, torso, head and a hat,
     // all turned to face the street; the riders' hips sit on the saddle's studs.
-    const figure = (c: Cowboy, y: number) => {
-      add('3815c01', c.legs, c.x + 1, y, c.z, 180);
-      add('76382p00', c.shirt, c.x, y + 5, c.z, 180);
-      add('3626bp01', 14, c.x + 1, y + 9, c.z - 0.5, 180);
-      if (c.bob) add('29633', c.hat, c.x + 1, y + 12, c.z - 0.5, 180);
-      else add('13565', c.hat, c.x + 0.5, y + 12, c.z - 1, 180);
+    const figure = (c: Cowboy, y: number, seated = false) => {
+      // Sitting legs ride 2 plates lower than standing ones, so the rest of the figure follows.
+      const lift = seated ? 3 : 5;
+      add(seated ? '3815c02' : '3815c01', c.legs, c.x + 1, y, c.z, 180);
+      add('76382p00', c.shirt, c.x, y + lift, c.z, 180);
+      add('3626bp01', 14, c.x + 1, y + lift + 4, c.z - 0.5, 180);
+      if (c.bob) add('29633', c.hat, c.x + 1, y + lift + 7, c.z - 0.5, 180);
+      else add('13565', c.hat, c.x + 0.5, y + lift + 7, c.z - 1, 180);
     };
     for (const [x, z, turn, coat, rider] of HORSES) {
       add('4493c01', coat, x, G, z, turn);
       const [dx, dz] = SADDLE[turn];
       add('4491b', 4, x + dx, G + 6, z + dz, turn);
-      if (rider) figure({ x: x - 2, z: z + 3, legs: 272, shirt: DARK_RED, hat: TIMBER }, G + 12);
+      if (rider)
+        figure({ x: x - 2, z: z + 3, legs: 272, shirt: DARK_RED, hat: TIMBER }, G + 12, true);
     }
     for (const c of COWBOYS) figure(c, G);
     figure(SHERIFF_FIGURE, G + 4);
