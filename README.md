@@ -266,7 +266,7 @@ to host it elsewhere.
 
 ## Deploying
 
-`vercel.json` deploys the web app as a static site: the build fetches the LDraw
+`apps/brick-studio/vercel.json` deploys the workshop as a static site: the build fetches the LDraw
 library, packages only the supported parts with their attribution and licences,
 and sets `VITE_WORKSHOP_GENERATION=false` to hide generation. Saving to
 `builds/` and previews of arbitrary library parts need the local server.
