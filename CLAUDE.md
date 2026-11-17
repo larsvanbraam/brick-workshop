@@ -76,6 +76,15 @@ In code, the standard maps onto these helpers:
 - Plant receivers: check a part's `connections` in `core.ts` before placing it.
 - Scatter shades with a seeded hash or `random(seed)` from `trees.ts`, so each example stays
   deterministic.
+- A gabled roof of 45° slope courses needs one more course on each side than the gable wall
+  has, or the two faces stop a stud short of the ridge. Ridge pieces (`3043`) have no studs, so
+  nothing stands on them.
+- Tiles hold nothing: keep plates (open studs) under every post, prop, plant and furniture
+  piece, and a window frame with two centre studs (`60594`) needs a lintel brick that spans them.
+- Tall doors are `60596` frames (4 wide, 6 bricks) with `60623` or `60616a` leaves; fit the
+  leaf with `addDoor` as the courtyard house does.
+- Wheels (`4624c01`) rest on the ground; a `4600` pin plate clips between a pair, and a 2 x 2
+  brick on it carries the bed (see the wagon in `western-town.ts`).
 - Search `PARTS` in `core.ts` for anything else; the README explains how to add a part.
 
 ### Smoothing

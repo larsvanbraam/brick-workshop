@@ -105,16 +105,44 @@ _Desert_ (western town, mine, mesa, desert outpost):
 
 - The base has a ragged outline like a landscape base, but the ground is dry: tan `19` sand
   and dark tan `28` hardpan in large patches, medium nougat `84` and dark orange `484` patches
-  where the earth turns red, and a wheel-rutted main street in dark tan.
-- Rock is layered sandstone, not grey crag: mesas and outcrops banded in dark orange `484`,
-  medium nougat `84`, tan `19` and reddish brown `70`, stepped and smoothed into rounded
-  ledges, with a few grey `71`/`72` boulders at their feet.
+  where the earth turns red, and a wheel-rutted main street in dark tan. Dirt tracks and
+  hardpan patches wander in curves and in tiles of mixed size; rectangular blocks of colour
+  read as a floor plan.
+- Rock is the landmark and it dominates: a mesa, a crag or a mountain with a mine entrance
+  that stands taller than the tallest building, not a mound in a corner. Build it from
+  vertical strata, narrow bricks stacked in staggered columns of different heights so the face
+  shows ridges and ledges, in two or three shades: banded sandstone in dark orange `484`,
+  medium nougat `84`, tan `19` and reddish brown `70`, or grey rock in `71`, `72` and `151`
+  with a timber-framed mine mouth, a ledge on posts and a track running out. Smooth the steps
+  into rounded ledges and put a few boulders at the foot.
 - Buildings stand on a raised boardwalk of reddish brown `70` and dark brown `308` tiles on
   posts, with a hitching rail, a water trough, barrels, crates, sacks and a wagon in front.
   Wood is weathered: two or three browns mixed, a few medium nougat `84` boards.
-- Plants are sparse and grouped: cacti built from green `2` and olive green `330` round bricks
-  with side-stud arms, dry scrub in olive green `330` and tan grass, a dead tree in dark
-  brown `308`. No lawns, no flowers on the ground except a few small accents on the cacti.
+- The street is a row of different buildings, not one box repeated: a saloon with a balcony,
+  a bank or store with a tall false front, a sheriff's office with a cell, a church or
+  schoolhouse, a barn, a station. Give each its own plot: set them back by different amounts,
+  leave an alley or a gap, and change heights, footprints and angles.
+- Vary the materials building by building: vertical planks, horizontal boards, orange or tan
+  brick, adobe in tan `19` and sand `28`, and a painted façade in sand green `378`, sand blue
+  `379`, sand red `335` or dark red `320`. A false front is a square or stepped wall that
+  climbs past the roof, with a stepped cornice, a sign board and finials.
+- Roofs are low and textured: plank or shingle roofs in black `0`, dark bluish grey `72`,
+  reddish brown `70` or dark red `320` in staggered lengths and two shades, with veranda roofs
+  in red shingles over the boardwalk. A steep gable that shows from the side looks like a
+  barn; build a low pitch, or hide it behind the false front.
+- Windows and doors have a frame, a lintel and a sill band; add shutters, hanging signs on
+  brackets, wanted posters on a solid wall, lanterns and window boxes. The catalogue has no
+  lettering, so signs are a framed board with a pictogram (a star, a bottle, a boot) or a
+  band of dark and light blocks.
+- The street is alive: a stagecoach or wagon with a horse team, hitched and loose horses,
+  a windmill, a water tower on a trestle with a ladder, a well, a railway with a platform, a
+  tied-up horse by the trough, and sacks, barrels and crates that spill out of doors.
+- Interiors show through the windows and the door: a bar with a back shelf of bottles,
+  tables and stools in the saloon; a desk and a jail cell with bars; a counter and shelves of
+  goods in the store.
+- Plants are sparse and grouped: cacti built from green `2` and olive green `330` round
+  bricks with arms on rounded plates (`35480`), agave and dry scrub in olive green `330`, a
+  dead tree in dark brown `308`, with small flowers only on the cacti. No lawns.
 - Water is rare and earns its place: a trough, a well, a muddy waterhole in dark tan with a
   little blue.
 
@@ -221,9 +249,10 @@ Palettes the references use, as starting points:
   pavement with tan `19` borders, the building's own palette above it, green only in planters
   and boxes, red `4` or yellow `14` in a post box, an awning or a sign.
 - **Western town**: tan `19` and dark tan `28` street, reddish brown `70`, dark brown `308`
-  and medium nougat `84` timber, sandstone in dark orange `484` and medium nougat `84`, olive
-  green `330` and green `2` cacti and scrub, faded paint in sand blue `379`, sand red `335`
-  or dark red `320` on a façade or two.
+  and medium nougat `84` timber, sandstone in dark orange `484` and medium nougat `84` or grey
+  rock in `71`/`72`/`151`, olive green `330` and green `2` cacti and scrub, faded paint in
+  sand blue `379`, sand green `378`, sand red `335` or dark red `320` on a façade or two,
+  black `0` or dark red `320` shingles, white `15` trim and red `4` in small accents.
 
 **How a build comes together.** List what makes the subject recognisable (silhouette,
 colours, roof, windows, towers, entrance, props, scenery) and plan the footprint and layers
@@ -243,6 +272,9 @@ takes as long as the bulk, and it is where a build becomes good. Rework the mode
   desert base has an organic outline; a street base has a layered road, curb and pavement.
 - Is the ground calm: a few large areas of one material each, detail gathered at the edges,
   no confetti of single pieces in many colours?
+- In a desert or western scene, does a rock landmark tower over the buildings, do the
+  buildings differ in plot, height, material and roof, and are there horses, a wagon or a
+  railway to make the street live?
 - Does anything natural still have a straight edge, a flat top or a hard corner?
 - Is there any bare stud field over about 4 x 4, or a blank wall over about 4 studs?
 - Does every material use two or three shades, with accents kept small?

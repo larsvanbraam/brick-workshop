@@ -153,12 +153,12 @@ const SHERIFF: Building = {
   boards: [SAND_BLUE, 71, DARK_STONE],
   trim: WHITE,
   roof: [DARK_TIMBER, TIMBER],
-  ground: 6,
+  ground: 7,
   upper: 0,
   front: [6, 6, 6, 7, 7, 7, 7, 6, 6, 6],
   openings: [
     { side: 'front', at: 5, width: 2, from: 2, to: 4, kind: 'window' },
-    { side: 'front', at: 8, width: 3, from: 1, to: 4, kind: 'door' },
+    { side: 'front', at: 8, width: 4, from: 1, to: 6, kind: 'door' },
     { side: 'left', at: 17, width: 2, from: 2, to: 4, kind: 'window' },
     { side: 'right', at: 17, width: 2, from: 2, to: 4, kind: 'window' },
     { side: 'back', at: 8, width: 2, from: 2, to: 4, kind: 'window' },
@@ -174,29 +174,27 @@ const SALOON: Building = {
   boards: [TIMBER, NOUGAT, DARK_TIMBER],
   trim: WHITE,
   roof: [DARK_RED, 4],
-  ground: 6,
-  upper: 5,
+  ground: 7,
+  upper: 6,
   front: [8, 8, 8, 9, 10, 10, 11, 11, 10, 10, 9, 8, 8, 8],
   openings: [
     { side: 'front', at: 18, width: 2, from: 2, to: 4, kind: 'window' },
     { side: 'front', at: 28, width: 2, from: 2, to: 4, kind: 'window' },
-    { side: 'front', at: 21, width: 3, from: 1, to: 4, kind: 'door' },
-    { side: 'front', at: 24, width: 3, from: 1, to: 4, kind: 'door' },
-    { side: 'front', at: 18, width: 2, from: 7, to: 9, kind: 'window' },
-    { side: 'front', at: 28, width: 2, from: 7, to: 9, kind: 'window' },
-    { side: 'front', at: 21, width: 3, from: 6, to: 9, kind: 'door' },
-    { side: 'front', at: 24, width: 3, from: 6, to: 9, kind: 'door' },
+    { side: 'front', at: 22, width: 4, from: 1, to: 6, kind: 'door' },
+    { side: 'front', at: 18, width: 2, from: 8, to: 10, kind: 'window' },
+    { side: 'front', at: 28, width: 2, from: 8, to: 10, kind: 'window' },
+    { side: 'front', at: 22, width: 4, from: 7, to: 12, kind: 'door' },
     { side: 'left', at: 17, width: 2, from: 2, to: 4, kind: 'window' },
     { side: 'left', at: 20, width: 2, from: 2, to: 4, kind: 'window' },
     { side: 'right', at: 17, width: 2, from: 2, to: 4, kind: 'window' },
     { side: 'right', at: 20, width: 2, from: 2, to: 4, kind: 'window' },
-    { side: 'left', at: 17, width: 2, from: 7, to: 9, kind: 'window' },
-    { side: 'left', at: 20, width: 2, from: 7, to: 9, kind: 'window' },
-    { side: 'right', at: 17, width: 2, from: 7, to: 9, kind: 'window' },
-    { side: 'right', at: 20, width: 2, from: 7, to: 9, kind: 'window' },
-    { side: 'back', at: 23, width: 3, from: 1, to: 4, kind: 'door' },
-    { side: 'back', at: 19, width: 2, from: 7, to: 9, kind: 'window' },
-    { side: 'back', at: 27, width: 2, from: 7, to: 9, kind: 'window' },
+    { side: 'left', at: 17, width: 2, from: 8, to: 10, kind: 'window' },
+    { side: 'left', at: 20, width: 2, from: 8, to: 10, kind: 'window' },
+    { side: 'right', at: 17, width: 2, from: 8, to: 10, kind: 'window' },
+    { side: 'right', at: 20, width: 2, from: 8, to: 10, kind: 'window' },
+    { side: 'back', at: 22, width: 4, from: 1, to: 6, kind: 'door' },
+    { side: 'back', at: 19, width: 2, from: 8, to: 10, kind: 'window' },
+    { side: 'back', at: 27, width: 2, from: 8, to: 10, kind: 'window' },
   ],
 };
 
@@ -209,12 +207,12 @@ const STORE: Building = {
   boards: [SAND_RED, NOUGAT, DARK_TIMBER],
   trim: WHITE,
   roof: [DARK_STONE, 71],
-  ground: 6,
+  ground: 7,
   upper: 0,
   front: [7, 7, 6, 6, 6, 6, 6, 6, 7, 7],
   openings: [
-    { side: 'front', at: 34, width: 4, from: 2, to: 4, kind: 'window' },
-    { side: 'front', at: 39, width: 3, from: 1, to: 4, kind: 'door' },
+    { side: 'front', at: 34, width: 2, from: 2, to: 4, kind: 'window' },
+    { side: 'front', at: 38, width: 4, from: 1, to: 6, kind: 'door' },
     { side: 'left', at: 17, width: 2, from: 2, to: 4, kind: 'window' },
     { side: 'right', at: 17, width: 2, from: 2, to: 4, kind: 'window' },
     { side: 'back', at: 36, width: 2, from: 2, to: 4, kind: 'window' },
@@ -279,7 +277,7 @@ const wallRows = (b: Building, k: number) =>
 const POSTS: Readonly<Record<string, readonly number[]>> = {
   sheriff: [4, 13],
   saloon: [17, 20, 27, 30],
-  store: [33, 38, 42],
+  store: [33, 36, 42],
 };
 // Open studs kept on the boardwalk deck, where posts and props stand (x,z cells).
 const bare = new Set<string>();
@@ -298,7 +296,7 @@ const DECK_CRATES: readonly (readonly [number, number])[] = [
   [36, 24],
 ];
 for (const [x, z] of [...DECK_BARRELS, ...DECK_CRATES]) reserve(x, z, 2, 2);
-for (const x of [11, 13]) reserve(x, 25);
+for (const x of [12, 14]) reserve(x, 25);
 
 const FRONT_LEGEND = (b: Building): Record<string, readonly [RunKind, number]> => ({
   ...legendOf(b),
@@ -423,7 +421,6 @@ const SCRUB: readonly (readonly [number, number])[] = [
   [19, 40],
   [31, 40],
   [40, 39],
-  [1, 38],
   [27, 11],
 ];
 for (const [x, z] of SCRUB) greserve(x, z, 2, 2);
@@ -432,7 +429,6 @@ const ROCKS: readonly (readonly [number, number, number, number, number, number]
   [28, 7, 5, 4, 71, 72],
   [21, 39, 4, 2, NOUGAT, SAND],
   [37, 43, 3, 2, SAND, NOUGAT],
-  [45, 22, 3, 3, 71, 72],
 ];
 for (const [x, z, w, d] of ROCKS) greserve(x, z, w, d);
 
@@ -440,7 +436,7 @@ export const westernTown: ExampleDefinition = {
   id: 'western-town',
   name: 'Western Main Street',
   tags: ['western', 'desert', 'saloon', 'sheriff', 'general-store', 'boardwalk', 'mesa', 'street'],
-  expectedPieceCount: 2416,
+  expectedPieceCount: 2492,
   buildArea: SIZE,
   brickIdPrefix: 'western',
   smooth: [{ only: (brick) => NATURAL.has(naturalKey(brick)) }],
@@ -607,8 +603,8 @@ export const westernTown: ExampleDefinition = {
             add(part, b.trim, alongX ? x + s : x, y, alongX ? z : z + s, alongX ? 90 : 0);
         } else {
           addDoor(
-            { partId: '3579', color: DARK_TIMBER, x, y, z, rotation: alongX ? 90 : 0 },
-            o.at % 2 ? '3193a' : '3192a',
+            { partId: '60596', color: DARK_TIMBER, x, y, z, rotation: alongX ? 90 : 0 },
+            '60623',
             TIMBER,
           );
         }
@@ -690,10 +686,14 @@ export const westernTown: ExampleDefinition = {
     }
 
     // ---- Verandas: posts carry a roof over the boardwalk; on the saloon it is the balcony.
-    const ROOF_Y = G + 19;
+    const ROOF_Y = G + 22;
     for (const [index, b] of BUILDINGS.entries()) {
       const [x0, x1] = [b.x0 - 1, b.x1 + 1];
-      for (const x of POSTS[b.name]) add('2453b', index === 1 ? WHITE : DARK_TIMBER, x, G + 4, 26);
+      for (const x of POSTS[b.name]) {
+        const post = index === 1 ? WHITE : DARK_TIMBER;
+        add('2453b', post, x, G + 4, 26);
+        add('3005', post, x, G + 19, 26);
+      }
       addAreaMap(
         add,
         plan((x, z) => (z >= 24 && z <= 27 && x >= x0 && x <= x1 ? 'p' : ' ')),
@@ -774,8 +774,8 @@ export const westernTown: ExampleDefinition = {
       add('3068b', TIMBER, x, G + 7, z);
     }
     // A bench by the sheriff's door.
-    for (const x of [11, 13]) add('3005', DARK_TIMBER, x, G + 4, 25);
-    add('63864', TIMBER, 11, G + 7, 25, 90);
+    for (const x of [12, 14]) add('3005', DARK_TIMBER, x, G + 4, 25);
+    add('63864', TIMBER, 12, G + 7, 25, 90);
 
     // Hitching rails: two posts and a rail.
     for (const [a, b] of RAILS) {

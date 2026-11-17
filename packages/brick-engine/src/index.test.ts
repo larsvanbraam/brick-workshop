@@ -2216,7 +2216,7 @@ describe('mixed-part engine builds', () => {
   it('builds a western main street: three false-fronted buildings on boardwalks, a street and a mesa', () => {
     const assembly = createExampleAssembly('western-town');
     expect(assembly.name).toBe('Western Main Street');
-    expect(assembly.bricks).toHaveLength(2416);
+    expect(assembly.bricks).toHaveLength(2492);
     expect(assembly.buildArea).toBe(48);
     expect(validateAssembly(assembly)).toEqual([]);
     const of = (partId: string) => assembly.bricks.filter((brick) => brick.partId === partId);
@@ -2235,12 +2235,11 @@ describe('mixed-part engine builds', () => {
           );
         }),
       ).toBe(false);
-    // Plank doors in frames: one at the sheriff's and the store's, a pair each side of the
-    // saloon's swing doors, and a back door; the saloon's balcony doors open on the upper floor.
-    expect(of('3579')).toHaveLength(7);
-    expect(of('3193a').length + of('3192a').length).toBe(7);
-    expect(of('60593')).toHaveLength(21);
-    expect(of('60594')).toHaveLength(1);
+    // Four-pane doors in tall frames: one at the sheriff's and the store's, the saloon's front
+    // door, its balcony door and a back door.
+    expect(of('60596')).toHaveLength(5);
+    expect(of('60623')).toHaveLength(5);
+    expect(of('60593')).toHaveLength(22);
     // Posts under the verandas, a white balcony railing and striped awnings.
     expect(of('30055')).toHaveLength(6);
     expect(of('3298')).toHaveLength(12);
@@ -2335,7 +2334,8 @@ describe('mixed-part engine builds', () => {
       }
       expect(remaining.bricks).toHaveLength(0);
     },
-    20_000,
+    // Disassembly replays every removal, so the largest small examples need the headroom.
+    40_000,
   );
 
   it('samples every supported design exactly once and demonstrates every supported tile size', () => {
