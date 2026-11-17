@@ -1,4 +1,4 @@
-# Brick Studio
+# Brick Workshop
 
 A LEGO assembly playground: a UI-free engine (`packages/brick-engine`), a Claude adapter
 (`packages/claude-adapter`), the workshop app (`apps/brick-studio`) and Brick World (`apps/brick-world`), a
@@ -7,7 +7,7 @@ game where a minifigure explores and builds in an endless generated world. The g
 `GameConfig`. Both apps draw with
 `packages/brick-render` (LDraw loading, batched drawing, the cinematic look, the loading card
 and the LDraw library's Vite plugin) and walk with `packages/brick-walk` (the minifigure
-controller). The [README](README.md) covers the engine's rules (coordinates, parts, connections,
+controller). The [engine README](packages/brick-engine/README.md) cover the engine's rules (coordinates, parts, connections,
 physics); read it before placing pieces.
 
 ```sh
@@ -69,7 +69,7 @@ so edit it there to change both.
 
 In code, the standard maps onto these helpers:
 
-- Tilted roof panels: tilt hinge tops (`3938`) with `getHingeTilt` (README, "Hinges and
+- Tilted roof panels: tilt hinge tops (`3938`) with `getHingeTilt` (packages/brick-engine/README.md, "Hinges and
   tilted frames").
 - The roof in `courtyard-house.ts` is the worked roof recipe; reuse it.
 - Trees: `addTree` in `trees.ts`. Crates, benches, buckets and pots: see `flower-stall.ts`.
@@ -85,7 +85,7 @@ In code, the standard maps onto these helpers:
   leaf with `addDoor` as the courtyard house does.
 - Wheels (`4624c01`) rest on the ground; a `4600` pin plate clips between a pair, and a 2 x 2
   brick on it carries the bed (see the wagon in `western-town.ts`).
-- Search `PARTS` in `core.ts` for anything else; the README explains how to add a part.
+- Search `PARTS` in `core.ts` for anything else; packages/brick-engine/README.md explains how to add a part.
 
 ### Smoothing
 

@@ -61,7 +61,7 @@ import {
  */
 /**
  * Parts whose drawn shape deliberately reaches past their box. A horse's neck and head and a
- * saddle's flaps rise above theirs (see "Horses and riders" in the README), so their height is not checked.
+ * saddle's flaps rise above theirs (see "Horses and riders" in the brick-engine README), so their height is not checked.
  */
 const OVERHANGING_HEIGHT = ['4493c01', '4491b'];
 /** A sail's hemmed luff reaches this far (LDraw units) past its box on the mast's side, as cloth wraps one. */

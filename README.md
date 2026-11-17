@@ -1,334 +1,117 @@
-# Brick Studio
+# Brick Workshop
+
+**Build with real LDraw parts, in the browser.** One engine that knows what holds together
+and what falls over, a workshop to design with it, and two games where a minifigure walks
+through a world made of the same bricks.
 
 <p align="center">
-  <a href="https://brick-studio.larsvanbraam.nl"><img src="apps/brick-studio/public/og-image.jpg" alt="Brick Studio" width="32%"></a>
-  <a href="https://brick-world.larsvanbraam.nl"><img src="apps/brick-world/public/og-image.jpg" alt="Brick World" width="32%"></a>
-  <a href="https://brick-island.larsvanbraam.nl"><img src="apps/brick-island/public/og-image.jpg" alt="Brick Island" width="32%"></a>
+  <a href="#brick-studio"><b>Brick Studio</b></a> ·
+  <a href="#brick-world"><b>Brick World</b></a> ·
+  <a href="#brick-island"><b>Brick Island</b></a> ·
+  <a href="#getting-started">Getting started</a> ·
+  <a href="#how-its-organised">How it's organised</a>
 </p>
 
-A LEGO playground built on real LDraw parts. One UI-free engine decides what can be
-built, and three apps sit on top of it: a **workshop** for building and editing, and two
-**games**, Brick World and Brick Island, where a minifigure walks around a 3D world. A
-Claude adapter builds through the same engine. pnpm monorepo with Vite Plus, React 19,
-TypeScript and Three.js.
+---
 
-## The apps
+## Brick Studio
 
-| App                               | What it is                                                                                                                 | Run               | Live demo                                                            |
-| --------------------------------- | -------------------------------------------------------------------------------------------------------------------------- | ----------------- | -------------------------------------------------------------------- |
-| [Brick Studio](apps/brick-studio) | The workshop: place, edit and validate builds, import and export, make building instructions, generate builds with Claude. | `pnpm dev:studio` | [brick-studio.larsvanbraam.nl](https://brick-studio.larsvanbraam.nl) |
-| [Brick World](apps/brick-world)   | Game: an endless generated world to explore, with real bricks to build it up with.                                         | `pnpm dev:world`  | [brick-world.larsvanbraam.nl](https://brick-world.larsvanbraam.nl)   |
-| [Brick Island](apps/brick-island) | Game: one hand-drawn island with a harbour town, a farm, a lake and a mountain. Explore and drive; no building.            | `pnpm dev:island` | [brick-island.larsvanbraam.nl](https://brick-island.larsvanbraam.nl) |
+<p align="center">
+  <a href="https://brick-studio.larsvanbraam.nl"><img src="apps/brick-studio/public/og-image.jpg" alt="Brick Studio" width="720"></a>
+</p>
 
-Each dev server starts on http://localhost:5173, or the next free port. See [Games](#games)
-for how the two games differ.
+**The workshop.** Place pieces one by one and the engine checks every connection, collision
+and support. Print a finished build as a step-by-step manual, or let Claude draft a starting point
+for you to place on the canvas and finish by hand.
 
-## Run
+- Validates every placement and checks whether the build would stand, tip or need clutch.
+- Imports LDraw and assembly files, and turns 3D models (`.skp`, `.dae`, `.glb`) into bricks.
+- Prints building instructions as a PDF manual.
+- Generates a draft with Claude from a description or reference photos; apply it to the canvas and take over by hand.
+
+[**Open Brick Studio**](https://brick-studio.larsvanbraam.nl) · run it locally with `pnpm dev:studio` ·
+[workshop details](apps/brick-studio/README.md)
+
+---
+
+## Brick World
+
+<p align="center">
+  <a href="https://brick-world.larsvanbraam.nl"><img src="apps/brick-world/public/og-image.jpg" alt="Brick World" width="720"></a>
+</p>
+
+**An endless world to wander and build in.** The land is generated from a seed and goes on
+in every direction. Pick bricks from the box, put them down and take them off again; every
+world keeps its own building.
+
+[**Play Brick World**](https://brick-world.larsvanbraam.nl) · run it locally with `pnpm dev:world`
+
+---
+
+## Brick Island
+
+<p align="center">
+  <a href="https://brick-island.larsvanbraam.nl"><img src="apps/brick-island/public/og-image.jpg" alt="Brick Island" width="720"></a>
+</p>
+
+**One hand-drawn island, made for exploring.** A harbour town, a farm, a lake and a mountain,
+always in bright morning light. Walk round with the minimap, talk to the townsfolk and drive
+the vehicles parked about the island. There's no building here, just somewhere to roam.
+
+[**Play Brick Island**](https://brick-island.larsvanbraam.nl) · run it locally with `pnpm dev:island`
+
+The two games share one codebase and differ only in their `GameConfig`: see [brick-game](packages/brick-game/README.md#two-games-one-codebase).
+
+---
+
+## Getting started
 
 Requires Node.js 22.18+, 24.11+ or 26+ and pnpm 12.16.1.
 
 ```sh
 pnpm install
 pnpm ldraw:fetch   # optional: download the LDraw library into data/ldraw
-pnpm dev:studio    # or dev:world, dev:island
+pnpm dev:studio    # or pnpm dev:world, pnpm dev:island
 ```
 
-Without the LDraw library the apps fall back to simplified procedural
-geometry. See [data/README.md](data/README.md) to use a library elsewhere.
+Each dev server starts on http://localhost:5173, or the next free port. Without the LDraw
+library the apps fall back to simplified procedural geometry; see
+[data/README.md](data/README.md) to use a library elsewhere.
 
 ```sh
 pnpm test    # Vitest via Vite Plus
 pnpm check   # format, lint and typecheck
 pnpm build   # typecheck, all apps, engine and adapter packages
-pnpm build:studio   # one app only: also build:world, build:island, build:packages
 pnpm fmt     # format the workspace
 ```
 
-## What's in the repository
+`pnpm build:studio` builds one app only; there are also `build:world`, `build:island` and
+`build:packages`.
 
-Everything builds on `brick-engine`. The rendering and game packages add `brick-render`,
-`brick-game` pulls them all together, and the three apps sit on top.
+## How it's organised
 
-**Engine and tools**
+Everything builds on `brick-engine`; the three apps sit on top.
 
-- `packages/brick-engine`: part catalogue, placement, collision and support
-  validation, static gravity analysis, atomic edits, LDraw export, building
-  instructions and the example builds. No UI or rendering dependencies.
-- `packages/claude-adapter`: Claude tool sessions over the engine, the local
-  generation CLI and the workshop server.
+| Package                                     | What it does                                                                                                          |
+| ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| [`brick-engine`](packages/brick-engine)     | Part catalogue, placement, collision and support checks, physics, export, instructions and the example builds. No UI. |
+| [`claude-adapter`](packages/claude-adapter) | Lets Claude build through the engine's tools; the generation CLI and workshop server.                                 |
+| [`brick-render`](packages/brick-render)     | LDraw loading, batched drawing, the cinematic look and the loading card.                                              |
+| [`brick-game`](packages/brick-game)         | The game itself: world generation, building, menus, saves, minimap and quests.                                        |
+| [`brick-walk`](packages/brick-walk)         | The minifigure controller: walking, gamepad and footsteps.                                                            |
+| [`brick-npc`](packages/brick-npc)           | Wandering townsfolk and animals, and their talk.                                                                      |
+| [`brick-vehicles`](packages/brick-vehicles) | Drivable vehicles, their models and sounds.                                                                           |
+| [`brick-audio`](packages/brick-audio)       | The music composer and voices.                                                                                        |
 
-**Rendering and game building blocks**
+`apps/brick-world` and `apps/brick-island` are thin shells around `brick-game`. `data` holds the
+local, Git-ignored LDraw library and inventory downloads.
 
-- `packages/brick-render`: LDraw loading, batched drawing, the cinematic look, the
-  loading card and the LDraw library's Vite plugin. Both game apps and the workshop draw with it.
-- `packages/brick-walk`: the minifigure controller (walking, jumping, gamepad, footsteps).
-- `packages/brick-npc`: wandering townsfolk and animals, and their talk.
-- `packages/brick-vehicles`: drivable vehicles, their models and sounds.
-- `packages/brick-audio`: the music composer and voices.
-- `packages/brick-game`: the game itself: world generation, chunks, building, menus,
-  saves, minimap and quests. Started with a `GameConfig`.
+## Go deeper
 
-**Apps and data**
-
-- `apps/brick-studio`: the workshop (viewer, part picker, editing, undo/redo, imports and
-  exports, full-library browser) and the building instructions tool.
-- `apps/brick-world`, `apps/brick-island`: thin shells that call `startGame` from
-  `packages/brick-game` with their own `GameConfig`.
-- `data`: the local, Git-ignored LDraw library and inventory downloads.
-- `docs`: the [build standard](docs/build-standard.md) and the
-  [benchmarks against real sets](docs/rebrickable-benchmarks.md).
-
-## Workshop
-
-- **Saving.** The current build autosaves in the browser. **File → Save** (⌘S)
-  writes `builds/<name>.json` (override with `WORKSHOP_BUILDS_PATH`); saved builds
-  are listed under **File**. Only the dev and preview servers serve this folder.
-- **Import** reads assembly JSON and workshop/CLI exports (up to 2 MB, 50,000
-  pieces). Everything is revalidated against the current policy.
-- **Building instructions** (**Export → Building instructions…**) turns a build
-  into a printable PDF manual, ordering pieces so each comes after what it rests on.
-- **Add 3D model** converts SketchUp (`.skp`), COLLADA (`.dae`) or `.glb` models in
-  the browser: the surface is sampled into brick-sized cells, filled with wall
-  bricks, roofs get slopes and detected openings get door and window frames.
-- **Smooth surfaces** (**File**) dresses the whole build as one undoable edit:
-  outside corners of plain 1 x 1 and 2 x 2 pieces turn round, cheese and curved
-  slopes lean on steps, plate steps and open edges get tiles and corners
-  quarter-round tiles; **…and add flowers** also scatters flowers on green tops.
-  `smoothAssembly` in the engine does the work. Generate runs it on every draft
-  for the pieces that run added (without flowers), and Claude can call it as
-  `brick_smooth` mid-build or for flowers.
-- **Generate** drafts or revises a build with Claude, optionally from up to four
-  reference photos, in a separate dialog; nothing changes until **Apply draft**.
-
-Generation needs the workshop server next to the dev server:
-
-```sh
-pnpm workshop:server
-pnpm dev:studio
-```
-
-Set `ANTHROPIC_API_KEY` in the server's environment or the ignored root `.env`
-(never in `VITE_` variables); `CLAUDE_MODEL` picks the model. Without a key the
-server runs through your local Claude Code login instead, which is for personal
-local use only. The server binds to `127.0.0.1:8787` (`WORKSHOP_API_PORT`) and
-Vite proxies `/api/workshop` to it.
-
-## Games
-
-Both games are one codebase ([packages/brick-game](packages/brick-game)); an app picks its
-game by passing a `GameConfig` to `startGame`. The config sets what shapes the world and
-which features are on:
-
-| Setting     | Brick World                                      | Brick Island                            |
-| ----------- | ------------------------------------------------ | --------------------------------------- |
-| `world`     | generated from any seed                          | one hand-drawn island (seed 7)          |
-| `building`  | on: hotbar, brick box, place and take off pieces | off: a game for walking round           |
-| `fixedTime` | day and night                                    | always a bright morning                 |
-| `minimap`   | off                                              | on, with landmarks (`N` opens it full)  |
-| `saveSlots` | worlds, each with its building                   | save games that remember where you were |
-| `vehicles`  | none                                             | parked round the island to drive        |
-
-Saves live in the browser under each game's own prefix, so the two never read each
-other's. To add a game, add a `GameConfig` next to `BRICK_WORLD` and `BRICK_ISLAND` in
-[game.ts](packages/brick-game/src/game.ts) and a shell app that starts it.
-
-## Engine
-
-Positions are in studs for X/Z and plates for Y, in steps of 0.5; a brick is
-three plates. X/Z are the minimum corner of the rotated footprint, rotations are
-quarter turns, and all studs point up (except side-stud bricks, which hold pieces
-mounted sideways; a mounted piece's height steps by a quarter plate, so a jumper
-can set the next piece half a stud up). Boards are square, 16 to 128 studs (`Assembly.buildArea`).
-
-`placeBrick`, `removeBrick`, `previewPatch` and `applyPatch` return a new valid
-assembly or structured issues and never mutate their input. A piece above the
-ground needs at least one matching stud connection to grounded support; removing
-a piece is refused if it would leave others unsupported. Collisions reserve each
-part's whole rectangular envelope.
-
-### Parts
-
-The catalogue in [core.ts](packages/brick-engine/src/core.ts) holds a curated
-set of LDraw designs, each with a footprint, height and explicit connection
-cells (`connections.topStuds` and `connections.bottomReceivers`, zero-based in the
-unrotated footprint). `getLDrawTransform` maps them onto native LDraw geometry for
-rendering and export. Families:
-
-- Bricks, plates and tiles in the usual sizes, tall bricks, baseplates.
-- Slopes: 45°, 33°, 18°, 65° and 75° roofs, inside and outside corners for
-  hipped roofs, ridges, steep tower caps and pyramids, inverted slopes, cheese
-  slopes, and curved slopes up to 6 x 2.
-- Round: round bricks, plates and tiles from 1 x 1 to 8 x 8, half circles,
-  quarter circles, round-corner bricks and plates, macaroni bricks and tiles,
-  rounded-end plates and tiles, curved-top bricks, a dome-topped round brick and
-  inverted dishes for onion domes.
-- Detail: masonry, log, grille and headlight bricks, side-stud bricks (studs on
-  one, two or four sides), a 1 x 2 - 1 x 2 bracket, facet bricks, jumper plates,
-  wedge plates, panels, antenna finials, corner, wedge, triangular and
-  angled-end tiles, flags, fences and railings. The bracket's standing plate
-  covers its own top studs, so it takes pieces only on its front studs.
-- Architecture: arches, quarter arches, half-arch bricks, columns, cones (plain and with a
-  top groove), doors
-  and frames, windows, glass and casements.
-- Foliage: trees, bushes, grass, leaves and flowers.
-
-Plain parts connect on every cell. Shaped parts connect only where they really
-do: slopes on their high rear row, tiles never on top, and round, corner and
-macaroni pieces only on the cells their mesh covers. Doors, glass and casements
-hang in their matching frames (`INSERT_FRAME_PARTS`). With the LDraw library
-installed, tests check every part's real mesh against its declared envelope and
-centre in all four rotations.
-
-**Clips and bars.** Parts can declare `bars` (a segment along a bar's centre line)
-and `clips` (where a clip grips and the axis it holds). A clip holds a piece whose
-bar runs through it, anywhere along the bar, such as a flag (`2335`) up an antenna
-(`3957a`), or a loose bar (`30374`, `87994`) mounted level between clip plates
-(`4081b`, `60470a`, `63868`). Pieces held this way hang like side-mounted ones:
-validation hangs them a pass at a time from held pieces, a clip and the bar it grips
-may share space, physics carries them on their hosts and clamps several hosts of one
-piece together, and building instructions place them after their hosts.
-
-**Wheels and strings.** A part marked `rests` stands on whatever its base touches,
-without studs: a wheel (`4624c01`) resting on the road is held, and the pin plate
-(`4600`) that clips onto it hangs from it, so a car stands on its wheels. Braided
-strings (`75924`, `71149`) are `flexible`: each end is a round plug with a stud on
-top and a hollow below, and the string either lies straight, its ends 20 or 40
-studs apart, or is strung (`Brick.strung`, the far end's cell) between any two
-studs no further apart than that, at any heights and in any direction. The cord
-then runs straight between the ends, the plugs stay upright, either end holds it,
-and pieces may stand on both plugs. Nothing may cross the cord, except that it
-drapes over the edge of what its plugs stand on or carry. The physics solve
-weighs a strung string at its middle.
-
-**Horses and riders.** A horse (`4493c01`) stands on its hooves like a wheel, with two studs on
-its back. A saddle (`4491b`) sits on those studs and carries a rider's hips and legs
-(`3815c01`) on two studs of its own: the rider's feet stand on the saddle, and the flaps either
-side rise round his legs.
-
-**Hinges and tilted frames.** A hinge brick base (`3937`) holds a hinge top (`3938`)
-one plate up at the same position and turn; the top turns about the pair's long axis.
-A piece's optional `tilt` (`toward`, `angle` in 22.5° steps up to 90°, and the hinge
-line's height `y` in plates and position `at` in studs) places it as if upright and
-then turns it about that line, its top leaning toward `toward`. `getHingeTilt(base,
-toward, angle)` gives the line for a base. Pieces with the same tilt share one frame:
-they stack on each other's studs as if upright, so a plate on a tilted hinge top can
-carry tiles at that angle, as on a hinged roof panel. A tilted top hangs from its base
-and the rest of the frame from it, like side-mounted pieces. Pieces in different frames
-collide as turned boxes (allowing 2 LDU), and a frame may lean over its own hinge base.
-Tilted pieces have no side studs, and the workshop shows them but places pieces only
-upright or on side studs.
-
-To add a part, define it in `PARTS` (see `basicPart`, `contouredPart`,
-`curvedSlopePart` and friends), read its size, native centre and stud positions
-from the `.dat` geometry, and run `pnpm test`. The catalogue sampler example
-places every part once, so new parts are covered automatically.
-
-### Physics
-
-`assessPhysicalFeasibility` balances forces and moments on every piece with a
-linear solver: the floor and resting surfaces push, studs can pull. It reports
-whether the build balances, needs clutch, or tips, and which joints are
-overloaded. Masses come from host data, then the bundled BrickLink catalogue
-weights ([part-masses.ts](packages/brick-engine/src/part-masses.ts)), then
-optional solid-volume estimates; parts without a source stay unknown. Stud
-tension is checked against a default of 0.5 N a stud unless the host supplies a
-limit. Tipping is decided for any size; the full solve is capped at 1,000 pieces
-unless `fullCheck` is set. Hosts can swap in HiGHS with
-`setLinearSolver(createHighsSolver(...))`; the workshop runs it in a worker.
-
-Results are a static model, not a certification: bending, shear, construction
-order and real clutch strength are not checked, and
-`getBuildabilityReport` always reports `certified: false`.
-
-### Colours and evidence
-
-`COLORS` is a snapshot of LDraw's `LDConfig.ldr`. Whether a part was ever made
-in a colour comes from a reviewed snapshot of Rebrickable inventories
-([part-color-evidence.ts](packages/brick-engine/src/part-color-evidence.ts));
-missing combinations are unknown, not impossible. Nearly every supported part is
-mapped; the 45° cut tiles `5091`/`5092` are not, because Rebrickable uses those
-numbers for other tiles. Refresh with:
-
-```sh
-pnpm colors:import
-curl --fail --location --output data/inventory_parts.csv.gz https://cdn.rebrickable.com/media/downloads/inventory_parts.csv.gz
-pnpm colors:inventory data/inventory_parts.csv.gz
-pnpm fmt
-```
-
-A refresh keeps the snapshot's mappings and updates its observations. To map a new
-part, pass a configuration file with it added as the second argument. Map parts
-and colours explicitly, from matching names or LDraw's `Rebrickable` keywords;
-never infer them from similar numbers, names or RGB values.
-
-### Benchmarks against real sets
-
-[docs/rebrickable-benchmarks.md](docs/rebrickable-benchmarks.md) compares the examples with
-the reference sets (modular buildings, Architecture landmarks, Ideas and Icons castles and
-cottages) by piece count, part-category mix, small-part share and palette. It also ranks
-the parts those sets use that the catalogue lacks, and the supported parts the examples
-underuse. The reference sets and the example each group benchmarks are `REFERENCE_GROUPS`
-in [rebrickable-report.ts](apps/brick-studio/tooling/rebrickable-report.ts). Regenerate with:
-
-```sh
-pnpm rebrickable:report
-pnpm fmt
-```
-
-It downloads any missing Rebrickable CSVs into `data/` first. Inventories list parts, not
-positions, so it measures proportions, not construction. For counting only, it treats
-lettered moulds (`3665a`, `3665`) as one design; it never writes part or colour mappings.
-
-## Examples
-
-| Example             | Pieces | Detail                                                                                                                 |
-| ------------------- | ------ | ---------------------------------------------------------------------------------------------------------------------- |
-| Courtyard House     | 1,912  | Half-timbered cottage with dormer and outside stair on a landscaped island, tree, well and pond.                       |
-| Catalog sampler     | all    | Every supported part once, on an 80 x 80 board.                                                                        |
-| Seaside Lighthouse  | 415    | Striped tower on a rocky island with keeper's cottage, jetty and rowboat.                                              |
-| Flower Market Stall | 351    | Booth with striped awning, flower buckets, crates, tree and bench.                                                     |
-| Nordiska Museet     | 11,506 | The Stockholm museum with its towers, gables, dormers and windows.                                                     |
-| Castle              | 7,951  | Walled castle: round towers, gatehouse, moat and drawbridge, keep, well.                                               |
-| Hill Valley (1955)  | 11,864 | The courthouse square: portico and clock tower, the Essex theatre, shops, filling station, fifties cars and townsfolk. |
-
-Each example is a module in
-[packages/brick-engine/src/examples](packages/brick-engine/src/examples)
-implementing `ExampleDefinition`, registered in
-[registry.ts](packages/brick-engine/src/examples/registry.ts):
-
-```ts
-export const smallStack: ExampleDefinition = {
-  id: 'small-stack',
-  name: 'Small stack',
-  tags: ['vertical-support'],
-  expectedPieceCount: 2,
-  build(add) {
-    add('3005', 4, 0, 0, 0); // partId, color, x, y, z, rotation?
-    add('3005', 14, 0, 3, 0);
-  },
-};
-```
-
-Every placement is validated on first load and `expectedPieceCount` must match.
-Shared tests check every registered example.
-
-## Claude Adapter
-
-Claude builds only through engine tools (catalogue, placement candidates,
-patches, inspection, physics, export); it has no shell, files or web access, and
-the engine rejects anything invalid. By default it may only use part/colour
-combinations with inventory evidence.
-
-```sh
-pnpm claude:build --help
-pnpm claude:build "Build a small bridge" --out output/bridge
-pnpm claude:build "Add a second level" --input output/bridge/assembly.json --out output/two-level
-```
-
-The output folder gets `assembly.json` (assembly, parts list, physics and tool
-trace) and `assembly.ldr`; both import into the workshop. Use
-`createBuilderSession` and `runClaudeBuild` from `@brick-workshop/claude-adapter`
-to host it elsewhere.
+- [The engine](packages/brick-engine/README.md): coordinates, parts, connections, physics, colours and the example builds.
+- [The workshop](apps/brick-studio/README.md) and [the Claude adapter](packages/claude-adapter/README.md): saving, importing, generating with Claude.
+- [The build standard](docs/build-standard.md): what a good build looks like.
+- [Benchmarks against real sets](docs/rebrickable-benchmarks.md): how the examples compare with LEGO's own.
 
 ## Deploying
 
