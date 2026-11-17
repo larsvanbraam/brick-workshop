@@ -125,6 +125,28 @@ function walls(
   );
 }
 
+/**
+ * A staircase up to a car's floor from the board, on the car's -z side, two studs wide at `x`. A
+ * minifigure climbs about three plates a stride, so five treads (3, 3, 3, 2 and 2 plates) rise from
+ * the ground beside the track to a landing flush with the car's floor `floor` plates up, and the
+ * landing reaches over the track's edge to the car's side. Every column stands on the board's
+ * studs, and the landing is plates over the tallest columns.
+ */
+function stairs(add: ExampleBrickAdder, x: number, floor: number, ground: number) {
+  const tops = [ground + 3, ground + 6, ground + 9, floor - 2, floor - 1, floor - 1, floor - 1].map(
+    (top, index) => ({
+      z: -8 + index,
+      height: top - ground,
+    }),
+  );
+  for (const { z, height } of tops) {
+    let y = ground;
+    for (; y + 3 <= ground + height; y += 3) addRun(add, 'brick', STONE, 'x', x, y, z, 2);
+    for (; y < ground + height; y++) addRun(add, 'plate', STONE, 'x', x, y, z, 2);
+  }
+  for (const dx of [0, 1]) addRun(add, 'plate', DARK_STONE, 'z', x + dx, floor - 1, -4, 4);
+}
+
 /** The locomotive: boiler, smokebox, chimney, dome, buffers and a cab with a roof. */
 function locomotive(add: ExampleBrickAdder, y: number) {
   const length = LOCOMOTIVE_LENGTH;
@@ -143,7 +165,7 @@ function locomotive(add: ExampleBrickAdder, y: number) {
     [(x: number, z: number) => rear(x, z) || pillar(x, z), DARK_RED],
     [(x: number, z: number) => (rear(x, z) && !window(x, z)) || pillar(x, z), DARK_RED],
     [(x: number, z: number) => (rear(x, z) && !window(x, z)) || pillar(x, z), DARK_RED],
-    [(x: number, z: number) => rear(x, z) || sides(x, z), BLACK],
+    [(x: number, z: number) => rear(x, z) || pillar(x, z), BLACK],
   ].forEach(([keep, color], course) =>
     addAreaMap(
       add,
@@ -152,6 +174,7 @@ function locomotive(add: ExampleBrickAdder, y: number) {
       { c: ['brick', color as number] },
     ),
   );
+  stairs(add, 1, deck, y - 3);
   addAreaMap(
     add,
     rectMap(4, () => 'r'),
@@ -258,7 +281,8 @@ function wagon(add: ExampleBrickAdder, y: number, planks: readonly [number, numb
   const deck = y + 10;
   const pick = random(seed);
   const side = (): number => (pick() < 0.35 ? planks[1] : planks[0]);
-  walls(add, deck, length, [side(), planks[0]]);
+  walls(add, deck, length, [side(), planks[0]], (_course, x, z) => z === 0 && (x === 3 || x === 4));
+  stairs(add, 3, deck + 1, y - 3);
   for (const x of [0, length - 1])
     for (const z of [0, TRAIN_WIDTH - 1]) add('3005', DARK_TIMBER, x, deck + 6, z);
   // A plank floor across the whole bed, with room for a minifigure (12 plates tall) to stand in
