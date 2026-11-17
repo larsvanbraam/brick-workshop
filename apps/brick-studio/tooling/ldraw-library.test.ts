@@ -54,6 +54,7 @@ import {
  * Wheel pins hang under their plate the same way, minifigure hips and necks rise into the
  * piece above, and hair and hats fall round the head below their base.
  */
+const OVERHANGING_PARTS = ['4493c01', '4491b'];
 const CLIP_DIPS: Readonly<Record<string, number>> = {
   '4081b': 2,
   '60470a': 2,
@@ -907,6 +908,14 @@ describe('local LDraw assets', () => {
               expect(bounds.max[axis], `${part.id} reserved ${axis} maximum`).toBeLessThanOrEqual(
                 center + extent / 2 + 0.005,
               );
+            }
+            // A horse's neck and head rise past its box, and a saddle's flaps past its seat: they
+            // are drawn over what a rider's legs share space with (see `astride`).
+            if (OVERHANGING_PARTS.includes(part.id)) {
+              model.traverse((object) => {
+                if ('geometry' in object) (object.geometry as { dispose(): void }).dispose();
+              });
+              continue;
             }
             const baseY = part.ldrawBaseY ?? part.height * 8;
             // Clips in front of a plate dip a little below its underside, less than the half-plate

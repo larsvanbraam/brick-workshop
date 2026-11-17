@@ -423,7 +423,7 @@ const LAMPS: readonly (readonly [number, number])[] = [
   [2, 28],
 ];
 for (const [x, z] of LAMPS) greserve(x, z, 2, 2);
-const BARRELS: readonly (readonly [number, number])[] = [[11, 30]];
+const BARRELS: readonly (readonly [number, number])[] = [[9, 30]];
 for (const [x, z] of BARRELS) greserve(x, z, 2, 2);
 const CACTI: readonly (readonly [number, number, number])[] = [
   [6, 39, 6],
@@ -479,18 +479,18 @@ for (const [x, z, w, d] of ROCKS) greserve(x, z, w, d);
 
 // Horses, each with a saddle clipped on its back: two stand at the hitching rails, side on, and a
 // rider comes down the street head on. x, z and the turn are the horse's; a horse is two studs
-// wide and nine long, and faces -z at turn 0.
+// wide and ten long, and faces -z at turn 0.
 const HORSES: readonly (readonly [number, number, Rotation, number, boolean])[] = [
-  [15, 31, 90, TIMBER, false],
-  [25, 31, 270, WHITE, false],
-  [22, 33, 180, DARK_TIMBER, true],
+  [12, 31, 90, TIMBER, false],
+  [24, 31, 270, WHITE, false],
+  [22, 32, 180, DARK_TIMBER, true],
 ];
 /** Where the saddle clips on, from the horse's corner, for each way the horse faces. */
 const SADDLE: Readonly<Record<Rotation, readonly [number, number]>> = {
-  0: [-1, 4],
-  90: [4, -1],
-  180: [-1, 3],
-  270: [3, -1],
+  0: [-1, 4.5],
+  90: [4.5, -1],
+  180: [-1, 3.5],
+  270: [3.5, -1],
 };
 
 interface Cowboy {
@@ -506,7 +506,7 @@ interface Cowboy {
 // Figures facing the street (+z in the plan), with their feet on open studs: two cowboys in the
 // street, the sheriff on his boardwalk and a girl on the saloon's balcony.
 const COWBOYS: readonly Cowboy[] = [
-  { x: 17, z: 36, legs: 272, shirt: 4, hat: TIMBER },
+  { x: 16, z: 36, legs: 272, shirt: 4, hat: TIMBER },
   { x: 41, z: 33, legs: 308, shirt: 14, hat: BLACK },
 ];
 for (const c of COWBOYS) greserve(c.x + 1, c.z, 2, 2);
@@ -1140,10 +1140,9 @@ export const westernTown: ExampleDefinition = {
 
     // ---- Horses with saddles, and cowboys: a standing figure is legs, torso, head and a hat,
     // all turned to face the street; the riders' hips sit on the saddle's studs.
-    const figure = (c: Cowboy, y: number, seated = false) => {
-      // Sitting legs ride 2 plates lower than standing ones, so the rest of the figure follows.
-      const lift = seated ? 3 : 5;
-      add(seated ? '3815c02' : '3815c01', c.legs, c.x + 1, y, c.z, 180);
+    const figure = (c: Cowboy, y: number) => {
+      const lift = 5;
+      add('3815c01', c.legs, c.x + 1, y, c.z, 180);
       add('76382p00', c.shirt, c.x, y + lift, c.z, 180);
       add('3626bp01', 14, c.x + 1, y + lift + 4, c.z - 0.5, 180);
       if (c.bob) add('29633', c.hat, c.x + 1, y + lift + 7, c.z - 0.5, 180);
@@ -1152,9 +1151,8 @@ export const westernTown: ExampleDefinition = {
     for (const [x, z, turn, coat, rider] of HORSES) {
       add('4493c01', coat, x, G, z, turn);
       const [dx, dz] = SADDLE[turn];
-      add('4491b', 4, x + dx, G + 6, z + dz, turn);
-      if (rider)
-        figure({ x: x - 2, z: z + 3, legs: 272, shirt: DARK_RED, hat: TIMBER }, G + 12, true);
+      add('4491b', 4, x + dx, G + 2, z + dz, turn);
+      if (rider) figure({ x: x - 2, z: z + 3.5, legs: 272, shirt: DARK_RED, hat: TIMBER }, G + 3);
     }
     for (const c of COWBOYS) figure(c, G);
     figure(SHERIFF_FIGURE, G + 4);

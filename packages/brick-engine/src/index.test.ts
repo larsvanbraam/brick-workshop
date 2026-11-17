@@ -360,7 +360,6 @@ describe('catalogue-reported weights', () => {
         '4493c01',
         '4491b',
         '3815c01',
-        '3815c02',
         '76382p00',
         '3626bp01',
         '3901',
@@ -986,7 +985,7 @@ describe('architectural part families', () => {
     const included = assembly.bricks.filter((brick) =>
       architecturalParts.some((part) => part.id === brick.partId),
     );
-    expect(included).toHaveLength(183);
+    expect(included).toHaveLength(182);
     expect(new Set(included.map((brick) => brick.partId))).toEqual(
       new Set(architecturalParts.map((part) => part.id)),
     );
@@ -1108,16 +1107,16 @@ describe('architectural part families', () => {
   it('stands a horse on its hooves, clips a saddle on its back and seats a rider on the saddle', () => {
     const ground = { ...base, id: 'ground', partId: '91405', color: 72, x: 0, y: 0, z: 0 };
     const horse = { ...base, id: 'horse', partId: '4493c01', x: 4, y: 1, z: 2 };
-    const saddle = { ...base, id: 'saddle', partId: '4491b', x: 3, y: 7, z: 6 };
-    const hips = { ...base, id: 'hips', partId: '3815c02', x: 4, y: 13, z: 6 };
-    const torso = { ...base, id: 'torso', partId: '76382p00', x: 2, y: 16, z: 6 };
+    const saddle = { ...base, id: 'saddle', partId: '4491b', x: 3, y: 3, z: 6.5 };
+    const hips = { ...base, id: 'hips', partId: '3815c01', x: 4, y: 4, z: 6.5 };
+    const torso = { ...base, id: 'torso', partId: '76382p00', x: 3, y: 9, z: 6.5 };
     const area = { name: 'Horse', buildArea: 16 };
     expect(validateAssembly({ ...area, bricks: [ground, horse] })).toEqual([]);
     expect(validateAssembly({ ...area, bricks: [ground, horse, saddle, hips, torso] })).toEqual([]);
     expect(hasClipConnection(saddle, horse)).toBe(true);
     // Off the horse's back the saddle has nothing to clip on, and without the horse it hangs.
     expect(
-      validateAssembly({ ...area, bricks: [ground, horse, { ...saddle, z: 12 }] }),
+      validateAssembly({ ...area, bricks: [ground, horse, { ...saddle, z: 13 }] }),
     ).not.toEqual([]);
     expect(validateAssembly({ ...area, bricks: [ground, saddle] })).not.toEqual([]);
   });
@@ -1591,9 +1590,9 @@ describe('upright brick engine', () => {
       ).toEqual(expected);
     }
   });
-  it('contains 273 unique building and foliage parts with explicit connection sites', () => {
-    expect(PARTS).toHaveLength(273);
-    expect(new Set(PARTS.map((part) => part.id)).size).toBe(273);
+  it('contains 272 unique building and foliage parts with explicit connection sites', () => {
+    expect(PARTS).toHaveLength(272);
+    expect(new Set(PARTS.map((part) => part.id)).size).toBe(272);
     expect(PARTS.filter((part) => part.family === 'tall')).toHaveLength(10);
     expect(PARTS.filter((part) => part.family === 'slope')).toHaveLength(35);
     expect(PARTS.filter((part) => part.family === 'round')).toHaveLength(38);
@@ -1603,7 +1602,7 @@ describe('upright brick engine', () => {
       ['cone', 5],
       ['door', 7],
       ['window', 16],
-      ['detail', 69],
+      ['detail', 68],
       ['foliage', 11],
     ] as const)
       expect(PARTS.filter((part) => part.family === family)).toHaveLength(count);
@@ -2004,7 +2003,7 @@ describe('upright brick engine', () => {
 
 describe('mixed-part engine builds', () => {
   it('lays complete catalogue and tile displays on one larger board without stacking', () => {
-    for (const [id, count] of [['catalog-sampler', 273]] as const) {
+    for (const [id, count] of [['catalog-sampler', 272]] as const) {
       const assembly = createExampleAssembly(id);
       expect(assembly.buildArea).toBe(80);
       expect(assembly.bricks).toHaveLength(count);
@@ -2281,8 +2280,7 @@ describe('mixed-part engine builds', () => {
     expect(of('4493c01')).toHaveLength(3);
     expect(of('4491b')).toHaveLength(3);
     // Five figures, four of them in felt hats and one with a bob of hair.
-    expect(of('3815c01')).toHaveLength(4);
-    expect(of('3815c02')).toHaveLength(1);
+    expect(of('3815c01')).toHaveLength(5);
     expect(of('13565')).toHaveLength(4);
     expect(of('29633')).toHaveLength(1);
     // Furnished inside: a jail cell's lattice bars in the sheriff's office, round tables and

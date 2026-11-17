@@ -171,7 +171,6 @@ const PART_USES: Record<string, string> = {
   '4600': 'wheel holder under cars, carts and trucks, pins for wheels 4624c01',
   '4624c01': 'car wheels, cart wheels, clip onto the pins of 4600',
   '3815c01': 'minifigure legs, people, figures, stands on two studs',
-  '3815c02': 'minifigure legs sitting, a rider on a horse saddle 4491b, on a chair, on two studs',
   '76382p00': 'minifigure torso with arms, people, figures, on legs 3815c01',
   '3626bp01': 'minifigure head, people, figures, on a torso 76382p00',
   '3901': 'minifigure hair, short hair, men, on a head 3626bp01',
