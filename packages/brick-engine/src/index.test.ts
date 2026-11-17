@@ -2216,7 +2216,7 @@ describe('mixed-part engine builds', () => {
   it('builds a western main street: three false-fronted buildings on boardwalks, a street and a mesa', () => {
     const assembly = createExampleAssembly('western-town');
     expect(assembly.name).toBe('Western Main Street');
-    expect(assembly.bricks).toHaveLength(2492);
+    expect(assembly.bricks).toHaveLength(3258);
     expect(assembly.buildArea).toBe(48);
     expect(validateAssembly(assembly)).toEqual([]);
     const of = (partId: string) => assembly.bricks.filter((brick) => brick.partId === partId);
@@ -2242,11 +2242,22 @@ describe('mixed-part engine builds', () => {
     expect(of('60593')).toHaveLength(22);
     // Posts under the verandas, a white balcony railing and striped awnings.
     expect(of('30055')).toHaveLength(6);
-    expect(of('3298')).toHaveLength(12);
+    expect(of('3298')).toHaveLength(11);
     expect(of('3298').filter((brick) => brick.color === 4)).toHaveLength(3);
     // A flag on the saloon's pediment, past every other roofline.
     const [flag] = of('44676a');
-    expect(flag.y).toBe(Math.max(...assembly.bricks.map((brick) => brick.y)));
+    // The grey mountain behind the town (the far z end of the board) towers over the flag, and
+    // a ladder track runs from its mine down the alley.
+    const peak = Math.max(
+      ...assembly.bricks
+        .filter((brick) => brick.z >= 36 && [71, 72, 151].includes(brick.color))
+        .map((brick) => brick.y),
+    );
+    expect(peak).toBeGreaterThan(flag.y);
+    expect(of('3069b').filter((brick) => brick.x === 31 && brick.y === 5).length).toBeGreaterThan(
+      8,
+    );
+    expect(of('3040b').length).toBeGreaterThanOrEqual(3);
     // Furnished inside: a jail cell's lattice bars in the sheriff's office, round tables and
     // a row of bottles at the bar in the saloon.
     expect(of('3633')).toHaveLength(2);
