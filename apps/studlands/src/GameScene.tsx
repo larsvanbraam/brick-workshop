@@ -168,7 +168,7 @@ export function GameScene(props: GameSceneProps) {
   const ownProbe = useRef<WalkProbe | null>(null);
   const probe = props.probe ?? ownProbe;
   const { debug } = props;
-  const dpr = useCappedDpr();
+  const [dpr, lowerDpr] = useCappedDpr();
   const focus = useMemo(() => new Vector3(start.x, GROUND_TOP, start.z), [start]);
   return (
     <Canvas
@@ -179,6 +179,7 @@ export function GameScene(props: GameSceneProps) {
       dpr={dpr}
       aria-label={game().title}
     >
+      <FrameGovernor onSlow={lowerDpr} />
       <GameStage
         size={buildArea}
         view={(props.distance.far + 0.5) * CHUNK}
@@ -304,12 +305,50 @@ function useCappedDpr() {
       MAX_PIXELS,
     );
   const [dpr, setDpr] = useState(measure);
+  // How much of that ratio is kept: it only goes down, when frames run slow, and starts over
+  // when the window is resized.
+  const [kept, setKept] = useState(1);
   useEffect(() => {
-    const resize = () => setDpr(measure());
+    const resize = () => {
+      setDpr(measure());
+      setKept(1);
+    };
     window.addEventListener('resize', resize);
     return () => window.removeEventListener('resize', resize);
   }, []);
-  return dpr;
+  const lower = useCallback(() => setKept((was) => Math.max(MIN_KEPT_DPR, was * 0.85)), []);
+  return [Math.max(0.5, dpr * kept), lower] as const;
+}
+
+/** The least of the pixel ratio the governor leaves, as a share of the capped ratio. */
+const MIN_KEPT_DPR = 0.55;
+/** Frames in one judgement of the frame rate. */
+const GOVERNOR_FRAMES = 90;
+/** A judged stretch slower than this (about 33 fps) costs the canvas some resolution. */
+const SLOW_FRAME = 0.03;
+
+/**
+ * Watches how long frames take and asks for a lower pixel ratio when they run slow, so a weak
+ * GPU trades sharpness for smoothness. Pauses (a still scene draws nothing) and the first
+ * seconds, while chunks build, do not count; the slowest tenth of a stretch is dropped as spikes.
+ */
+function FrameGovernor({ onSlow }: { onSlow: () => void }) {
+  const [state] = useState(() => ({ deltas: [] as number[], settled: 0 }));
+  useFrame((_, delta) => {
+    state.settled += delta;
+    if (state.settled < 4 || delta > 0.25) return;
+    state.deltas.push(delta);
+    if (state.deltas.length < GOVERNOR_FRAMES) return;
+    const kept = state.deltas.sort((a, b) => a - b).slice(0, Math.floor(GOVERNOR_FRAMES * 0.9));
+    state.deltas.length = 0;
+    const mean = kept.reduce((sum, value) => sum + value, 0) / kept.length;
+    if (mean > SLOW_FRAME) {
+      onSlow();
+      // The new size settles before it is judged again.
+      state.settled = 2;
+    }
+  });
+  return null;
 }
 
 /**
