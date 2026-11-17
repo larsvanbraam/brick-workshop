@@ -125,6 +125,11 @@ export interface Part {
    */
   rests?: true;
   /**
+   * Can be turned off the quarter turns (`Brick.yaw`), as a train track section is to follow a
+   * bend. Such a part has no studs, so its position is free of the stud grid.
+   */
+  yawable?: true;
+  /**
    * Bends like a braided string: besides lying straight, it can be strung (`Brick.strung`) from
    * its first end stud to its last anywhere within its length, the cord running straight between.
    */
@@ -254,6 +259,7 @@ function sculptedPart(
       | 'sideStuds'
       | 'hinge'
       | 'rests'
+      | 'yawable'
       | 'flexible'
     >
   > = {},
@@ -1951,6 +1957,7 @@ export const PARTS: readonly Part[] = [
   // the box, into the recess of the next section.
   sculptedPart('74746', 'Train track straight 8 x 16', 8, 16, 3, 'detail', {
     rests: true,
+    yawable: true,
     ldrawRotation: 90,
     ldrawBaseY: 8,
     connections: { topStuds: [], bottomReceivers: [] },
@@ -1960,6 +1967,7 @@ export const PARTS: readonly Part[] = [
   // towards -z at rotation 0, hence the offset centre), so it ends a line or makes a lone bend.
   sculptedPart('74747', 'Train track curved 9 x 18', 9, 18, 3, 'detail', {
     rests: true,
+    yawable: true,
     ldrawRotation: 90,
     ldrawBaseY: 8,
     ldrawCenter: { x: 0, z: -7 },
@@ -1970,6 +1978,7 @@ export const PARTS: readonly Part[] = [
   // reaches the branch's end, so most of it is empty ground that nothing else can use.
   sculptedPart('75541-f1', 'Train track 9V switch, right, set straight', 21, 36, 5, 'detail', {
     rests: true,
+    yawable: true,
     ldrawRotation: 90,
     ldrawBaseY: 8,
     ldrawCenter: { x: 0, z: -130 },
@@ -1977,6 +1986,7 @@ export const PARTS: readonly Part[] = [
   }),
   sculptedPart('75541-f2', 'Train track 9V switch, right, set branching', 21, 36, 5, 'detail', {
     rests: true,
+    yawable: true,
     ldrawRotation: 90,
     ldrawBaseY: 8,
     ldrawCenter: { x: 0, z: -130 },
@@ -1984,6 +1994,7 @@ export const PARTS: readonly Part[] = [
   }),
   sculptedPart('75542-f1', 'Train track 9V switch, left, set straight', 21, 36, 5, 'detail', {
     rests: true,
+    yawable: true,
     ldrawRotation: 90,
     ldrawBaseY: 8,
     ldrawCenter: { x: 0, z: 130 },
@@ -1991,6 +2002,7 @@ export const PARTS: readonly Part[] = [
   }),
   sculptedPart('75542-f2', 'Train track 9V switch, left, set branching', 21, 36, 5, 'detail', {
     rests: true,
+    yawable: true,
     ldrawRotation: 90,
     ldrawBaseY: 8,
     ldrawCenter: { x: 0, z: 130 },
@@ -2147,7 +2159,18 @@ export interface Brick {
    * Rotation stays 0.
    */
   strung?: StrungEnd;
+  /**
+   * Turned further about the vertical through the middle of its cells, on top of `rotation`, by one
+   * of YAW_ANGLES degrees in the same sense. Only parts that declare `yawable` can be. x and z
+   * stay the min corner of the cells as if it were not turned, but on a 0.01 stud grid, and it
+   * stands on the ground or on the top of something that lies under any part of its turned body.
+   * Left out when 0.
+   */
+  yaw?: number;
 }
+
+/** The angles a yawed piece can take, in degrees on top of its quarter turn. */
+export const YAW_ANGLES: readonly number[] = Object.freeze([22.5, 45, 67.5]);
 
 /** The cell a strung part's far end stud sits in: its min corner, studs and plates. */
 export interface StrungEnd {
@@ -2260,10 +2283,15 @@ type Matrix = readonly [number, number, number, number, number, number, number, 
 type Point = readonly [number, number, number];
 
 /** LDraw's turn about the vertical, row-major, as in a type 1 line. */
+/** Cosine and sine of an angle, exact at the quarter turns and rounded to 1e-9 elsewhere. */
+function trig(degrees: number): [cosine: number, sine: number] {
+  const clean = (value: number) => Math.round(value * 1e9) / 1e9 + 0;
+  return [clean(Math.cos((degrees * Math.PI) / 180)), clean(Math.sin((degrees * Math.PI) / 180))];
+}
+
 function turnY(degrees: number): Matrix {
-  const cosine = Math.round(Math.cos((degrees * Math.PI) / 180));
-  const sine = Math.round(Math.sin((degrees * Math.PI) / 180));
-  return [cosine, 0, sine, 0, 1, 0, -sine, 0, cosine];
+  const [cosine, sine] = trig(degrees);
+  return [cosine, 0, sine, 0, 1, 0, -sine + 0, 0, cosine];
 }
 
 /** Tips a part forward so its studs (LDraw -y) point to -z and its depth (+z) stands up. */
@@ -2296,6 +2324,7 @@ const tiltKey = (tilt: Tilt) => `${tilt.toward}:${tilt.angle}:${tilt.y}:${tilt.a
 
 /** Whether two pieces stand in the same frame: both untilted, or tilted alike. */
 function sameFrame(first: Brick, second: Brick): boolean {
+  if (first.yaw || second.yaw) return false;
   if (!first.tilt || !second.tilt) return !first.tilt && !second.tilt;
   return tiltKey(first.tilt) === tiltKey(second.tilt);
 }
@@ -2391,16 +2420,20 @@ function bodyBox(brick: Brick): Box {
     (brick.z + size.depth / 2) * 20,
   ];
   const half: Point = [size.width * 10, size.height * 4, size.depth * 10];
-  if (!brick.tilt)
+  if (!brick.tilt) {
+    // A yawed piece's cells turn about their middle: its x axis lands on (cos, -sin), as the
+    // LDraw turn does.
+    const [cosine, sine] = trig(brick.yaw ?? 0);
     return {
       center,
       half,
       axes: [
-        [1, 0, 0],
+        [cosine, 0, -sine],
         [0, 1, 0],
-        [0, 0, 1],
+        [sine, 0, cosine],
       ],
     };
+  }
   const turn = tiltTurn(brick.tilt);
   const column = (index: number): Point => [turn[index], turn[index + 3], turn[index + 6]];
   return { center: tiltPoint(brick.tilt, center), half, axes: [column(0), column(1), column(2)] };
@@ -2423,7 +2456,7 @@ export function getWorldBounds(brick: Brick) {
       maxZ: Math.max(...ends.map((end) => end.z)) + 1,
     };
   }
-  if (!brick.tilt) {
+  if (!brick.tilt && !brick.yaw) {
     const size = footprint(brick);
     return {
       minX: brick.x,
@@ -2883,6 +2916,18 @@ function isValidStrung(brick: Brick): boolean {
   return across >= 20 - EPSILON && Math.hypot(across, b[1] - a[1]) <= length + EPSILON;
 }
 
+/** A yaw is a listed angle, on a part that can turn, standing level and whole. */
+function isValidYaw(brick: Brick): boolean {
+  return (
+    YAW_ANGLES.includes(brick.yaw!) &&
+    !!getPart(brick.partId).yawable &&
+    !brick.facing &&
+    !brick.tilt &&
+    !brick.strung &&
+    !brick.upsideDown
+  );
+}
+
 function isValid(brick: Brick, buildArea: number): boolean {
   // Upright pieces sit on the half-stud grid; recessed studs and 0.4 stud plates put a mounted
   // piece's coordinate along the facing on 0.1 stud steps, and a half-stud offset on a jumper
@@ -2896,18 +2941,19 @@ function isValid(brick: Brick, buildArea: number): boolean {
     (brick.facing !== undefined && !FACINGS.includes(brick.facing)) ||
     (brick.tilt !== undefined && (!!brick.facing || !isValidTilt(brick.tilt))) ||
     (brick.strung !== undefined && !isValidStrung(brick)) ||
+    (brick.yaw !== undefined && !isValidYaw(brick)) ||
     (brick.upsideDown !== undefined &&
       (brick.upsideDown !== true ||
         !!brick.facing ||
         !!brick.tilt ||
         !getPart(brick.partId).flippable)) ||
     ![brick.x, brick.y, brick.z].every((value) => Number.isFinite(value) && value >= 0) ||
-    !onGrid(brick.x, step('x')) ||
+    !onGrid(brick.x, brick.yaw ? 0.01 : step('x')) ||
     !onGrid(brick.y, brick.facing ? 0.25 : 0.5) ||
-    !onGrid(brick.z, step('z'))
+    !onGrid(brick.z, brick.yaw ? 0.01 : step('z'))
   )
     return false;
-  if (brick.tilt || brick.strung) {
+  if (brick.tilt || brick.strung || brick.yaw) {
     const bounds = getWorldBounds(brick);
     return (
       bounds.minX >= -EPSILON &&
@@ -3040,6 +3086,17 @@ function isSupportedInsert(brick: Brick, bricks: readonly Brick[]): boolean {
 }
 
 function hasEnvelopeContact(upper: Brick, lower: Brick): boolean {
+  if (upper.yaw || lower.yaw) {
+    // A turned piece touches whatever lies under any part of the box round its turned body.
+    const [a, b] = [getWorldBounds(upper), getWorldBounds(lower)];
+    return (
+      b.maxY === a.minY &&
+      a.minX < b.maxX - EPSILON &&
+      b.minX < a.maxX - EPSILON &&
+      a.minZ < b.maxZ - EPSILON &&
+      b.minZ < a.maxZ - EPSILON
+    );
+  }
   const upperSize = footprint(upper);
   const lowerSize = footprint(lower);
   return (
@@ -3128,7 +3185,7 @@ function bucketKeys(brick: Brick, size: Size): string[] {
 
 /** The buckets a piece reaches into: its whole turned body, if tilted. */
 function cellsOf(brick: Brick, size: Size): string[] {
-  if (!brick.tilt && !brick.strung) return bucketKeys(brick, size);
+  if (!brick.tilt && !brick.strung && !brick.yaw) return bucketKeys(brick, size);
   const bounds = getWorldBounds(brick);
   return bucketKeys(
     { ...brick, x: bounds.minX, y: bounds.minY, z: bounds.minZ },
@@ -3410,7 +3467,7 @@ function computeValidation(assembly: Assembly): Validation {
     bounds,
     buckets,
     chains: new Map(),
-    tilted: valid.filter((brick) => brick.tilt || brick.strung).length,
+    tilted: valid.filter((brick) => brick.tilt || brick.strung || brick.yaw).length,
   };
   const holds = (piece: Brick, host: Brick) =>
     !!piece.facing && chainOf(index, piece.id).has(host.id);
@@ -3497,7 +3554,7 @@ export function validateAddition(
   const part = PARTS_BY_ID.get(brick.partId) ?? RUNTIME_PARTS.get(brick.partId);
   if (part && hasClipsOrBars(part)) return null;
   // Tilted frames and hinges are checked in full, as is anything added among tilted pieces.
-  if (brick.tilt || brick.strung || part?.hinge || index.tilted) return null;
+  if (brick.tilt || brick.strung || brick.yaw || part?.hinge || index.tilted) return null;
   const bricks = [...assembly.bricks, brick];
   const next: Assembly = { ...assembly, bricks };
   const issues: Issue[] = [];
@@ -3761,15 +3818,16 @@ export function getLDrawTransform(brick: Brick): {
     };
   }
   const rotation = ((brick.rotation + part.ldrawRotation) % 360) as Rotation;
-  const cosine = Math.round(Math.cos((rotation * Math.PI) / 180));
-  const sine = Math.round(Math.sin((rotation * Math.PI) / 180));
+  const turn = rotation + (brick.yaw ?? 0);
+  const [cosine, sine] = trig(turn);
   const center = part.ldrawCenter ?? { x: 0, z: 0 };
+  const round = (value: number) => (brick.yaw ? Math.round(value * 1e4) / 1e4 + 0 : value);
   return {
-    x: (brick.x + size.width / 2) * 20 - cosine * center.x - sine * center.z,
+    x: round((brick.x + size.width / 2) * 20 - cosine * center.x - sine * center.z),
     y: -brick.y * 8 - (part.ldrawBaseY ?? size.height * 8),
-    z: (brick.z + size.depth / 2) * 20 + sine * center.x - cosine * center.z,
+    z: round((brick.z + size.depth / 2) * 20 + sine * center.x - cosine * center.z),
     rotation,
-    matrix: turnY(rotation),
+    matrix: turnY(turn),
   };
 }
 
