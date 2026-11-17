@@ -1442,7 +1442,7 @@ export default function App() {
       <header className="app-header">
         <div className="brand">
           <img className="brand-logo" src={brickLogo} alt="" width={30} height={30} />
-          <h1 className="visually-hidden">Brick Workshop</h1>
+          <h1 className="visually-hidden">Brick Studio</h1>
           <input
             key={assembly.name}
             className="build-name"

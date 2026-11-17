@@ -32,7 +32,7 @@ export default defineConfig(({ mode }) => {
     plugins: [
       react(),
       splashPlugin({
-        title: 'Brick Workshop',
+        title: 'Brick Studio',
         message: 'Loading parts...',
       }),
       ldrawLibraryPlugin(resolve(workspaceRoot, env.LDRAW_LIBRARY_PATH || 'data/ldraw')),

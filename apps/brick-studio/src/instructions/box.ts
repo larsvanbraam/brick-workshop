@@ -92,7 +92,7 @@ function fit(
   return size;
 }
 
-/** The Brick Workshop mark: a white two-stud brick and the name on the app's green. */
+/** The Brick Studio mark: a white two-stud brick and the name on the app's green. */
 function brandMark(context: CanvasRenderingContext2D, x: number, y: number, size: number) {
   const gradient = context.createLinearGradient(x, y, x + size, y + size);
   gradient.addColorStop(0, '#2a9a67');

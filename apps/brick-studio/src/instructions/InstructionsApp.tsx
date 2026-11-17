@@ -220,7 +220,7 @@ export function InstructionsApp() {
   const boxDescription = assembly
     ? `${assembly.name} in ${assembly.bricks.length} pieces${
         plan && !('error' in plan) ? `, built in ${plan.steps.length} steps` : ''
-      }. Designed in Brick Workshop.`
+      }. Designed in Brick Studio.`
     : '';
   const busy = progress !== null || boxStatus !== null;
   const autosave = useMemo(() => readAutosave(), []);

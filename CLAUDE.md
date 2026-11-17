@@ -1,4 +1,4 @@
-# Brick Workshop
+# Brick Studio
 
 A LEGO assembly playground: a UI-free engine (`packages/brick-engine`), a Claude adapter
 (`packages/claude-adapter`), the workshop app (`apps/brick-studio`) and Brick World (`apps/brick-world`), a

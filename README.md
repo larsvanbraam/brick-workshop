@@ -1,4 +1,4 @@
-# Brick Workshop
+# Brick Studio
 
 A LEGO assembly playground: a 3D workshop for building with real LDraw parts, a
 UI-free engine that validates every placement, and a Claude adapter that builds
