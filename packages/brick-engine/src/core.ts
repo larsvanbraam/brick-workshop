@@ -2169,8 +2169,13 @@ export interface Brick {
   yaw?: number;
 }
 
-/** The angles a yawed piece can take, in degrees on top of its quarter turn. */
-export const YAW_ANGLES: readonly number[] = Object.freeze([22.5, 45, 67.5]);
+/**
+ * The angles a yawed piece can take, in degrees on top of its quarter turn: every 11.25, the half
+ * of a curved section's turn, which is where its ends lie off the line of its chord.
+ */
+export const YAW_ANGLES: readonly number[] = Object.freeze([
+  11.25, 22.5, 33.75, 45, 56.25, 67.5, 78.75,
+]);
 
 /** The cell a strung part's far end stud sits in: its min corner, studs and plates. */
 export interface StrungEnd {
@@ -2948,9 +2953,9 @@ function isValid(brick: Brick, buildArea: number): boolean {
         !!brick.tilt ||
         !getPart(brick.partId).flippable)) ||
     ![brick.x, brick.y, brick.z].every((value) => Number.isFinite(value) && value >= 0) ||
-    !onGrid(brick.x, brick.yaw ? 0.01 : step('x')) ||
+    !onGrid(brick.x, brick.yaw || getPart(brick.partId).yawable ? 0.01 : step('x')) ||
     !onGrid(brick.y, brick.facing ? 0.25 : 0.5) ||
-    !onGrid(brick.z, brick.yaw ? 0.01 : step('z'))
+    !onGrid(brick.z, brick.yaw || getPart(brick.partId).yawable ? 0.01 : step('z'))
   )
     return false;
   if (brick.tilt || brick.strung || brick.yaw) {

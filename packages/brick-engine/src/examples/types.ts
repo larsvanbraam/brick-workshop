@@ -16,6 +16,8 @@ export type ExampleBrickAdder = (
   tilt?: Tilt,
   /** Strings a flexible part from its first end stud, at x, y, z, to this cell. */
   strung?: StrungEnd,
+  /** Turns a yawable piece (track) off the quarter turns, in degrees: see `Brick.yaw`. */
+  yaw?: number,
 ) => void;
 
 export interface ExampleMetadata {

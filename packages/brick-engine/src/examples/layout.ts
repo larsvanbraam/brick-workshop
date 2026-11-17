@@ -1,6 +1,13 @@
-import { BUILD_AREA, FACINGS, footprint, getConnectionSites, getPart } from '../core.ts';
+import {
+  BUILD_AREA,
+  FACINGS,
+  YAW_ANGLES,
+  footprint,
+  getConnectionSites,
+  getPart,
+} from '../core.ts';
 import type { Brick, Facing, Rotation } from '../core.ts';
-import { STRAIGHT_TRACK, TRACK_LENGTH } from '../track.ts';
+import { CURVED_TRACK, STRAIGHT_TRACK, TRACK_LENGTH, trackEnds } from '../track.ts';
 import type { ExampleBrickAdder } from './types.ts';
 
 /** Run kinds: `short` lays bricks no longer than three studs, for finer stonework. */
@@ -65,6 +72,100 @@ export function addTrack(
       axis === 'x' ? z : z + i * TRACK_LENGTH,
       axis === 'x' ? 90 : 0,
     );
+}
+
+/** Where a track line stands: a point on the rails and the way it goes on. */
+export interface TrackPoint {
+  /** Studs, plates and studs: the middle of the rails' end face. */
+  x: number;
+  y: number;
+  z: number;
+  /** Degrees of travel from +x towards +z, a multiple of 11.25. */
+  angle: number;
+}
+
+/** The parts a path letter lays: which end it is entered by and left by, and any branch. */
+const TRACK_STEPS: Readonly<
+  Record<string, { partId: string; near: number; far: number; branch?: number }>
+> = {
+  // Straight; a curve turned to the right (towards +z) or to the left, which is the same curve
+  // entered from its other end; and right-hand and left-hand switches set straight, leaving
+  // the branch to be laid from the point returned for it.
+  S: { partId: STRAIGHT_TRACK, near: 0, far: 1 },
+  R: { partId: CURVED_TRACK, near: 0, far: 1 },
+  L: { partId: CURVED_TRACK, near: 1, far: 0 },
+  r: { partId: '75541-f1', near: 0, far: 1, branch: 2 },
+  l: { partId: '75542-f1', near: 0, far: 1, branch: 2 },
+};
+
+/**
+ * Lays track from a point, one section a letter: S straight, R and L a curve turning right (towards
+ * +z when heading +x) or left, r and l a right or left switch whose branch is returned in
+ * `branches` to lay from. Each section is turned (by quarter turn and yaw) and placed so its near
+ * end meets the last one's, and what it leads on from is read off the piece as placed, so the
+ * line stays joined however long it runs. Lay track in world space, not through `reflectToFront`.
+ */
+export function layTrack(
+  add: ExampleBrickAdder,
+  color: number,
+  from: TrackPoint,
+  path: string,
+): { end: TrackPoint; branches: TrackPoint[] } {
+  let at = from;
+  const branches: TrackPoint[] = [];
+  const round = (value: number) => Math.round(value * 100) / 100 + 0;
+  for (const letter of path.replace(/\s/g, '')) {
+    const step = TRACK_STEPS[letter];
+    if (!step) throw new Error(`Unknown track step "${letter}": use S, R, L, r or l.`);
+    // The turn that leads the near end back along the line we came by.
+    const probe = (rotation: Rotation, yaw: number) => ({
+      id: 'probe',
+      partId: step.partId,
+      color,
+      x: 0,
+      y: at.y,
+      z: 0,
+      rotation,
+      ...(yaw ? { yaw } : {}),
+    });
+    const fits = ([0, 90, 180, 270] as const).flatMap((rotation) =>
+      [0, ...YAW_ANGLES].map((yaw) => ({ rotation, yaw })),
+    );
+    const turn = fits.find(({ rotation, yaw }) => {
+      const gap = Math.abs(
+        ((((trackEnds(probe(rotation, yaw))[step.near]!.angle - at.angle - 180) % 360) + 540) %
+          360) -
+          180,
+      );
+      return gap < 0.01;
+    });
+    if (!turn) throw new Error(`No turn of ${step.partId} leads along ${at.angle} degrees.`);
+    const home = trackEnds(probe(turn.rotation, turn.yaw))[step.near]!;
+    const [x, z] = [round(at.x - home.x), round(at.z - home.z)];
+    add(
+      step.partId,
+      color,
+      x,
+      at.y,
+      z,
+      turn.rotation,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      turn.yaw || undefined,
+    );
+    const placed = trackEnds({ ...probe(turn.rotation, turn.yaw), x, z });
+    const lead = (end: (typeof placed)[number]): TrackPoint => ({
+      x: end.x,
+      y: end.y,
+      z: end.z,
+      angle: end.angle,
+    });
+    if (step.branch !== undefined) branches.push(lead(placed[step.branch]!));
+    at = lead(placed[step.far]!);
+  }
+  return { end: at, branches };
 }
 
 /** Adds one straight 1-wide run, split into the longest catalogue pieces that fit. */
@@ -185,7 +286,8 @@ const DOORS = new Set(['3193a', '60616a', '60623']);
  * turn and doors stay half a stud in front of them, as the engine's insert rule expects.
  */
 export function turnAround(add: ExampleBrickAdder, buildArea = BUILD_AREA): ExampleBrickAdder {
-  return (partId, color, x, y, z, rotation = 0, facing, upsideDown, tilt, strung) => {
+  return (partId, color, x, y, z, rotation = 0, facing, upsideDown, tilt, strung, yaw) => {
+    if (yaw) throw new Error('Lay turned track in world space: turnAround cannot mirror it.');
     const { width, depth } = footprint({ id: '', partId, color, x, y, z, rotation, facing });
     if (strung) {
       // Both end studs turn with the build; the cord follows them.
@@ -279,8 +381,8 @@ const TRANS_CLEAR = 47;
 
 /** Puts glass, trans-clear unless told otherwise, in every window frame the build adds. */
 export function glazeWindows(add: ExampleBrickAdder, glassColor = TRANS_CLEAR): ExampleBrickAdder {
-  return (partId, color, x, y, z, rotation = 0, facing, upsideDown, tilt, strung) => {
-    add(partId, color, x, y, z, rotation, facing, upsideDown, tilt, strung);
+  return (partId, color, x, y, z, rotation = 0, facing, upsideDown, tilt, strung, yaw) => {
+    add(partId, color, x, y, z, rotation, facing, upsideDown, tilt, strung, yaw);
     const glass = WINDOW_GLASS[partId];
     if (glass) add(glass, glassColor, x, y, z, rotation);
   };
@@ -492,7 +594,8 @@ function siteKey(piece: Omit<Brick, 'id'>, reflectDepth?: number) {
  * Side-mounted pieces facing along z face the other way; check them in a render.
  */
 export function reflectToFront(add: ExampleBrickAdder, buildArea = BUILD_AREA): ExampleBrickAdder {
-  return (partId, color, x, y, z, rotation = 0, facing, upsideDown, tilt, strung) => {
+  return (partId, color, x, y, z, rotation = 0, facing, upsideDown, tilt, strung, yaw) => {
+    if (yaw) throw new Error('Lay turned track in world space: reflectToFront cannot mirror it.');
     if (strung) {
       // Both end studs mirror across the board; the cord follows them.
       add(partId, color, x, y, buildArea - z - 1, 0, undefined, undefined, undefined, {
