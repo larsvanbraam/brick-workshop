@@ -147,6 +147,8 @@ interface Building {
   /** How the walls are laid: boards of any length, or short masonry for brick and adobe. */
   kind: RunKind;
   trim: number;
+  /** Two shades of sloped siding laid over the walls: clapboards or shingles. */
+  siding?: readonly [number, number];
   roof: readonly [number, number];
   /** Courses of the ground storey, and of an upper storey if there is one. */
   ground: number;
@@ -199,16 +201,17 @@ const SALOON: Building = {
   boards: [TIMBER, NOUGAT, DARK_TIMBER],
   kind: 'brick',
   trim: WHITE,
+  siding: [SAND, HARDPAN],
   roof: [DARK_STONE, BLACK],
   ground: 7,
   upper: 6,
-  front: [8, 8, 8, 9, 10, 10, 11, 11, 10, 10, 9, 8, 8, 8],
+  front: [12, 12, 8, 9, 10, 10, 11, 11, 10, 10, 9, 8, 12, 12],
   openings: [
-    { side: 'front', at: 18, width: 2, from: 2, to: 4, kind: 'window' },
-    { side: 'front', at: 28, width: 2, from: 2, to: 4, kind: 'window' },
+    { side: 'front', at: 18, width: 4, from: 2, to: 4, kind: 'window' },
+    { side: 'front', at: 26, width: 4, from: 2, to: 4, kind: 'window' },
     { side: 'front', at: 22, width: 4, from: 1, to: 6, kind: 'door' },
-    { side: 'front', at: 18, width: 2, from: 8, to: 10, kind: 'window' },
-    { side: 'front', at: 28, width: 2, from: 8, to: 10, kind: 'window' },
+    { side: 'front', at: 18, width: 4, from: 8, to: 10, kind: 'window' },
+    { side: 'front', at: 26, width: 4, from: 8, to: 10, kind: 'window' },
     { side: 'front', at: 22, width: 4, from: 7, to: 12, kind: 'door' },
     { side: 'left', at: 17, width: 2, from: 2, to: 4, kind: 'window' },
     { side: 'left', at: 20, width: 2, from: 2, to: 4, kind: 'window' },
@@ -234,6 +237,7 @@ const STORE: Building = {
   boards: [SAND_GREEN, OLIVE, DARK_TIMBER],
   kind: 'brick',
   trim: WHITE,
+  siding: [SAND_GREEN, OLIVE],
   roof: [DARK_STONE, BLACK],
   ground: 7,
   upper: 0,
@@ -312,8 +316,6 @@ const PIERS: Readonly<Record<string, readonly Pier[]>> = {
   ],
   saloon: [
     { x: 17, full: true },
-    { x: 21, full: false },
-    { x: 26, full: false },
     { x: 30, full: true },
   ],
   store: [
@@ -337,7 +339,11 @@ function headerAt(b: Building, x: number, z: number, k: number): number | undefi
     )
   )
     return b.trim;
-  if (b.openings.some((o) => o.kind === 'window' && !o.flat && k === o.to + 1 && spans(b, o, x, z)))
+  if (
+    b.openings.some(
+      (o) => o.kind === 'window' && !o.flat && o.width < 4 && k === o.to + 1 && spans(b, o, x, z),
+    )
+  )
     return b.boards[2];
   if (k < 1 || k >= b.ground - 1 || (front && (isPier(b, x) || bare.has(`${x},${z + 1}`))))
     return undefined;
@@ -366,11 +372,46 @@ function headerAt(b: Building, x: number, z: number, k: number): number | undefi
 }
 
 /** Rows of the plan for the ground-storey and upper wall course `k` of a building. */
+/** The slope above a lintel of an upper window is a hood, so the siding leaves its cell. */
+const isHood = (b: Building, x: number, z: number, k: number) =>
+  b.openings.some(
+    (o) =>
+      o.side === 'front' &&
+      o.kind === 'window' &&
+      o.from > 2 &&
+      k === o.to + 2 &&
+      spans(b, o, x, z),
+  );
+
+/** Whether a wall cell carries a slope of the siding in place of a plain brick. */
+function sidedAt(b: Building, x: number, z: number, k: number) {
+  if (!b.siding || !onWall(b, x, z) || isCorner(b, x, z)) return false;
+  const front = z === b.z1;
+  // The ore cart stands in the alley between the saloon and the store.
+  if ((x === SALOON.x1 || x === STORE.x0) && z >= 13 && z <= 16 && k <= 1) return false;
+  // Barrels and crates on the deck stand against the front wall.
+  if (front && k <= 3 && bare.has(`${x},${z + 1}`)) return false;
+  return (
+    k >= (front ? 1 : 0) &&
+    !isOpen(b, x, z, k) &&
+    !isHost(b, x, z, k) &&
+    !isHost(b, x, z, k - 1) &&
+    !isHost(b, x, z, k + 1) &&
+    !isLintel(b, x, z, k) &&
+    !isSill(b, x, z, k) &&
+    !isHood(b, x, z, k) &&
+    headerAt(b, x, z, k) === undefined &&
+    !(front && isPier(b, x))
+  );
+}
+
 const wallRows = (b: Building, k: number) =>
   plan((x, z) =>
     !onWall(b, x, z) ||
+    sidedAt(b, x, z, k) ||
     isOpen(b, x, z, k) ||
     isHost(b, x, z, k) ||
+    isHood(b, x, z, k) ||
     headerAt(b, x, z, k) !== undefined
       ? ' '
       : isLintel(b, x, z, k)
@@ -417,12 +458,7 @@ const HOSTS: Readonly<Record<string, readonly (readonly [number, number])[]>> = 
     [12, 5],
     [7, 3],
   ],
-  saloon: [
-    [20, 3],
-    [27, 3],
-    [20, 9],
-    [27, 9],
-  ],
+  saloon: [],
   store: [[36, 3]],
 };
 const isHost = (b: Building, x: number, z: number, k: number) =>
@@ -476,6 +512,20 @@ function frontHeader(b: Building, x: number, j: number): number | undefined {
   )
     return b.boards[2];
   return undefined;
+}
+
+/** Whether the false front's cell is sloped siding: the plain wall, clear of piers, sign and corbels. */
+function frontSided(b: Building, x: number, j: number) {
+  const h = b.front[x - b.x0];
+  return (
+    b.siding !== undefined &&
+    h !== undefined &&
+    j >= 1 &&
+    j < h &&
+    frontHeader(b, x, j) === undefined &&
+    'abc'.includes(frontChar(b, x, j)) &&
+    !PIERS[b.name].some((pier) => Math.abs(pier.x - x) <= 1)
+  );
 }
 
 const TWO_WIDE: readonly (readonly [number, string])[] = [
@@ -628,7 +678,7 @@ export const westernTown: ExampleDefinition = {
   id: 'western-town',
   name: 'Western Main Street',
   tags: ['western', 'desert', 'saloon', 'sheriff', 'general-store', 'boardwalk', 'mesa', 'street'],
-  expectedPieceCount: 3415,
+  expectedPieceCount: 3417,
   buildArea: SIZE,
   brickIdPrefix: 'western',
   smooth: [{ only: (brick) => NATURAL.has(naturalKey(brick)) }],
@@ -648,6 +698,39 @@ export const westernTown: ExampleDefinition = {
       tagging = true;
       add(...piece);
       tagging = false;
+    };
+
+    /**
+     * One course of siding: 45 degree slopes standing on the wall, their low side outward. Every
+     * course steps out from the wall and back, so the wall reads as overlapping boards or
+     * shingles; joints between 2 x 2 slopes move a stud from course to course.
+     */
+    const addSiding = (b: Building, k: number) => {
+      if (!b.siding) return;
+      const y = courseY(b, k);
+      const sides = [
+        { cells: (i: number) => [i, b.z1] as const, lo: b.x0, hi: b.x1, turn: 180 as Rotation },
+        { cells: (i: number) => [i, b.z0] as const, lo: b.x0, hi: b.x1, turn: 0 as Rotation },
+        { cells: (i: number) => [b.x0, i] as const, lo: b.z0, hi: b.z1, turn: 90 as Rotation },
+        { cells: (i: number) => [b.x1, i] as const, lo: b.z0, hi: b.z1, turn: 270 as Rotation },
+      ];
+      for (const { cells, lo, hi, turn } of sides) {
+        for (let i = lo + 1; i < hi;) {
+          const [x, z] = cells(i);
+          if (!sidedAt(b, x, z, k)) {
+            i++;
+            continue;
+          }
+          const [nx, nz] = cells(i + 1);
+          const pair = (i + k) % 2 === 0 && i + 1 < hi && sidedAt(b, nx, nz, k);
+          const color = b.siding[hash(x, z, k, 83) < 0.35 ? 1 : 0];
+          // The slope's footprint starts at its low corner, so the outward side shifts it.
+          const out =
+            turn === 180 ? [x, z] : turn === 0 ? [x, z - 1] : turn === 90 ? [x - 1, z] : [x, z];
+          add(pair ? '3039' : '3040b', color, out[0], y, out[1], turn);
+          i += pair ? 2 : 1;
+        }
+      }
     };
 
     /** Where a plan piece lands on the board. */
@@ -809,14 +892,18 @@ export const westernTown: ExampleDefinition = {
             else if (x === b.x0) add('3004', color, x - 1, y, z, 90);
             else add('3004', color, x, y, z, 90);
           }
+        addSiding(b, k);
       }
       // The wall plate under the eaves.
       addRowMap(
         add,
-        plan((x, z) => (onWall(b, x, z) ? 'f' : ' ')),
+        plan((x, z) => (onWall(b, x, z) && !(b === SALOON && z === b.z1) ? 'f' : ' ')),
         eavesY(b),
         { f: ['plate', DARK_TIMBER] },
       );
+      // The saloon's cornice: white plates three studs deep, two of them past the wall.
+      if (b === SALOON)
+        for (let x = b.x0; x < b.x1; x += 2) add('3021', WHITE, x, eavesY(b), b.z1, 0);
     }
 
     // ---- Windows and doors.
@@ -830,7 +917,14 @@ export const westernTown: ExampleDefinition = {
           const height = o.to - o.from + 1;
           const part = o.width === 4 ? '60594' : height === 3 ? '60593' : '60592';
           for (let s = 0; s < o.width; s += o.width === 4 ? 4 : 2)
-            add(part, b.trim, alongX ? x + s : x, y, alongX ? z : z + s, alongX ? 90 : 0);
+            add(
+              part,
+              b === SALOON ? 272 : b.trim,
+              alongX ? x + s : x,
+              y,
+              alongX ? z : z + s,
+              alongX ? 90 : 0,
+            );
         } else {
           addDoor(
             { partId: '60596', color: DARK_TIMBER, x, y, z, rotation: alongX ? 90 : 0 },
@@ -847,9 +941,21 @@ export const westernTown: ExampleDefinition = {
         const row = plan((x, z) => {
           const h = b.front[x - b.x0];
           if (z !== b.z1 || h === undefined || j >= h) return ' ';
-          return frontHeader(b, x, j) === undefined ? frontChar(b, x, j) : ' ';
+          return frontHeader(b, x, j) === undefined && !frontSided(b, x, j)
+            ? frontChar(b, x, j)
+            : ' ';
         });
         addBondedMap(add, row, eavesY(b) + 1 + j * 3, FRONT_LEGEND(b), j);
+        for (let x = b.x0; x <= b.x1;) {
+          if (frontSided(b, x, j)) {
+            const pair = (x + j) % 2 === 0 && frontSided(b, x + 1, j);
+            const color = b.siding![hash(x, j, 84) < 0.35 ? 1 : 0];
+            add(pair ? '3039' : '3040b', color, x, eavesY(b) + 1 + j * 3, b.z1, 180);
+            x += pair ? 2 : 1;
+            continue;
+          }
+          x++;
+        }
         for (let x = b.x0; x <= b.x1; x++) {
           const color = j < (b.front[x - b.x0] ?? 0) ? frontHeader(b, x, j) : undefined;
           if (color !== undefined) add('3004', color, x, eavesY(b) + 1 + j * 3, b.z1, 0);
@@ -883,7 +989,7 @@ export const westernTown: ExampleDefinition = {
     for (const b of BUILDINGS)
       for (const pier of PIERS[b.name]) {
         const left = pier.x === b.x0;
-        const post = b === SALOON ? WHITE : b.boards[2];
+        const post = b === SALOON ? TIMBER : b.boards[2];
         const lay = (y: number, long: boolean) =>
           long && pier.full
             ? add('3004', post, left !== !!pier.inward ? pier.x - 1 : pier.x, y, b.z1 + 1, 90)
@@ -893,7 +999,7 @@ export const westernTown: ExampleDefinition = {
         const to = (pier.full ? b.front[pier.x - b.x0] : 0) + (upper ? 6 : 0);
         for (let i = 0; i < to; i++) {
           if (upper && i === 6) {
-            add('3024', post, pier.x, eavesY(b), b.z1 + 1);
+            if (b !== SALOON) add('3024', post, pier.x, eavesY(b), b.z1 + 1);
             continue;
           }
           const course = upper && i > 6 ? i - 1 : i;
@@ -906,12 +1012,14 @@ export const westernTown: ExampleDefinition = {
       for (const o of b.openings) {
         if (o.side !== 'front' || o.kind !== 'window') continue;
         if (o.from > 2) {
-          for (let s = 0; s < o.width; s++)
-            add('3040b', DARK_RED, o.at + s, courseY(b, o.to + 2), b.z1 + 1, 180);
+          // A white sloped course over the lintel, resting on its studs.
+          for (let s = 0; s < o.width; s += 2)
+            add('3039', WHITE, o.at + s, courseY(b, o.to + 2), b.z1, 180);
           continue;
         }
         const y = courseY(b, o.from);
-        add('3004', b === STORE ? DARK_TIMBER : DARK_RED, o.at, y, b.z1 + 1, 90);
+        for (let s = 0; s < o.width; s += 2)
+          add('3004', b === STORE ? DARK_TIMBER : DARK_RED, o.at + s, y, b.z1 + 1, 90);
         for (let s = 0; s < o.width; s++) {
           add('6141', 2, o.at + s, y + 3, b.z1 + 1);
           add('98138', (o.at + s) % 2 ? 14 : 13, o.at + s, y + 4, b.z1 + 1);
@@ -952,7 +1060,7 @@ export const westernTown: ExampleDefinition = {
     for (const [index, b] of BUILDINGS.entries()) {
       const [x0, x1] = WALKS[b.name];
       for (const x of POSTS[b.name]) {
-        const post = index === 1 ? WHITE : DARK_TIMBER;
+        const post = index === 1 ? TIMBER : DARK_TIMBER;
         add('2453b', post, x, G + 4, 26);
         add('3005', post, x, G + 19, 26);
       }
@@ -964,11 +1072,11 @@ export const westernTown: ExampleDefinition = {
         (x, z) => z === 26 && POSTS[b.name].includes(x),
       );
       if (b === SALOON) {
-        for (let x = x0; x < x1; x += 4) add('30055', WHITE, x, ROOF_Y + 1, 27, 90);
-        add('30055', WHITE, x0, ROOF_Y + 1, 23);
-        add('30055', WHITE, x1, ROOF_Y + 1, 25);
+        for (let x = x0; x < x1; x += 4) add('30055', TIMBER, x, ROOF_Y + 1, 27, 90);
+        add('30055', TIMBER, x0, ROOF_Y + 1, 23);
+        add('30055', TIMBER, x1, ROOF_Y + 1, 25);
         // Window boxes of red and pink blooms under the upper windows, and a lantern at each end.
-        for (const x of [18, 28]) {
+        for (const x of [18, 20, 26, 28]) {
           add('3004', DARK_RED, x, ROOF_Y + 1, 24, 90);
           for (const dx of [0, 1]) {
             add('6141', 2, x + dx, ROOF_Y + 4, 24);
