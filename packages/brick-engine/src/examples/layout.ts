@@ -93,8 +93,8 @@ const TRACK_STEPS: Readonly<
   // entered from its other end; and right-hand and left-hand switches set straight, leaving
   // the branch to be laid from the point returned for it.
   S: { partId: STRAIGHT_TRACK, near: 0, far: 1 },
-  R: { partId: CURVED_TRACK, near: 0, far: 1 },
-  L: { partId: CURVED_TRACK, near: 1, far: 0 },
+  R: { partId: CURVED_TRACK, near: 1, far: 0 },
+  L: { partId: CURVED_TRACK, near: 0, far: 1 },
   r: { partId: '75541-f1', near: 0, far: 1, branch: 2 },
   l: { partId: '75542-f1', near: 0, far: 1, branch: 2 },
 };

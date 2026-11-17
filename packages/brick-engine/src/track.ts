@@ -5,7 +5,7 @@ import type { Assembly, TrackEnd } from './core.ts';
 export const STRAIGHT_TRACK = '74746';
 /** A straight section's length in studs, from end to end. */
 export const TRACK_LENGTH = 16;
-/** The 9V curved section: 22.5 degrees of a 40 stud radius, its ends tipped 11.25 degrees. */
+/** The 9V curved section: 22.5 degrees of a 40 stud radius, bending towards -z in its own frame. */
 export const CURVED_TRACK = '74747';
 
 export interface TrackLinks {

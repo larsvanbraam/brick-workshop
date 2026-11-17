@@ -121,6 +121,8 @@ describe('validating one added piece', () => {
       for (const brick of candidates(assembly, 80, 7)) check(assembly, brick);
       for (const { base, brick } of leaves(assembly, 12, 11))
         for (const variation of variations(brick)) check(base, variation);
+      // Yawed track puts a build in full validation, so no addition is checked on its own.
+      if (assembly.bricks.some((brick) => brick.yaw)) return expect(checked).toBe(0);
       expect(checked).toBeGreaterThan(0);
       expect([...codes].sort()).toEqual(['collision', 'invalid', 'ok', 'unsupported']);
     }, 60_000);

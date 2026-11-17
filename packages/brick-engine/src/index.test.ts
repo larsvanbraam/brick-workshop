@@ -1659,8 +1659,10 @@ describe('upright brick engine', () => {
         expect(placeBrick(empty, { ...brick, x: area - size.width, z: area - size.depth }).ok).toBe(
           true,
         );
-        expect(placeBrick(empty, { ...brick, x: area + 1 - size.width }).ok).toBe(false);
-        expect(placeBrick(empty, { ...brick, z: area + 1 - size.depth }).ok).toBe(false);
+        // A part with bodies fills less than its box, so it must overhang by more to leave the board.
+        const over = part.bodies ? 3 : 1;
+        expect(placeBrick(empty, { ...brick, x: area + over - size.width }).ok).toBe(false);
+        expect(placeBrick(empty, { ...brick, z: area + over - size.depth }).ok).toBe(false);
         expect(
           placeBrick(
             { ...empty, bricks: [brick] },
@@ -2317,6 +2319,7 @@ describe('mixed-part engine builds', () => {
       'castle',
       'hill-valley',
       'western-town',
+      'train-track-yard',
     ]);
     expect(new Set(EXAMPLES.map((example) => example.id)).size).toBe(EXAMPLES.length);
     for (const example of SMALL_EXAMPLES) {

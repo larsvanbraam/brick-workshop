@@ -437,10 +437,14 @@ const STRAIGHT_ENDS: readonly TrackModelEnd[] = [
   { x: -160, z: 0, angle: 180 },
   { x: 160, z: 0, angle: 0 },
 ];
-/** The 9V curve turns towards +z: its ends lie on its chord, each leading 11.25 degrees round. */
+/**
+ * The 9V curve's middle is on its centre line (z = 0) and it bends towards -z: its ends lie
+ * R(1 - cos 11.25) = 15.4 LDU to -z on the chord's ends, each leading 11.25 degrees round.
+ */
+const CURVE_DIP = -CURVE_RADIUS * (1 - Math.cos(radians(CURVE_HALF)));
 const CURVE_ENDS: readonly TrackModelEnd[] = [
-  { x: -CURVE_RADIUS * Math.sin(radians(CURVE_HALF)), z: 0, angle: 180 - CURVE_HALF },
-  { x: CURVE_RADIUS * Math.sin(radians(CURVE_HALF)), z: 0, angle: CURVE_HALF },
+  { x: -CURVE_RADIUS * Math.sin(radians(CURVE_HALF)), z: CURVE_DIP, angle: 180 + CURVE_HALF },
+  { x: CURVE_RADIUS * Math.sin(radians(CURVE_HALF)), z: CURVE_DIP, angle: -CURVE_HALF },
 ];
 /** The curve as four straight boxes along its arc. */
 const CURVE_BODIES: readonly ModelBody[] = [0, 1, 2, 3].map((index) => {
@@ -448,10 +452,10 @@ const CURVE_BODIES: readonly ModelBody[] = [0, 1, 2, 3].map((index) => {
   const turn = -CURVE_HALF + step * (index + 0.5);
   return {
     x: CURVE_RADIUS * Math.sin(radians(turn)),
-    z: CURVE_RADIUS * (Math.cos(radians(CURVE_HALF)) - Math.cos(radians(turn))),
+    z: -CURVE_RADIUS * (1 - Math.cos(radians(turn))),
     length: 2 * CURVE_RADIUS * Math.sin(radians(step / 2)),
     width: TRACK_WIDTH,
-    angle: turn,
+    angle: -turn,
   };
 });
 /**
@@ -2587,6 +2591,23 @@ export function getWorldBounds(brick: Brick) {
       maxZ: Math.max(...ends.map((end) => end.z)) + 1,
     };
   }
+  if (!brick.tilt && getPart(brick.partId).bodies) {
+    // A part with bodies fills only them, so its bounds are the boxes round its bodies.
+    const boxes = bodyBoxes(brick);
+    const reach = (box: Box, axis: number) =>
+      box.axes.reduce(
+        (sum, direction, index) => sum + Math.abs(direction[axis]) * box.half[index],
+        0,
+      );
+    return {
+      minX: Math.min(...boxes.map((box) => box.center[0] - reach(box, 0))) / 20,
+      maxX: Math.max(...boxes.map((box) => box.center[0] + reach(box, 0))) / 20,
+      minY: brick.y,
+      maxY: brick.y + footprint(brick).height,
+      minZ: Math.min(...boxes.map((box) => box.center[2] - reach(box, 2))) / 20,
+      maxZ: Math.max(...boxes.map((box) => box.center[2] + reach(box, 2))) / 20,
+    };
+  }
   if (!brick.tilt && !brick.yaw) {
     const size = footprint(brick);
     return {
@@ -3078,13 +3099,15 @@ function isValid(brick: Brick, buildArea: number): boolean {
         !!brick.facing ||
         !!brick.tilt ||
         !getPart(brick.partId).flippable)) ||
-    ![brick.x, brick.y, brick.z].every((value) => Number.isFinite(value) && value >= 0) ||
+    ![brick.x, brick.y, brick.z].every(
+      (value, axis) => Number.isFinite(value) && (value >= 0 || (!!brick.yaw && axis !== 1)),
+    ) ||
     !onGrid(brick.x, brick.yaw || getPart(brick.partId).yawable ? 0.01 : step('x')) ||
     !onGrid(brick.y, brick.facing ? 0.25 : 0.5) ||
     !onGrid(brick.z, brick.yaw || getPart(brick.partId).yawable ? 0.01 : step('z'))
   )
     return false;
-  if (brick.tilt || brick.strung || brick.yaw) {
+  if (brick.tilt || brick.strung || brick.yaw || getPart(brick.partId).bodies) {
     const bounds = getWorldBounds(brick);
     return (
       bounds.minX >= -EPSILON &&
@@ -3316,7 +3339,8 @@ function bucketKeys(brick: Brick, size: Size): string[] {
 
 /** The buckets a piece reaches into: its whole turned body, if tilted. */
 function cellsOf(brick: Brick, size: Size): string[] {
-  if (!brick.tilt && !brick.strung && !brick.yaw) return bucketKeys(brick, size);
+  if (!brick.tilt && !brick.strung && !brick.yaw && !hasBodies(brick))
+    return bucketKeys(brick, size);
   const bounds = getWorldBounds(brick);
   return bucketKeys(
     { ...brick, x: bounds.minX, y: bounds.minY, z: bounds.minZ },
