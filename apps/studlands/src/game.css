@@ -1731,3 +1731,18 @@ kbd {
   bottom: auto;
   top: 12px;
 }
+
+/* With touch controls the map moves to the top left, under the status, out of the buttons' way. */
+.game.touch .minimap {
+  right: auto;
+  bottom: auto;
+  left: 40px;
+  top: 100px;
+}
+
+.game.touch .minimap-compass {
+  right: auto;
+  bottom: auto;
+  left: 14px;
+  top: 74px;
+}
