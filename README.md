@@ -30,7 +30,7 @@ for you to place on the canvas and finish by hand.
 - Generates a draft with Claude from a description or reference photos; apply it to the canvas and take over by hand.
 
 [**Open Brick Studio**](https://brick-studio.larsvanbraam.nl) · run it locally with `pnpm dev:studio` ·
-[workshop details](apps/brick-studio/README.md)
+[Brick Studio details](apps/brick-studio/README.md)
 
 ---
 
@@ -44,7 +44,8 @@ for you to place on the canvas and finish by hand.
 in every direction. Pick bricks from the box, put them down and take them off again; every
 world keeps its own building.
 
-[**Play Brick World**](https://brick-world.larsvanbraam.nl) · run it locally with `pnpm dev:world`
+[**Play Brick World**](https://brick-world.larsvanbraam.nl) · run it locally with `pnpm dev:world` ·
+[Brick World details](apps/brick-world/README.md)
 
 ---
 
@@ -58,7 +59,8 @@ world keeps its own building.
 always in bright morning light. Walk round with the minimap, talk to the townsfolk and drive
 the vehicles parked about the island. There's no building here, just somewhere to roam.
 
-[**Play Brick Island**](https://brick-island.larsvanbraam.nl) · run it locally with `pnpm dev:island`
+[**Play Brick Island**](https://brick-island.larsvanbraam.nl) · run it locally with `pnpm dev:island` ·
+[Brick Island details](apps/brick-island/README.md)
 
 The two games share one codebase and differ only in their `GameConfig`: see [brick-game](packages/brick-game/README.md#two-games-one-codebase).
 
