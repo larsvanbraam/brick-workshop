@@ -1,10 +1,41 @@
-import { footprint } from './core.ts';
 import type { Assembly, Brick, Facing } from './core.ts';
 
-/** Straight 9V track: the only section whose ends are on the grid, so the only one that links. */
+import { getLDrawTransform } from './core.ts';
+import { SWITCH_TRACKS } from './core.ts';
+
+/** Straight 9V track: one section, 16 studs from end to end. */
 export const STRAIGHT_TRACK = '74746';
 /** A straight section's length in studs, from end to end. */
 export const TRACK_LENGTH = 16;
+
+/** Which way a point of a part faces, in the part's own LDraw frame (x along the rails). */
+type Along = '-x' | '+x';
+interface ModelEnd {
+  /** LDraw units from the part's origin. */
+  x: number;
+  z: number;
+  heading: Along;
+}
+
+/**
+ * Where the rails of each track part end, in the part's own frame. A switch's straight route is two
+ * sections long and ends on the same grid; its branch leaves at 22.5 degrees, off the grid, so it
+ * has no end here and cannot be linked.
+ */
+const MODEL_ENDS: Readonly<Record<string, readonly ModelEnd[]>> = (() => {
+  const straight: ModelEnd[] = [
+    { x: -160, z: 0, heading: '-x' },
+    { x: 160, z: 0, heading: '+x' },
+  ];
+  const switchRoute: ModelEnd[] = [
+    { x: -320, z: 0, heading: '-x' },
+    { x: 320, z: 0, heading: '+x' },
+  ];
+  return {
+    [STRAIGHT_TRACK]: straight,
+    ...Object.fromEntries(SWITCH_TRACKS.map((id) => [id, switchRoute])),
+  };
+})();
 
 /** One end of a track section: the middle of its end face, and the way it points out. */
 export interface TrackEnd {
@@ -24,30 +55,25 @@ const OPPOSITE: Readonly<Record<Facing, Facing>> = {
   '+z': '-z',
 };
 
-/** The two ends of a straight section, or none for any other piece. */
+/** The ends of a track section that lie on the grid, or none for any other piece. */
 export function trackEnds(brick: Brick): TrackEnd[] {
-  if (brick.partId !== STRAIGHT_TRACK) return [];
-  const { width, depth } = footprint(brick);
-  const along = width > depth ? 'x' : 'z';
-  const [cx, cz] = [brick.x + width / 2, brick.z + depth / 2];
-  const half = TRACK_LENGTH / 2;
-  const [minus, plus]: [Facing, Facing] = along === 'x' ? ['-x', '+x'] : ['-z', '+z'];
-  return [
-    {
+  const ends = MODEL_ENDS[brick.partId];
+  if (!ends) return [];
+  const { x, z, rotation } = getLDrawTransform(brick);
+  const cosine = Math.round(Math.cos((rotation * Math.PI) / 180));
+  const sine = Math.round(Math.sin((rotation * Math.PI) / 180));
+  const round = (value: number) => Math.round(value * 1000) / 1000 + 0;
+  return ends.map((end) => {
+    const direction = end.heading === '+x' ? 1 : -1;
+    const [dx, dz] = [cosine * direction, -sine * direction];
+    return {
       brickId: brick.id,
-      x: along === 'x' ? cx - half : cx,
+      x: round((x + cosine * end.x + sine * end.z) / 20),
       y: brick.y,
-      z: along === 'z' ? cz - half : cz,
-      heading: minus,
-    },
-    {
-      brickId: brick.id,
-      x: along === 'x' ? cx + half : cx,
-      y: brick.y,
-      z: along === 'z' ? cz + half : cz,
-      heading: plus,
-    },
-  ];
+      z: round((z - sine * end.x + cosine * end.z) / 20),
+      heading: dx ? (dx > 0 ? '+x' : '-x') : dz > 0 ? '+z' : '-z',
+    };
+  });
 }
 
 export interface TrackLinks {

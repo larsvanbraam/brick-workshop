@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vite-plus/test';
 import { createExampleAssembly } from './index.ts';
 import type { Brick } from './index.ts';
+import { SWITCH_TRACKS } from './index.ts';
 import { findTrackLinks, trackEnds, trackWarnings } from './track.ts';
 
 const section = (
@@ -21,11 +22,19 @@ const section = (
 
 describe('track links', () => {
   it('gives each straight two ends along its length', () => {
-    expect(trackEnds(section('a', 0, 0)).map((e) => [e.x, e.z, e.heading])).toEqual([
+    expect(
+      trackEnds(section('a', 0, 0))
+        .map((e) => [e.x, e.z, e.heading])
+        .sort(),
+    ).toEqual([
       [0, 4, '-x'],
       [16, 4, '+x'],
     ]);
-    expect(trackEnds(section('a', 0, 0, 0)).map((e) => [e.x, e.z, e.heading])).toEqual([
+    expect(
+      trackEnds(section('a', 0, 0, 0))
+        .map((e) => [e.x, e.z, e.heading])
+        .sort(),
+    ).toEqual([
       [4, 0, '-z'],
       [4, 16, '+z'],
     ]);
@@ -76,5 +85,24 @@ describe('track links', () => {
 
   it('has no warnings in the Western town', () => {
     expect(trackWarnings(createExampleAssembly('western-town'))).toEqual([]);
+  });
+
+  it("links straights to both ends of a switch's straight route, whichever way it turns", () => {
+    for (const partId of SWITCH_TRACKS)
+      for (const rotation of [0, 90, 180, 270] as const) {
+        const switchBrick: Brick = { ...section('s', 30, 30, rotation), partId };
+        const ends = trackEnds(switchBrick);
+        expect(ends).toHaveLength(2);
+        const along = ends.every((end) => end.heading.endsWith('x')) ? 'x' : 'z';
+        expect(Math.hypot(ends[0]!.x - ends[1]!.x, ends[0]!.z - ends[1]!.z)).toBe(32);
+        const straights = ends.map((end, index) => {
+          const forward = end.heading.startsWith('+');
+          return along === 'x'
+            ? section(`t${index}`, forward ? end.x : end.x - 16, end.z - 4, 90)
+            : section(`t${index}`, end.x - 4, forward ? end.z : end.z - 16, 0);
+        });
+        const { links } = findTrackLinks({ bricks: [switchBrick, ...straights] });
+        expect(links).toHaveLength(2);
+      }
   });
 });

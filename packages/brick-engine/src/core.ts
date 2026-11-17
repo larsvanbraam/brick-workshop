@@ -1965,6 +1965,37 @@ export const PARTS: readonly Part[] = [
     ldrawCenter: { x: 0, z: -7 },
     connections: { topStuds: [], bottomReceivers: [] },
   }),
+  // 9V switches: a straight route two sections long (36 studs with the tabs) and a branch that curves
+  // off 22.5 degrees to the right or left, the tongue set for the straight or for the branch. The box
+  // reaches the branch's end, so most of it is empty ground that nothing else can use.
+  sculptedPart('75541-f1', 'Train track 9V switch, right, set straight', 21, 36, 5, 'detail', {
+    rests: true,
+    ldrawRotation: 90,
+    ldrawBaseY: 8,
+    ldrawCenter: { x: 0, z: -130 },
+    connections: { topStuds: [], bottomReceivers: [] },
+  }),
+  sculptedPart('75541-f2', 'Train track 9V switch, right, set branching', 21, 36, 5, 'detail', {
+    rests: true,
+    ldrawRotation: 90,
+    ldrawBaseY: 8,
+    ldrawCenter: { x: 0, z: -130 },
+    connections: { topStuds: [], bottomReceivers: [] },
+  }),
+  sculptedPart('75542-f1', 'Train track 9V switch, left, set straight', 21, 36, 5, 'detail', {
+    rests: true,
+    ldrawRotation: 90,
+    ldrawBaseY: 8,
+    ldrawCenter: { x: 0, z: 130 },
+    connections: { topStuds: [], bottomReceivers: [] },
+  }),
+  sculptedPart('75542-f2', 'Train track 9V switch, left, set branching', 21, 36, 5, 'detail', {
+    rests: true,
+    ldrawRotation: 90,
+    ldrawBaseY: 8,
+    ldrawCenter: { x: 0, z: 130 },
+    connections: { topStuds: [], bottomReceivers: [] },
+  }),
   // Minifigures, stacked like the real thing: hips and legs on two studs, the torso (with arms
   // and yellow hands) on the hips, the head on the neck and hair or a hat on the head's stud.
   // Each faces -z at rotation 0. Hips and neck rise into the piece above, and hair falls round
@@ -2138,6 +2169,9 @@ export interface Issue {
 }
 
 export type PlacementResult = { ok: true; assembly: Assembly } | { ok: false; issues: Issue[] };
+
+/** The 9V switches, which share the track's straight route. */
+export const SWITCH_TRACKS: readonly string[] = ['75541-f1', '75541-f2', '75542-f1', '75542-f2'];
 
 export const BUILD_AREA = 16;
 export const MAX_BUILD_AREA = 128;

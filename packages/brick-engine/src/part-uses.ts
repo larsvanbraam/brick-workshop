@@ -181,6 +181,14 @@ const PART_USES: Record<string, string> = {
   '74746':
     'train track, railway, rails, railroad, sleepers, 8 studs wide and 16 long, lies on the ground',
   '74747': 'curved train track, railway bend, 22.5 degree curve, lies on the ground next to 74746',
+  '75541-f1':
+    'train track switch, points, junction, railway branch to the right, tongue set straight',
+  '75541-f2':
+    'train track switch, points, junction, railway branch to the right, tongue set to the branch',
+  '75542-f1':
+    'train track switch, points, junction, railway branch to the left, tongue set straight',
+  '75542-f2':
+    'train track switch, points, junction, railway branch to the left, tongue set to the branch',
   '4493c01':
     'horse, animal, rides a cowboy, stands on its hooves, carries saddle 4491b on its back studs',
   '4491b':
