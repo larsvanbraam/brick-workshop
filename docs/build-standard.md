@@ -130,6 +130,13 @@ _Desert_ (western town, mine, mesa, desert outpost):
   reddish brown `70` or dark red `320` in staggered lengths and two shades, with veranda roofs
   in red shingles over the boardwalk. A steep gable that shows from the side looks like a
   barn; build a low pitch, or hide it behind the false front.
+- A façade has relief, not just colour: a mottled wall of one flat plane is the mistake to
+  avoid. Push bricks out of the wall as headers (a 1 x 2 laid along z, standing on the course
+  below): sills, lintels, a string course along the foot of a false front, corbels under each cap,
+  a scatter of beam ends, and the sign's pictogram or frame so it stands proud. Stand pilasters
+  or piers a stud off the wall from the deck up through the veranda roof to the cap, with long and
+  short bricks alternating at the corners. Hang a slope hood over each upper window and a flower
+  box on each ground sill. Keep the studs these need free of props.
 - Windows and doors have a frame, a lintel and a sill band; add shutters, hanging signs on
   brackets, wanted posters on a solid wall, lanterns and window boxes. The catalogue has no
   lettering, so signs are a framed board with a pictogram (a star, a bottle, a boot) or a

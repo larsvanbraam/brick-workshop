@@ -132,6 +132,8 @@ interface Opening {
   from: number;
   to: number;
   kind: 'window' | 'door';
+  /** Keeps the lintel flush, where a figure stands close in front of the wall. */
+  flat?: true;
 }
 
 interface Building {
@@ -180,7 +182,7 @@ const SHERIFF: Building = {
   upper: 0,
   front: [6, 6, 6, 7, 7, 7, 7, 6, 6, 6],
   openings: [
-    { side: 'front', at: 5, width: 2, from: 2, to: 4, kind: 'window' },
+    { side: 'front', at: 5, width: 2, from: 2, to: 4, kind: 'window', flat: true },
     { side: 'front', at: 8, width: 4, from: 1, to: 6, kind: 'door' },
     { side: 'left', at: 17, width: 2, from: 2, to: 4, kind: 'window' },
     { side: 'right', at: 17, width: 2, from: 2, to: 4, kind: 'window' },
@@ -291,10 +293,85 @@ const legendOf = (b: Building): Record<string, readonly [RunKind, number]> => ({
   t: ['brick', b.trim],
 });
 
+/**
+ * Pilasters up the front of each building, as the column x and where the stack ends: the corner
+ * piers climb to the cap of the false front, the others stop at the eaves of the storey.
+ */
+interface Pier {
+  x: number;
+  full: boolean;
+  /** False where a figure stands, so the pier starts on the veranda roof. */
+  deck?: false;
+  /** Lays the long quoin bricks towards the wall's middle, not past the corner. */
+  inward?: true;
+}
+const PIERS: Readonly<Record<string, readonly Pier[]>> = {
+  sheriff: [
+    { x: 4, full: true, deck: false },
+    { x: 13, full: true, inward: true },
+  ],
+  saloon: [
+    { x: 17, full: true },
+    { x: 21, full: false },
+    { x: 26, full: false },
+    { x: 30, full: true },
+  ],
+  store: [
+    { x: 33, full: true },
+    { x: 42, full: true },
+  ],
+};
+const isPier = (b: Building, x: number) => PIERS[b.name].some((pier) => pier.x === x);
+
+/**
+ * Wall bricks pushed out a stud as headers: sills under the ground windows, lintels over every
+ * window and a scatter of beam ends on the ground storey. The colour of the header, if the
+ * wall cell is one.
+ */
+function headerAt(b: Building, x: number, z: number, k: number): number | undefined {
+  if (!onWall(b, x, z) || isCorner(b, x, z)) return undefined;
+  const front = z === b.z1;
+  if (
+    b.openings.some(
+      (o) => o.kind === 'window' && o.from <= 2 && k === o.from - 1 && spans(b, o, x, z),
+    )
+  )
+    return b.trim;
+  if (b.openings.some((o) => o.kind === 'window' && !o.flat && k === o.to + 1 && spans(b, o, x, z)))
+    return b.boards[2];
+  if (k < 1 || k >= b.ground - 1 || (front && (isPier(b, x) || bare.has(`${x},${z + 1}`))))
+    return undefined;
+  if (
+    b.openings.some(
+      (o) =>
+        k >= o.from - 1 &&
+        k <= o.to + 1 &&
+        Math.abs((o.side === 'front' || o.side === 'back' ? x : z) - o.at - (o.width - 1) / 2) <=
+          o.width / 2 + 1 &&
+        (o.side === 'front'
+          ? front
+          : o.side === 'back'
+            ? z === b.z0
+            : o.side === 'left'
+              ? x === b.x0
+              : x === b.x1),
+    )
+  )
+    return undefined;
+  return hash(x, z, k, b.x1 + 71) < 0.11
+    ? hash(x, k, z, 72) < 0.5
+      ? b.boards[2]
+      : b.boards[1]
+    : undefined;
+}
+
 /** Rows of the plan for the ground-storey and upper wall course `k` of a building. */
 const wallRows = (b: Building, k: number) =>
   plan((x, z) =>
-    !onWall(b, x, z) || isOpen(b, x, z, k) || isHost(b, x, z, k)
+    !onWall(b, x, z) ||
+    isOpen(b, x, z, k) ||
+    isHost(b, x, z, k) ||
+    headerAt(b, x, z, k) !== undefined
       ? ' '
       : isLintel(b, x, z, k)
         ? 'l'
@@ -320,12 +397,15 @@ const reserve = (x: number, z: number, width = 1, depth = 1) => {
 for (const xs of Object.values(POSTS)) for (const x of xs) reserve(x, 26);
 const DECK_BARRELS: readonly (readonly [number, number])[] = [
   [2, 24],
-  [16, 24],
-  [34, 24],
+  [15, 24],
+  [34, 25],
 ];
 const DECK_CRATES: readonly (readonly [number, number])[] = [[36, 24]];
 for (const [x, z] of [...DECK_BARRELS, ...DECK_CRATES]) reserve(x, z, 2, 2);
 for (const x of [12, 13]) reserve(x, 25);
+// The piers stand on the deck, so their cells keep open studs.
+for (const piers of Object.values(PIERS))
+  for (const pier of piers) if (pier.deck !== false) reserve(pier.x, 24);
 
 /**
  * Side-stud bricks set in the front wall, as [column, course]: wanted posters on the sheriff's
@@ -334,7 +414,7 @@ for (const x of [12, 13]) reserve(x, 25);
 const HOSTS: Readonly<Record<string, readonly (readonly [number, number])[]>> = {
   sheriff: [
     [12, 3],
-    [13, 4],
+    [12, 5],
     [7, 3],
   ],
   saloon: [
@@ -367,6 +447,35 @@ function frontChar(b: Building, x: number, j: number) {
   if (b === STORE && x >= 34 && x <= 41 && j >= 2 && j <= 3)
     return hash(x, j, 78) < 0.5 ? 'w' : 'd';
   return board(b, x, b.z1, 50 + j);
+}
+
+/**
+ * The false front's cells pushed out a stud as headers, `j` courses above the eaves: a string
+ * course along its foot, a row of corbels under each cap and the raised pictogram of the sign.
+ */
+function frontHeader(b: Building, x: number, j: number): number | undefined {
+  const h = b.front[x - b.x0];
+  if (h === undefined || PIERS[b.name].some((pier) => pier.full && Math.abs(pier.x - x) <= 1))
+    return undefined;
+  if (j === 0) return b.upper > 0 ? b.trim : undefined;
+  if (b === SHERIFF && x >= 8 && x <= 9 && j >= 2 && j <= 4 && frontChar(b, x, j) === 'y')
+    return 14;
+  if (b === SHERIFF && x >= 7 && x <= 10 && j === 3 && frontChar(b, x, j) === 'y') return 14;
+  if (b === SALOON && frontChar(b, x, j) === 'y' && x >= 20 && x <= 27) return 14;
+  if (b === STORE && x >= 34 && x <= 41 && j >= 2 && j <= 3 && frontChar(b, x, j) === 'd')
+    return DARK_RED;
+  const signed =
+    (b === SHERIFF && x >= 6 && x <= 11) ||
+    (b === SALOON && x >= 20 && x <= 27) ||
+    (b === STORE && x >= 34 && x <= 41);
+  if (
+    j === h - 1 &&
+    x % 2 === 0 &&
+    !signed &&
+    !PIERS[b.name].some((pier) => Math.abs(pier.x - x) <= 1)
+  )
+    return b.boards[2];
+  return undefined;
 }
 
 const TWO_WIDE: readonly (readonly [number, string])[] = [
@@ -519,7 +628,7 @@ export const westernTown: ExampleDefinition = {
   id: 'western-town',
   name: 'Western Main Street',
   tags: ['western', 'desert', 'saloon', 'sheriff', 'general-store', 'boardwalk', 'mesa', 'street'],
-  expectedPieceCount: 3200,
+  expectedPieceCount: 3415,
   buildArea: SIZE,
   brickIdPrefix: 'western',
   smooth: [{ only: (brick) => NATURAL.has(naturalKey(brick)) }],
@@ -689,6 +798,17 @@ export const westernTown: ExampleDefinition = {
             { f: ['plate', b.trim] },
           );
         addBondedMap(add, wallRows(b, k), courseY(b, k), legendOf(b), k);
+        for (let x = b.x0; x <= b.x1; x++)
+          for (let z = b.z0; z <= b.z1; z++) {
+            const color =
+              isOpen(b, x, z, k) || isHost(b, x, z, k) ? undefined : headerAt(b, x, z, k);
+            if (color === undefined) continue;
+            const y = courseY(b, k);
+            if (z === b.z1) add('3004', color, x, y, z, 0);
+            else if (z === b.z0) add('3004', color, x, y, z - 1, 0);
+            else if (x === b.x0) add('3004', color, x - 1, y, z, 90);
+            else add('3004', color, x, y, z, 90);
+          }
       }
       // The wall plate under the eaves.
       addRowMap(
@@ -727,9 +847,13 @@ export const westernTown: ExampleDefinition = {
         const row = plan((x, z) => {
           const h = b.front[x - b.x0];
           if (z !== b.z1 || h === undefined || j >= h) return ' ';
-          return frontChar(b, x, j);
+          return frontHeader(b, x, j) === undefined ? frontChar(b, x, j) : ' ';
         });
         addBondedMap(add, row, eavesY(b) + 1 + j * 3, FRONT_LEGEND(b), j);
+        for (let x = b.x0; x <= b.x1; x++) {
+          const color = j < (b.front[x - b.x0] ?? 0) ? frontHeader(b, x, j) : undefined;
+          if (color !== undefined) add('3004', color, x, eavesY(b) + 1 + j * 3, b.z1, 0);
+        }
       }
       // A cap of two-stud plates over each step, hanging a stud over the front.
       let i = 0;
@@ -752,6 +876,47 @@ export const westernTown: ExampleDefinition = {
       add('3957a', 0, 23, y, SALOON.z1);
       add('44676a', 4, 23, y + 6, SALOON.z1, 90);
     }
+
+    // ---- Relief: pilasters up the front, hoods over the upper windows and flower boxes on the
+    // sills. A pier stands on the boardwalk deck, runs through the veranda roof and climbs the
+    // false front; the corner piers lay long and short bricks in turn, like quoins.
+    for (const b of BUILDINGS)
+      for (const pier of PIERS[b.name]) {
+        const left = pier.x === b.x0;
+        const post = b === SALOON ? WHITE : b.boards[2];
+        const lay = (y: number, long: boolean) =>
+          long && pier.full
+            ? add('3004', post, left !== !!pier.inward ? pier.x - 1 : pier.x, y, b.z1 + 1, 90)
+            : add('3005', post, pier.x, y, b.z1 + 1);
+        for (let i = 0; i < (pier.deck === false ? 0 : 6); i++) lay(G + 4 + i * 3, false);
+        const upper = b.upper > 0;
+        const to = (pier.full ? b.front[pier.x - b.x0] : 0) + (upper ? 6 : 0);
+        for (let i = 0; i < to; i++) {
+          if (upper && i === 6) {
+            add('3024', post, pier.x, eavesY(b), b.z1 + 1);
+            continue;
+          }
+          const course = upper && i > 6 ? i - 1 : i;
+          lay(upper && i > 6 ? eavesY(b) + 1 + (i - 7) * 3 : G + 23 + i * 3, course % 2 === 0);
+        }
+      }
+    // Hoods: a slope over the lintel of each window of the saloon's upper storey, and a box of
+    // blooms on the sill of each front window.
+    for (const b of BUILDINGS)
+      for (const o of b.openings) {
+        if (o.side !== 'front' || o.kind !== 'window') continue;
+        if (o.from > 2) {
+          for (let s = 0; s < o.width; s++)
+            add('3040b', DARK_RED, o.at + s, courseY(b, o.to + 2), b.z1 + 1, 180);
+          continue;
+        }
+        const y = courseY(b, o.from);
+        add('3004', b === STORE ? DARK_TIMBER : DARK_RED, o.at, y, b.z1 + 1, 90);
+        for (let s = 0; s < o.width; s++) {
+          add('6141', 2, o.at + s, y + 3, b.z1 + 1);
+          add('98138', (o.at + s) % 2 ? 14 : 13, o.at + s, y + 4, b.z1 + 1);
+        }
+      }
 
     // ---- Boardwalks: a raised platform of planks, posts under its front edge and a deck of
     // tiles with open studs where props stand.
@@ -801,7 +966,7 @@ export const westernTown: ExampleDefinition = {
       if (b === SALOON) {
         for (let x = x0; x < x1; x += 4) add('30055', WHITE, x, ROOF_Y + 1, 27, 90);
         add('30055', WHITE, x0, ROOF_Y + 1, 23);
-        add('30055', WHITE, x1, ROOF_Y + 1, 24);
+        add('30055', WHITE, x1, ROOF_Y + 1, 25);
         // Window boxes of red and pink blooms under the upper windows, and a lantern at each end.
         for (const x of [18, 28]) {
           add('3004', DARK_RED, x, ROOF_Y + 1, 24, 90);
@@ -816,8 +981,11 @@ export const westernTown: ExampleDefinition = {
         }
       } else {
         // A sloping awning, in stripes on the store.
+        let placed = 0;
         for (let x = x0; x < x1; x += 2) {
-          const stripe = b === STORE ? (x - x0) % 4 === 0 : (x - x0) % 8 < 4;
+          if ([x - 1, x, x + 1, x + 2].some((px) => isPier(b, px))) continue;
+          const stripe = b === STORE ? placed % 2 === 0 : (x - x0) % 8 < 4;
+          placed++;
           add(
             '3298',
             b === STORE ? (stripe ? 4 : WHITE) : stripe ? DARK_TIMBER : TIMBER,
