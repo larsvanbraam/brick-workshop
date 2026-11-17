@@ -178,6 +178,8 @@ const PART_USES: Record<string, string> = {
   '29633': 'minifigure hair, bob, women, on a head 3626bp01',
   '3624': 'minifigure police hat, police officer, on a head 3626bp01',
   '13565': 'minifigure fedora, hat with brim, on a head 3626bp01',
+  '74746':
+    'train track, railway, rails, railroad, sleepers, 8 studs wide and 16 long, lies on the ground',
   '4493c01':
     'horse, animal, rides a cowboy, stands on its hooves, carries saddle 4491b on its back studs',
   '4491b':

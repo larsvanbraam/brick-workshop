@@ -1946,6 +1946,15 @@ export const PARTS: readonly Part[] = [
     ldrawBaseY: 19,
     clips: [{ at: [0.5, 2.375, 1], axis: 'x' }],
   }),
+  // Train track: a straight 9V section, 8 studs wide and 16 long, three plates tall with its rails
+  // and sleepers, standing on the ground the way a wheel does. Its end tabs reach half a stud past
+  // the box, into the recess of the next section.
+  sculptedPart('74746', 'Train track straight 8 x 16', 8, 16, 3, 'detail', {
+    rests: true,
+    ldrawRotation: 90,
+    ldrawBaseY: 8,
+    connections: { topStuds: [], bottomReceivers: [] },
+  }),
   // Minifigures, stacked like the real thing: hips and legs on two studs, the torso (with arms
   // and yellow hands) on the hips, the head on the neck and hair or a hat on the head's stud.
   // Each faces -z at rotation 0. Hips and neck rise into the piece above, and hair falls round

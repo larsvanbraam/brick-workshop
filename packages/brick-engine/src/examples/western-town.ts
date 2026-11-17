@@ -67,8 +67,8 @@ const naturalKey = (piece: Pick<Brick, 'partId' | 'x' | 'y' | 'z'>) =>
 
 const [IX, IZ] = [23.5, 24.5];
 const MESA = { x0: 26, x1: 45, z0: 1, z1: 11 };
-/** The railway crosses the front of the base, on its own strip of ground. */
-const RAIL = { z0: 42, z1: 45 };
+/** The railway crosses the front of the base, on its own strip of ground, as wide as a track. */
+const RAIL = { z0: 40, z1: 47 };
 /** How far a cell lies towards the base's edge: 1 on the outline. */
 function reach(x: number, z: number) {
   const [dx, dz] = [(x + 0.5 - IX) / 22.2, (z + 0.5 - IZ) / 22.2];
@@ -426,14 +426,14 @@ for (const [x, z] of LAMPS) greserve(x, z, 2, 2);
 const BARRELS: readonly (readonly [number, number])[] = [[9, 30]];
 for (const [x, z] of BARRELS) greserve(x, z, 2, 2);
 const CACTI: readonly (readonly [number, number, number])[] = [
-  [6, 39, 6],
-  [13, 39, 4],
-  [35, 39, 7],
+  [6, 37, 6],
+  [13, 37, 4],
+  [35, 37, 7],
   [38, 35, 5],
   [3, 33, 4],
 ];
 for (const [x, z] of CACTI) greserve(x - 1, z - 1, 4, 3);
-const DEAD_TREE = [41, 39] as const;
+const DEAD_TREE = [41, 37] as const;
 greserve(DEAD_TREE[0] - 1, DEAD_TREE[1] - 1, 4, 3);
 const TOWER = { x: 22, z: 6 };
 greserve(TOWER.x, TOWER.z, 4, 4);
@@ -466,14 +466,14 @@ const MINE = { x0: 30, x1: 33, z0: 9, z1: 11, courses: 5 };
 const inMouth = (x: number, z: number) => within(x, z, MINE.x0, MINE.z0, MINE.x1, MINE.z1);
 
 const SCRUB: readonly (readonly [number, number])[] = [
-  [9, 39],
-  [19, 39],
-  [31, 39],
+  [9, 38],
+  [19, 38],
+  [31, 38],
 ];
 for (const [x, z] of SCRUB) greserve(x, z, 2, 2);
 /** Boulders: bands of stacked, narrowing courses at the mesa's foot and the corners of the base. */
 const ROCKS: readonly (readonly [number, number, number, number, number, number])[] = [
-  [26, 39, 4, 2, NOUGAT, SAND],
+  [26, 38, 4, 2, NOUGAT, SAND],
 ];
 for (const [x, z, w, d] of ROCKS) greserve(x, z, w, d);
 
@@ -483,7 +483,7 @@ for (const [x, z, w, d] of ROCKS) greserve(x, z, w, d);
 const HORSES: readonly (readonly [number, number, Rotation, number, boolean])[] = [
   [12, 31, 90, TIMBER, false],
   [24, 31, 270, WHITE, false],
-  [22, 32, 180, DARK_TIMBER, true],
+  [22, 29, 180, DARK_TIMBER, true],
 ];
 /** Where the saddle clips on, from the horse's corner, for each way the horse faces. */
 const SADDLE: Readonly<Record<Rotation, readonly [number, number]>> = {
@@ -518,7 +518,7 @@ export const westernTown: ExampleDefinition = {
   id: 'western-town',
   name: 'Western Main Street',
   tags: ['western', 'desert', 'saloon', 'sheriff', 'general-store', 'boardwalk', 'mesa', 'street'],
-  expectedPieceCount: 3265,
+  expectedPieceCount: 3200,
   buildArea: SIZE,
   brickIdPrefix: 'western',
   smooth: [{ only: (brick) => NATURAL.has(naturalKey(brick)) }],
@@ -1132,11 +1132,8 @@ export const westernTown: ExampleDefinition = {
       for (const x of [34, 35]) add('3062b', SAND, x, Y, 21);
     }
 
-    // ---- The railway: sleepers across, two steel rails along, on a strip of sand.
-    for (let x = 0; x < SIZE; x += 2) add('3710', TIMBER, x, G, RAIL.z0, 0);
-    for (const z of [RAIL.z0 + 1, RAIL.z0 + 3]) {
-      addRun(add, 'plate', DARK_STONE, 'x', 0, G + 1, z, SIZE);
-    }
+    // ---- The railway: three 16-stud sections of real train track laid end to end on the strip of sand.
+    for (let x = 0; x < SIZE; x += 16) add('74746', DARK_STONE, x, G, RAIL.z0, 90);
 
     // ---- Horses with saddles, and cowboys: a standing figure is legs, torso, head and a hat,
     // all turned to face the street; the rider's feet stand on the saddle's studs, the saddle on the horse's.

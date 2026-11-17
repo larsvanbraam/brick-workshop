@@ -69,6 +69,7 @@ const OVERHANGING_SIDES: Readonly<
   Record<string, Partial<Record<'x' | 'z', readonly [number, number]>>>
 > = {
   u66: { x: [37, 0] },
+  '74746': { x: [9, 9] },
 };
 const CLIP_DIPS: Readonly<Record<string, number>> = {
   '4081b': 2,
