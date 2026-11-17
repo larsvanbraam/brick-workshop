@@ -8,7 +8,7 @@ import { createTerrain } from './worlds.ts';
 /** Which chunk of which world to build: in full, or only its far-off look. */
 export interface ChunkRequest {
   seed: number;
-  /** What shapes the world: Studlands' endless land or Brick Island. */
+  /** What shapes the world: Brick World's endless land or Brick Island. */
   world?: WorldKind;
   cx: number;
   cz: number;
@@ -31,7 +31,7 @@ export type FarMessage = FarChunk & { kind: 'far' };
 let terrain: Terrain | null = null;
 
 self.onmessage = (event: MessageEvent<ChunkRequest>) => {
-  const { seed, world = 'studlands', cx, cz, far, frame = 128 } = event.data;
+  const { seed, world = 'world', cx, cz, far, frame = 128 } = event.data;
   const start = performance.now();
   // A long walk would remember columns without end; past a point the memory starts afresh.
   if (terrain?.seed !== seed || terrain.world !== world || terrain.remembered > 400_000)

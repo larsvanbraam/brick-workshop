@@ -1,5 +1,5 @@
 /**
- * Studlands' own controller buttons, beside walking's (`walk-gamepad.ts`, in its `build` layout,
+ * Brick World's own controller buttons, beside walking's (`walk-gamepad.ts`, in its `build` layout,
  * which takes the sticks and A, B, Y, View and L3). Buttons follow the standard layout, by their
  * Xbox names.
  *

@@ -5,7 +5,7 @@ import { LDRAW_SCALE } from '@brick-workshop/render/scene-frame';
 
 /**
  * A minifigure built from its LDraw parts, with the limbs on pivots so it can walk, and the
- * outfit it wears. The walker and the people of Studlands share it.
+ * outfit it wears. The walker and the people of Brick World share it.
  */
 
 /** What a minifigure wears, as LDraw colour codes and part IDs. */

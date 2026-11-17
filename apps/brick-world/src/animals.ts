@@ -5,7 +5,7 @@ import { hash2, random } from './world/noise.ts';
 import type { Biome, Terrain } from './world/terrain.ts';
 
 /**
- * The animals of Studlands and Brick Island: wildlife that suits the ground it lives on, and on
+ * The animals of Brick World and Brick Island: wildlife that suits the ground it lives on, and on
  * Brick Island's farm, cows, pigs, sheep, goats, chickens, horses and ducks kept in its
  * pastures. Like the people (`npcs.ts`), who lives where follows from the seed.
  */

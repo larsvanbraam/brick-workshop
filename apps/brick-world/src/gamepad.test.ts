@@ -25,7 +25,7 @@ const box = (left: number, top: number, size = 50) => ({
   bottom: top + size,
 });
 
-describe('studlands gamepad', () => {
+describe('brick-world gamepad', () => {
   it('reads buttons, triggers and the right stick from every pad', () => {
     expect(readPads([null])).toBeNull();
     const state = readPads([pad([0, 0, 0, 1], [2]), pad([0, 0, 0, 0], [], { 7: 0.5 })])!;

@@ -13,7 +13,7 @@
  * Simple controls (`simple` on the walk view) ignore the right stick: the left stick alone walks
  * forward and back and turns left and right.
  *
- * A game that builds (Studlands) reads the `build` layout instead, which leaves the d-pad, the
+ * A game that builds (Brick World) reads the `build` layout instead, which leaves the d-pad, the
  * bumpers and the triggers to the game: the left stick alone moves, clicking it in is the only
  * sprint, and in the air only A climbs and B sinks.
  *

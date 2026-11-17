@@ -215,7 +215,7 @@ function isEdit(value: unknown): value is Edit {
 /** Reads a save file, or throws with a reason a player can act on. */
 export function readSaveFile(value: unknown): SaveFile {
   if (!isRecord(value) || value.format !== 'brick-island-save')
-    throw new Error('This is not a Studlands save file.');
+    throw new Error('This is not a Brick World save file.');
   if (value.version !== 1) throw new Error('This save file is from a newer version of the game.');
   if (value.worldVersion !== WORLD_VERSION)
     throw new Error('This save is from another version of the world generator.');

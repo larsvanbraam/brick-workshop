@@ -3,7 +3,7 @@ import { residentsOf, wanderRules } from './npcs.ts';
 import { Terrain } from './world/terrain.ts';
 import { createTerrain } from './world/worlds.ts';
 
-describe('the people of Studlands', () => {
+describe('the people of Brick World', () => {
   const terrain = new Terrain(1234);
   const chunks: [number, number][] = [];
   for (let cz = -3; cz < 6; cz++) for (let cx = -3; cx < 6; cx++) chunks.push([cx, cz]);

@@ -364,8 +364,8 @@ export function baseColumn(seed: number, x: number, z: number): Column {
   return { height, water, biome, warmth, moisture };
 }
 
-/** What shapes a world: Studlands' endless land from noise, or Brick Island's drawn map. */
-export type WorldKind = 'studlands' | 'island';
+/** What shapes a world: Brick World's endless land from noise, or Brick Island's drawn map. */
+export type WorldKind = 'world' | 'island';
 
 /**
  * Something built that stands on the world: a house, a lighthouse, a bridge. Its pieces are in
@@ -400,8 +400,8 @@ export interface WorldSource {
   ) => readonly Structure[];
 }
 
-export const STUDLANDS_SOURCE: WorldSource = {
-  kind: 'studlands',
+export const BRICK_WORLD_SOURCE: WorldSource = {
+  kind: 'world',
   column: baseColumn,
   start: START,
   volcanoIn,
@@ -449,7 +449,7 @@ export class Terrain {
   private readonly candidates = new Map<string, TreeSpot | null>();
   private readonly kept = new Map<string, TreeSpot | null>();
 
-  constructor(seed: number, source: WorldSource = STUDLANDS_SOURCE) {
+  constructor(seed: number, source: WorldSource = BRICK_WORLD_SOURCE) {
     this.seed = seed;
     this.source = source;
   }

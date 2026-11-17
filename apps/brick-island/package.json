@@ -10,9 +10,9 @@
   },
   "dependencies": {
     "@brick-workshop/audio": "workspace:*",
+    "@brick-workshop/brick-world": "workspace:*",
     "@brick-workshop/engine": "workspace:*",
     "@brick-workshop/render": "workspace:*",
-    "@brick-workshop/studlands": "workspace:*",
     "@brick-workshop/vehicles": "workspace:*",
     "@brick-workshop/walk": "workspace:*",
     "@react-three/fiber": "^9.8.2",

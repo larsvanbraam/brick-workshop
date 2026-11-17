@@ -28,7 +28,7 @@ export default defineConfig(({ mode }) => {
     plugins: [
       react(),
       splashPlugin({
-        title: 'Studlands',
+        title: 'Brick World',
         message: 'Loading…',
         colors: {
           background: '#1b1915',

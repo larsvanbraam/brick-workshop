@@ -137,7 +137,7 @@ export class ChunkLoader {
     seed: number,
     onChunk: (chunk: ChunkMessage) => void,
     onFar: (chunk: FarMessage) => void = () => {},
-    world: WorldKind = 'studlands',
+    world: WorldKind = 'world',
   ) {
     this.seed = seed;
     this.world = world;

@@ -3,8 +3,8 @@ import { VEHICLE_SPAWNS } from './world/island/map.ts';
 import type { VehicleSpawn } from './world/island/map.ts';
 
 /**
- * Which game this is. Studlands and Brick Island share every system (streaming, building,
- * walking, the menu); they differ in their world and their name. Studlands shapes endless land
+ * Which game this is. Brick World and Brick Island share every system (streaming, building,
+ * walking, the menu); they differ in their world and their name. Brick World shapes endless land
  * from any seed; Brick Island is one hand-drawn island, the same for everyone.
  */
 export interface GameConfig {
@@ -28,20 +28,20 @@ export interface GameConfig {
   minimap: boolean;
   /**
    * Whether the game keeps save games: slots that each remember where the player was, so a
-   * game picks up where it was left. Studlands keeps worlds instead, each with its building.
+   * game picks up where it was left. Brick World keeps worlds instead, each with its building.
    */
   saveSlots: boolean;
   /** The vehicles parked round the world for the player to drive, and where. */
   vehicles: readonly VehicleSpawn[];
 }
 
-export const STUDLANDS: GameConfig = {
-  title: 'Studlands',
+export const BRICK_WORLD: GameConfig = {
+  title: 'Brick World',
   tagline: 'Endless land to wander, and real bricks to build it up with.',
-  world: 'studlands',
+  world: 'world',
   // Keys keep the game's first name, so saves from before the rename still load.
   savePrefix: 'brick-island',
-  slug: 'studlands',
+  slug: 'brick-world',
   building: true,
   minimap: false,
   saveSlots: false,
@@ -64,7 +64,7 @@ export const BRICK_ISLAND: GameConfig = {
   vehicles: VEHICLE_SPAWNS,
 };
 
-let current: GameConfig = STUDLANDS;
+let current: GameConfig = BRICK_WORLD;
 
 /** The game being played. Set once at start-up, before anything reads it. */
 export const game = () => current;

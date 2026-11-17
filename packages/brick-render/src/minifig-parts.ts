@@ -1,6 +1,6 @@
 /**
  * The LDraw parts of the minifigures: the one that walks the build in the cinematic view, and the
- * people of Studlands with their faces, hair and hats. They are not building parts, but the
+ * people of Brick World with their faces, hair and hats. They are not building parts, but the
  * library ships them alongside the catalogue so a static deploy can draw the figures too.
  */
 

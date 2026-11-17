@@ -197,9 +197,9 @@ importers:
       '@brick-workshop/render':
         specifier: workspace:*
         version: link:../../packages/brick-render
-      '@brick-workshop/studlands':
+      '@brick-workshop/brick-world':
         specifier: workspace:*
-        version: link:../studlands
+        version: link:../brick-world
       '@brick-workshop/vehicles':
         specifier: workspace:*
         version: link:../../packages/brick-vehicles
@@ -247,7 +247,7 @@ importers:
         specifier: 1.4.0
         version: 1.4.0(@opentelemetry/api@1.10.0)(@types/node@24.19.2)(@vitest/ui@5.0.5)(typescript@7.0.2)
 
-  apps/studlands:
+  apps/brick-world:
     dependencies:
       '@brick-workshop/audio':
         specifier: workspace:*

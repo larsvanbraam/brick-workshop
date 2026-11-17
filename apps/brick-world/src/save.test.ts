@@ -16,7 +16,7 @@ import {
   storeSave,
 } from './save.ts';
 import type { SaveGame } from './save.ts';
-import { BRICK_ISLAND, STUDLANDS, setGame } from './game.ts';
+import { BRICK_ISLAND, BRICK_WORLD, setGame } from './game.ts';
 
 /** Browser storage for the tests, which run without a browser. */
 class MemoryStorage {
@@ -103,7 +103,7 @@ describe('save games', () => {
     playedAt: '2026-11-15T09:00:00.000Z',
   };
   beforeEach(() => setGame(BRICK_ISLAND));
-  afterEach(() => setGame(STUDLANDS));
+  afterEach(() => setGame(BRICK_WORLD));
 
   it('keeps a game per slot under the game’s own prefix', () => {
     expect(listSaves()).toEqual(Array.from({ length: SAVE_SLOTS }, () => null));

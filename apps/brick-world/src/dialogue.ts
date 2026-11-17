@@ -4,7 +4,7 @@ import type { Figure } from './npcs.ts';
 import type { Biome } from './world/terrain.ts';
 
 /**
- * What the people of Studlands say when the player talks to them. Each has a name and a manner
+ * What the people of Brick World say when the player talks to them. Each has a name and a manner
  * from their seed, opens with a greeting, then chats about where they live and the time of day,
  * and once they have said their piece repeats a sign-off. Lines are shown in a speech bubble and
  * voiced in Simlish babble or the device's speech.

@@ -1,4 +1,4 @@
-/* The boot splash, shared by the workshop and Studlands. An app sets its colours with
+/* The boot splash, shared by the workshop and Brick World. An app sets its colours with
    --splash-bg, --splash-ink, --splash-muted and --splash-shadow (splashPlugin passes them). */
 #app-splash {
   position: fixed;

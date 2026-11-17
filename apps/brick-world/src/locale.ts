@@ -1,5 +1,5 @@
 /**
- * The language the people of Studlands speak. It changes what they say, in their speech bubbles
+ * The language the people of Brick World speak. It changes what they say, in their speech bubbles
  * and aloud; the menus stay in English.
  */
 export type Locale = 'en' | 'nl';

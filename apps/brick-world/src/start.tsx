@@ -5,7 +5,7 @@ import { App } from './App.tsx';
 import { setGame } from './game.ts';
 import type { GameConfig } from './game.ts';
 
-export { BRICK_ISLAND, STUDLANDS } from './game.ts';
+export { BRICK_ISLAND, BRICK_WORLD } from './game.ts';
 export type { GameConfig } from './game.ts';
 
 /** Starts a game in the page's `#root`. */

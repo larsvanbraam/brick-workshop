@@ -6,7 +6,7 @@ export default defineConfig({
     include: [
       'packages/**/*.test.ts',
       'apps/web/tooling/**/*.test.ts',
-      'apps/studlands/src/**/*.test.ts',
+      'apps/brick-world/src/**/*.test.ts',
     ],
   },
   lint: {

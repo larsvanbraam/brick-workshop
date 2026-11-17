@@ -65,7 +65,7 @@ describe('save files', () => {
   });
 
   it('refuses files that are not saves, or are damaged', () => {
-    expect(() => readSaveFile({ assembly: {} })).toThrow('not a Studlands save');
+    expect(() => readSaveFile({ assembly: {} })).toThrow('not a Brick World save');
     const save = createSaveFile(42, []);
     expect(() => readSaveFile({ ...save, seed: 'x' })).toThrow('no world seed');
     expect(() => readSaveFile({ ...save, edits: [{ op: 'add', brick: { id: 1 } }] })).toThrow(

@@ -5,7 +5,7 @@ import { hash2, random } from './world/noise.ts';
 import type { Biome, Terrain } from './world/terrain.ts';
 
 /**
- * The people of Studlands: minifigures who live about the world and stroll round their homes.
+ * The people of Brick World: minifigures who live about the world and stroll round their homes.
  * Who lives where follows from the seed, so a chunk has the same people whenever it loads. They
  * keep to open dry ground: no water, lava or bare rock, and no climbing more than a brick.
  */

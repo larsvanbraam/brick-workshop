@@ -1,7 +1,7 @@
 # Brick Workshop
 
 A LEGO assembly playground: a UI-free engine (`packages/brick-engine`), a Claude adapter
-(`packages/claude-adapter`), the workshop app (`apps/web`) and Studlands (`apps/studlands`), a
+(`packages/claude-adapter`), the workshop app (`apps/web`) and Brick World (`apps/brick-world`), a
 game where a minifigure explores and builds in an endless generated world. Both apps draw with
 `packages/brick-render` (LDraw loading, batched drawing, the cinematic look, the loading card
 and the LDraw library's Vite plugin) and walk with `packages/brick-walk` (the minifigure
@@ -10,7 +10,7 @@ physics); read it before placing pieces.
 
 ```sh
 pnpm dev       # workshop on http://localhost:5173
-pnpm studlands # Studlands on http://localhost:5173 (or the next free port)
+pnpm brick-world # Brick World on http://localhost:5173 (or the next free port)
 pnpm test      # Vitest
 pnpm check     # format, lint and typecheck; run before every commit
 pnpm fmt       # format the workspace

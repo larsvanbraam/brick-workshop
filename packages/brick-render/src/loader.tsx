@@ -8,7 +8,7 @@ export interface LoaderProgress {
 }
 
 /**
- * A card over the view while something loads, shared by the workshop and Studlands. It fades in
+ * A card over the view while something loads, shared by the workshop and Brick World. It fades in
  * only after a short delay, so quick loads never flash it, and fades out once `label` is null.
  * The bar runs indeterminate until there is progress to show. Its parent must be positioned.
  */
