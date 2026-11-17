@@ -21,7 +21,8 @@ geometry. See [data/README.md](data/README.md) to use a library elsewhere.
 ```sh
 pnpm test    # Vitest via Vite Plus
 pnpm check   # format, lint and typecheck
-pnpm build   # typecheck, web build, engine and adapter packages
+pnpm build   # typecheck, all apps, engine and adapter packages
+pnpm build:studio   # one app only: also build:world, build:island, build:packages
 pnpm fmt     # format the workspace
 ```
 
