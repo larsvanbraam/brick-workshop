@@ -131,6 +131,7 @@ export function WalkMode({
   riding = false,
   active = true,
   outfit,
+  onFigureReady,
 }: {
   bricks: Iterable<Brick>;
   buildArea: number;
@@ -176,6 +177,11 @@ export function WalkMode({
   active?: boolean;
   /** What the minifigure wears; the classic red shirt and blue trousers when left out. */
   outfit?: MinifigOutfit;
+  /**
+   * Called once the minifigure's LDraw model is on show, or once it is known it cannot load (the
+   * stand-in walks then), so a loading screen can wait for the figure.
+   */
+  onFigureReady?: () => void;
 }) {
   const { camera, gl, invalidate } = useThree();
   const built = useMemo(
@@ -268,6 +274,11 @@ export function WalkMode({
   // The real minifigure from the LDraw library; a stand-in walks until it has loaded, or for good
   // when the library has no minifigure parts.
   const [models, setModels] = useState<Record<string, Group> | null>(null);
+  const ready = useRef(onFigureReady);
+  const announced = useRef(false);
+  useEffect(() => {
+    ready.current = onFigureReady;
+  }, [onFigureReady]);
   const hat = outfit?.headgear?.part;
   useEffect(() => {
     let cancelled = false;
@@ -275,11 +286,14 @@ export function WalkMode({
       .then((loaded) => {
         if (!cancelled) setModels(loaded);
       })
-      .catch(() => {});
+      .catch(() => {
+        if (!cancelled) ready.current?.();
+      });
     return () => {
       cancelled = true;
     };
   }, [hat]);
+  const ldrawFigureRef = useRef<MinifigRig | null>(null);
   const ldrawFigure = useMemo(
     () => (models ? assembleMinifig(models, outfit) : null),
     [models, outfit],
@@ -288,10 +302,13 @@ export function WalkMode({
     if (!ldrawFigure) return;
     const previous = figure.current;
     figure.current = ldrawFigure;
+    ldrawFigureRef.current = ldrawFigure;
+    announced.current = false;
+    invalidate();
     return () => {
       figure.current = previous;
     };
-  }, [ldrawFigure]);
+  }, [ldrawFigure, invalidate]);
 
   // A changed build keeps the walker where it is, lifted out of anything now in its way.
   useEffect(() => {
@@ -536,6 +553,11 @@ export function WalkMode({
         flying: current.flying,
         time: clock.elapsedTime,
       });
+      // Posed and placed: the next frame draws the real figure, so a loading screen may go.
+      if (rig === ldrawFigureRef.current && !announced.current) {
+        announced.current = true;
+        ready.current?.();
+      }
     }
     // Keeps drawing while walking: the canvas otherwise renders on demand.
     invalidate();

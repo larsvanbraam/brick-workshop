@@ -1384,19 +1384,32 @@ function Game({
   if (!partsReady && ready && library.status !== 'loading' && !library.pending.length)
     setPartsReady(true);
   const booting = !ready || !partsReady;
+  // The scene is mounted behind the splash once world and parts are in; the splash lifts only
+  // when its first chunks are drawn and the minifigure is standing there.
+  const [firstView, setFirstView] = useState(false);
+  const onFirstView = useCallback(() => setFirstView(true), []);
   useEffect(() => {
-    if (!booting) dismissSplash();
+    if (!booting && firstView) dismissSplash();
     else if (!ready)
       setSplashMessage(`Shaping ${worldName}… ${startDone} of ${startChunks.length}`);
-    else setSplashMessage('Loading parts…');
-  }, [booting, ready, worldName, startDone, startChunks.length]);
+    else if (!partsReady) setSplashMessage('Loading parts…');
+    else setSplashMessage('Placing the first bricks…');
+  }, [booting, firstView, ready, partsReady, worldName, startDone, startChunks.length]);
 
   // One loader, kept by its key from the first chunks through the parts to the open world, so
   // it fades out over the world instead of vanishing.
   const loading = (
     <Loader
       key="loader"
-      label={!ready ? `Shaping ${worldName}…` : !partsReady ? 'Loading parts…' : null}
+      label={
+        !ready
+          ? `Shaping ${worldName}…`
+          : !partsReady
+            ? 'Loading parts…'
+            : !firstView
+              ? 'Placing the first bricks…'
+              : null
+      }
       progress={
         ready
           ? null
@@ -1447,6 +1460,8 @@ function Game({
     <PadProvider value={padInUse}>
       <div className={showTouch ? 'game touch' : 'game'} data-screen={screen}>
         <GameScene
+          startChunks={startChunks}
+          onFirstView={onFirstView}
           chunks={chunks}
           farChunks={farStore}
           bricks={index.bricks}

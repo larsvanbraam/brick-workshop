@@ -1,4 +1,13 @@
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { BoxGeometry, EdgesGeometry, Frustum, Matrix4, Raycaster, Vector2, Vector3 } from 'three';
 import type { Camera, Color, Group, Object3D } from 'three';
@@ -123,6 +132,10 @@ export interface GameSceneProps {
   talk: TalkLink;
   /** Brick Island's tide, whose bubble over the player's head the scene places. */
   tide?: Tide | null;
+  /** The chunks that make up the first view: `onFirstView` waits for them to be drawn. */
+  startChunks?: readonly string[];
+  /** Called once the first chunks are drawn in full and the minifigure is on show. */
+  onFirstView?: () => void;
   /** What the player's minifigure wears: the hats won for finished jobs. */
   outfit?: MinifigOutfit;
   /** Brick Island's little jobs: their helpers, what to find and where to go (see `quests.ts`). */
@@ -170,6 +183,8 @@ export function GameScene(props: GameSceneProps) {
   const { debug } = props;
   const [dpr, lowerDpr] = useCappedDpr();
   const focus = useMemo(() => new Vector3(start.x, GROUND_TOP, start.z), [start]);
+  const [figureDone, setFigureDone] = useState(false);
+  const figureReady = useCallback(() => setFigureDone(true), []);
   return (
     <Canvas
       shadows
@@ -218,6 +233,13 @@ export function GameScene(props: GameSceneProps) {
         riding={props.driving !== null}
         active={props.playing}
         outfit={props.outfit}
+        onFigureReady={figureReady}
+      />
+      <FirstView
+        shown={shown}
+        chunks={props.startChunks}
+        figure={figureDone}
+        onFirstView={props.onFirstView}
       />
       <People
         chunks={chunks}
@@ -567,6 +589,47 @@ const ChunkView = memo(function ChunkView({
     </>
   );
 });
+
+/**
+ * Reports the first view once every start chunk is built and drawn and the minifigure is on show,
+ * after one more frame so the loading screen lifts off a finished picture.
+ */
+function FirstView({
+  shown,
+  chunks,
+  figure,
+  onFirstView,
+}: {
+  shown: ShownChunks;
+  chunks?: readonly string[];
+  figure: boolean;
+  onFirstView?: () => void;
+}) {
+  const drawn = useSyncExternalStore(shown.subscribe, shown.getSnapshot);
+  const { invalidate, gl, scene, camera } = useThree();
+  const complete = figure && (chunks ?? []).every((key) => drawn.has(key));
+  useEffect(() => {
+    if (!complete || !onFirstView) return;
+    let cancelled = false;
+    let frame = 0;
+    // Compile every shader the first view needs, then let two frames draw it, so the screen
+    // lifts off a finished picture and not the first hitch.
+    const wait = (frames: number, then: () => void) => {
+      invalidate();
+      frame = requestAnimationFrame(() => (frames > 1 ? wait(frames - 1, then) : then()));
+    };
+    void Promise.resolve(gl.compileAsync(scene, camera))
+      .catch(() => {})
+      .then(() => {
+        if (!cancelled) wait(2, onFirstView);
+      });
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(frame);
+    };
+  }, [complete, onFirstView, invalidate, gl, scene, camera]);
+  return null;
+}
 
 /**
  * The batch figures of every chunk added up, for the debug window. Worked out at most twice a
