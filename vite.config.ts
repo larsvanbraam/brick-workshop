@@ -7,6 +7,7 @@ export default defineConfig({
       'packages/**/*.test.ts',
       'apps/brick-studio/tooling/**/*.test.ts',
       'packages/brick-game/src/**/*.test.ts',
+      'apps/brick-island/src/**/*.test.ts',
     ],
   },
   lint: {

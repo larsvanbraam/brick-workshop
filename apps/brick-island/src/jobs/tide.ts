@@ -1,5 +1,5 @@
-import { islandColumn, inland } from './world/island/column.ts';
-import { CENTRE } from './world/island/map.ts';
+import { islandColumn, inland } from '../world/column.ts';
+import { CENTRE } from '../world/map.ts';
 
 /**
  * Brick Island's tide, which keeps the player on the island. Minifigures can't swim, so the sea

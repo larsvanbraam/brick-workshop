@@ -28,7 +28,6 @@ import { game } from './game.ts';
 import { Key } from './input-hint.tsx';
 import { useArrowNav } from './arrow-nav.ts';
 import { MenuPage } from './MenuPage.tsx';
-import { LANDMARKS } from './world/island/map.ts';
 
 type Page = 'saves' | 'worlds' | 'controls' | 'settings';
 
@@ -186,7 +185,7 @@ type Row = { name: string; bindings: Binding[] };
 const bind = (does: string, ...keys: string[]): Binding => ({ keys, does });
 
 function keyboardRows(): Row[] {
-  const { building, minimap, vehicles, world } = game();
+  const { building, map, vehicles, controls } = game();
   return [
     {
       name: 'Move',
@@ -231,8 +230,11 @@ function keyboardRows(): Row[] {
           },
         ]
       : []),
-    ...(minimap ? [{ name: 'Map', bindings: [bind('open or close', 'N')] }] : []),
-    ...(world === 'island' ? [{ name: 'Hats', bindings: [bind('change hat', 'H')] }] : []),
+    ...(map ? [{ name: 'Map', bindings: [bind('open or close', 'N')] }] : []),
+    ...(controls ?? []).map((extra) => ({
+      name: extra.group,
+      bindings: [bind(extra.action, extra.key)],
+    })),
     { name: 'Talk', bindings: [bind('talk, then next line', 'T')] },
     { name: 'Camera', bindings: [bind('over the shoulder', 'V')] },
     { name: 'Screen', bindings: [bind('fullscreen', 'F')] },
@@ -241,7 +243,7 @@ function keyboardRows(): Row[] {
 }
 
 function controllerRows(): Row[] {
-  const { building, minimap, vehicles, world } = game();
+  const { building, map, vehicles, controls } = game();
   return [
     {
       name: 'Move',
@@ -291,8 +293,11 @@ function controllerRows(): Row[] {
           },
         ]
       : []),
-    ...(minimap ? [{ name: 'Map', bindings: [bind('open', '▼'), bind('close', 'B')] }] : []),
-    ...(world === 'island' ? [{ name: 'Hats', bindings: [bind('change hat', '▲')] }] : []),
+    ...(map ? [{ name: 'Map', bindings: [bind('open', '▼'), bind('close', 'B')] }] : []),
+    ...(controls ?? []).map((extra) => ({
+      name: extra.group,
+      bindings: [bind(extra.action, extra.pad)],
+    })),
     { name: 'Talk', bindings: [bind('talk, then next line', 'B')] },
     { name: 'Camera', bindings: [bind('over the shoulder', 'View')] },
     { name: 'Screen', bindings: [bind('fullscreen, in a menu', 'Y')] },
@@ -533,10 +538,11 @@ export function Settings({
   );
 }
 
-/** The landmark nearest a save's place, to say where it was left. */
+/** The landmark nearest a save's place, to say where it was left; none in a game without a map. */
 function nearestLandmark({ x, z }: { x: number; z: number }) {
-  let best = LANDMARKS[0];
-  for (const landmark of LANDMARKS)
+  const landmarks = game().map?.landmarks ?? [];
+  let best = landmarks[0];
+  for (const landmark of landmarks)
     if (Math.hypot(landmark.x - x, landmark.z - z) < Math.hypot(best.x - x, best.z - z))
       best = landmark;
   return best;
@@ -552,7 +558,8 @@ function playTime(seconds: number) {
 
 export function describeSave(save: SaveGame) {
   const landmark = nearestLandmark(save.place);
-  return `${landmark.icon} Near ${landmark.name} · ${playTime(save.playSeconds)} played · ${playedAgo(save.playedAt)}`;
+  const where = landmark ? `${landmark.icon} Near ${landmark.name} · ` : '';
+  return `${where}${playTime(save.playSeconds)} played · ${playedAgo(save.playedAt)}`;
 }
 
 /** The save games: each picks up where it was left; an empty slot starts a new game. */

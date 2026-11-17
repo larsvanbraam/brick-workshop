@@ -9,7 +9,7 @@ import {
   PointsMaterial,
 } from 'three';
 import type { WalkProbe } from '@brick-workshop/walk/walk-view';
-import { chime } from './chime.ts';
+import { chime } from '@brick-workshop/game/chime.ts';
 
 /** How many sparks can be alive at once. */
 const MAX_SPARKS = 3000;

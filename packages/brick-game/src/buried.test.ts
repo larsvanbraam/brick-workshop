@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vite-plus/test';
 import type { Brick } from '@brick-workshop/engine';
 import { buriedPieces } from './buried.ts';
 import { generateChunk } from './world/generate.ts';
+import { NOISE_WORLD } from './world/noise-world.ts';
 import { Terrain } from './world/terrain.ts';
 
 const brick = (x: number, y: number, z: number, partId = '3005', color = 71): Brick => ({
@@ -57,7 +58,7 @@ describe('buried pieces', () => {
   });
 
   it('leaves out much of a generated chunk, and only plain solid pieces', () => {
-    const terrain = new Terrain(1234);
+    const terrain = new Terrain(1234, NOISE_WORLD);
     let total = 0;
     let drawn = 0;
     let ms = 0;

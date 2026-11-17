@@ -6,8 +6,9 @@ import { CHUNK, applyToChunks, chunkOf, splitIntoChunks } from './chunks.ts';
 import { WorldIndex } from './world-index.ts';
 import { random } from './world/noise.ts';
 import { generateWorld } from './world/generate.ts';
+import { NOISE_WORLD } from './world/noise-world.ts';
 
-const world = generateWorld(1234);
+const world = generateWorld(1234, NOISE_WORLD);
 const assembly: Assembly = world.assembly;
 const index = new WorldIndex(assembly.bricks, assembly.buildArea!);
 

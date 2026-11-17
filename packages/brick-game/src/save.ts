@@ -260,8 +260,8 @@ export interface SaveGame {
   /** Where each vehicle was left, and the one being driven. Missing in older saves. */
   vehicles?: ParkedVehicle[];
   driving?: string | null;
-  /** Brick Island's jobs: those finished, by ID, and the one being done. Missing in older saves. */
-  quests?: { done: string[]; active: unknown; hat?: string };
+  /** What the game's add-on keeps (see `Addon.save`): Brick Island's jobs, say. */
+  addon?: unknown;
   /** Seconds spent playing, summed over every visit. */
   playSeconds: number;
   /** When it was first and last played, as ISO dates. */
@@ -302,7 +302,10 @@ export function listSaves(): (SaveGame | null)[] {
   const stored = read<unknown[]>(SAVES_KEY);
   return Array.from({ length: SAVE_SLOTS }, (_, slot) => {
     const save = Array.isArray(stored) ? stored[slot] : null;
-    return isSaveGame(save) ? save : null;
+    if (!isSaveGame(save)) return null;
+    // Saves from before the add-on kept Brick Island's jobs under their own name.
+    const legacy = (save as { quests?: unknown }).quests;
+    return legacy !== undefined && save.addon === undefined ? { ...save, addon: legacy } : save;
   });
 }
 

@@ -1,0 +1,134 @@
+/* Brick Island's jobs: what to do now, big and plain, at the top of the screen. */
+.quest-card {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: calc(100vw - 32px);
+  padding: 10px 18px 10px 12px;
+  border-radius: 14px;
+  background: var(--panel);
+  color: var(--ink);
+  pointer-events: none;
+}
+
+.quest-card .quest-icon {
+  font-size: 34px;
+  line-height: 1;
+}
+
+.quest-card strong {
+  display: block;
+  font-size: 20px;
+}
+
+.quest-card kbd {
+  font-size: 16px;
+}
+
+.quest-things {
+  display: flex;
+  gap: 4px;
+  margin-top: 4px;
+  font-size: 22px;
+  line-height: 1;
+}
+
+.quest-things span {
+  opacity: 0.25;
+  filter: grayscale(1);
+  transition:
+    opacity 0.3s,
+    filter 0.3s,
+    transform 0.3s;
+}
+
+.quest-things span.got {
+  opacity: 1;
+  filter: none;
+  transform: scale(1.15);
+}
+
+.status .stars {
+  color: #ffd23f;
+  font-weight: 600;
+}
+
+/* The hat just put on, after H changes hats. */
+.hat-note {
+  position: fixed;
+  left: 50%;
+  bottom: 48px;
+  transform: translateX(-50%);
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--ink);
+  font-size: 17px;
+  font-weight: 600;
+  pointer-events: none;
+}
+
+/* The cheer when a job is done. */
+.cheer {
+  position: fixed;
+  top: 30%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  max-width: calc(100vw - 32px);
+  padding: 18px 28px;
+  border-radius: 18px;
+  background: var(--panel);
+  color: var(--ink);
+  text-align: center;
+  pointer-events: none;
+  animation: cheer-in 0.5s cubic-bezier(0.2, 1.6, 0.4, 1);
+}
+
+.cheer strong {
+  font-size: 28px;
+}
+
+.cheer span {
+  font-size: 17px;
+  color: var(--muted);
+}
+
+.cheer-gift {
+  font-size: 20px;
+  font-style: normal;
+  font-weight: 700;
+  color: #ffd23f;
+}
+
+.cheer-star {
+  font-size: 54px;
+  line-height: 1;
+  animation: cheer-spin 1.2s ease-out;
+}
+
+@keyframes cheer-in {
+  from {
+    transform: translate(-50%, -50%) scale(0.4);
+    opacity: 0;
+  }
+}
+
+@keyframes cheer-spin {
+  from {
+    transform: rotate(-200deg) scale(0.2);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cheer,
+  .cheer-star {
+    animation: none;
+  }
+}

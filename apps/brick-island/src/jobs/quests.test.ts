@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vite-plus/test';
 import { getPart } from '@brick-workshop/engine';
-import { createTerrain } from './world/worlds.ts';
-import { islandStructures } from './world/island/structures.ts';
-import { LANDMARKS } from './world/island/map.ts';
-import { BRICK_ISLAND } from './game.ts';
+import { islandTerrain } from '../world/terrain.ts';
+import { islandStructures } from '../world/structures.ts';
+import { LANDMARKS } from '../world/map.ts';
+import { BRICK_ISLAND } from '../island.ts';
 import {
   QUESTS,
   advance,
@@ -18,7 +18,7 @@ import {
 } from './quests.ts';
 import type { QuestProgress, Spot } from './quests.ts';
 
-const terrain = createTerrain(BRICK_ISLAND.seed!, 'island');
+const terrain = islandTerrain(BRICK_ISLAND.seed!);
 const structures = islandStructures(BRICK_ISLAND.seed!);
 
 /** Dry ground, with no building on it unless it is a room helpers work in (the police office). */

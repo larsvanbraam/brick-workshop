@@ -41,8 +41,6 @@ interface Words {
   /** Talk about the time. */
   day: readonly string[];
   night: readonly string[];
-  /** Talk on Brick Island in particular. */
-  island: readonly string[];
 }
 
 const EN: Words = {
@@ -120,11 +118,6 @@ const EN: Words = {
     "Can't sleep either?",
     'The stars are out. I like to name them after colours.',
     'Careful in the dark. You could step on a one by one.',
-  ],
-  island: [
-    'Have you been up to the lighthouse?',
-    'There is a volcano on this island. Nobody talks about it.',
-    'You can borrow a car if you find one. Everyone does.',
   ],
 };
 
@@ -208,11 +201,6 @@ const NL: Words = {
     'De sterren staan aan. Ik noem ze graag naar kleuren.',
     'Voorzichtig in het donker. Je kunt op een één-bij-één stappen.',
   ],
-  island: [
-    'Ben je al bij de vuurtoren geweest?',
-    'Op dit eiland zit een vulkaan. Daar praat niemand over.',
-    'Je mag een auto lenen als je er een vindt. Dat doet iedereen.',
-  ],
 };
 
 const WORDS: Record<Locale, Words> = { en: EN, nl: NL };
@@ -240,15 +228,15 @@ export function personality({ seed, figure }: Pick<Talker, 'seed' | 'figure'>): 
   return { name, manner };
 }
 
-/** Where the talk is: whether it is day, and whether on Brick Island. */
+/** Where the talk is: whether it is day, and what else the game has people say about its place. */
 export interface TalkContext {
   daytime: boolean;
-  island: boolean;
+  chat?: readonly string[];
 }
 
 /**
  * Everything someone has to say, in order: a greeting, three lines of chat, a farewell. The
- * chat mixes where they live with the time of day and, on Brick Island, the island.
+ * chat mixes where they live with the time of day and the game's own talk, if it has any.
  */
 export function conversation(
   talker: Talker,
@@ -262,7 +250,7 @@ export function conversation(
   const topics = [
     ...(words.local[talker.biome] ?? words.day),
     ...(context.daytime ? words.day : words.night),
-    ...(context.island ? words.island : []),
+    ...(context.chat ?? []),
   ];
   // Three different lines, local talk most likely first.
   const chat: string[] = [];

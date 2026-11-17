@@ -1,5 +1,5 @@
 /**
- * Little cheerful sounds for the jobs on Brick Island, played on the fly with Web Audio: a
+ * Little cheerful sounds for a game's jobs, played on the fly with Web Audio: a
  * blip for picking something up, a rising run when everything is found, a clack for a brick
  * going on and a fanfare when a job is done.
  */

@@ -2,19 +2,12 @@ import { useEffect, useRef, useState } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { Vector3 } from 'three';
 import type { WalkProbe } from '@brick-workshop/walk/walk-view';
-import { LANDMARKS } from './world/island/map.ts';
+import { game } from './game.ts';
 import { Key } from './input-hint.tsx';
-import {
-  MAP_BOUNDS,
-  MAP_HEIGHT,
-  MAP_STEP,
-  MAP_WIDTH,
-  drawIslandMap,
-} from './world/island/minimap.ts';
 
 /**
- * The map of Brick Island: a small one in the corner that follows the walker, north up, with
- * the landmarks near it; and the whole island with every landmark named, opened with `N`.
+ * The map of the game's world: a small one in the corner that follows the walker, north up, with
+ * the landmarks near it; and the whole world with every landmark named, opened with `N`.
  */
 
 /** A pin of the game's own: a job's helper, or where to go next for it (kept on the map's edge). */
@@ -88,20 +81,34 @@ export function MapProbe({
   return null;
 }
 
-/** The island's picture, drawn once and shared by both maps. */
+/** The map's picture, drawn once and shared by both maps. */
 let picture: HTMLCanvasElement | null = null;
-function islandPicture(seed: number) {
+function mapPicture(seed: number) {
   if (picture) return picture;
+  const { width, height, draw } = mapGeometry();
   picture = document.createElement('canvas');
-  picture.width = MAP_WIDTH;
-  picture.height = MAP_HEIGHT;
+  picture.width = width;
+  picture.height = height;
   const context = picture.getContext('2d')!;
   context.putImageData(
-    new ImageData(drawIslandMap(seed) as Uint8ClampedArray<ArrayBuffer>, MAP_WIDTH, MAP_HEIGHT),
+    new ImageData(draw(seed) as Uint8ClampedArray<ArrayBuffer>, width, height),
     0,
     0,
   );
   return picture;
+}
+
+/** The game's map: the box it covers, its picture's size in pixels and the way to draw it. */
+function mapGeometry() {
+  const { bounds, step, draw, landmarks } = game().map!;
+  return {
+    bounds,
+    step,
+    draw,
+    landmarks,
+    width: (bounds.x1 - bounds.x0) / step,
+    height: (bounds.z1 - bounds.z0) / step,
+  };
 }
 
 /** The walker's arrow, pointing the way it looks. */
@@ -254,7 +261,7 @@ export function Minimap({
   const [ready, setReady] = useState(false);
   useEffect(() => {
     const timer = setTimeout(() => {
-      islandPicture(seed);
+      mapPicture(seed);
       setReady(true);
     }, 50);
     return () => clearTimeout(timer);
@@ -275,19 +282,18 @@ export function Minimap({
       context.setTransform(ratio, 0, 0, ratio, 0, 0);
       context.clearRect(0, 0, width, height);
       context.imageSmoothingEnabled = false;
-      const image = islandPicture(seed);
-      // World studs to canvas pixels: the island whole, or the walker's surroundings.
+      const image = mapPicture(seed);
+      const geometry = mapGeometry();
+      const { bounds, step } = geometry;
+      // World studs to canvas pixels: the whole map, or the walker's surroundings.
       const scale = open
-        ? Math.min(
-            width / (MAP_BOUNDS.x1 - MAP_BOUNDS.x0),
-            height / (MAP_BOUNDS.z1 - MAP_BOUNDS.z0),
-          )
+        ? Math.min(width / (bounds.x1 - bounds.x0), height / (bounds.z1 - bounds.z0))
         : width / NEAR;
       const originX = open
-        ? MAP_BOUNDS.x0 - (width / scale - (MAP_BOUNDS.x1 - MAP_BOUNDS.x0)) / 2
+        ? bounds.x0 - (width / scale - (bounds.x1 - bounds.x0)) / 2
         : position.x - NEAR / 2;
       const originZ = open
-        ? MAP_BOUNDS.z0 - (height / scale - (MAP_BOUNDS.z1 - MAP_BOUNDS.z0)) / 2
+        ? bounds.z0 - (height / scale - (bounds.z1 - bounds.z0)) / 2
         : position.z - height / scale / 2;
       const toX = (x: number) => (x - originX) * scale;
       const toY = (z: number) => (z - originZ) * scale;
@@ -295,13 +301,13 @@ export function Minimap({
       context.fillRect(0, 0, width, height);
       context.drawImage(
         image,
-        toX(MAP_BOUNDS.x0),
-        toY(MAP_BOUNDS.z0),
-        MAP_WIDTH * MAP_STEP * scale,
-        MAP_HEIGHT * MAP_STEP * scale,
+        toX(bounds.x0),
+        toY(bounds.z0),
+        geometry.width * step * scale,
+        geometry.height * step * scale,
       );
       const pin = open ? Math.max(18, Math.min(28, width / 40)) : 15;
-      for (const landmark of LANDMARKS) {
+      for (const landmark of geometry.landmarks) {
         const x = toX(landmark.x);
         const y = toY(landmark.z);
         if (x < -pin || y < -pin || x > width + pin || y > height + pin) continue;
@@ -353,10 +359,10 @@ export function Minimap({
         role="img"
       />
       {open && (
-        <div className="island-map" role="dialog" aria-label="Island map" onClick={onClose}>
-          <div className="island-map-panel">
-            <h2>Brick Island</h2>
-            <canvas ref={full} className="island-map-canvas" />
+        <div className="world-map" role="dialog" aria-label="Map" onClick={onClose}>
+          <div className="world-map-panel">
+            <h2>{game().title}</h2>
+            <canvas ref={full} className="world-map-canvas" />
             <p>
               <Key k="N" pad="D-pad ↓" /> or <Key k="Esc" pad="B" /> to close
             </p>

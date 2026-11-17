@@ -1,7 +1,7 @@
 import { createExampleAssembly, getWorldBounds } from '@brick-workshop/engine';
 import type { Brick } from '@brick-workshop/engine';
-import { hash2, random } from '../noise.ts';
-import type { Structure } from '../terrain.ts';
+import { hash2, random } from '@brick-workshop/game/world/noise.ts';
+import type { Structure } from '@brick-workshop/game/world/terrain.ts';
 import { CHANNEL, islandColumn, nearestRiver, nearestRoad } from './column.ts';
 import { buildFireStation, buildPoliceStation, FIRE_STATION, POLICE_STATION } from './civic.ts';
 import { buildHouse, turnPieces } from './houses.ts';

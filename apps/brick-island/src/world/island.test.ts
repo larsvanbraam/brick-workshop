@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vite-plus/test';
 import { getWorldBounds, validateAssembly } from '@brick-workshop/engine';
 import type { Brick } from '@brick-workshop/engine';
-import { findSpawn, generateChunk } from '../generate.ts';
-import { MAX_LAYERS } from '../terrain.ts';
-import { createTerrain } from '../worlds.ts';
+import { findSpawn, generateChunk } from '@brick-workshop/game/world/generate.ts';
+import { MAX_LAYERS } from '@brick-workshop/game/world/terrain.ts';
+import { islandTerrain } from './terrain.ts';
 import { islandColumn } from './column.ts';
 import { buildFireStation, buildPoliceStation } from './civic.ts';
 import { buildHouse, turnPieces } from './houses.ts';
@@ -71,7 +71,7 @@ describe('Brick Island', () => {
   });
 
   it('starts the walker on a road in town', () => {
-    const terrain = createTerrain(SEED, 'island');
+    const terrain = islandTerrain(SEED);
     const spawn = findSpawn(terrain);
     expect(islandColumn(SEED, Math.floor(spawn.x), Math.floor(spawn.z)).biome).toBe('road');
   });
@@ -190,7 +190,7 @@ describe('Brick Island', () => {
   });
 
   it('builds a town chunk with its houses on top of the ground, roads paved', () => {
-    const terrain = createTerrain(SEED, 'island');
+    const terrain = islandTerrain(SEED);
     const house = islandStructures(SEED).find((structure) => structure.id.startsWith('house'))!;
     const chunk = generateChunk(
       SEED,

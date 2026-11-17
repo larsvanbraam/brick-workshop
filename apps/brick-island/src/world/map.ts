@@ -5,7 +5,7 @@
  * is layer 3). The island is about 600 by 480 studs; `column.ts` turns this plan into ground.
  */
 
-import type { VehicleKind } from '@brick-workshop/vehicles/vehicle';
+import type { Landmark, VehicleSpawn } from '@brick-workshop/game/game.ts';
 
 /** A point on a road, with the road's height there in brick layers. */
 export type RoadPoint = readonly [x: number, z: number, layer: number];
@@ -347,14 +347,6 @@ export const ROADS: readonly Road[] = [
   { name: 'Speedway', width: SPEEDWAY.width, loop: true, points: oval() },
 ];
 
-/** A place worth finding, marked on the map with an icon and its name. */
-export interface Landmark {
-  name: string;
-  x: number;
-  z: number;
-  icon: string;
-}
-
 export const LANDMARKS: readonly Landmark[] = [
   { name: 'Harbour Town', x: 290, z: 368, icon: '🏠' },
   { name: 'Flower Stall', x: 352, z: 419, icon: '🌷' },
@@ -370,18 +362,6 @@ export const LANDMARKS: readonly Landmark[] = [
   { name: 'Sunset Bay', x: 168, z: 440, icon: '🏖️' },
   { name: 'River Bridge', x: 452, z: 393, icon: '🌉' },
 ];
-
-/** Which way a parked vehicle faces, by the compass: north is -z. */
-export type Heading = 'north' | 'east' | 'south' | 'west';
-
-/** A vehicle waiting at its spot, in world studs, for the player to find and drive. */
-export interface VehicleSpawn {
-  id: string;
-  kind: VehicleKind;
-  x: number;
-  z: number;
-  heading: Heading;
-}
 
 /**
  * Where the vehicles are parked when a game starts: the car, the motorcycle and the bike in

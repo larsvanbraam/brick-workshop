@@ -1,6 +1,6 @@
 import { VEHICLES, parkVehicle } from '@brick-workshop/vehicles/vehicle';
 import type { Vehicle, VehicleKind } from '@brick-workshop/vehicles/vehicle';
-import type { Heading, VehicleSpawn } from './world/island/map.ts';
+import type { Heading, VehicleSpawn } from './game.ts';
 import { isParkedVehicle } from './save.ts';
 import type { ParkedVehicle, SaveGame } from './save.ts';
 

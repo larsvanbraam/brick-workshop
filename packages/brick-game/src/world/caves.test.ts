@@ -5,6 +5,7 @@ import { carveChunk } from './caves.ts';
 import { generateChunk } from './generate.ts';
 import { glowsNear } from './glows.ts';
 import { chunkSight } from './plants.ts';
+import { NOISE_WORLD } from './noise-world.ts';
 import { Terrain } from './terrain.ts';
 
 /** The chunks of a square of the world round the origin, `radius` chunks out each way. */
@@ -30,7 +31,7 @@ function filledCells(bricks: Parameters<typeof footprint>[0][]) {
 
 describe('caves and overhangs', () => {
   const seed = 1234;
-  const terrain = new Terrain(seed);
+  const terrain = new Terrain(seed, NOISE_WORLD);
   const carvings = chunks(4).map(([cx, cz]) => ({
     cx,
     cz,
@@ -134,7 +135,7 @@ describe('caves and overhangs', () => {
 
 describe('sights', () => {
   const seed = 1234;
-  const terrain = new Terrain(seed);
+  const terrain = new Terrain(seed, NOISE_WORLD);
 
   it('puts sights of several kinds in the world, each inside its chunk', () => {
     const kinds = new Set<string>();

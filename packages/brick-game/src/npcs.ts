@@ -27,7 +27,7 @@ const HOMELY: ReadonlySet<Biome> = new Set([
   'desert',
   'snow',
   'marsh',
-  // Brick Island's built ground.
+  // Built ground.
   'road',
   'pavement',
   'yard',

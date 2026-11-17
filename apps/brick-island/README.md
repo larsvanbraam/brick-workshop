@@ -21,8 +21,9 @@ speedway and Lighthouse Point.
 
 ## About this app
 
-This app is a thin shell: it calls `startGame(BRICK_ISLAND)` from
-[`brick-game`](../../packages/brick-game), which holds the game and its configuration.
+This app holds the game: its hand-drawn island (`src/world`: the map, houses, civic buildings, structures and
+minimap), its jobs, hats and tide (`src/jobs`, wired in as an add-on) and its `GameConfig` (`src/island.ts`),
+which it passes to `startGame` from [`brick-game`](../../packages/brick-game), the core every game shares.
 
 ```sh
 pnpm dev:island    # http://localhost:5173, or the next free port

@@ -15,6 +15,7 @@ import {
 } from './streaming.ts';
 import { farChunk } from './world/far.ts';
 import { generateChunk } from './world/generate.ts';
+import { NOISE_WORLD } from './world/noise-world.ts';
 import { Terrain } from './world/terrain.ts';
 
 describe('streaming', () => {
@@ -80,7 +81,7 @@ describe('far chunks', () => {
   });
 
   it('draws the same ground the full chunk is built from', () => {
-    const terrain = new Terrain(1234);
+    const terrain = new Terrain(1234, NOISE_WORLD);
     const far = farChunk(terrain, 1, 2, 128);
     expect(far.key).toBe('1,2');
     // Six vertices a quad, three numbers each, and one colour and normal per vertex.
@@ -98,7 +99,7 @@ describe('far chunks', () => {
     for (let index = 1; index < far.positions.length; index += 3)
       highest = Math.max(highest, far.positions[index]);
     expect(highest).toBeGreaterThanOrEqual(top * 1.2 - 1e-4);
-    expect(farChunk(new Terrain(1234), 1, 2, 128).positions).toEqual(far.positions);
+    expect(farChunk(new Terrain(1234, NOISE_WORLD), 1, 2, 128).positions).toEqual(far.positions);
   });
 });
 
@@ -131,7 +132,7 @@ describe('a chunk coming back', () => {
 describe('a world without edges', () => {
   it('joins chunks far from the start into a valid world', { timeout: 60_000 }, () => {
     // Nine chunks round one well away from the start, below zero on one axis.
-    const terrain = new Terrain(4242);
+    const terrain = new Terrain(4242, NOISE_WORLD);
     const bricks: Brick[] = [];
     for (let cz = 6; cz <= 8; cz++)
       for (let cx = -5; cx <= -3; cx++)

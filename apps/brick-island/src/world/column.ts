@@ -1,5 +1,5 @@
-import { fbm } from '../noise.ts';
-import type { Biome, Column } from '../terrain.ts';
+import { fbm } from '@brick-workshop/game/world/noise.ts';
+import type { Biome, Column } from '@brick-workshop/game/world/terrain.ts';
 import {
   BEACHES,
   CENTRE,

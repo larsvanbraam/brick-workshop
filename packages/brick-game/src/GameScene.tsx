@@ -23,22 +23,12 @@ import { Wanderers } from '@brick-workshop/npc/wanderers';
 import type { WandererSpec } from '@brick-workshop/npc/wanderers';
 import type { TalkLink } from '@brick-workshop/npc/talk';
 import { NPC_RADIUS, residentsOf, wanderRules } from './npcs.ts';
+import type { Addon } from './extension.ts';
 import { animalRules, farmAnimals, pettable, wildlifeOf } from './animals.ts';
 import type { Animal } from './animals.ts';
-import { FARM } from './world/island/map.ts';
-import { QUESTS, giverId, takerId } from './quests.ts';
-import type { Helper, QuestEvent } from './quests.ts';
-import { QuestMarks } from './QuestScene.tsx';
-import { Fireworks } from './Fireworks.tsx';
-import { Sharks } from './Sharks.tsx';
-import type { Positions, QuestView } from './QuestScene.tsx';
-import { hash2 } from './world/noise.ts';
 import { Vehicles } from '@brick-workshop/vehicles/drive-view';
 import type { Vehicle, VehicleKind } from '@brick-workshop/vehicles/vehicle';
-import { MINIFIG } from '@brick-workshop/walk/walk';
 import type { WalkWorld } from '@brick-workshop/walk/walk';
-import type { MinifigOutfit } from '@brick-workshop/walk/minifig';
-import type { Tide } from './tide.ts';
 import type { Chunks } from './chunks.ts';
 import { chunkAt } from './streaming.ts';
 import type { RenderDistance } from './streaming.ts';
@@ -131,23 +121,12 @@ export interface GameSceneProps {
   onNear: (kind: VehicleKind | null) => void;
   /** Who the walker can talk to and who is speaking. */
   talk: TalkLink;
-  /** Brick Island's tide, whose bubble over the player's head the scene places. */
-  tide?: Tide | null;
   /** The chunks that make up the first view: `onFirstView` waits for them to be drawn. */
   startChunks?: readonly string[];
   /** Called once the first chunks are drawn in full and the minifigure is on show. */
   onFirstView?: () => void;
-  /** What the player's minifigure wears: the hats won for finished jobs. */
-  outfit?: MinifigOutfit;
-  /** Brick Island's little jobs: their helpers, what to find and where to go (see `quests.ts`). */
-  quests?: {
-    view: QuestView;
-    onEvent: (event: QuestEvent) => void;
-    /** Filled with where the helpers stand. */
-    positions: Positions;
-    /** Goes up by one each time the fireworks should start. */
-    fireworks: number;
-  };
+  /** What the game adds: its own scene, people and outfit for the minifigure (see `Addon`). */
+  addon?: Addon;
 }
 
 /** The debug window's probes inside the canvas; drawn only while the window is open. */
@@ -233,7 +212,7 @@ export function GameScene(props: GameSceneProps) {
         probe={probe}
         riding={props.driving !== null}
         active={props.playing}
-        outfit={props.outfit}
+        outfit={props.addon?.outfit}
         onFigureReady={figureReady}
       />
       <FirstView
@@ -250,21 +229,9 @@ export function GameScene(props: GameSceneProps) {
         buildArea={buildArea}
         probe={probe}
         talk={props.driving === null ? props.talk : undefined}
-        positions={props.quests?.positions}
+        people={props.addon?.people}
       />
-      {props.quests && (
-        <QuestMarks
-          view={props.quests.view}
-          world={props.walkWorld}
-          terrain={props.terrain}
-          buildArea={buildArea}
-          probe={probe}
-          positions={props.quests.positions}
-          onEvent={props.quests.onEvent}
-        />
-      )}
-      {props.quests && <Fireworks show={props.quests.fireworks} probe={probe} />}
-      {props.tide && <Sharks terrain={props.terrain} probe={probe} size={buildArea} />}
+      {props.addon?.scene}
       {props.vehicles.length > 0 && (
         <Vehicles
           vehicles={props.vehicles}
@@ -280,7 +247,6 @@ export function GameScene(props: GameSceneProps) {
       )}
       <EdgeDimmer drawings={drawings} clock={props.clock} />
       <ChunkWatcher probe={probe} buildArea={buildArea} onChunk={props.onChunk} />
-      {props.tide && <HeadAnchor probe={probe} tide={props.tide} />}
       {props.map && <MapProbe probe={probe} store={props.map} buildArea={buildArea} />}
       {debug.options.enabled && (
         <>
@@ -717,28 +683,12 @@ function ChunkWatcher({
   return null;
 }
 
-/** Keeps a screen point over the player's head each frame, for a speech bubble of their own. */
-function HeadAnchor({ probe, tide }: { probe: { current: WalkProbe | null }; tide: Tide }) {
-  const { camera, size } = useThree();
-  const [head] = useState(() => new Vector3());
-  useFrame(() => {
-    const walker = probe.current?.walker;
-    if (!walker) return;
-    head.set(walker.x, walker.y + MINIFIG.height + 0.6, walker.z).project(camera);
-    // Behind the camera, the projection lands mirrored on screen.
-    tide.placeHead(((head.x + 1) / 2) * size.width, ((1 - head.y) / 2) * size.height, head.z < 1);
-  });
-  return null;
-}
-
 /** A brick layer of ground, in scene units: three plates. */
 const LAYER = 3 * PLATE_HEIGHT;
-/** How far a job helper strays from their spot, in studs. */
-const HELPER_LEASH = 2.5;
 
 /**
  * The people and animals living in the loaded chunks round the walker, strolling about their
- * homes, and on Brick Island the farm's animals in its pastures.
+ * homes, the farm animals in a game's pastures, and whoever the game's add-on brings.
  */
 function People({
   chunks,
@@ -748,7 +698,7 @@ function People({
   buildArea,
   probe,
   talk,
-  positions,
+  people,
 }: {
   chunks: Chunks;
   terrain: Terrain;
@@ -757,8 +707,8 @@ function People({
   buildArea: number;
   probe: { current: WalkProbe | null };
   talk?: TalkLink;
-  /** Where the job helpers stand, kept for their markers; on Brick Island only. */
-  positions?: Positions;
+  /** The add-on's people, and where they stand once the scene has put them there. */
+  people?: Addon['people'];
 }) {
   const half = buildArea / 2;
   const [cx, cz] = centre;
@@ -784,7 +734,7 @@ function People({
   const nearKey = near.join(';');
   const isLoaded = useCallback((x: number, z: number) => loaded.has(chunkKey(x, z)), [loaded]);
   const farm = useMemo(
-    () => (game().world === 'island' ? farmAnimals(terrain, FARM) : []),
+    () => (game().pastures ?? []).flatMap((p) => farmAnimals(terrain, p)),
     [terrain],
   );
   const specs = useMemo<WandererSpec[]>(() => {
@@ -821,33 +771,9 @@ function People({
     for (const beast of farm)
       if (keys.has(chunkKey(Math.floor(beast.x / CHUNK), Math.floor(beast.z / CHUNK))))
         specs.push(animal(beast));
-    // The job helpers stay close to where they stand, so they are easy to find again.
-    const helper = (id: string, person: Helper): WandererSpec | null => {
-      if (!keys.has(chunkKey(Math.floor(person.x / CHUNK), Math.floor(person.z / CHUNK))))
-        return null;
-      const ground = terrain.column(Math.floor(person.x), Math.floor(person.z)).height;
-      const shared = wanderRules(terrain, buildArea, isLoaded);
-      return {
-        id,
-        ...at({ ...person, ground }),
-        look: { kind: 'minifig', outfit: person.outfit },
-        seed: Math.floor(hash2(911, Math.floor(person.x), Math.floor(person.z)) * 2 ** 31),
-        temper: 'friendly',
-        pace: 0.25,
-        rules: { leash: HELPER_LEASH, canWalk: shared.canWalk },
-      };
-    };
-    if (positions)
-      for (const quest of QUESTS) {
-        const giver = helper(giverId(quest), quest.giver);
-        if (giver) specs.push(giver);
-        const { goal } = quest;
-        const taker =
-          goal.kind === 'take' && 'outfit' in goal.to ? helper(takerId(quest), goal.to) : null;
-        if (taker) specs.push(taker);
-      }
+    if (people) specs.push(...people.specs({ terrain, buildArea, keys, isLoaded }));
     return specs;
-  }, [nearKey, terrain, half, farm, buildArea, isLoaded, positions]);
+  }, [nearKey, terrain, half, farm, buildArea, isLoaded, people]);
   const rules = useMemo(
     () => wanderRules(terrain, buildArea, isLoaded),
     [terrain, buildArea, isLoaded],
@@ -860,7 +786,7 @@ function People({
       rules={rules}
       player={player}
       talk={talk}
-      positions={positions}
+      positions={people?.positions}
     />
   );
 }

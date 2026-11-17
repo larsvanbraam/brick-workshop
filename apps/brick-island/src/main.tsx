@@ -1,5 +1,7 @@
 import { inject } from '@vercel/analytics';
-import { BRICK_ISLAND, startGame } from '@brick-workshop/game/start';
+import { startGame } from '@brick-workshop/game/start';
+import './island.css';
+import { BRICK_ISLAND } from './island.ts';
 
 startGame(BRICK_ISLAND);
 

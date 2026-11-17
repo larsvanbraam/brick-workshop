@@ -7,8 +7,6 @@ import { dismissSplash, setSplashMessage } from '@brick-workshop/render/splash';
 import { useLDrawLibrary } from '@brick-workshop/render/ldraw';
 import { MINIFIG_BODY } from '@brick-workshop/render/minifig-parts';
 import type { WalkCamera, WalkProbe } from '@brick-workshop/walk/walk-view';
-import { CLASSIC_OUTFIT } from '@brick-workshop/walk/minifig';
-import type { MinifigOutfit } from '@brick-workshop/walk/minifig';
 import { WalkWorld } from '@brick-workshop/walk/walk';
 import { VEHICLES } from '@brick-workshop/vehicles/vehicle';
 import type { VehicleKind } from '@brick-workshop/vehicles/vehicle';
@@ -86,10 +84,9 @@ import type { SaveGame } from './save.ts';
 import { WORLD_SIZE, findSpawn } from './world/generate.ts';
 import { glowsNear } from './world/glows.ts';
 import { isPlant } from './world/plants.ts';
-import { REGION } from './world/terrain.ts';
-import { createTerrain } from './world/worlds.ts';
+import { REGION, Terrain } from './world/terrain.ts';
 import { game } from './game.ts';
-import type { ChunkMessage, FarMessage } from './world/worker.ts';
+import type { ChunkMessage, FarMessage } from './world/serve.ts';
 import { FarStore } from './FarView.tsx';
 import { MapStore, Minimap } from './Minimap.tsx';
 import { createVehicles, parkedVehicles, returnVehicles, vehicleAction } from './vehicles.ts';
@@ -107,26 +104,7 @@ import { LOCALES, defaultLocale, isLocale } from './locale.ts';
 import type { Locale } from './locale.ts';
 import { residentById } from './npcs.ts';
 import { SpeechBubble } from './SpeechBubble.tsx';
-import { TIDE_LINES, Tide } from './tide.ts';
-import {
-  QUESTS,
-  giftOf,
-  advance,
-  giverId,
-  isQuestProgress,
-  questById,
-  helperLine,
-  questWords,
-  reminder,
-  startQuest,
-  takerId,
-  targets,
-  taskLine,
-  buildSize,
-} from './quests.ts';
-import type { Quest, QuestEvent, QuestProgress } from './quests.ts';
-import type { Positions, QuestView } from './QuestScene.tsx';
-import type { MapPin } from './Minimap.tsx';
+import { useNoAddon } from './extension.ts';
 import { chime } from './chime.ts';
 
 /**
@@ -268,7 +246,7 @@ function Game({
   onOpenSlot: (slot: number) => void;
 }) {
   /** The terrain on the main thread: for the start, and for the debug window's chunk borders. */
-  const [terrain] = useState(() => createTerrain(seed, game().world));
+  const [terrain] = useState(() => new Terrain(seed, game().source));
   /** The save game this picks up from, in a game with save slots; null for a new one. */
   const [saved] = useState(() => (game().saveSlots ? loadSave(slot) : null));
   /** Where the walker starts: where the save left it, or the world's own start. */
@@ -283,12 +261,9 @@ function Game({
    * come from background threads with the player's saved edits laid over them, and go again once
    * the walker is far enough away.
    */
-  const [{ index, walk, tide }] = useState(() => {
+  const [{ index, walk }] = useState(() => {
     const walk = new WalkWorld([], FRAME, Infinity);
-    // On Brick Island, the tide walks the player back from the open sea.
-    const tide = game().world === 'island' ? new Tide(seed, FRAME) : null;
-    if (tide) walk.drift = tide.push;
-    return { index: new WorldIndex([]), walk, tide };
+    return { index: new WorldIndex([]), walk };
   });
   const [edits, setEdits] = useState<Edit[]>(() => loadEdits(seed));
   const editsRef = useRef(edits);
@@ -453,7 +428,7 @@ function Game({
     return () => cancelAnimationFrame(frame);
   }, [addChunk, addFar]);
   useEffect(() => {
-    const created = new ChunkLoader(seed, receive, receiveFar, game().world);
+    const created = new ChunkLoader(seed, receive, receiveFar, game().createWorker);
     loader.current = created;
     return () => {
       created.dispose();
@@ -529,78 +504,12 @@ function Game({
   const [toast, setToast] = useState<string | null>(null);
   const nextId = useRef(0);
 
-  // Brick Island's little jobs (see `quests.ts`): talking to a helper starts one, and the save
-  // game keeps those finished and the one being done.
-  const questsOn = game().world === 'island';
-  const [questDone, setQuestDone] = useState<ReadonlySet<string>>(
-    () => new Set((saved?.quests?.done ?? []).filter((id) => questById(id))),
-  );
-  const [activeQuest, setActiveQuest] = useState<QuestProgress | null>(() => {
-    const active = saved?.quests?.active;
-    return isQuestProgress(active) ? active : null;
-  });
-  /** The latest of both, for handlers that outlive a render, and kept ahead of it by them. */
-  const questRef = useRef({ done: questDone, active: activeQuest });
-  useEffect(() => {
-    questRef.current = { done: questDone, active: activeQuest };
-  }, [questDone, activeQuest]);
-  /** Where the helpers stand, written by the scene. */
-  const [helperPositions] = useState<Positions>(() => new Map());
-  /** How far through asking each helper has got, so each press says the next line. */
-  const [askCounts] = useState(() => new Map<string, number>());
-  /** Goes up when every job is done, to set off the fireworks. */
-  const [fireworks, setFireworks] = useState(0);
-  /** The cheer when a job is done. */
-  const [cheer, setCheer] = useState<{
-    icon: string;
-    name: string;
-    text: string;
-    gift: boolean;
-  } | null>(null);
-  // Each job done gives the hat its helper wears. The player wears the one just won, and H
-  // changes between those won, and none. `hat` is the quest whose hat is worn, `''` for none, and
-  // `undefined` before a choice, which wears the latest.
-  const [hat, setHat] = useState<string | undefined>(() => saved?.quests?.hat);
-  const hatRef = useRef(hat);
-  useEffect(() => {
-    hatRef.current = hat;
-  }, [hat]);
-  const hatsWon = useMemo(
-    () =>
-      [...questDone]
-        .map((id) => questById(id))
-        .filter(
-          (quest): quest is Quest => quest !== null && quest !== undefined && !!giftOf(quest),
-        ),
-    [questDone],
-  );
-  const hatWorn =
-    hat === '' ? null : (hatsWon.find((quest) => quest.id === hat) ?? hatsWon.at(-1) ?? null);
-  const wornOutfit = useMemo<MinifigOutfit | undefined>(() => {
-    const headgear = hatWorn ? giftOf(hatWorn) : null;
-    return headgear ? { ...CLASSIC_OUTFIT, headgear } : undefined;
-  }, [hatWorn]);
-  const [hatNote, setHatNote] = useState<string | null>(null);
-  useEffect(() => {
-    if (!hatNote) return;
-    const timer = setTimeout(() => setHatNote(null), 2200);
-    return () => clearTimeout(timer);
-  }, [hatNote]);
   // The language people speak: the saved choice, else the browser's own where we have it.
   const [locale, setLocale] = useState<Locale>(() => {
     const saved = loadLocale();
     return isLocale(saved) ? saved : defaultLocale();
   });
   useEffect(() => saveLocale(locale), [locale]);
-  const mapPins = useMemo(
-    () => questPins(questDone, activeQuest, locale),
-    [questDone, activeQuest, locale],
-  );
-  useEffect(() => {
-    if (!cheer) return;
-    const timer = setTimeout(() => setCheer(null), 5000);
-    return () => clearTimeout(timer);
-  }, [cheer]);
 
   // The debug window (` or ?debug): the renderer's figures, and the game's own below them.
   const [debugStore] = useState(() => new DebugStore());
@@ -649,6 +558,7 @@ function Game({
     if (playClock.current !== null) playClock.current = now;
     const previous = lastSave.current;
     if (!previous && !played) return;
+    const addonSave = addonRef.current.save();
     const { walker, look } = live;
     const next: SaveGame = {
       place: {
@@ -663,22 +573,14 @@ function Game({
       ...(vehicles.length
         ? { vehicles: parkedVehicles(vehicles, FRAME), driving: drivingRef.current }
         : {}),
-      ...(questsOn
-        ? {
-            quests: {
-              done: [...questRef.current.done],
-              active: questRef.current.active,
-              ...(hatRef.current !== undefined ? { hat: hatRef.current } : {}),
-            },
-          }
-        : {}),
+      ...(addonSave === undefined ? {} : { addon: addonSave }),
       playSeconds: (previous?.playSeconds ?? 0) + played,
       startedAt: previous?.startedAt ?? new Date(now).toISOString(),
       playedAt: new Date(now).toISOString(),
     };
     lastSave.current = next;
     storeSave(slot, next);
-  }, [slot, vehicles, questsOn]);
+  }, [slot, vehicles]);
   useEffect(() => {
     if (!playing || !game().saveSlots) return;
     playClock.current = Date.now();
@@ -789,16 +691,6 @@ function Game({
   /** How many lines each person has said, so they carry on from where they left off. */
   const [talkCounts] = useState(() => new Map<string, number>());
   const lineNumber = useRef(0);
-  const nearbyName = useMemo(() => {
-    if (nearbyPerson && isHelper(nearbyPerson)) return helperName(nearbyPerson, locale);
-    const kind = nearbyPerson ? talk.pets.get(nearbyPerson) : undefined;
-    if (kind) {
-      const name = locale === 'nl' ? ANIMAL_WORDS[kind].nl : kind;
-      return locale === 'nl' ? `de ${name}` : `the ${name}`;
-    }
-    const resident = nearbyPerson ? residentById(terrain, nearbyPerson) : null;
-    return resident ? personality(resident).name : null;
-  }, [nearbyPerson, terrain, locale, talk]);
   /** Has someone say a line: in a bubble over their head and out loud, till said and read. */
   const speak = (id: string, name: string, text: string, voice: VoiceTraits) => {
     const line = ++lineNumber.current;
@@ -811,82 +703,6 @@ function Game({
         if (lineNumber.current === line) talk.say(null);
       },
     );
-  };
-  /** A job is done: a cheer, a star, and thanks from whoever it was for. */
-  const finishQuest = (quest: Quest) => {
-    questRef.current = {
-      done: new Set(questRef.current.done).add(quest.id),
-      active: null,
-    };
-    setActiveQuest(null);
-    setQuestDone(questRef.current.done);
-    if (giftOf(quest)) setHat(quest.id);
-    const { goal } = quest;
-    const who = goal.kind === 'take' && 'outfit' in goal.to ? takerId(quest) : giverId(quest);
-    const name = helperName(who, locale) ?? quest.giver.name;
-    const { thanks } = questWords(quest, locale);
-    setCheer({ icon: quest.icon, name, text: thanks, gift: giftOf(quest) !== null });
-    chime('done');
-    if (QUESTS.every((each) => questRef.current.done.has(each.id)))
-      setTimeout(() => setFireworks((count) => count + 1), 1800);
-    const finish = quest.sounds?.done;
-    if (finish) setTimeout(() => chime(finish), 900);
-    speak(who, name, thanks, helperVoice(who));
-  };
-  /** Something happened on a job: picked up, back with it all, arrived, a brick put on. */
-  const onQuestEvent = (event: QuestEvent) => {
-    const active = questRef.current.active;
-    const quest = active ? questById(active.id) : null;
-    if (!quest || !active) return;
-    const next = advance(quest, active, event);
-    if (next === active) return;
-    if (next === 'done') return finishQuest(quest);
-    questRef.current = { ...questRef.current, active: next };
-    setActiveQuest(next);
-    if (next.step === 'go') return chime(quest.sounds?.pick ?? 'pick');
-    if (next.step === 'back' && active.step === 'go') return chime('all');
-    if (next.step === 'build' && active.step === 'back') {
-      chime('all');
-      return speak(
-        giverId(quest),
-        questWords(quest, locale).giver,
-        helperLine('build', locale),
-        helperVoice(giverId(quest)),
-      );
-    }
-    chime('place');
-  };
-  const questEventRef = useRef(onQuestEvent);
-  useEffect(() => {
-    questEventRef.current = onQuestEvent;
-  });
-  const questEvents = useCallback((event: QuestEvent) => questEventRef.current(event), []);
-  /** Talking to a job's helper: they ask, a line a press, and the job starts with the last. */
-  const talkToHelper = (id: string) => {
-    const [, questId, role] = id.split(':');
-    const quest = questById(questId);
-    if (!quest) return;
-    const { active, done } = questRef.current;
-    const mine = active?.id === quest.id ? active : null;
-    const name = helperName(id, locale) ?? quest.giver.name;
-    if (role === 'to') {
-      // Someone to take a thing to: arriving hands it over (see the scene), so this is a hello.
-      const text = helperLine(done.has(quest.id) ? 'thanksAgain' : 'hello', locale);
-      return speak(id, name, text, helperVoice(id));
-    }
-    if (mine?.step === 'build') return onQuestEvent({ kind: 'place' });
-    if (mine?.step === 'back') return onQuestEvent({ kind: 'giver' });
-    if (mine) return speak(id, name, reminder(quest, mine, locale), helperVoice(id));
-    const count = askCounts.get(quest.id) ?? 0;
-    const last = count >= quest.ask.length - 1;
-    askCounts.set(quest.id, last ? 0 : count + 1);
-    const { ask } = questWords(quest, locale);
-    speak(id, name, ask[Math.min(count, ask.length - 1)], helperVoice(id));
-    if (!last) return;
-    const started = startQuest(quest);
-    questRef.current = { ...questRef.current, active: started };
-    setActiveQuest(started);
-    chime(quest.sounds?.start ?? 'start');
   };
   /** Petting an animal: it stands for it and bounces about with a heart over its head, or does not like it and runs off. */
   const petAnimal = (id: string, kind: string) => {
@@ -906,43 +722,20 @@ function Game({
   const talkTo = () => {
     const id = talk.nearby;
     if (!id || drivingRef.current) return;
-    if (isHelper(id)) return talkToHelper(id);
+    if (addonRef.current.owns(id)) return addonRef.current.talkTo(id);
     const kind = talk.pets.get(id);
     if (kind) return petAnimal(id, kind);
     const resident = residentById(terrain, id);
     if (!resident) return;
     const count = talkCounts.get(id) ?? 0;
     talkCounts.set(id, count + 1);
-    const context = { daytime: isDaytime(clock.time), island: game().world === 'island' };
+    const context = { daytime: isDaytime(clock.time), chat: game().chat?.[locale] };
     const voice = voiceFor(resident.seed, resident.figure === 'woman' ? 'high' : 'low');
     speak(id, personality(resident).name, lineFor(resident, context, count, locale), voice);
   };
   const talkRef = useRef(talkTo);
   useEffect(() => {
     talkRef.current = talkTo;
-  });
-  /** H: the next hat won, then none, then the first again. Says whether there was a hat to change. */
-  const changeHat = () => {
-    if (!questsOn || !hatsWon.length) return false;
-    const options = [...hatsWon.map((quest) => quest.id), ''];
-    const now = hat === undefined ? hatsWon.at(-1)!.id : hat;
-    const next = options[(Math.max(0, options.indexOf(now)) + 1) % options.length];
-    setHat(next);
-    const quest = next ? questById(next) : null;
-    setHatNote(
-      quest
-        ? locale === 'nl'
-          ? `Hoed van ${questWords(quest, 'nl').giver}`
-          : `${questWords(quest, 'en').giver}'s hat`
-        : locale === 'nl'
-          ? 'Geen hoed'
-          : 'No hat',
-    );
-    return true;
-  };
-  const hatKeyRef = useRef(changeHat);
-  useEffect(() => {
-    hatKeyRef.current = changeHat;
   });
   // The talk ends when the speaker stops (walked off, finished), the menu opens or a drive starts.
   useEffect(() => {
@@ -955,32 +748,35 @@ function Game({
   }, [speaker, voices]);
   /** What is being said: the last line, while its speaker still speaks. */
   const saying = speech && speech.id === speaker ? speech : null;
-  /** What the player says when the tide turns them round, while it is said. */
-  const [tideLine, setTideLine] = useState<string | null>(null);
-  /** How many lines the tide has drawn, and until when the player keeps quiet after the last. */
-  const tideTalk = useRef({ count: 0, quietUntil: 0 });
-  const sayingRef = useRef(saying);
-  useEffect(() => {
-    sayingRef.current = saying;
+  const useAddon = game().useAddon ?? useNoAddon;
+  const addon = useAddon({
+    seed,
+    frame: FRAME,
+    terrain,
+    walk,
+    probe,
+    playing,
+    locale,
+    saved: saved?.addon,
+    speak,
+    saying: saying !== null,
+    nearbyPerson,
   });
+  const addonRef = useRef(addon);
   useEffect(() => {
-    if (!tide || !playing) return;
-    const said = tideTalk.current;
-    const timer = setInterval(() => {
-      const now = performance.now();
-      // Once the push is felt, and not over someone else talking or straight after the last one.
-      if (tide.strength < 2 || now < said.quietUntil || sayingRef.current) return;
-      const text = TIDE_LINES[said.count++ % TIDE_LINES.length];
-      const reading = 1600 + text.length * 50;
-      said.quietUntil = now + reading + 8000;
-      setTideLine(text);
-      setTimeout(() => setTideLine((current) => (current === text ? null : current)), reading);
-    }, 200);
-    return () => {
-      clearInterval(timer);
-      setTideLine(null);
-    };
-  }, [tide, playing]);
+    addonRef.current = addon;
+  });
+  const nearbyName = useMemo(() => {
+    const named = nearbyPerson ? addon.nameOf(nearbyPerson) : null;
+    if (named) return named;
+    const kind = nearbyPerson ? talk.pets.get(nearbyPerson) : undefined;
+    if (kind) {
+      const name = locale === 'nl' ? ANIMAL_WORDS[kind].nl : kind;
+      return locale === 'nl' ? `de ${name}` : `the ${name}`;
+    }
+    const resident = nearbyPerson ? residentById(terrain, nearbyPerson) : null;
+    return resident ? personality(resident).name : null;
+  }, [nearbyPerson, terrain, locale, talk, addon]);
   const onAim = useCallback(
     (next: Aim | null) => {
       setAim(next);
@@ -1166,8 +962,8 @@ function Game({
         if (!event.repeat) talkRef.current();
         return;
       }
-      if (event.code === 'KeyH' && !event.repeat && hatKeyRef.current()) return;
-      if (event.code === 'KeyN' && game().minimap) {
+      if (event.code === 'KeyH' && !event.repeat && addonRef.current.changeHat()) return;
+      if (event.code === 'KeyN' && game().map) {
         setMapOpen((current) => !current);
         return;
       }
@@ -1215,9 +1011,9 @@ function Game({
   const onPad = (state: PadState, pressed: Set<PadButton>, seconds: number) => {
     if (screen === 'playing' && !game().building) {
       if (pressed.has('menu')) show('menu');
-      if (pressed.has('up')) hatKeyRef.current();
-      if (game().minimap && pressed.has('down')) setMapOpen((current) => !current);
-      if (game().minimap && pressed.has('b') && mapOpen) setMapOpen(false);
+      if (pressed.has('up')) addonRef.current.changeHat();
+      if (game().map && pressed.has('down')) setMapOpen((current) => !current);
+      if (game().map && pressed.has('b') && mapOpen) setMapOpen(false);
       else if (pressed.has('b')) talkRef.current();
       return;
     }
@@ -1419,11 +1215,6 @@ function Game({
     />
   );
   if (booting) return <div className="game">{loading}</div>;
-  const questView: QuestView = { active: activeQuest, done: questDone };
-  const shownQuest = activeQuest ? questById(activeQuest.id) : null;
-  /** Whether the press beside the nearby helper puts a brick on. */
-  const building =
-    shownQuest !== null && activeQuest?.step === 'build' && nearbyPerson === giverId(shownQuest);
   const drivingKind = vehicles.find((vehicle) => vehicle.id === driving)?.kind ?? null;
   // Pieces of the player's still standing, not every one ever put down.
   const built = placedCount;
@@ -1481,7 +1272,7 @@ function Game({
           ghostValid={ghostValid}
           onAim={onAim}
           onMouse={onMouse}
-          map={game().minimap ? mapStore : undefined}
+          map={game().map ? mapStore : undefined}
           playing={playing}
           clock={clock}
           volcano={volcano}
@@ -1493,13 +1284,7 @@ function Game({
           onDrive={onDrive}
           onNear={setNearVehicle}
           talk={talk}
-          tide={tide}
-          outfit={questsOn ? wornOutfit : undefined}
-          quests={
-            questsOn
-              ? { view: questView, onEvent: questEvents, positions: helperPositions, fireworks }
-              : undefined
-          }
+          addon={addon}
           debug={{
             options: debugOptions,
             store: debugStore,
@@ -1534,7 +1319,7 @@ function Game({
           </DebugOverlay>
         )}
         {playing && showTouch && (
-          <TouchControls building={game().building} minimap={game().minimap} />
+          <TouchControls building={game().building} minimap={game().map !== undefined} />
         )}
         {game().building && <div className="crosshair" aria-hidden />}
         {playing && game().building && ghostCheck && !ghostCheck.ok && (
@@ -1550,13 +1335,12 @@ function Game({
             {nearbyName && (
               <span>
                 <Key k="T" pad="B" />{' '}
-                {building
-                  ? 'Put on a brick'
-                  : saying?.id === nearbyPerson
+                {(nearbyPerson && addon.action(nearbyPerson)) ||
+                  (saying?.id === nearbyPerson
                     ? 'Carry on'
                     : nearbyPerson && talk.pets.has(nearbyPerson)
                       ? `${locale === 'nl' ? 'Aai' : 'Pet'} ${nearbyName}`
-                      : `Talk to ${nearbyName}`}
+                      : `Talk to ${nearbyName}`)}
               </span>
             )}
           </div>
@@ -1569,37 +1353,8 @@ function Game({
             text={saying.text}
           />
         )}
-        {playing && tide && tideLine && !saying && (
-          <SpeechBubble key={tideLine} anchor={tide.anchor} name="You" text={tideLine} />
-        )}
         {playing && drivingKind && <DriveHint kind={drivingKind} pad={padInUse} />}
-        {playing && shownQuest && activeQuest && (
-          <QuestCard quest={shownQuest} progress={activeQuest} locale={locale} />
-        )}
-        {playing && hatNote && (
-          <div className="hat-note" role="status">
-            🎩 {hatNote}
-          </div>
-        )}
-        {playing && cheer && (
-          <div className="cheer" role="status">
-            <div className="cheer-star" aria-hidden>
-              ⭐
-            </div>
-            <strong>
-              {cheer.icon} Well done! {cheer.icon}
-            </strong>
-            <span>
-              {cheer.name}: {cheer.text}
-            </span>
-            {cheer.gift && (
-              <em className="cheer-gift">
-                🎩 {locale === 'nl' ? 'Je hebt een nieuwe hoed!' : 'You got a new hat!'}{' '}
-                <Key k="H" pad="D-pad ▲" /> {locale === 'nl' ? 'wisselt van hoed' : 'changes hats'}
-              </em>
-            )}
-          </div>
-        )}
+        {addon.overlay}
         <div className="status">
           <strong>
             {game().seed === undefined ? `World ${seed}` : game().title}
@@ -1609,11 +1364,7 @@ function Game({
             {pieceCount.toLocaleString()} pieces{game().building ? ` · ${built} placed` : ''}
             {drivingKind ? ` · ${vehicleAction(drivingKind, true)}` : flying ? ' · flying' : ''}
           </span>
-          {questsOn && (
-            <span className="stars" title="Jobs done">
-              ⭐ {questDone.size} of {QUESTS.length}
-            </span>
-          )}
+          {addon.status}
         </div>
         {toast && <div className="toast">{toast}</div>}
         {playing && (
@@ -1665,13 +1416,13 @@ function Game({
             ))}
           </div>
         )}
-        {game().minimap && playing && (
+        {game().map && playing && (
           <Minimap
             seed={seed}
             store={mapStore}
             open={mapOpen}
             onClose={closeMap}
-            pins={questsOn ? mapPins : undefined}
+            pins={addon.pins}
           />
         )}
         {screen === 'menu' && <Menu {...menuProps} />}
@@ -1686,107 +1437,6 @@ function Game({
         {loading}
       </div>
     </PadProvider>
-  );
-}
-
-/** Whether a wanderer is one of the jobs' helpers rather than someone living there. */
-const isHelper = (id: string) => id.startsWith('quest:');
-
-/** A helper's name from their wanderer ID (see `giverId`, `takerId`). */
-function helperName(id: string, locale: Locale) {
-  const [, questId, role] = id.split(':');
-  const quest = questById(questId);
-  if (!quest) return null;
-  const words = questWords(quest, locale);
-  if (role !== 'to') return words.giver;
-  return quest.goal.kind === 'take' ? (words.to ?? quest.goal.to.name) : null;
-}
-
-/** A helper's voice, the same every time, high or low as the helper says. */
-function helperVoice(id: string) {
-  let hash = 7;
-  for (const char of id) hash = (hash * 31 + char.charCodeAt(0)) | 0;
-  const [, questId, role] = id.split(':');
-  const quest = questById(questId);
-  const goal = quest?.goal;
-  const helper =
-    role === 'to' ? (goal?.kind === 'take' && 'outfit' in goal.to ? goal.to : null) : quest?.giver;
-  return voiceFor(Math.abs(hash), helper?.voice);
-}
-
-/**
- * Pins for the map: a ❗ on each helper with a job to give, and where to go for the job being
- * done.
- */
-function questPins(
-  done: ReadonlySet<string>,
-  active: QuestProgress | null,
-  locale: Locale,
-): MapPin[] {
-  const pins: MapPin[] = QUESTS.filter(
-    (quest) => !done.has(quest.id) && quest.id !== active?.id,
-  ).map((quest) => ({
-    x: quest.giver.x,
-    z: quest.giver.z,
-    icon: '❗',
-    name: questWords(quest, locale).giver,
-  }));
-  const quest = active ? questById(active.id) : null;
-  if (quest && active)
-    for (const spot of targets(quest, active))
-      pins.push({ x: spot.x, z: spot.z, icon: quest.icon, target: true });
-  return pins;
-}
-
-/**
- * The job being done, at the top of the screen: its picture, what to do in a few words, and a
- * picture for each thing to find, filled in as they are found.
- */
-function QuestCard({
-  quest,
-  progress,
-  locale,
-}: {
-  quest: Quest;
-  progress: QuestProgress;
-  locale: Locale;
-}) {
-  const { goal } = quest;
-  const things =
-    goal.kind === 'find' && progress.step === 'go' && goal.spots.length > 1
-      ? goal.spots.map((_, index) => progress.found.includes(index))
-      : goal.kind === 'find' && progress.step === 'build' && goal.build
-        ? Array.from({ length: buildSize(goal.build) }, (_, index) => index < progress.built)
-        : null;
-  return (
-    <div className="quest-card" role="status">
-      <span className="quest-icon" aria-hidden>
-        {quest.icon}
-      </span>
-      <div>
-        <strong>
-          {progress.step === 'build' ? (
-            <>
-              Press <Key k="T" pad="B" /> to build!
-            </>
-          ) : (
-            `${taskLine(quest, progress, locale)}!`
-          )}
-        </strong>
-        {things && (
-          <span
-            className="quest-things"
-            aria-label={`${things.filter(Boolean).length} of ${things.length}`}
-          >
-            {things.map((got, index) => (
-              <span key={index} className={got ? 'got' : undefined}>
-                {progress.step === 'build' ? '🧱' : quest.icon}
-              </span>
-            ))}
-          </span>
-        )}
-      </div>
-    </div>
   );
 }
 

@@ -1,6 +1,5 @@
 import { CHUNK, chunkKey } from './chunks.ts';
-import type { ChunkMessage, ChunkRequest, FarMessage } from './world/worker.ts';
-import type { WorldKind } from './world/terrain.ts';
+import type { ChunkMessage, ChunkRequest, FarMessage } from './world/serve.ts';
 
 /**
  * How far the world reaches round the walker, in chunks: `load` chunks away in any direction are
@@ -128,7 +127,7 @@ export class ChunkLoader {
   /** Jobs asked for or under way. */
   readonly pending = new Set<string>();
   private readonly seed: number;
-  private readonly world: WorldKind;
+  private readonly createWorker: () => Worker;
   private readonly onChunk: (chunk: ChunkMessage) => void;
   private readonly onFar: (chunk: FarMessage) => void;
   private readonly watchdog: ReturnType<typeof setInterval>;
@@ -137,10 +136,10 @@ export class ChunkLoader {
     seed: number,
     onChunk: (chunk: ChunkMessage) => void,
     onFar: (chunk: FarMessage) => void = () => {},
-    world: WorldKind = 'world',
+    createWorker: () => Worker,
   ) {
     this.seed = seed;
-    this.world = world;
+    this.createWorker = createWorker;
     this.onChunk = onChunk;
     this.onFar = onFar;
     for (let index = 0; index < WORKERS; index++) this.hire();
@@ -154,7 +153,7 @@ export class ChunkLoader {
   }
 
   private hire() {
-    const worker = new Worker(new URL('./world/worker.ts', import.meta.url), { type: 'module' });
+    const worker = this.createWorker();
     worker.onmessage = (event: MessageEvent<ChunkMessage | FarMessage>) => {
       const job = this.busy.get(worker)?.job;
       this.busy.delete(worker);
@@ -207,7 +206,6 @@ export class ChunkLoader {
       this.busy.set(worker, { job, since: performance.now() });
       worker.postMessage({
         seed: this.seed,
-        world: this.world,
         cx,
         cz,
         far,

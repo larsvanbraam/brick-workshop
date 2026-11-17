@@ -24,7 +24,7 @@ import { TALK_RANGE } from '@brick-workshop/npc/talk';
 import { QUESTS, buildSize, giverId, questById, takerId } from './quests.ts';
 import type { MinifigOutfit } from '@brick-workshop/walk/minifig';
 import type { Look, QuestEvent, QuestProgress, Spot } from './quests.ts';
-import type { Terrain } from './world/terrain.ts';
+import type { Terrain } from '@brick-workshop/game/world/terrain.ts';
 
 /** What the scene shows of the jobs: the one being done, and those finished. */
 export interface QuestView {

@@ -10,8 +10,8 @@ import { carveChunk } from './caves.ts';
 import { cellColor, waterColor } from './palette.ts';
 import { plantChunk } from './plants.ts';
 import type { Plant } from './plants.ts';
-import { LAND_BIOMES, MAX_LAYERS, START, Terrain, WATER_LAYERS, volcanoAt } from './terrain.ts';
-import type { Biome, Volcano } from './terrain.ts';
+import { LAND_BIOMES, MAX_LAYERS, REGION, Terrain, WATER_LAYERS } from './terrain.ts';
+import type { Biome, Volcano, WorldSource } from './terrain.ts';
 
 export { WATER_LAYERS };
 
@@ -55,7 +55,7 @@ export function generateChunk(
   seed: number,
   cx: number,
   cz: number,
-  terrain: Terrain = new Terrain(seed),
+  terrain: Terrain,
   /**
    * A board's size, when the world has one: plants that would reach past its edges are left out.
    * `Infinity` for a world without edges.
@@ -359,8 +359,8 @@ export interface World {
 }
 
 /** The whole board, chunk by chunk: what the tests check, and a whole world at once. */
-export function generateWorld(seed: number): World {
-  const terrain = new Terrain(seed);
+export function generateWorld(seed: number, source: WorldSource): World {
+  const terrain = new Terrain(seed, source);
   const bricks: Brick[] = [];
   const ids = new Set<string>();
   for (const [cx, cz] of boardChunks()) {
@@ -373,6 +373,9 @@ export function generateWorld(seed: number): World {
     assembly: { name: `World ${seed}`, bricks, buildArea: WORLD_SIZE },
     spawn: findSpawn(terrain),
     terrain: ids,
-    volcano: volcanoAt(seed, START.x, START.z),
+    volcano: terrain.volcanoIn(
+      Math.floor(terrain.start.x / REGION),
+      Math.floor(terrain.start.z / REGION),
+    ),
   };
 }

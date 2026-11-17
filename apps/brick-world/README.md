@@ -19,8 +19,9 @@ then place and take off pieces as you walk. Every world keeps its own building.
 
 ## About this app
 
-This app is a thin shell: it calls `startGame(BRICK_WORLD)` from
-[`brick-game`](../../packages/brick-game), which holds the game and its configuration.
+This app holds the game: its `GameConfig` (`src/world.ts`) and the worker that builds its endless land
+(`src/world-worker.ts`). It passes the config to `startGame` from [`brick-game`](../../packages/brick-game),
+the core every game shares.
 
 ```sh
 pnpm dev:world    # http://localhost:5173, or the next free port

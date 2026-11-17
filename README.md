@@ -62,7 +62,7 @@ the vehicles parked about the island. There's no building here, just somewhere t
 [**Play Brick Island**](https://brick-island.larsvanbraam.nl) · run it locally with `pnpm dev:island` ·
 [Brick Island details](apps/brick-island/README.md)
 
-The two games share one codebase and differ only in their `GameConfig`: see [brick-game](packages/brick-game/README.md#two-games-one-codebase).
+The two games share the `brick-game` core and bring their own `GameConfig`: see [brick-game](packages/brick-game/README.md#games-are-apps).
 
 ---
 
@@ -94,18 +94,18 @@ pnpm fmt     # format the workspace
 
 Everything builds on `brick-engine`; the three apps sit on top.
 
-| Package                                     | What it does                                                                                                          |
-| ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| [`brick-engine`](packages/brick-engine)     | Part catalogue, placement, collision and support checks, physics, export, instructions and the example builds. No UI. |
-| [`claude-adapter`](packages/claude-adapter) | Lets Claude build through the engine's tools; the generation CLI and workshop server.                                 |
-| [`brick-render`](packages/brick-render)     | LDraw loading, batched drawing, the cinematic look and the loading card.                                              |
-| [`brick-game`](packages/brick-game)         | The game itself: world generation, building, menus, saves, minimap and quests.                                        |
-| [`brick-walk`](packages/brick-walk)         | The minifigure controller: walking, gamepad and footsteps.                                                            |
-| [`brick-npc`](packages/brick-npc)           | Wandering townsfolk and animals, and their talk.                                                                      |
-| [`brick-vehicles`](packages/brick-vehicles) | Drivable vehicles, their models and sounds.                                                                           |
-| [`brick-audio`](packages/brick-audio)       | The music composer and voices.                                                                                        |
+| Package                                     | What it does                                                                                                             |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| [`brick-engine`](packages/brick-engine)     | Part catalogue, placement, collision and support checks, physics, export, instructions and the example builds. No UI.    |
+| [`claude-adapter`](packages/claude-adapter) | Lets Claude build through the engine's tools; the generation CLI and workshop server.                                    |
+| [`brick-render`](packages/brick-render)     | LDraw loading, batched drawing, the cinematic look and the loading card.                                                 |
+| [`brick-game`](packages/brick-game)         | The game's core: world generation, building, menus, saves and the map. Each game's own world and extras live in its app. |
+| [`brick-walk`](packages/brick-walk)         | The minifigure controller: walking, gamepad and footsteps.                                                               |
+| [`brick-npc`](packages/brick-npc)           | Wandering townsfolk and animals, and their talk.                                                                         |
+| [`brick-vehicles`](packages/brick-vehicles) | Drivable vehicles, their models and sounds.                                                                              |
+| [`brick-audio`](packages/brick-audio)       | The music composer and voices.                                                                                           |
 
-`apps/brick-world` and `apps/brick-island` are thin shells around `brick-game`. `data` holds the
+`apps/brick-world` and `apps/brick-island` each hold a game (its config, world and extras) on top of `brick-game`. `data` holds the
 local, Git-ignored LDraw library and inventory downloads.
 
 ## Go deeper

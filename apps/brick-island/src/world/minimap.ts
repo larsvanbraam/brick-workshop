@@ -1,5 +1,5 @@
 import { COLORS } from '@brick-workshop/engine';
-import type { Biome } from '../terrain.ts';
+import type { Biome } from '@brick-workshop/game/world/terrain.ts';
 import { islandColumn } from './column.ts';
 import { islandStructures } from './structures.ts';
 

@@ -11,9 +11,9 @@ import {
 import type { Group, InstancedMesh, Mesh } from 'three';
 import { PLATE_HEIGHT } from '@brick-workshop/engine';
 import type { WalkProbe } from '@brick-workshop/walk/walk-view';
-import { hash2 } from './world/noise.ts';
-import { WATER_LAYERS } from './world/terrain.ts';
-import type { Terrain } from './world/terrain.ts';
+import { hash2 } from '@brick-workshop/game/world/noise.ts';
+import { WATER_LAYERS } from '@brick-workshop/game/world/terrain.ts';
+import type { Terrain } from '@brick-workshop/game/world/terrain.ts';
 
 /** The sea's surface in scene units. */
 const SEA = WATER_LAYERS * 3 * PLATE_HEIGHT;

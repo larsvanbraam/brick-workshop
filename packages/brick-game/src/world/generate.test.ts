@@ -3,12 +3,13 @@ import { MAX_PIECES, getWorldBounds, validateAssembly } from '@brick-workshop/en
 import { CHUNK, chunkOf } from '../chunks.ts';
 import { WATER_LAYERS, WORLD_SIZE, generateChunk, generateWorld } from './generate.ts';
 import { isPlant } from './plants.ts';
-import { LAND_BIOMES, START, Terrain, landformIn, volcanoAt } from './terrain.ts';
+import { START, NOISE_WORLD, landformIn, volcanoAt } from './noise-world.ts';
+import { LAND_BIOMES, Terrain } from './terrain.ts';
 import type { Biome } from './terrain.ts';
 
 /** Every column of the board, as the terrain gives it. */
 function board(seed: number) {
-  const terrain = new Terrain(seed);
+  const terrain = new Terrain(seed, NOISE_WORLD);
   const columns = [];
   for (let z = 0; z < WORLD_SIZE; z++)
     for (let x = 0; x < WORLD_SIZE; x++) columns.push({ x, z, ...terrain.column(x, z) });
@@ -16,7 +17,7 @@ function board(seed: number) {
 }
 
 describe('world generation', () => {
-  const world = generateWorld(1234);
+  const world = generateWorld(1234, NOISE_WORLD);
 
   it('builds chunks on their own that join into one valid world', { timeout: 60_000 }, () => {
     expect(validateAssembly(world.assembly)).toEqual([]);
@@ -29,11 +30,11 @@ describe('world generation', () => {
   // 192187 once grew two crowns into each other across a chunk edge.
   it('joins chunks into a valid world on other seeds too', { timeout: 120_000 }, () => {
     for (const seed of [192187, 42, 9001])
-      expect(validateAssembly(generateWorld(seed).assembly)).toEqual([]);
+      expect(validateAssembly(generateWorld(seed, NOISE_WORLD).assembly)).toEqual([]);
   });
 
   it('builds a chunk the same alone as among its neighbours', () => {
-    const alone = generateChunk(1234, 1, 2);
+    const alone = generateChunk(1234, 1, 2, new Terrain(1234, NOISE_WORLD));
     const together = world.assembly.bricks.filter((brick) => chunkOf(brick) === '1,2');
     expect(alone.bricks).toEqual(together);
   });
@@ -52,13 +53,15 @@ describe('world generation', () => {
   });
 
   it('is the same every time for a seed, and different for another', () => {
-    expect(generateChunk(1234, 0, 0)).toEqual(generateChunk(1234, 0, 0));
+    expect(generateChunk(1234, 0, 0, new Terrain(1234, NOISE_WORLD))).toEqual(
+      generateChunk(1234, 0, 0, new Terrain(1234, NOISE_WORLD)),
+    );
     const heights = (seed: number) => board(seed).map((column) => column.height);
     expect(heights(99)).not.toEqual(heights(1234));
   });
 
   it('starts the player on dry, open land, clear of trees', () => {
-    const terrain = new Terrain(1234);
+    const terrain = new Terrain(1234, NOISE_WORLD);
     const x = Math.floor(world.spawn.x);
     const z = Math.floor(world.spawn.z);
     const column = terrain.column(x, z);
@@ -85,7 +88,7 @@ describe('world generation', () => {
   });
 
   it('goes on past the board: the terrain has columns anywhere', () => {
-    const terrain = new Terrain(1234);
+    const terrain = new Terrain(1234, NOISE_WORLD);
     const far = [terrain.column(-500, 300), terrain.column(2000, -40), terrain.column(300, 900)];
     for (const column of far) expect(column.height).toBeGreaterThan(0);
   });
@@ -150,7 +153,7 @@ describe('world generation', () => {
 
   it('rings a plateau with cliffs: a sheer drop of several layers at its edge', () => {
     expect(landformIn(2, 0, 0)!.kind).toBe('plateau');
-    const terrain = new Terrain(2);
+    const terrain = new Terrain(2, NOISE_WORLD);
     let faces = 0;
     for (const column of board(2)) {
       const east = terrain.column(column.x + 1, column.z);
@@ -174,7 +177,7 @@ describe('world generation', () => {
   it('lets some coasts rise straight out of the sea as cliffs', () => {
     let cliffs = 0;
     for (const seed of [1, 2, 3]) {
-      const terrain = new Terrain(seed);
+      const terrain = new Terrain(seed, NOISE_WORLD);
       for (const column of board(seed)) {
         if (column.biome !== 'sea') continue;
         const neighbours = [

@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vite-plus/test';
 import { residentsOf, wanderRules } from './npcs.ts';
+import { NOISE_WORLD } from './world/noise-world.ts';
 import { Terrain } from './world/terrain.ts';
-import { createTerrain } from './world/worlds.ts';
 
 describe('the people of Brick World', () => {
-  const terrain = new Terrain(1234);
+  const terrain = new Terrain(1234, NOISE_WORLD);
   const chunks: [number, number][] = [];
   for (let cz = -3; cz < 6; cz++) for (let cx = -3; cx < 6; cx++) chunks.push([cx, cz]);
   const everyone = chunks.flatMap(([cx, cz]) => residentsOf(terrain, cx, cz));
@@ -15,7 +15,7 @@ describe('the people of Brick World', () => {
   });
 
   it('are the same people whenever a chunk loads', () => {
-    const again = new Terrain(1234);
+    const again = new Terrain(1234, NOISE_WORLD);
     for (const [cx, cz] of chunks)
       expect(residentsOf(again, cx, cz)).toEqual(residentsOf(terrain, cx, cz));
   });
@@ -54,20 +54,5 @@ describe('the people of Brick World', () => {
   it('keep out of unloaded chunks and off cliffs', () => {
     const rules = wanderRules(terrain, 128, () => false);
     expect(rules.canWalk({ x: 0, z: 0 }, { x: 1, z: 0 })).toBe(false);
-  });
-
-  it('gather in the towns of Brick Island', () => {
-    const island = createTerrain(7, 'island');
-    let town = 0;
-    for (let cz = 0; cz < 12; cz++)
-      for (let cx = 0; cx < 12; cx++) {
-        const people = residentsOf(island, cx, cz);
-        if (people.length >= 2) town++;
-        for (const person of people) {
-          const column = island.column(Math.floor(person.x), Math.floor(person.z));
-          expect(column.water).toBe(0);
-        }
-      }
-    expect(town).toBeGreaterThan(0);
   });
 });

@@ -7,6 +7,66 @@
     "./start": {
       "types": "./src/start.tsx",
       "import": "./src/start.tsx"
+    },
+    "./Minimap.tsx": {
+      "types": "./src/Minimap.tsx",
+      "import": "./src/Minimap.tsx"
+    },
+    "./SpeechBubble.tsx": {
+      "types": "./src/SpeechBubble.tsx",
+      "import": "./src/SpeechBubble.tsx"
+    },
+    "./animals.ts": {
+      "types": "./src/animals.ts",
+      "import": "./src/animals.ts"
+    },
+    "./chime.ts": {
+      "types": "./src/chime.ts",
+      "import": "./src/chime.ts"
+    },
+    "./chunks.ts": {
+      "types": "./src/chunks.ts",
+      "import": "./src/chunks.ts"
+    },
+    "./extension.ts": {
+      "types": "./src/extension.ts",
+      "import": "./src/extension.ts"
+    },
+    "./game.ts": {
+      "types": "./src/game.ts",
+      "import": "./src/game.ts"
+    },
+    "./input-hint.tsx": {
+      "types": "./src/input-hint.tsx",
+      "import": "./src/input-hint.tsx"
+    },
+    "./locale.ts": {
+      "types": "./src/locale.ts",
+      "import": "./src/locale.ts"
+    },
+    "./npcs.ts": {
+      "types": "./src/npcs.ts",
+      "import": "./src/npcs.ts"
+    },
+    "./world/generate.ts": {
+      "types": "./src/world/generate.ts",
+      "import": "./src/world/generate.ts"
+    },
+    "./world/noise-world.ts": {
+      "types": "./src/world/noise-world.ts",
+      "import": "./src/world/noise-world.ts"
+    },
+    "./world/noise.ts": {
+      "types": "./src/world/noise.ts",
+      "import": "./src/world/noise.ts"
+    },
+    "./world/serve.ts": {
+      "types": "./src/world/serve.ts",
+      "import": "./src/world/serve.ts"
+    },
+    "./world/terrain.ts": {
+      "types": "./src/world/terrain.ts",
+      "import": "./src/world/terrain.ts"
     }
   },
   "scripts": {

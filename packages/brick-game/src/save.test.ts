@@ -16,7 +16,27 @@ import {
   storeSave,
 } from './save.ts';
 import type { SaveGame } from './save.ts';
-import { BRICK_ISLAND, BRICK_WORLD, setGame } from './game.ts';
+import { setGame } from './game.ts';
+import type { GameConfig } from './game.ts';
+import { NOISE_WORLD } from './world/noise-world.ts';
+
+/** A game of endless worlds, like Brick World, with no save slots. */
+const WORLDS: GameConfig = {
+  title: 'Test World',
+  tagline: '',
+  source: NOISE_WORLD,
+  createWorker: () => {
+    throw new Error('no worker in tests');
+  },
+  savePrefix: 'brick-island',
+  slug: 'test-world',
+  building: true,
+  saveSlots: false,
+  vehicles: [],
+};
+
+/** A game with save slots, like Brick Island, under its own prefix. */
+const SLOTTED: GameConfig = { ...WORLDS, savePrefix: 'brick-island-map', seed: 7, saveSlots: true };
 
 /** Browser storage for the tests, which run without a browser. */
 class MemoryStorage {
@@ -44,6 +64,7 @@ const piece = (id: string, x: number, z: number): Brick => ({
 
 let storage: MemoryStorage;
 beforeEach(() => {
+  setGame(WORLDS);
   storage = new MemoryStorage();
   (globalThis as { localStorage?: unknown }).localStorage = storage;
 });
@@ -102,8 +123,7 @@ describe('save games', () => {
     startedAt: '2026-11-14T09:00:00.000Z',
     playedAt: '2026-11-15T09:00:00.000Z',
   };
-  beforeEach(() => setGame(BRICK_ISLAND));
-  afterEach(() => setGame(BRICK_WORLD));
+  beforeEach(() => setGame(SLOTTED));
 
   it('keeps a game per slot under the game’s own prefix', () => {
     expect(listSaves()).toEqual(Array.from({ length: SAVE_SLOTS }, () => null));

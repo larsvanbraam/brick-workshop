@@ -2,9 +2,9 @@
 
 A LEGO assembly playground: a UI-free engine (`packages/brick-engine`), a Claude adapter
 (`packages/claude-adapter`), the workshop app (`apps/brick-studio`) and Brick World (`apps/brick-world`), a
-game where a minifigure explores and builds in an endless generated world. The game itself lives in
-`packages/brick-game`; `apps/brick-world` and `apps/brick-island` are thin shells that pass it a
-`GameConfig`. Both apps draw with
+game where a minifigure explores and builds in an endless generated world. The game core lives in
+`packages/brick-game`, which knows no game by name; `apps/brick-world` and `apps/brick-island` each hold their
+game (world, map, extras) and pass it a `GameConfig`. Both apps draw with
 `packages/brick-render` (LDraw loading, batched drawing, the cinematic look, the loading card
 and the LDraw library's Vite plugin) and walk with `packages/brick-walk` (the minifigure
 controller). The [engine README](packages/brick-engine/README.md) cover the engine's rules (coordinates, parts, connections,

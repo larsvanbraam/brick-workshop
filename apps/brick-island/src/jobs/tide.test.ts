@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vite-plus/test';
-import { inland } from './world/island/column.ts';
-import { CENTRE } from './world/island/map.ts';
+import { inland } from '../world/column.ts';
+import { CENTRE } from '../world/map.ts';
 import { SHALLOWS, TIDE_LINES, Tide, tideSpeed } from './tide.ts';
 
 const SEED = 7;

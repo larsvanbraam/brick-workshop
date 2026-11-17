@@ -1,7 +1,7 @@
 import type { MinifigOutfit } from '@brick-workshop/walk/minifig';
 import type { VoiceRegister } from '@brick-workshop/audio/voice';
-import type { Chime } from './chime.ts';
-import type { Locale } from './locale.ts';
+import type { Chime } from '@brick-workshop/game/chime.ts';
+import type { Locale } from '@brick-workshop/game/locale.ts';
 
 /**
  * Brick Island's little jobs: one helper in each part of the island asks for a hand with
