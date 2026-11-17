@@ -2216,7 +2216,7 @@ describe('mixed-part engine builds', () => {
   it('builds a western main street: three false-fronted buildings on boardwalks, a street and a mesa', () => {
     const assembly = createExampleAssembly('western-town');
     expect(assembly.name).toBe('Western Main Street');
-    expect(assembly.bricks).toHaveLength(2356);
+    expect(assembly.bricks).toHaveLength(2383);
     expect(assembly.buildArea).toBe(48);
     expect(validateAssembly(assembly)).toEqual([]);
     const of = (partId: string) => assembly.bricks.filter((brick) => brick.partId === partId);
@@ -2246,7 +2246,7 @@ describe('mixed-part engine builds', () => {
     expect(of('3298')).toHaveLength(12);
     expect(of('3298').filter((brick) => brick.color === 4)).toHaveLength(3);
     // A flag on the saloon's pediment, past every other roofline.
-    const [flag] = of('2335');
+    const [flag] = of('44676a');
     expect(flag.y).toBe(Math.max(...assembly.bricks.map((brick) => brick.y)));
     // A wagon stands on its four wheels in the street; a water tank rises on a trestle.
     expect(of('4624c01')).toHaveLength(4);

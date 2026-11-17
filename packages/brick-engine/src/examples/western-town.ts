@@ -440,7 +440,7 @@ export const westernTown: ExampleDefinition = {
   id: 'western-town',
   name: 'Western Main Street',
   tags: ['western', 'desert', 'saloon', 'sheriff', 'general-store', 'boardwalk', 'mesa', 'street'],
-  expectedPieceCount: 2356,
+  expectedPieceCount: 2383,
   buildArea: SIZE,
   brickIdPrefix: 'western',
   smooth: [{ only: (brick) => NATURAL.has(naturalKey(brick)) }],
@@ -657,7 +657,7 @@ export const westernTown: ExampleDefinition = {
     {
       const y = eavesY(SALOON) + 1 + 11 * 3 + 1;
       add('3957a', 0, 23, y, SALOON.z1);
-      add('2335', 4, 23, y + 6, SALOON.z1, 90);
+      add('44676a', 4, 23, y + 6, SALOON.z1, 90);
     }
 
     // ---- Boardwalks: a raised platform of planks, posts under its front edge and a deck of
@@ -740,7 +740,8 @@ export const westernTown: ExampleDefinition = {
       const zr0 = b.z0;
       const zr1 = b.z1 - 1;
       const ridge = (xr - xl + 1 - 4) / 2;
-      for (let c = 0; c < ridge; c++) {
+      // One course more than the gables count, so the two faces meet under the ridge.
+      for (let c = 0; c <= ridge; c++) {
         for (const left of [true, false]) {
           let z = zr0;
           let n = 0;
@@ -757,7 +758,7 @@ export const westernTown: ExampleDefinition = {
         }
       }
       for (let z = zr0; z <= zr1; z += 2)
-        add('3043', b.roof[0], xl + ridge, eaves + ridge * 3, z, 90);
+        add('3043', b.roof[0], xl + ridge + 1, eaves + (ridge + 1) * 3, z, 90);
     }
 
     // ---- Props on the boardwalks and in the street.
