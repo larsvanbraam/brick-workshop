@@ -18,7 +18,7 @@ import type { Terrain } from './world/terrain.ts';
 /** The sea's surface in scene units. */
 const SEA = WATER_LAYERS * 3 * PLATE_HEIGHT;
 /** How many sharks are at it round the walker. */
-const SHARKS = 4;
+const SHARKS = 2;
 /** How far from the walker a jump starts, in studs: out in the distance, not under their feet. */
 const NEAR = 55;
 const FAR = 130;
@@ -27,12 +27,19 @@ const JUMP = [1.9, 2.6] as const;
 const REACH = [16, 26] as const;
 const HEIGHT = [7, 12] as const;
 /** How long a shark lies low between jumps, in seconds. */
-const REST = [2, 9] as const;
+const REST = [8, 20] as const;
 /** How long a splash ring spreads. */
 const SPLASH = 1.1;
-/** Studs of open sea a jump needs round both ends. */
-const CLEAR = 7;
+/** Studs of open sea a jump needs all round, so sharks stay out where nobody can reach. */
+const CLEAR = 24;
 
+/** Offsets round a spot, near and far in eight directions: all open sea, or it is not out of reach. */
+const LOOKOUTS = [CLEAR / 2, CLEAR].flatMap((r) =>
+  Array.from({ length: 8 }, (_, k) => [
+    Math.round(Math.cos((k * Math.PI) / 4) * r),
+    Math.round(Math.sin((k * Math.PI) / 4) * r),
+  ]),
+);
 const SLOTS = Array.from({ length: SHARKS }, (_, i) => i);
 const ring = new CylinderGeometry(1, 1, 0.06, 20, 1, true);
 const foam = new MeshBasicMaterial({ color: 0xffffff, transparent: true, depthWrite: false });
@@ -138,12 +145,7 @@ export function Sharks({
             [ex, ez],
             [(x + ex) / 2, (z + ez) / 2],
           ].every(([px, pz]) =>
-            [
-              [CLEAR, 0],
-              [-CLEAR, 0],
-              [0, CLEAR],
-              [0, -CLEAR],
-            ].every(([ox, oz]) => open(px! + ox! + half, half - (pz! + oz!))),
+            LOOKOUTS.every(([ox, oz]) => open(px! + ox! + half, half - (pz! + oz!))),
           );
           if (!ok) continue;
           Object.assign(shark, {
