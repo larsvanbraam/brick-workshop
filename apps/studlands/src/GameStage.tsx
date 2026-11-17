@@ -347,7 +347,8 @@ export function GameStage({
       <primitive object={rig.target} />
       <primitive object={rig.fill} />
       <primitive object={glow} />
-      <EffectComposer multisampling={4}>
+      {/* No MSAA: at 4 samples it cost about 40% of a frame's GPU time, and the occlusion pass softens edges anyway. */}
+      <EffectComposer multisampling={0}>
         <N8AO {...AMBIENT_OCCLUSION} quality="low" halfRes />
         <ToneMapping mode={ToneMappingMode.ACES_FILMIC} />
       </EffectComposer>
