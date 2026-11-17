@@ -16,6 +16,7 @@
     "@react-three/drei": "^10.7.9",
     "@react-three/fiber": "^9.8.2",
     "@react-three/postprocessing": "^3.2.2",
+    "@vercel/analytics": "^2.0.1",
     "highs": "1.15.4",
     "jspdf": "4.2.1",
     "lucide-react": "^0.577.0",
