@@ -141,6 +141,12 @@ export function stationBricks(spot: StationSpot): Brick[] {
   const top = GROUND + TOP;
   const roofY = top + ROOF;
 
+  // A flight of steps down the back, to the town, a stride of three plates each.
+  if (spot.access)
+    [10, 7, 4, 1].forEach((height, index) =>
+      column(add, 71, rect(spot, -3, 3, FAR + index, FAR + index + 1), height),
+    );
+
   // Posts of a tan footing, brown shaft and dark cap along both edges, none within four studs of
   // the steps, so a clear lane runs from each flight to the middle of the platform.
   const courses = ROOF / 3;

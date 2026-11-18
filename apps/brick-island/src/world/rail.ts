@@ -81,6 +81,8 @@ export interface StationSpot {
   heading: 0 | 90 | 180 | 270;
   /** Which side of the way trains run the platform is on: 1 left, -1 right. */
   side: 1 | -1;
+  /** Whether a flight of steps leads down from the platform's back, for a station by a town. */
+  access: boolean;
 }
 
 /** The distance along the line of the point nearest a spot of the world. */
@@ -96,21 +98,28 @@ function distanceNear(path: TrackPath, x: number, z: number) {
 
 /**
  * The three stations, well apart round the loop (trains run clockwise): the Speedway's on the north
- * side above the oval, the City's on the south side under the town, with its platform on the
- * inside, and Mirror Lake's on the west side, on the lake's east shore, with its platform on the
+ * side above the oval, the City's on the south side with its platform on the town's side and steps
+ * down to the street, and Mirror Lake's on the west side, on the lake's east shore, with its platform on the
  * inside too, away from the water.
  */
 export function stationSpots(): StationSpot[] {
   const { path } = railway();
-  const spot = (id: string, name: string, x: number, z: number, side: 1 | -1): StationSpot => {
+  const spot = (
+    id: string,
+    name: string,
+    x: number,
+    z: number,
+    side: 1 | -1,
+    access = false,
+  ): StationSpot => {
     const distance = distanceNear(path, x, z);
     const at = path.pointAt(distance);
     const heading = ((Math.round(at.angle / 90) * 90) % 360) as 0 | 90 | 180 | 270;
-    return { id, name, distance, x: Math.round(at.x), z: Math.round(at.z), heading, side };
+    return { id, name, distance, x: Math.round(at.x), z: Math.round(at.z), heading, side, access };
   };
   const south = START.z + 40 * 2 + DOWN * 16;
   return [
-    spot('city', 'City Station', 380, south, -1),
+    spot('city', 'City Station', 380, south, 1, true),
     spot('speedway', 'Speedway Station', 540, START.z, 1),
     spot('mirror-lake', 'Mirror Lake Station', START.x - 40, START.z + 40 + (DOWN * 16) / 2, -1),
   ];
