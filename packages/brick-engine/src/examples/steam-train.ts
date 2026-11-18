@@ -317,6 +317,7 @@ function wagon(
   planks: readonly [number, number],
   seed: number,
   links: Links,
+  bothSides: boolean,
 ) {
   const length = WAGON_LENGTH;
   bogies(add, y, BLACK, 0, 6);
@@ -324,7 +325,14 @@ function wagon(
   const deck = y + 10;
   const pick = random(seed);
   const side = (): number => (pick() < 0.35 ? planks[1] : planks[0]);
-  walls(add, deck, length, [side(), planks[0]], (_course, x, z) => z === 0 && (x === 3 || x === 4));
+  // A doorway on the stair side, and on the far side too when there is a platform both ways.
+  walls(
+    add,
+    deck,
+    length,
+    [side(), planks[0]],
+    (_course, x, z) => (z === 0 || (bothSides && z === TRAIN_WIDTH - 1)) && (x === 3 || x === 4),
+  );
   stairs(add, 3, deck + 1, y - 3);
   for (const x of [0, length - 1])
     for (const z of [0, TRAIN_WIDTH - 1]) add('3005', DARK_TIMBER, x, deck + 6, z);
@@ -356,9 +364,17 @@ export interface SteamTrain {
  */
 export function addSteamTrain(
   add: ExampleBrickAdder,
-  placement: { x: number; y: number; z: number; heading?: Heading; wagons?: number },
+  placement: {
+    x: number;
+    y: number;
+    z: number;
+    heading?: Heading;
+    wagons?: number;
+    /** Cuts a doorway in both sides of every wagon, not just the stair side. */
+    openBothSides?: boolean;
+  },
 ): SteamTrain {
-  const { x, y, z, heading = 0, wagons = 2 } = placement;
+  const { x, y, z, heading = 0, wagons = 2, openBothSides = false } = placement;
   const frame = shifted(inFrame(add, { x, z }, heading), 0, -TRAIN_WIDTH / 2);
   let at = 0;
   const palettes = [
@@ -367,10 +383,14 @@ export function addSteamTrain(
     [NOUGAT, TIMBER],
   ] as const;
   for (let index = 0; index < wagons; index++) {
-    wagon(shifted(frame, at, 0), y, palettes[index % palettes.length]!, 11 + index * 5, {
-      behind: index > 0,
-      ahead: true,
-    });
+    wagon(
+      shifted(frame, at, 0),
+      y,
+      palettes[index % palettes.length]!,
+      11 + index * 5,
+      { behind: index > 0, ahead: true },
+      openBothSides,
+    );
     if (index > 0) couple(frame, y, at - GAP - WAGON_LENGTH, WAGON_LENGTH);
     at += WAGON_LENGTH + GAP;
   }

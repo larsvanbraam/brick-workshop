@@ -1026,6 +1026,13 @@ function followRails(vehicle: Vehicle) {
   vehicle.velocityY = 0;
 }
 
+/** A wagon's width in studs, and the height of its floor and of its walls above the track's top. */
+const WAGON_WIDTH = 6;
+/** The floor reaches out to a platform's edge, a stud past the car's side, so there is no gap to fall in. */
+const WAGON_FLOOR_WIDTH = 9.4;
+const WAGON_FLOOR = 4.4;
+const WAGON_WALL = 6.4;
+
 /** The wheels' radius in studs, for how fast they turn. */
 const WHEEL_RADIUS: Readonly<Record<VehicleKind, number>> = {
   bike: 1.06,
@@ -1049,19 +1056,55 @@ export function isAtRest(vehicle: Vehicle) {
 export function parkedBoxes(vehicle: Vehicle): WalkBox[] {
   const spec = VEHICLES[vehicle.kind];
   if (vehicle.rail) {
-    // Every car of a standing train is solid right up to its top: the locomotive's cab roof, the
-    // tender's coal and the wagons' stakes.
+    // The locomotive and tender are solid right up to their tops. A wagon is a floor with walls
+    // round it and a doorway in each side, so a minifigure can step in from either platform.
     const { path, spec: rail, train } = vehicle.rail;
-    return carPoses(path, rail, train).flatMap((car, index) =>
-      bodyBoxes(
-        { ...spec, length: rail.lengths[index] ?? spec.length },
+    return carPoses(path, rail, train).flatMap((car, index) => {
+      const length = rail.lengths[index] ?? spec.length;
+      if (rail.kinds[index] !== 'wagon')
+        return bodyBoxes(
+          { ...spec, length },
+          car.x,
+          car.z,
+          car.yaw,
+          car.y + 0.2,
+          car.y + (index === 0 ? spec.height : spec.height - 1.6),
+        );
+      const floor = bodyBoxes(
+        { ...spec, length, width: WAGON_FLOOR_WIDTH },
         car.x,
         car.z,
         car.yaw,
         car.y + 0.2,
-        car.y + (index === 0 ? spec.height : spec.height - 1.6),
-      ),
-    );
+        car.y + WAGON_FLOOR,
+      );
+      const walls: WalkBox[] = [];
+      for (let along = 0; along < length; along++)
+        for (let across = 0; across < WAGON_WIDTH; across++) {
+          const edge =
+            along === 0 || along === length - 1 || across === 0 || across === WAGON_WIDTH - 1;
+          // The doorways: two studs, a third of the way along, in both sides.
+          const doorway =
+            (across === 0 || across === WAGON_WIDTH - 1) && (along === 3 || along === 4);
+          if (!edge || doorway) continue;
+          const at = local(
+            car.x,
+            car.z,
+            car.yaw,
+            across + 0.5 - WAGON_WIDTH / 2,
+            along + 0.5 - length / 2,
+          );
+          walls.push({
+            minX: at.x - 0.46,
+            maxX: at.x + 0.46,
+            minY: car.y + WAGON_FLOOR,
+            maxY: car.y + WAGON_WALL,
+            minZ: at.z - 0.46,
+            maxZ: at.z + 0.46,
+          });
+        }
+      return [...floor, ...walls];
+    });
   }
   return bodyBoxes(spec, vehicle.x, vehicle.z, vehicle.yaw, vehicle.y + 0.2, vehicle.y + spec.deck);
 }

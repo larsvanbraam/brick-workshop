@@ -45,7 +45,7 @@ export function steamTrainCars(wagons = 2): TrainCar[] {
     (partId, color, x, y, z, rotation = 0) => {
       bricks.push({ id: `train-${bricks.length}`, partId, color, x, y, z, rotation });
     },
-    { x: 0, y: 0, z: 0, heading: 0, wagons },
+    { x: 0, y: 0, z: 0, heading: 0, wagons, openBothSides: true },
   );
   // Rear to front: the wagons, the tender, the locomotive, each GAP studs apart.
   const rear: { kind: TrainCar['kind']; length: number }[] = [

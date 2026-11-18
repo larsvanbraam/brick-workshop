@@ -31,6 +31,8 @@ export interface RailSpec {
   cars: readonly number[];
   /** How long each car is, in the same order. */
   lengths: readonly number[];
+  /** What each car is, in the same order. */
+  kinds: readonly ('locomotive' | 'tender' | 'wagon')[];
   /** The whole train's length in studs, from front to rear. */
   length: number;
 }
@@ -46,6 +48,11 @@ export function steamTrainSpec(wagons = 2): RailSpec {
   const length = steamTrainLength(wagons);
   const cars: number[] = [];
   const lengths: number[] = [];
+  const kinds: ('locomotive' | 'tender' | 'wagon')[] = [
+    'locomotive',
+    'tender',
+    ...Array.from({ length: wagons }, () => 'wagon' as const),
+  ];
   let behind = 0;
   for (const car of [
     LOCOMOTIVE_LENGTH,
@@ -65,6 +72,7 @@ export function steamTrainSpec(wagons = 2): RailSpec {
     wheelRadius: 1.2,
     cars,
     lengths,
+    kinds,
     length,
   };
 }
