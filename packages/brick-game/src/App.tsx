@@ -251,7 +251,12 @@ function Game({
   const [saved] = useState(() => (game().saveSlots ? loadSave(slot) : null));
   /** Where the walker starts: where the save left it, or the world's own start. */
   const [spawn] = useState(() => {
-    if (!saved) return findSpawn(terrain);
+    // A game saved on a train starts on foot at the world's start: the train always begins at its
+    // own station, and the saved spot is wherever the rails then ran.
+    const onATrain = game().vehicles.some(
+      (vehicle) => vehicle.rail && vehicle.id === saved?.driving,
+    );
+    if (!saved || onATrain) return findSpawn(terrain);
     const { x, y, z, yaw, pitch } = saved.place;
     return { x, y, z, yaw, pitch };
   });
@@ -488,7 +493,8 @@ function Game({
   /** The vehicle being driven, by ID, and the one the walker stands beside. */
   const [driving, setDriving] = useState<string | null>(() => {
     const id = saved?.driving ?? null;
-    return vehicles.some((vehicle) => vehicle.id === id) ? id : null;
+    // Not a train: it starts at its station, not where it was driven to.
+    return vehicles.some((vehicle) => vehicle.id === id && !vehicle.rail) ? id : null;
   });
   const [nearVehicle, setNearVehicle] = useState<VehicleKind | null>(null);
   const drivingRef = useRef(driving);
