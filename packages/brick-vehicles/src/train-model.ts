@@ -8,7 +8,7 @@ import {
   addSteamTrain,
   steamTrainLength,
 } from '@brick-workshop/engine/examples/steam-train';
-import type { Matrix3, Placement } from './models';
+import type { Bogie, Matrix3, Placement } from './models';
 
 /**
  * The steam train's models, taken straight from the example build: every brick of each car is
@@ -17,8 +17,14 @@ import type { Matrix3, Placement } from './models';
  * piece is turned a quarter to face -z.
  */
 
-/** The single-axle bogie each car stands on. */
+/**
+ * The single-axle bogie each car stands on, which LDraw builds from a holder and a wheelset 34 units
+ * below the holder's origin (see `2878c01.dat`). They are drawn apart so the wheelset can spin.
+ */
 const BOGIE = '2878c01';
+const HOLDER = '2878';
+const WHEELSET = '70720c01';
+const WHEELSET_DROP = 34;
 
 /** Turns the example's +x (the way the train leads) onto -z: a quarter turn about the upright. */
 const QUARTER: Matrix3 = [0, 0, 1, 0, 1, 0, -1, 0, 0];
@@ -45,7 +51,7 @@ export interface TrainCar {
    * The car's two bogies, rear first. Each is placed about its own pivot, which is `along` studs
    * from the car's middle (forward is positive), so it can swivel on the rails.
    */
-  bogies: { along: number; parts: Placement[] }[];
+  bogies: Bogie[];
 }
 
 /** The cars of the steam train, front car first, each ready to draw about its own middle. */
@@ -78,10 +84,10 @@ export function steamTrainCars(wagons = 2): TrainCar[] {
         (brick) =>
           brick.x >= span.from - 1e-6 && brick.x < span.from + span.length && brick.z >= -3,
       );
-      const place = (brick: Brick, aroundZ = 0): Placement => {
+      const place = (brick: Brick, aroundZ = 0, part = brick.partId): Placement => {
         const { x, y, z, matrix } = getLDrawTransform(brick);
         return {
-          part: brick.partId,
+          part,
           color: brick.color,
           // x leads along the train and z is across it: x becomes -z, z becomes x.
           at: [z, y, -(x - middle * 20) - aroundZ] as const,
@@ -91,10 +97,23 @@ export function steamTrainCars(wagons = 2): TrainCar[] {
       const body = mine.filter((brick) => brick.partId !== BOGIE).map((brick) => place(brick));
       const bogies = mine
         .filter((brick) => brick.partId === BOGIE)
-        .map((brick) => {
+        .map((brick): Bogie => {
           // The pivot is the middle of the stretch of train the bogie takes up.
           const along = brick.x + BOGIE_LENGTH / 2 - middle;
-          return { along, parts: [place(brick, -along * 20)] };
+          const holder = place(brick, -along * 20, HOLDER);
+          const turn = holder.turn ?? [1, 0, 0, 0, 1, 0, 0, 0, 1];
+          // The wheelset hangs below the holder's origin, down the part's own y axis.
+          const [x, y, z] = holder.at;
+          const pivot = [
+            x + turn[1]! * WHEELSET_DROP,
+            y + turn[4]! * WHEELSET_DROP,
+            z + turn[7]! * WHEELSET_DROP,
+          ] as const;
+          return {
+            along,
+            parts: [holder],
+            wheels: { pivot, parts: [{ part: WHEELSET, color: 0, at: [0, 0, 0], turn }] },
+          };
         })
         .sort((a, b) => a.along - b.along);
       return {

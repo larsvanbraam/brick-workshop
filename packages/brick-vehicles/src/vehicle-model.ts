@@ -39,14 +39,22 @@ function place(models: Record<string, Group>, placement: Placement) {
   return object;
 }
 
-/** A bogie's parts about its own pivot, which the caller places and turns on the rails. */
+/**
+ * A bogie's holder about its own pivot, which the caller places and turns on the rails, with its
+ * wheelset in a group of its own (kept in `userData.spin`) to turn on the axle.
+ */
 function buildBogie(models: Record<string, Group>, bogie: Bogie) {
   const pivot = new Group();
   const inner = new Group();
   inner.scale.set(...LDRAW_SCALE);
   inner.rotation.y = Math.PI;
   for (const placement of bogie.parts) inner.add(place(models, placement));
+  const spin = new Group();
+  spin.position.set(...bogie.wheels.pivot);
+  for (const placement of bogie.wheels.parts) spin.add(place(models, placement));
+  inner.add(spin);
   pivot.add(inner);
+  pivot.userData.spin = spin;
   return pivot;
 }
 
@@ -107,7 +115,7 @@ export function buildVehicle(model: VehicleModel, models: Record<string, Group>)
  * Sets a car's bogies on the rails under it: each at its own point of the track, turned to follow
  * it, as the car's body carries on between them.
  */
-function poseBogies(pivots: readonly Group[], car: CarPose) {
+function poseBogies(pivots: readonly Group[], car: CarPose, wheelTurn: number) {
   const [cos, sin] = [Math.cos(car.yaw), Math.sin(car.yaw)];
   car.bogies.forEach((bogie, index) => {
     const pivot = pivots[index];
@@ -117,6 +125,8 @@ function poseBogies(pivots: readonly Group[], car: CarPose) {
     pivot.position.set(dx * cos - dz * sin, bogie.y - car.y, dx * sin + dz * cos);
     const turn = bogie.yaw - car.yaw;
     pivot.rotation.set(0, Math.atan2(Math.sin(turn), Math.cos(turn)), 0);
+    // The wheelset rolls with the train.
+    (pivot.userData.spin as Group | undefined)?.rotation.set(wheelTurn, 0, 0);
   });
 }
 
@@ -138,10 +148,10 @@ export function poseVehicle(rig: VehicleRig, vehicle: Vehicle, y: number, showDr
       if (!pose) return;
       car.position.set(pose.x, pose.y - vehicle.y + y, pose.z);
       car.rotation.set(0, pose.yaw, 0);
-      poseBogies(car.userData.bogies as Group[], pose);
+      poseBogies(car.userData.bogies as Group[], pose, vehicle.wheelTurn);
     });
     const [front] = poses;
-    if (front) poseBogies(rig.bogies, front);
+    if (front) poseBogies(rig.bogies, front, vehicle.wheelTurn);
   }
   for (const { steer, spin, model } of rig.moving) {
     // LDraw's y points down, so a positive turn about it turns the front to the right.

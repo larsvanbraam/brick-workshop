@@ -1,7 +1,8 @@
 /**
  * The LDraw parts the drivable vehicles are built from beyond the catalogue's own (see
  * `@brick-workshop/vehicles/models`): car bases, wheels and tyres, windscreens, a steering wheel,
- * a seat, the bicycle and motorcycle frames, propellers and rotors. Like the minifigure's parts
+ * a seat, the bicycle and motorcycle frames, propellers and rotors, and the train's bogie holder
+ * and its wheelset. Like the minifigure's parts
  * they are not building parts, but the library ships them so a static deploy can draw them.
  */
 export const VEHICLE_PARTS = Object.freeze([
@@ -24,4 +25,6 @@ export const VEHICLE_PARTS = Object.freeze([
   '30644',
   '3480',
   '4745',
+  '2878',
+  '70720c01',
 ]);

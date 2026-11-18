@@ -66,10 +66,14 @@ export interface Rider {
   eye?: Vec3;
 }
 
-/** One of a train's bogies: where its pivot is, and the parts about it. */
+/**
+ * One of a train's bogies: where its pivot is, the holder placed about it, and the wheelset that
+ * turns in the holder about its own axle.
+ */
 export interface Bogie {
   along: number;
   parts: readonly Placement[];
+  wheels: { pivot: Vec3; parts: readonly Placement[] };
 }
 
 export interface VehicleModel {
@@ -412,7 +416,10 @@ export const MODELS: Readonly<Record<VehicleKind, VehicleModel>> = Object.freeze
 export function modelParts(model: VehicleModel): string[] {
   const parts = new Set(model.body.map((placement) => placement.part));
   for (const trailer of model.trailers ?? [])
-    for (const placement of [...trailer.body, ...trailer.bogies.flatMap((bogie) => bogie.parts)])
+    for (const placement of [
+      ...trailer.body,
+      ...trailer.bogies.flatMap((bogie) => [...bogie.parts, ...bogie.wheels.parts]),
+    ])
       parts.add(placement.part);
   for (const bogie of model.bogies ?? [])
     for (const placement of bogie.parts) parts.add(placement.part);
