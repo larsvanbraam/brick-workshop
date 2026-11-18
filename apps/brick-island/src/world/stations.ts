@@ -90,12 +90,25 @@ function fill(
   color: number | ((x: number, z: number) => number),
   area: Rect,
   y: number,
+  /** Studs to a patch of one colour, when the colour varies. */
+  step = 2,
 ) {
-  for (let z = area.z0; z < area.z1; z++) {
-    if (typeof color === 'number') addRun(add, kind, color, 'x', area.x0, y, z, area.x1 - area.x0);
-    else
-      for (let x = area.x0; x < area.x1; x += 2)
-        addRun(add, kind, color(x, z), 'x', x, y, z, Math.min(2, area.x1 - x));
+  // Runs go along the longer way of the rectangle, so a platform running north-south is laid in
+  // long pieces too, not in one-stud ones.
+  const along = area.z1 - area.z0 > area.x1 - area.x0 ? 'z' : 'x';
+  const [a0, a1, c0, c1] =
+    along === 'x' ? [area.x0, area.x1, area.z0, area.z1] : [area.z0, area.z1, area.x0, area.x1];
+  for (let across = c0; across < c1; across++) {
+    const at = (position: number): [number, number] =>
+      along === 'x' ? [position, across] : [across, position];
+    if (typeof color === 'number') {
+      const [x, z] = at(a0);
+      addRun(add, kind, color, along, x, y, z, a1 - a0);
+    } else
+      for (let position = a0; position < a1; position += step) {
+        const [x, z] = at(position);
+        addRun(add, kind, color(x, z), along, x, y, z, Math.min(step, a1 - position));
+      }
   }
 }
 
@@ -115,16 +128,26 @@ export function stationBricks(spot: StationSpot): Brick[] {
   const seed = spot.x * 7 + spot.z;
   const deck = rect(spot, -HALF, HALF, NEAR, FAR);
 
-  // The platform: courses of light grey with a dark one at the foot, tiled in tan and dark tan with
-  // a yellow edge along the track.
-  fill(add, 'brick', 72, deck, GROUND);
-  for (const course of [1, 2, 3]) fill(add, 'brick', 71, deck, GROUND + course * 3);
+  // The platform: a hollow box, four courses of walls round its edge (a dark one at the foot, then
+  // light grey), a deck of plates over it, tiled in tan and dark tan with a yellow edge along the
+  // track. Nothing is built inside, where no one can go.
+  const walls = [
+    rect(spot, -HALF, HALF, NEAR, NEAR + 1),
+    rect(spot, -HALF, HALF, FAR - 1, FAR),
+    rect(spot, -HALF, -HALF + 1, NEAR + 1, FAR - 1),
+    rect(spot, HALF - 1, HALF, NEAR + 1, FAR - 1),
+  ];
+  [72, 71, 71, 71].forEach((color, course) => {
+    for (const wall of walls) fill(add, 'brick', color, wall, GROUND + course * 3);
+  });
+  fill(add, 'plate', 71, deck, GROUND + 12);
   fill(
     add,
     'tile',
     (x, z) => (hash2(seed, x, z) < 0.22 ? 28 : 19),
     rect(spot, -HALF, HALF, NEAR + 1, FAR),
     GROUND + TOP - 1,
+    4,
   );
   fill(add, 'tile', 14, rect(spot, -HALF, HALF, NEAR, NEAR + 1), GROUND + TOP - 1);
 
@@ -176,13 +199,28 @@ export function stationBricks(spot: StationSpot): Brick[] {
   const across: [number, number] = [fz * spot.side, -fx * spot.side];
   const front = facing([-across[0], -across[1]]);
   const back = facing(across);
+  // Each course is laid in the longest slopes that fit, a different length first from course to
+  // course so the joints do not line up, each piece in its own shade.
+  const SLOPES: Record<number, string> = { 4: '3037', 3: '3038', 2: '3039', 1: '3040b' };
   for (let course = 0; course < 4; course++)
-    for (let u = -HALF; u < HALF; u++) {
-      const shade = (side: number) => (hash2(seed + side, u, course) < 0.3 ? 4 : 320);
-      const near = rect(spot, u, u + 1, NEAR - 1 + course, NEAR + 1 + course);
-      add('3040b', shade(1), near.x0, roofY + course * 3, near.z0, front);
-      const far = rect(spot, u, u + 1, FAR - course - 1, FAR - course + 1);
-      add('3040b', shade(2), far.x0, roofY + course * 3, far.z0, back);
+    for (const side of [1, 2]) {
+      const [v0, turn] = side === 1 ? [NEAR - 1 + course, front] : [FAR - course - 1, back];
+      let u = -HALF;
+      let size = course % 3 === 0 ? 4 : course % 3;
+      while (u < HALF) {
+        size = Math.min(size, HALF - u);
+        const piece = rect(spot, u, u + size, v0, v0 + 2);
+        add(
+          SLOPES[size]!,
+          hash2(seed + side, u, course) < 0.3 ? 4 : 320,
+          piece.x0,
+          roofY + course * 3,
+          piece.z0,
+          turn,
+        );
+        u += size;
+        size = 4;
+      }
     }
   fill(add, 'tile', 70, rect(spot, -HALF, HALF, NEAR + 3, NEAR + 5), roofY + 12);
   // A white eave along the front and back.
