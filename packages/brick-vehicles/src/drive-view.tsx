@@ -9,6 +9,7 @@ import type { WalkWorld } from '@brick-workshop/walk/walk';
 import { LOOK_RATE, readGamepads } from '@brick-workshop/walk/walk-gamepad';
 import type { WalkCamera, WalkProbe } from '@brick-workshop/walk/walk-view';
 import { DriveSounds } from './drive-sounds';
+import { Smoke } from './smoke';
 import { MODELS, modelParts } from './models';
 import { buildVehicle, poseVehicle } from './vehicle-model';
 import type { VehicleRig } from './vehicle-model';
@@ -17,7 +18,9 @@ import {
   VEHICLES,
   distanceTo,
   exitSpot,
+  exitSpots,
   isAtRest,
+  forwardOf,
   parkedBoxes,
   settleVehicle,
   stepVehicle,
@@ -248,6 +251,10 @@ export function Vehicles({
     };
   }, [gl, invalidate, sounds]);
 
+  const [smoke] = useState(() => new Smoke());
+  useEffect(() => () => smoke.dispose(), [smoke]);
+  const chimney = useMemo(() => new Vector3(), []);
+
   const target = useMemo(() => new Vector3(), []);
   const behind = useMemo(() => new Vector3(), []);
   const eye = useMemo(() => new Vector3(), []);
@@ -279,15 +286,31 @@ export function Vehicles({
         current.driven = false;
         const spec = VEHICLES[current.kind];
         const airborne = !current.grounded && spec.handling !== 'ground';
+        // A train stops dead where it stands, so none of its cars runs on through the walker.
+        if (current.rail) {
+          current.rail.train.speed = 0;
+          current.speed = 0;
+        }
         if (isAtRest(current)) {
           world.setBoxes(boxKey(current), parkedBoxes(current));
           live.parked.set(current.id, parkedAt(current));
         }
         const fits = (x: number, z: number) => {
           const y = airborne ? current.y : world.standingHeight(x, z, current.y);
-          return y - current.y < 1.4 && world.blocking(x, y, z).length === 0;
+          // A platform stands a few studs over a train's track, so a train allows a taller step.
+          const reach = spec.handling === 'rail' ? 4.6 : 1.4;
+          return y - current.y < reach && world.blocking(x, y, z).length === 0;
         };
-        const spot = exitSpot(current, fits);
+        let spot = exitSpot(current, fits);
+        if (current.rail) {
+          // Off either side, onto the platform if there is one: the highest place that fits.
+          let height = -Infinity;
+          for (const candidate of exitSpots(current)) {
+            if (!fits(candidate.x, candidate.z)) continue;
+            const up = world.standingHeight(candidate.x, candidate.z, current.y);
+            if (up > height) [spot, height] = [candidate, up];
+          }
+        }
         const x = spot?.x ?? current.x;
         const z = spot?.z ?? current.z;
         walker.x = x;
@@ -416,6 +439,25 @@ export function Vehicles({
       poseVehicle(rig, vehicle, shown, vehicle.driven && !firstPerson);
     }
 
+    // A steam locomotive's chimney puffs while it works, harder the faster it goes.
+    for (const vehicle of vehicles) {
+      const rig = vehicle.rail ? rigs.get(vehicle.id) : undefined;
+      if (!rig || !vehicle.settled) continue;
+      const working = vehicle.driven ? 5 + Math.abs(vehicle.speed) * 0.7 : vehicle.engine * 1.5;
+      if (working > 0.05) {
+        rig.root.updateMatrixWorld();
+        // The chimney's top, in the locomotive's own frame (see `train-model.ts`).
+        chimney.set(0.5, 11, -5.5);
+        rig.root.localToWorld(chimney);
+        const ahead = forwardOf(vehicle.yaw);
+        smoke.emit(delta, chimney, working, {
+          x: ahead.x * vehicle.speed,
+          z: ahead.z * vehicle.speed,
+        });
+      }
+    }
+    if (smoke.step(delta)) animating = true;
+
     if (current) {
       const rig = rigs.get(current.id);
       const spec = VEHICLES[current.kind];
@@ -496,6 +538,7 @@ export function Vehicles({
 
   return (
     <>
+      <primitive object={smoke.group} dispose={null} />
       {[...rigs].map(([id, rig]) => (
         <group key={id}>
           <primitive object={rig.root} dispose={null} />

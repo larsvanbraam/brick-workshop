@@ -1126,24 +1126,33 @@ export function distanceTo(vehicle: Vehicle, x: number, z: number) {
 }
 
 /**
- * Where to set the minifigure down when it gets out: beside the driver's seat if there is room,
- * else on the other side, behind, in front or on top.
+ * The places to set the minifigure down when it gets out, best first: beside the driver's seat,
+ * then the other side, behind, in front or on top. A train has only its two sides, at a few
+ * distances, since the cars before and behind it are in the way.
  */
-export function exitSpot(vehicle: Vehicle, fits: (x: number, z: number) => boolean) {
+export function exitSpots(vehicle: Vehicle): { x: number; z: number }[] {
   const spec = VEHICLES[vehicle.kind];
   const side = spec.width / 2 + 1;
   const end = spec.length / 2 + 1;
-  const spots = [
-    [-side, 0],
-    [side, 0],
-    [0, -end],
-    [0, end],
-    [-side - 1.5, 0],
-    [side + 1.5, 0],
-  ] as const;
-  for (const [right, forward] of spots) {
-    const spot = local(vehicle.x, vehicle.z, vehicle.yaw, right, forward);
-    if (fits(spot.x, spot.z)) return spot;
-  }
+  const spots: (readonly [number, number])[] = vehicle.rail
+    ? [-side, side, -side - 1.5, side + 1.5, -side - 3, side + 3].map(
+        (right) => [right, 0] as const,
+      )
+    : [
+        [-side, 0],
+        [side, 0],
+        [0, -end],
+        [0, end],
+        [-side - 1.5, 0],
+        [side + 1.5, 0],
+      ];
+  return spots.map(([right, forward]) => local(vehicle.x, vehicle.z, vehicle.yaw, right, forward));
+}
+
+/**
+ * Where to set the minifigure down when it gets out: the first of `exitSpots` that fits, or none.
+ */
+export function exitSpot(vehicle: Vehicle, fits: (x: number, z: number) => boolean) {
+  for (const spot of exitSpots(vehicle)) if (fits(spot.x, spot.z)) return spot;
   return null;
 }
