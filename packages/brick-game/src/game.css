@@ -1174,7 +1174,15 @@ kbd {
 }
 
 .title-page .setting .choices {
-  flex: 0 1 380px;
+  flex: none;
+  width: 380px;
+  max-width: 100%;
+  height: auto;
+}
+
+.title-page .setting .tab {
+  max-height: 40px;
+  min-height: 34px;
 }
 
 .title-page .settings .note + .setting {
@@ -1408,12 +1416,13 @@ kbd {
 
   /* In a column the 380px basis would become a height. */
   .title-page .setting .choices {
-    flex: none;
+    width: auto;
   }
 
   .title-page .setting .tab {
     flex: 1;
-    padding: 10px 6px;
+    padding: 0 6px;
+    height: 40px;
   }
 }
 
