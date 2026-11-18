@@ -8,6 +8,10 @@
       "types": "./src/vehicle.ts",
       "import": "./src/vehicle.ts"
     },
+    "./rail": {
+      "types": "./src/rail.ts",
+      "import": "./src/rail.ts"
+    },
     "./models": {
       "types": "./src/models.ts",
       "import": "./src/models.ts"

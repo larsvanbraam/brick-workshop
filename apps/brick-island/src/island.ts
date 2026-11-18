@@ -1,6 +1,6 @@
 import type { GameConfig } from '@brick-workshop/game/game.ts';
 import { useIslandAddon } from './jobs/addon.tsx';
-import { FARM, LANDMARKS, VEHICLE_SPAWNS } from './world/map.ts';
+import { FARM, LANDMARKS, STATION_LANDMARKS, TRAIN_SPAWN, VEHICLE_SPAWNS } from './world/map.ts';
 import { MAP_BOUNDS, MAP_STEP, drawIslandMap } from './world/minimap.ts';
 import { ISLAND_SOURCE } from './world/source.ts';
 
@@ -20,9 +20,14 @@ export const BRICK_ISLAND: GameConfig = {
   building: false,
   // Always a bright morning: no nights, which suits a game for children.
   fixedTime: 0.42,
-  map: { bounds: MAP_BOUNDS, step: MAP_STEP, draw: drawIslandMap, landmarks: LANDMARKS },
+  map: {
+    bounds: MAP_BOUNDS,
+    step: MAP_STEP,
+    draw: drawIslandMap,
+    landmarks: [...LANDMARKS, ...STATION_LANDMARKS],
+  },
   saveSlots: true,
-  vehicles: VEHICLE_SPAWNS,
+  vehicles: [...VEHICLE_SPAWNS, TRAIN_SPAWN],
   pastures: [FARM],
   chat: {
     en: [

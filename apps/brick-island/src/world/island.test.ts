@@ -4,6 +4,7 @@ import type { Brick } from '@brick-workshop/engine';
 import { findSpawn, generateChunk } from '@brick-workshop/game/world/generate.ts';
 import { MAX_LAYERS } from '@brick-workshop/game/world/terrain.ts';
 import { islandTerrain } from './terrain.ts';
+import { crossingApproach, crossingLayer } from './crossings.ts';
 import { islandColumn } from './column.ts';
 import { buildFireStation, buildPoliceStation } from './civic.ts';
 import { buildHouse, turnPieces } from './houses.ts';
@@ -65,8 +66,17 @@ describe('Brick Island', () => {
     for (const road of ROADS)
       for (const [x, z, layer] of road.points) {
         const column = islandColumn(SEED, Math.floor(x), Math.floor(z));
-        expect(['road', 'river'], `${road.name} at ${x},${z}`).toContain(column.biome);
-        if (column.biome === 'road') expect(column.height).toBe(Math.round(layer));
+        // The railway's bed is paved ground, and its pieces stand on it.
+        const biomes = road.rail ? ['pavement', 'road', 'river'] : ['road', 'river'];
+        expect(biomes, `${road.name} at ${x},${z}`).toContain(column.biome);
+        // A crossing with the railway, and the steps down to it, are levelled to the track instead.
+        if (
+          column.biome === 'road' &&
+          !road.rail &&
+          crossingLayer(Math.floor(x), Math.floor(z)) === null &&
+          crossingApproach(Math.floor(x), Math.floor(z)) === null
+        )
+          expect(column.height).toBe(Math.round(layer));
       }
   });
 

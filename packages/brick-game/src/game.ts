@@ -1,3 +1,4 @@
+import type { RailPath, RailSpec } from '@brick-workshop/vehicles/rail';
 import type { VehicleKind } from '@brick-workshop/vehicles/vehicle';
 import type { Pasture } from './animals.ts';
 import type { Addon, AddonHost } from './extension.ts';
@@ -14,6 +15,12 @@ export interface VehicleSpawn {
   x: number;
   z: number;
   heading: Heading;
+  /**
+   * A train rides rails instead of parking: the rails in world studs (x east, z south, y in
+   * plates, as `traceTrack` gives them), the train and how far along them its front stands. Its
+   * `x`, `z` and `heading` are then only a guess, which the rails replace.
+   */
+  rail?: { path: RailPath; spec: RailSpec; distance: number };
 }
 
 /** A place worth finding, marked on the map with an icon and its name. */

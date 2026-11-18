@@ -1,3 +1,4 @@
+import { steamTrainCars } from './train-model';
 import type { VehicleKind } from './vehicle';
 
 /**
@@ -61,6 +62,8 @@ export interface Rider {
   armsOut?: number;
   /** The legs swing this far each way with the wheels, pedalling. */
   pedal?: number;
+  /** Where the first-person camera goes when the driver's own eyes are boxed in (a train's cab). */
+  eye?: Vec3;
 }
 
 export interface VehicleModel {
@@ -68,6 +71,8 @@ export interface VehicleModel {
   body: readonly Placement[];
   moving: readonly Moving[];
   rider: Rider;
+  /** Cars drawn behind a train, each hanging on the rails `offset` studs from its front. */
+  trailers?: readonly { offset: number; body: readonly Placement[] }[];
 }
 
 const turnY = (degrees: number): Matrix3 => {
@@ -354,6 +359,27 @@ const AIRPLANE: VehicleModel = {
   rider: { seat: [0, -87, -32], lean: 0, legs: -Math.PI / 2, arms: -0.7 },
 };
 
+/**
+ * The steam train, from the example build: the locomotive is the model's body, with its driver
+ * standing in the cab, and the tender and wagons trail behind. Built on first use.
+ */
+let train: VehicleModel | null = null;
+function trainModel(): VehicleModel {
+  if (train) return train;
+  const [locomotive, ...cars] = steamTrainCars(2);
+  train = {
+    kind: 'train',
+    body: locomotive!.body,
+    moving: [],
+    trailers: cars.map((car) => ({ offset: car.offset - locomotive!.offset, body: car.body })),
+    // Standing in the cab's floor, at the back of the locomotive, facing the front.
+    // The head just clears the cab roof, 12 plates over the floor. In first person the camera
+    // rides on the front of the boiler, where the driver's view is not the back of the firebox.
+    rider: { seat: [0, -146, 100], lean: 0, legs: 0, arms: -0.5, eye: [0, -190, -150] },
+  };
+  return train;
+}
+
 export const MODELS: Readonly<Record<VehicleKind, VehicleModel>> = Object.freeze({
   bike: BIKE,
   motorcycle: MOTORCYCLE,
@@ -361,11 +387,16 @@ export const MODELS: Readonly<Record<VehicleKind, VehicleModel>> = Object.freeze
   racecar: RACECAR,
   helicopter: HELICOPTER,
   airplane: AIRPLANE,
+  get train() {
+    return trainModel();
+  },
 });
 
 /** Every part a model uses, once each. */
 export function modelParts(model: VehicleModel): string[] {
   const parts = new Set(model.body.map((placement) => placement.part));
+  for (const trailer of model.trailers ?? [])
+    for (const placement of trailer.body) parts.add(placement.part);
   for (const moving of model.moving)
     for (const placement of moving.parts) parts.add(placement.part);
   return [...parts];

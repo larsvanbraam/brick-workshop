@@ -22,6 +22,9 @@ import {
   TOWN,
 } from './map.ts';
 import type { Flat, Hill, Road, RoadPoint } from './map.ts';
+import { crossingApproach, crossingLayer } from './crossings.ts';
+import { RAIL_LAYER, stationSpots } from './rail.ts';
+import { stationFlat } from './stations.ts';
 
 /**
  * Brick Island's ground, column by column, from the drawn map: the coast and the sea round it,
@@ -32,6 +35,13 @@ import type { Flat, Hill, Road, RoadPoint } from './map.ts';
 
 /** The sea's surface, in brick layers (`WATER_LAYERS`, kept here to stay clear of a cycle). */
 const SEA = 3;
+/** The stations' ground, levelled to the railway's layer and paved so nothing grows on it. */
+const STATION_FLATS: readonly Flat[] = stationSpots().map((spot) => ({
+  ...stationFlat(spot),
+  layer: RAIL_LAYER,
+  blend: 5,
+}));
+
 /** Studs either side of a road's tarmac over which the land is graded back to its own height. */
 const VERGE = 7;
 /** Studs either side of a town street that are pavement. */
@@ -256,6 +266,12 @@ export function islandColumn(seed: number, x: number, z: number): Column {
     if (share === 1 && biome === 'beach') biome = 'meadow';
   }
 
+  for (const flat of STATION_FLATS) {
+    const share = flatness(flat, x, z);
+    if (share > 0) height = Math.round(height + (flat.layer - height) * share);
+    if (share === 1) biome = 'pavement';
+  }
+
   // Mirror Lake, a layer up in the woods, with a bank round it.
   const lake = Math.hypot((x - LAKE.x) / LAKE.rx, (z - LAKE.z) / LAKE.rz);
   const shoreline = lake + (fbm(seed + 541, x, z, 9, 2) - 0.5) * 0.25;
@@ -288,7 +304,15 @@ export function islandColumn(seed: number, x: number, z: number): Column {
   const road = nearestRoad(x, z);
   if (road) {
     const half = road.road.width / 2;
-    const roadLayer = Math.round(road.layer);
+    let roadLayer = Math.round(road.layer);
+    // Near a railway crossing the road steps, a layer to every four studs, to the deck's level.
+    const near = road.road.rail ? null : crossingApproach(x, z);
+    if (near !== null) {
+      const deck = RAIL_LAYER + 1;
+      const steps = Math.floor(near / 4);
+      roadLayer =
+        roadLayer < deck ? Math.max(roadLayer, deck - steps) : Math.min(roadLayer, deck + steps);
+    }
     const off = road.distance - half;
     const verge = road.road.street ? PAVEMENT : VERGE;
     if (off < 0) {
@@ -299,11 +323,12 @@ export function islandColumn(seed: number, x: number, z: number): Column {
         biome = 'river';
       } else {
         height = roadLayer;
-        biome = 'road';
+        biome = road.road.rail ? 'pavement' : 'road';
         water = 0;
         // A dashed white line down the middle, and a chequered line across the speedway.
-        if (Math.abs(road.across) < 0.5 && Math.floor(road.along / 4) % 2 === 0) paint = 15;
-        if (road.road.loop && road.along < 2) paint = (x + z) % 2 ? 0 : 15;
+        if (!road.road.rail && Math.abs(road.across) < 0.5 && Math.floor(road.along / 4) % 2 === 0)
+          paint = 15;
+        if (!road.road.rail && road.road.loop && road.along < 2) paint = (x + z) % 2 ? 0 : 15;
       }
     } else if (off < verge && !water) {
       if (road.road.street) {
@@ -329,7 +354,7 @@ export function islandColumn(seed: number, x: number, z: number): Column {
 
   // The farm's fields, ploughed in rows of soil and green crops.
   for (const field of FIELDS)
-    if (inside(field, x, z) && biome !== 'road' && !water) {
+    if (inside(field, x, z) && biome !== 'road' && biome !== 'pavement' && !water) {
       height = FARM.layer;
       biome = 'field';
       const row = field.turn ? x - field.x0 : z - field.z0;
@@ -341,6 +366,15 @@ export function islandColumn(seed: number, x: number, z: number): Column {
     Math.hypot(Math.max(Math.abs(x + 0.5 - SPEEDWAY.x) - SPEEDWAY.half, 0), z + 0.5 - SPEEDWAY.z) <
     SPEEDWAY.radius - SPEEDWAY.width / 2;
   if (infield && biome !== 'road' && biome !== 'pavement') biome = 'yard';
+
+  // Where a road crosses the railway it is paved level with the track, so it can be driven over.
+  const crossing = crossingLayer(x, z);
+  if (crossing !== null) {
+    height = crossing;
+    water = 0;
+    biome = 'road';
+    paint = undefined;
+  }
 
   if (biome === 'beach' && height > SEA + 1) biome = 'meadow';
   return {

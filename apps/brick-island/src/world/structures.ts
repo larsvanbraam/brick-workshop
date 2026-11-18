@@ -5,6 +5,10 @@ import type { Structure } from '@brick-workshop/game/world/terrain.ts';
 import { CHANNEL, islandColumn, nearestRiver, nearestRoad } from './column.ts';
 import { buildFireStation, buildPoliceStation, FIRE_STATION, POLICE_STATION } from './civic.ts';
 import { buildHouse, turnPieces } from './houses.ts';
+import { addRun } from '@brick-workshop/engine/examples/layout';
+import { crossingList, crossings } from './crossings.ts';
+import { RAIL_LAYER, railway } from './rail.ts';
+import { stations } from './stations.ts';
 import type { HousePlan, Piece } from './houses.ts';
 import {
   FARM,
@@ -408,6 +412,195 @@ function layout(seed: number): Placed[] {
 
 const cache = new Map<number, Structure[]>();
 
+/** The railway's track, a structure for each section so every chunk builds the pieces in it. */
+function railStructures(): Structure[] {
+  return railway().bricks.map((brick) => {
+    const bounds = getWorldBounds(brick);
+    return {
+      id: brick.id,
+      anchor: { x: (bounds.minX + bounds.maxX) / 2, z: (bounds.minZ + bounds.maxZ) / 2 },
+      bounds: {
+        x0: Math.floor(bounds.minX),
+        z0: Math.floor(bounds.minZ),
+        x1: Math.ceil(bounds.maxX),
+        z1: Math.ceil(bounds.maxZ),
+        bottom: bounds.minY,
+        top: bounds.maxY,
+      },
+      color: brick.color,
+      pieces: () => [brick],
+    };
+  });
+}
+
+/**
+ * The pavers of each road crossing: two plates and a tile over the ground either side of the rails,
+ * which brings the road flush with the top of the track. One structure to a 16 stud block so each
+ * chunk builds the ones it holds.
+ */
+function crossingStructures(): Structure[] {
+  const blocks = new Map<string, Set<string>>();
+  for (const key of crossings().flank) {
+    const [x, z] = key.split(',').map(Number) as [number, number];
+    const block = `${Math.floor(x / 16)},${Math.floor(z / 16)}`;
+    blocks.set(block, (blocks.get(block) ?? new Set()).add(key));
+  }
+  const ground = RAIL_LAYER * 3;
+  return [...blocks].map(([block, cells]) => {
+    const tiles: Brick[] = [];
+    const add = (partId: string, color: number, x: number, y: number, z: number, rotation = 0) => {
+      tiles.push({
+        id: `crossing-${block}-${tiles.length}`,
+        partId,
+        color,
+        x,
+        y,
+        z,
+        rotation: rotation as Brick['rotation'],
+      });
+    };
+    const found = [...cells].map((key) => key.split(',').map(Number) as [number, number]);
+    // Runs of neighbouring cells along x, laid in the longest pieces that fit.
+    const rows = new Map<number, number[]>();
+    for (const [x, z] of found) rows.set(z, [...(rows.get(z) ?? []), x]);
+    for (const [z, xs] of rows) {
+      xs.sort((a, b) => a - b);
+      for (let i = 0; i < xs.length;) {
+        let end = i;
+        while (end + 1 < xs.length && xs[end + 1] === xs[end]! + 1) end++;
+        const [x0, length] = [xs[i]!, end - i + 1];
+        addRun(add, 'plate', 71, 'x', x0, ground, z, length);
+        addRun(add, 'plate', 71, 'x', x0, ground + 1, z, length);
+        addRun(add, 'tile', 71, 'x', x0, ground + 2, z, length);
+        i = end + 1;
+      }
+    }
+    const xs = found.map(([x]) => x);
+    const zs = found.map(([, z]) => z);
+    return {
+      id: `crossing-${block}`,
+      anchor: { x: xs[0]!, z: zs[0]! },
+      bounds: {
+        x0: Math.min(...xs),
+        z0: Math.min(...zs),
+        x1: Math.max(...xs) + 1,
+        z1: Math.max(...zs) + 1,
+        bottom: ground,
+        top: ground + 3,
+      },
+      color: 72,
+      pieces: () => tiles,
+    };
+  });
+}
+
+/**
+ * The barriers and signals of each crossing, as at a toy level crossing: on opposite corners, a
+ * grey housing with a tall red and white striped barrier pole standing up, and beside it a mast
+ * with a cross sign and two red lights.
+ */
+function crossingGates(seed: number): Structure[] {
+  return crossingList().map((crossing, index) => {
+    const pieces: Brick[] = [];
+    const add = (partId: string, color: number, x: number, y: number, z: number, rotation = 0) => {
+      pieces.push({
+        id: `gate-${index}-${pieces.length}`,
+        partId,
+        color,
+        x,
+        y,
+        z,
+        rotation: rotation as Brick['rotation'],
+      });
+    };
+    const { axis, half } = crossing;
+    // Each corner in the track's own frame: `u` along the track, `v` across it, then in the world.
+    for (const side of [1, -1]) {
+      const u = side * (half + 1.5);
+      const v = side * 6.5;
+      const [bx, bz] =
+        axis === 'x' ? [crossing.x + u, crossing.z + v] : [crossing.x + v, crossing.z + u];
+      const [x, z] = [Math.floor(bx), Math.floor(bz)];
+      const ground = columnOf(seed, x, z).height * 3;
+      // The housing, then the barrier pole of round bricks, red and white in turn.
+      add('3003', 72, x, ground, z);
+      add('3003', 72, x, ground + 3, z);
+      for (let level = 0; level < 12; level++)
+        add('3062b', level % 2 ? 15 : 4, x, ground + 6 + level * 3, z);
+      // The signal mast two studs along the track, outward, with a cross sign and red lights.
+      const [mx, mz] = axis === 'x' ? [x + side * 3, z] : [x, z + side * 3];
+      const mastGround = columnOf(seed, mx, mz).height * 3;
+      for (let level = 0; level < 6; level++) add('3062b', 72, mx, mastGround + level * 3, mz);
+      const top = mastGround + 18;
+      const along = axis === 'x' ? 'x' : 'z';
+      // The cross: a post of alternating bricks with an arm across it, along the track.
+      for (let level = 0; level < 4; level++)
+        add('3005', level % 2 ? 15 : 4, mx, top + level * 3, mz);
+      const arm = (offset: number, length: number, color: number) =>
+        addRun(
+          add,
+          'brick',
+          color,
+          along,
+          axis === 'x' ? mx + offset : mx,
+          top + 3,
+          axis === 'x' ? mz : mz + offset,
+          length,
+        );
+      arm(-2, 1, 4);
+      arm(-1, 3, 15);
+      arm(2, 1, 4);
+      // Two red lights on a bar across the top.
+      add('3005', 0, mx, top + 12, mz);
+      for (const light of [-1, 1])
+        add('6141', 36, axis === 'x' ? mx + light : mx, top + 15, axis === 'x' ? mz : mz + light);
+    }
+    const bounds = pieces.map((piece) => getWorldBounds(piece));
+    return {
+      id: `gate-${index}`,
+      anchor: { x: crossing.x, z: crossing.z },
+      bounds: {
+        x0: Math.floor(Math.min(...bounds.map((b) => b.minX))),
+        z0: Math.floor(Math.min(...bounds.map((b) => b.minZ))),
+        x1: Math.ceil(Math.max(...bounds.map((b) => b.maxX))),
+        z1: Math.ceil(Math.max(...bounds.map((b) => b.maxZ))),
+        bottom: Math.min(...bounds.map((b) => b.minY)),
+        top: Math.max(...bounds.map((b) => b.maxY)),
+      },
+      color: 4,
+      pieces: () => pieces,
+    };
+  });
+}
+
+/** The stations, split into one structure to a 16 stud block like the crossings. */
+function stationStructures(): Structure[] {
+  return stations().flatMap(({ spot, bricks }) => {
+    const blocks = new Map<string, Brick[]>();
+    for (const brick of bricks) {
+      const block = `${Math.floor(brick.x / 16)},${Math.floor(brick.z / 16)}`;
+      blocks.set(block, [...(blocks.get(block) ?? []), brick]);
+    }
+    return [...blocks].map(([block, pieces]) => {
+      const bounds = pieces.map((piece) => getWorldBounds(piece));
+      return {
+        id: `station-${spot.id}-${block}`,
+        anchor: { x: pieces[0]!.x, z: pieces[0]!.z },
+        bounds: {
+          x0: Math.floor(Math.min(...bounds.map((b) => b.minX))),
+          z0: Math.floor(Math.min(...bounds.map((b) => b.minZ))),
+          x1: Math.ceil(Math.max(...bounds.map((b) => b.maxX))),
+          z1: Math.ceil(Math.max(...bounds.map((b) => b.maxZ))),
+          bottom: Math.min(...bounds.map((b) => b.minY)),
+          top: Math.max(...bounds.map((b) => b.maxY)),
+        },
+        color: 71,
+        pieces: () => pieces,
+      };
+    });
+  });
+}
+
 /** Every structure on the island, worked out once per seed. */
 export function islandStructures(seed: number): readonly Structure[] {
   let structures = cache.get(seed);
@@ -439,6 +632,13 @@ export function islandStructures(seed: number): readonly Structure[] {
       pieces: build,
     };
   });
+  structures = [
+    ...structures,
+    ...railStructures(),
+    ...crossingStructures(),
+    ...crossingGates(seed),
+    ...stationStructures(),
+  ];
   cache.set(seed, structures);
   return structures;
 }

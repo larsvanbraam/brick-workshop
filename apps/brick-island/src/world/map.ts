@@ -6,6 +6,9 @@
  */
 
 import type { Landmark, VehicleSpawn } from '@brick-workshop/game/game.ts';
+import { steamTrainSpec } from '@brick-workshop/vehicles/rail';
+import { RAIL_LAYER, railway, stationSpots } from './rail.ts';
+import { stationCentre } from './stations.ts';
 
 /** A point on a road, with the road's height there in brick layers. */
 export type RoadPoint = readonly [x: number, z: number, layer: number];
@@ -19,6 +22,8 @@ export interface Road {
   street?: boolean;
   /** A closed loop: the last point joins the first. */
   loop?: boolean;
+  /** A railway: track on a levelled bed, with no markings, crossing roads and the river level. */
+  rail?: boolean;
 }
 
 /**
@@ -243,15 +248,21 @@ export const ROADS: readonly Road[] = [
       [326, 252, 6],
     ],
   },
-  // The west loop: past the farm and the lake, through the pinewood to the mountain's foot.
+  // The west loop: from the farm lane, round the lake and through the pinewood to the mountain's
+  // foot, where it meets Summit Road. The railway runs up the lake's east shore, so the road no
+  // longer cuts across the island to the crossroads in the middle.
+  {
+    name: 'Farm Road',
+    width: ROAD_WIDTH,
+    points: [
+      [102, 246, 5],
+      [150, 246, 5],
+    ],
+  },
   {
     name: 'Lake Road',
     width: ROAD_WIDTH,
     points: [
-      [326, 252, 6],
-      [276, 250, 6],
-      [226, 262, 6],
-      [150, 266, 5],
       [102, 246, 5],
       [84, 196, 6],
       [104, 136, 6],
@@ -260,21 +271,12 @@ export const ROADS: readonly Road[] = [
       [286, 160, 8],
     ],
   },
-  {
-    name: 'Mountain Foot Road',
-    width: ROAD_WIDTH,
-    points: [
-      [286, 160, 8],
-      [306, 206, 7],
-      [326, 252, 6],
-    ],
-  },
   // The farm lane, and the coast road from the farm down to Sunset Bay and into town.
   {
     name: 'Farm Lane',
     width: ROAD_WIDTH,
     points: [
-      [150, 266, 5],
+      [150, 246, 5],
       [150, 300, 5],
     ],
   },
@@ -345,6 +347,14 @@ export const ROADS: readonly Road[] = [
     ],
   },
   { name: 'Speedway', width: SPEEDWAY.width, loop: true, points: oval() },
+  // The railway round the island, one layer high all the way.
+  {
+    name: 'Railway',
+    width: 9,
+    loop: railway().path.closed,
+    rail: true,
+    points: railway().points.map(([x, z]): RoadPoint => [x, z, RAIL_LAYER]),
+  },
 ];
 
 export const LANDMARKS: readonly Landmark[] = [
@@ -376,3 +386,29 @@ export const VEHICLE_SPAWNS: readonly VehicleSpawn[] = [
   { id: 'racecar', kind: 'racecar', x: 530, z: 196, heading: 'east' },
   { id: 'airplane', kind: 'airplane', x: 476, z: 232, heading: 'east' },
 ];
+
+/** The stations are marked on the map. */
+export const STATION_LANDMARKS: readonly Landmark[] = stationSpots().map((spot) => ({
+  name: spot.name,
+  ...stationCentre(spot),
+  icon: '🚉',
+}));
+
+/**
+ * The steam train, waiting at City Station with its middle at the platform's middle, ready to board.
+ */
+export const TRAIN_SPAWN: VehicleSpawn = (() => {
+  const { path } = railway();
+  const spec = steamTrainSpec(2);
+  const city = stationSpots().find((spot) => spot.id === 'city')!;
+  const distance = city.distance + spec.length / 2;
+  const front = path.pointAt(distance);
+  return {
+    id: 'train',
+    kind: 'train',
+    x: front.x,
+    z: front.z,
+    heading: 'north',
+    rail: { path, spec, distance },
+  };
+})();

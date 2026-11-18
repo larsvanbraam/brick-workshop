@@ -1,3 +1,5 @@
+import { parkTrain } from '@brick-workshop/vehicles/rail';
+import type { RailPath } from '@brick-workshop/vehicles/rail';
 import { VEHICLES, parkVehicle } from '@brick-workshop/vehicles/vehicle';
 import type { Vehicle, VehicleKind } from '@brick-workshop/vehicles/vehicle';
 import type { Heading, VehicleSpawn } from './game.ts';
@@ -17,6 +19,26 @@ const YAW: Record<Heading, number> = {
   east: -Math.PI / 2,
 };
 
+/** The thickness of a track section in plates: the wheels stand on its rails, not on the ground. */
+const TRACK_HEIGHT = 3;
+
+/** Rails in world studs as the scene sees them: centred, with z the other way round. */
+function railsInScene(path: RailPath, frame: number): RailPath {
+  return {
+    length: path.length,
+    closed: path.closed,
+    pointAt(distance) {
+      const point = path.pointAt(distance);
+      return {
+        x: point.x - frame / 2,
+        y: point.y + TRACK_HEIGHT,
+        z: frame / 2 - point.z,
+        angle: -point.angle,
+      };
+    },
+  };
+}
+
 /** The vehicles at their spots, or where a save game left them. */
 export function createVehicles(
   spawns: readonly VehicleSpawn[],
@@ -26,6 +48,16 @@ export function createVehicles(
   const saved = new Map<string, ParkedVehicle>();
   for (const entry of save?.vehicles ?? []) if (isParkedVehicle(entry)) saved.set(entry.id, entry);
   return spawns.map((spawn) => {
+    if (spawn.rail) {
+      // A train always starts where its rails put it.
+      const train = parkVehicle(spawn.id, spawn.kind, 0, 0, 0);
+      train.rail = {
+        path: railsInScene(spawn.rail.path, frame),
+        spec: spawn.rail.spec,
+        train: parkTrain(spawn.rail.distance),
+      };
+      return train;
+    }
     const left = saved.get(spawn.id);
     const x = (left?.x ?? spawn.x) - frame / 2;
     const z = frame / 2 - (left?.z ?? spawn.z);
@@ -45,6 +77,10 @@ export function returnVehicles(
   for (const vehicle of vehicles) {
     const spawn = spawns.find((entry) => entry.id === vehicle.id);
     if (!spawn) continue;
+    if (spawn.rail && vehicle.rail) {
+      Object.assign(vehicle.rail.train, parkTrain(spawn.rail.distance));
+      continue;
+    }
     const x = spawn.x - frame / 2;
     const z = frame / 2 - spawn.z;
     Object.assign(vehicle, parkVehicle(spawn.id, spawn.kind, x, z, YAW[spawn.heading]));
@@ -54,7 +90,7 @@ export function returnVehicles(
 /** Where each vehicle stands now, for a save game. */
 export function parkedVehicles(vehicles: readonly Vehicle[], frame: number): ParkedVehicle[] {
   return vehicles
-    .filter((vehicle) => vehicle.settled)
+    .filter((vehicle) => vehicle.settled && !vehicle.rail)
     .map((vehicle) => ({
       id: vehicle.id,
       x: vehicle.x + frame / 2,
@@ -76,6 +112,11 @@ const VERBS = {
  */
 export function vehicleAction(kind: VehicleKind, doing = false) {
   const spec = VEHICLES[kind];
-  const verb = spec.track === 0 ? 'ride' : spec.handling === 'ground' ? 'drive' : 'fly';
+  const verb =
+    spec.track === 0
+      ? 'ride'
+      : spec.handling === 'ground' || spec.handling === 'rail'
+        ? 'drive'
+        : 'fly';
   return `${VERBS[verb][doing ? 1 : 0]} the ${spec.name}`;
 }

@@ -15,6 +15,10 @@
     "./examples/layout": {
       "types": "./src/examples/layout.ts",
       "import": "./src/examples/layout.ts"
+    },
+    "./examples/steam-train": {
+      "types": "./src/examples/steam-train.ts",
+      "import": "./src/examples/steam-train.ts"
     }
   },
   "scripts": {

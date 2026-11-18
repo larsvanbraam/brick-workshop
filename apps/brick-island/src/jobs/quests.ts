@@ -303,8 +303,8 @@ export const QUESTS: readonly Quest[] = [
     giver: {
       name: 'Ada',
       voice: 'high',
-      x: 226.5,
-      z: 200.5,
+      x: 220.5,
+      z: 192.5,
       outfit: outfit(5, 15, { part: '3901', color: 70 }, '3626bp02'),
     },
     ask: ['Quack quack! Hello!', 'My 3 little ducks ran off.', 'Can you find them for me?'],
@@ -360,7 +360,7 @@ export const QUESTS: readonly Quest[] = [
       name: 'Hiker Hugo',
       voice: 'low',
       x: 312.5,
-      z: 177.5,
+      z: 184.5,
       outfit: outfit(2, 28, { part: '86035', color: 2 }, '3626bp04'),
     },
     ask: [

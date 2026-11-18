@@ -3,6 +3,7 @@ import { coloredLDrawModel } from '@brick-workshop/render/ldraw';
 import { LDRAW_SCALE } from '@brick-workshop/render/scene-frame';
 import { buildMinifig } from '@brick-workshop/walk/minifig';
 import type { Placement, Rider, VehicleModel } from './models';
+import { carPoses } from './rail';
 import type { Vehicle } from './vehicle';
 
 /** A vehicle's model in the scene, with the parts that move. */
@@ -12,6 +13,8 @@ export interface VehicleRig {
   moving: { steer: Group; spin: Group; model: VehicleModel['moving'][number] }[];
   /** The driver, shown while someone drives. */
   driver: Driver | null;
+  /** A train's cars behind the locomotive, each in the scene's own frame (see `poseVehicle`). */
+  trailers: Group[];
 }
 
 interface Driver {
@@ -63,10 +66,21 @@ export function buildVehicle(model: VehicleModel, models: Record<string, Group>)
   const root = new Group();
   root.add(ldraw);
   root.visible = false;
-  root.traverse((object) => {
-    object.castShadow = true;
+  const trailers = (model.trailers ?? []).map((trailer) => {
+    const car = new Group();
+    const inner = new Group();
+    inner.scale.set(...LDRAW_SCALE);
+    inner.rotation.y = Math.PI;
+    for (const placement of trailer.body) inner.add(place(models, placement));
+    car.add(inner);
+    car.visible = false;
+    return car;
   });
-  return { root, moving, driver };
+  for (const group of [root, ...trailers])
+    group.traverse((object) => {
+      object.castShadow = true;
+    });
+  return { root, moving, driver, trailers };
 }
 
 /**
@@ -78,6 +92,17 @@ export function poseVehicle(rig: VehicleRig, vehicle: Vehicle, y: number, showDr
   root.visible = vehicle.settled;
   root.position.set(vehicle.x, y, vehicle.z);
   root.rotation.set(vehicle.pitch, vehicle.yaw, vehicle.roll, 'YXZ');
+  if (vehicle.rail && rig.trailers.length) {
+    // The cars behind follow the rails, each at its own heading, level with the locomotive.
+    const poses = carPoses(vehicle.rail.path, vehicle.rail.spec, vehicle.rail.train);
+    rig.trailers.forEach((car, index) => {
+      const pose = poses[index + 1];
+      car.visible = vehicle.settled && Boolean(pose);
+      if (!pose) return;
+      car.position.set(pose.x, pose.y - vehicle.y + y, pose.z);
+      car.rotation.set(0, pose.yaw, 0);
+    });
+  }
   for (const { steer, spin, model } of rig.moving) {
     // LDraw's y points down, so a positive turn about it turns the front to the right.
     steer.rotation.y = model.steer ? vehicle.steer * model.steer : 0;

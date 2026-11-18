@@ -1,4 +1,6 @@
 import type { WalkBox, WalkWorld } from '@brick-workshop/walk/walk';
+import { carPoses, stepRail } from './rail';
+import type { RailPath, RailSpec, RailTrain } from './rail';
 
 /**
  * Vehicles a minifigure can drive or fly, in scene units (a stud wide, 0.4 a plate high). They
@@ -8,10 +10,17 @@ import type { WalkBox, WalkWorld } from '@brick-workshop/walk/walk';
  * turns) that make it easy to drive for a child and different enough from the next to be fun.
  */
 
-export type VehicleKind = 'bike' | 'motorcycle' | 'car' | 'racecar' | 'helicopter' | 'airplane';
+export type VehicleKind =
+  | 'bike'
+  | 'motorcycle'
+  | 'car'
+  | 'racecar'
+  | 'helicopter'
+  | 'airplane'
+  | 'train';
 
-/** How a vehicle moves: on its wheels, hovering, or flying on its wings. */
-export type Handling = 'ground' | 'helicopter' | 'airplane';
+/** How a vehicle moves: on its wheels, hovering, flying on its wings, or along rails. */
+export type Handling = 'ground' | 'helicopter' | 'airplane' | 'rail';
 
 export interface VehicleSpec {
   kind: VehicleKind;
@@ -186,6 +195,29 @@ export const VEHICLES: Readonly<Record<VehicleKind, VehicleSpec>> = Object.freez
     takeoffSpeed: 12,
     stallSpeed: 9,
   },
+  // The steam train's locomotive: it only moves along its rails (see `rail.ts`), so most of this
+  // is for getting in and out. The width is the track's, so it is reached from the track's edge.
+  train: {
+    kind: 'train',
+    name: 'train',
+    handling: 'rail',
+    length: 14,
+    width: 8,
+    height: 9,
+    deck: 4,
+    wheelbase: 8,
+    track: 6,
+    step: CLIMB,
+    maxSpeed: 14,
+    reverseSpeed: 5,
+    acceleration: 3.5,
+    braking: 9,
+    drag: 1.2,
+    turnRate: 0,
+    turnSpeed: 0,
+    lean: 0,
+    follow: 26,
+  },
 });
 
 /** A vehicle in the world. Positions are in scene units, with y at the bottom of its wheels. */
@@ -217,6 +249,8 @@ export interface Vehicle {
   propeller: number;
   /** Whether someone is at the controls. */
   driven: boolean;
+  /** A train's rails and where it is on them; its position and heading follow from it. */
+  rail?: { path: RailPath; spec: RailSpec; train: RailTrain };
   /**
    * Whether it has found the ground under its spawn: a vehicle waits, hidden, until the world
    * round it has loaded.
@@ -497,6 +531,13 @@ function groundUnderBody(
  */
 export function settleVehicle(world: WalkWorld, vehicle: Vehicle) {
   if (vehicle.settled) return true;
+  if (vehicle.rail) {
+    // A train stands on its rails wherever the ground is.
+    followRails(vehicle);
+    vehicle.grounded = true;
+    vehicle.settled = true;
+    return true;
+  }
   if (!hasGround(world, vehicle.x, vehicle.z)) return false;
   const spec = VEHICLES[vehicle.kind];
   const saved = Number.isFinite(vehicle.y);
@@ -937,6 +978,14 @@ export function stepVehicle(world: WalkWorld, vehicle: Vehicle, input: DriveInpu
   if (!settleVehicle(world, vehicle)) return false;
   const dt = Math.min(delta, 1 / 20);
   const spec = VEHICLES[vehicle.kind];
+  if (vehicle.rail) {
+    const { path, spec: rail, train } = vehicle.rail;
+    train.driven = vehicle.driven;
+    const hit = stepRail(path, rail, train, input, dt);
+    followRails(vehicle);
+    vehicle.engine = approach(vehicle.engine, vehicle.driven ? 1 : 0, dt / 0.6);
+    return hit;
+  }
   const given = vehicle.driven ? input : IDLE;
   let hit: boolean;
   if (spec.handling === 'helicopter') hit = stepHelicopter(world, spec, vehicle, given, dt);
@@ -962,6 +1011,21 @@ export function stepVehicle(world: WalkWorld, vehicle: Vehicle, input: DriveInpu
   return hit;
 }
 
+/** Puts a train's locomotive where its rails have it: its position, heading and speed. */
+function followRails(vehicle: Vehicle) {
+  const ride = vehicle.rail;
+  if (!ride) return;
+  const [front] = carPoses(ride.path, ride.spec, ride.train);
+  if (!front) return;
+  vehicle.x = front.x;
+  vehicle.y = front.y;
+  vehicle.z = front.z;
+  vehicle.yaw = front.yaw;
+  vehicle.speed = ride.train.speed;
+  vehicle.wheelTurn = ride.train.wheelTurn;
+  vehicle.velocityY = 0;
+}
+
 /** The wheels' radius in studs, for how fast they turn. */
 const WHEEL_RADIUS: Readonly<Record<VehicleKind, number>> = {
   bike: 1.06,
@@ -970,6 +1034,7 @@ const WHEEL_RADIUS: Readonly<Record<VehicleKind, number>> = {
   racecar: 1.5,
   helicopter: 1,
   airplane: 0.9,
+  train: 1.2,
 };
 
 /** Whether a vehicle is standing still on the ground, so getting out leaves it where it is. */
@@ -983,6 +1048,21 @@ export function isAtRest(vehicle: Vehicle) {
  */
 export function parkedBoxes(vehicle: Vehicle): WalkBox[] {
   const spec = VEHICLES[vehicle.kind];
+  if (vehicle.rail) {
+    // Every car of a standing train is solid right up to its top: the locomotive's cab roof, the
+    // tender's coal and the wagons' stakes.
+    const { path, spec: rail, train } = vehicle.rail;
+    return carPoses(path, rail, train).flatMap((car, index) =>
+      bodyBoxes(
+        { ...spec, length: rail.lengths[index] ?? spec.length },
+        car.x,
+        car.z,
+        car.yaw,
+        car.y + 0.2,
+        car.y + (index === 0 ? spec.height : spec.height - 1.6),
+      ),
+    );
+  }
   return bodyBoxes(spec, vehicle.x, vehicle.z, vehicle.yaw, vehicle.y + 0.2, vehicle.y + spec.deck);
 }
 

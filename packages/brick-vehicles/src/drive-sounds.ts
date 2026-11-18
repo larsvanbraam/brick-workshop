@@ -198,4 +198,5 @@ const TONES: Record<VehicleKind, { idle: number; top: number; bright: number; vo
   racecar: { idle: 90, top: 320, bright: 1800, volume: 0.2 },
   helicopter: { idle: 30, top: 55, bright: 400, volume: 0.15 },
   airplane: { idle: 60, top: 130, bright: 900, volume: 0.2 },
+  train: { idle: 36, top: 70, bright: 500, volume: 0.2 },
 };

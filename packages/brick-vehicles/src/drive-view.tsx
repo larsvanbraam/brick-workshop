@@ -64,7 +64,9 @@ export function vehicleInReach(
   for (const vehicle of vehicles) {
     if (!vehicle.settled || vehicle.driven) continue;
     const spec = VEHICLES[vehicle.kind];
-    if (walker.y < vehicle.y - 2 || walker.y > vehicle.y + spec.height + 1) continue;
+    // A train's rails stand on a bed a layer or more above the ground the walker comes along.
+    const below = spec.handling === 'rail' ? 3.5 : 2;
+    if (walker.y < vehicle.y - below || walker.y > vehicle.y + spec.height + 1) continue;
     const distance = distanceTo(vehicle, walker.x, walker.z);
     if (distance < bestDistance) {
       best = vehicle;
@@ -427,7 +429,8 @@ export function Vehicles({
       const shown = live.shown.get(current.id) ?? current.y;
       if (live.view === 'first' && rig) {
         // From the driver's eyes, turning and tipping with the vehicle.
-        const [sx, sy, sz] = MODELS[current.kind].rider.seat;
+        const { seat, eye: lookout } = MODELS[current.kind].rider;
+        const [sx, sy, sz] = lookout ?? seat;
         rig.root.updateMatrixWorld();
         eye.set(-sx * 0.05, -sy * 0.05 + 1.15, sz * 0.05);
         rig.root.localToWorld(eye);
@@ -494,7 +497,12 @@ export function Vehicles({
   return (
     <>
       {[...rigs].map(([id, rig]) => (
-        <primitive key={id} object={rig.root} dispose={null} />
+        <group key={id}>
+          <primitive object={rig.root} dispose={null} />
+          {rig.trailers.map((car, index) => (
+            <primitive key={index} object={car} dispose={null} />
+          ))}
+        </group>
       ))}
     </>
   );
