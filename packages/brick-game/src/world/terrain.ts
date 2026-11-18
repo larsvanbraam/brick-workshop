@@ -92,6 +92,11 @@ export interface Structure {
   bounds: { x0: number; z0: number; x1: number; z1: number; top: number; bottom: number };
   /** The colour the far view draws it in. */
   color: number;
+  /**
+   * Whether the far view and the map draw it as a block, which is right for a building. False for
+   * fine work that would read as a slab from afar: track, crossings, stations. Default true.
+   */
+  block?: boolean;
   /** Its pieces. Built on demand: most structures are only ever seen from afar. */
   pieces: () => readonly Brick[];
 }

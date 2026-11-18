@@ -73,7 +73,7 @@ export function drawIslandMap(seed: number): Uint8ClampedArray {
       pixels[i * 4 + 3] = 255;
     }
   for (const structure of islandStructures(seed)) {
-    if (structure.id.startsWith('lamp')) continue;
+    if (structure.id.startsWith('lamp') || structure.block === false) continue;
     const color = hexOf.get(structure.color) ?? 0x888888;
     const { x0, z0, x1, z1 } = structure.bounds;
     for (let z = z0; z < z1; z += 1)

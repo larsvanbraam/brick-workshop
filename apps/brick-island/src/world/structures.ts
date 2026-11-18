@@ -428,6 +428,7 @@ function railStructures(): Structure[] {
         top: bounds.maxY,
       },
       color: brick.color,
+      block: false,
       pieces: () => [brick],
     };
   });
@@ -489,6 +490,7 @@ function crossingStructures(): Structure[] {
         top: ground + 3,
       },
       color: 72,
+      block: false,
       pieces: () => tiles,
     };
   });
@@ -568,6 +570,7 @@ function crossingGates(seed: number): Structure[] {
         top: Math.max(...bounds.map((b) => b.maxY)),
       },
       color: 4,
+      block: false,
       pieces: () => pieces,
     };
   });
@@ -595,6 +598,7 @@ function stationStructures(): Structure[] {
           top: Math.max(...bounds.map((b) => b.maxY)),
         },
         color: 71,
+        block: false,
         pieces: () => pieces,
       };
     });

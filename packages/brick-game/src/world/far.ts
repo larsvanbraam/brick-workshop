@@ -201,6 +201,7 @@ export function farChunk(terrain: Terrain, cx: number, cz: number, frame: number
     (cz + 1) * CHUNK,
   )) {
     const { anchor, bounds, color } = structure;
+    if (structure.block === false) continue;
     if (Math.floor(anchor.x / CHUNK) !== cx || Math.floor(anchor.z / CHUNK) !== cz) continue;
     const hex = hexOf.get(color) ?? 0x888888;
     box(
