@@ -48,6 +48,10 @@
       "types": "./src/npcs.ts",
       "import": "./src/npcs.ts"
     },
+    "./world/far.ts": {
+      "types": "./src/world/far.ts",
+      "import": "./src/world/far.ts"
+    },
     "./world/generate.ts": {
       "types": "./src/world/generate.ts",
       "import": "./src/world/generate.ts"

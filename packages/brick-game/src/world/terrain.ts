@@ -97,6 +97,11 @@ export interface Structure {
    * fine work that would read as a slab from afar: track, crossings, stations. Default true.
    */
   block?: boolean;
+  /**
+   * A strip the far view draws along these points of the build grid instead of a block, from the
+   * structure's bottom to its top, in its colour: low-poly track, kept thin and in line.
+   */
+  strip?: { points: readonly (readonly [number, number])[]; width: number };
   /** Its pieces. Built on demand: most structures are only ever seen from afar. */
   pieces: () => readonly Brick[];
 }

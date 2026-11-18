@@ -129,6 +129,47 @@ export function farChunk(terrain: Terrain, cx: number, cz: number, frame: number
     );
   };
 
+  /** A straight strip of a given width between two points, from `y0` to `y1`: a stretch of track. */
+  const strip = (
+    [ax, az]: readonly [number, number],
+    [bx, bz]: readonly [number, number],
+    width: number,
+    y0: number,
+    y1: number,
+    hex: number,
+  ) => {
+    const length = Math.hypot(bx - ax, bz - az) || 1;
+    // Half a width across the line, turned the way z runs from x as the boxes' corners are.
+    const [px, pz] = [(-(bz - az) / length) * (width / 2), ((bx - ax) / length) * (width / 2)];
+    const at = (x: number, z: number, y: number): Point => [sx(x), y, sz(z)];
+    const top = rgb(hex);
+    const side = rgb(hex, SIDE_SHADE);
+    quad(
+      at(ax - px, az - pz, y1),
+      at(ax + px, az + pz, y1),
+      at(bx + px, bz + pz, y1),
+      at(bx - px, bz - pz, y1),
+      UP,
+      top,
+    );
+    quad(
+      at(ax + px, az + pz, y0),
+      at(bx + px, bz + pz, y0),
+      at(bx + px, bz + pz, y1),
+      at(ax + px, az + pz, y1),
+      UP,
+      side,
+    );
+    quad(
+      at(bx - px, bz - pz, y0),
+      at(ax - px, az - pz, y0),
+      at(ax - px, az - pz, y1),
+      at(bx - px, bz - pz, y1),
+      UP,
+      side,
+    );
+  };
+
   const heights: number[] = [];
   const hexes: number[] = [];
   for (let z = 0; z < CELLS; z++)
@@ -201,9 +242,22 @@ export function farChunk(terrain: Terrain, cx: number, cz: number, frame: number
     (cz + 1) * CHUNK,
   )) {
     const { anchor, bounds, color } = structure;
-    if (structure.block === false) continue;
     if (Math.floor(anchor.x / CHUNK) !== cx || Math.floor(anchor.z / CHUNK) !== cz) continue;
     const hex = hexOf.get(color) ?? 0x888888;
+    if (structure.strip) {
+      const { points, width } = structure.strip;
+      for (let i = 0; i + 1 < points.length; i++)
+        strip(
+          points[i]!,
+          points[i + 1]!,
+          width,
+          bounds.bottom * PLATE_HEIGHT,
+          bounds.top * PLATE_HEIGHT,
+          hex,
+        );
+      continue;
+    }
+    if (structure.block === false) continue;
     box(
       bounds.x0,
       bounds.z0,

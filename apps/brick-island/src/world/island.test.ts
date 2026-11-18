@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vite-plus/test';
-import { getWorldBounds, validateAssembly } from '@brick-workshop/engine';
+import { PLATE_HEIGHT, getWorldBounds, validateAssembly } from '@brick-workshop/engine';
 import type { Brick } from '@brick-workshop/engine';
 import { findSpawn, generateChunk } from '@brick-workshop/game/world/generate.ts';
 import { MAX_LAYERS } from '@brick-workshop/game/world/terrain.ts';
 import { islandTerrain } from './terrain.ts';
 import { crossingApproach, crossingLayer } from './crossings.ts';
+import { railway } from './rail.ts';
+import { CHUNK } from '@brick-workshop/game/chunks.ts';
+import { farChunk } from '@brick-workshop/game/world/far.ts';
 import { islandColumn } from './column.ts';
 import { buildFireStation, buildPoliceStation } from './civic.ts';
 import { buildHouse, turnPieces } from './houses.ts';
@@ -217,5 +220,22 @@ describe('Brick Island', () => {
     for (const brick of chunk.bricks)
       if (brick.id.startsWith('house'))
         expect(getWorldBounds(brick).minY).toBeGreaterThanOrEqual(12);
+  });
+
+  it('draws the railway from afar as a strip along the track, not as blocks', () => {
+    const terrain = islandTerrain(SEED);
+    const piece = railway().bricks[0]!;
+    const cx = Math.floor(piece.x / CHUNK);
+    const cz = Math.floor(piece.z / CHUNK);
+    const far = farChunk(terrain, cx, cz, 640);
+    // The strip's top is level with the track's top: three plates over its foot.
+    const top = (piece.y + 3) * PLATE_HEIGHT;
+    const heights = new Set<number>();
+    for (let i = 1; i < far.positions.length; i += 3)
+      heights.add(Math.round(far.positions[i]! * 1000));
+    expect(heights.has(Math.round(top * 1000))).toBe(true);
+    // And no structure of the railway asks for a block.
+    for (const structure of islandStructures(SEED))
+      if (/^(rail|crossing|gate|station)/.test(structure.id)) expect(structure.block).toBe(false);
   });
 });

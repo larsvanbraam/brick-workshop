@@ -1,4 +1,4 @@
-import { createExampleAssembly, getWorldBounds } from '@brick-workshop/engine';
+import { createExampleAssembly, getWorldBounds, trackEnds } from '@brick-workshop/engine';
 import type { Brick } from '@brick-workshop/engine';
 import { hash2, random } from '@brick-workshop/game/world/noise.ts';
 import type { Structure } from '@brick-workshop/game/world/terrain.ts';
@@ -429,6 +429,13 @@ function railStructures(): Structure[] {
       },
       color: brick.color,
       block: false,
+      // From afar a section is a plain strip between its two ends: a straight line for a curve too.
+      strip: {
+        points: trackEnds(brick)
+          .slice(0, 2)
+          .map((end) => [end.x, end.z] as const),
+        width: 8,
+      },
       pieces: () => [brick],
     };
   });
