@@ -78,11 +78,17 @@ export function steamTrainCars(wagons = 2): TrainCar[] {
   return spans
     .map((span, index) => {
       const middle = span.from + span.length / 2;
-      // The example's stairs beside each car stand outside the car's own width (the cars run from
-      // z -3 to 3), so they are left off: the stations bring the platform.
+      // The example's stairs beside each car are left off, as the stations bring the platform: they
+      // are grey (71 or 72) and stand outside the car's own width (the cars run from z -3 to 3). The
+      // locomotive's roof overhangs its rear by a stud, over the gap before it, so it keeps that
+      // stud; the roof's side overhang is black, so the stair test leaves it.
+      const reach = span.kind === 'locomotive' ? 1 : 0;
+      const stairs = (brick: Brick) => brick.z < -3 && (brick.color === 71 || brick.color === 72);
       const mine = bricks.filter(
         (brick) =>
-          brick.x >= span.from - 1e-6 && brick.x < span.from + span.length && brick.z >= -3,
+          brick.x >= span.from - reach - 1e-6 &&
+          brick.x < span.from + span.length &&
+          !stairs(brick),
       );
       const place = (brick: Brick, aroundZ = 0, part = brick.partId): Placement => {
         const { x, y, z, matrix } = getLDrawTransform(brick);

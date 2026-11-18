@@ -434,7 +434,7 @@ export function Vehicles({
       if (working > 0.05) {
         rig.root.updateMatrixWorld();
         // The chimney's top, in the locomotive's own frame (see `train-model.ts`).
-        chimney.set(0.5, 11, -5.5);
+        chimney.set(0.5, 12.8, -5.5);
         rig.root.localToWorld(chimney);
         const ahead = forwardOf(vehicle.yaw);
         smoke.emit(delta, chimney, working, {
