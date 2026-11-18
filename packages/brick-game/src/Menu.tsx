@@ -492,8 +492,9 @@ export function Settings({
         </div>
       </div>
       <p className="note">
-        Thumbsticks and buttons on the screen, for phones and tablets: the left stick walks and
-        dragging anywhere else looks round. Auto shows them on touch screens only.
+        Thumbsticks and buttons on the screen, for phones and tablets: the left stick walks, the
+        right one looks round (with Standard controls) and dragging anywhere else looks too. Auto
+        shows them on touch screens only.
       </p>
       <div className="setting">
         <span id="voices-label">Voices</span>

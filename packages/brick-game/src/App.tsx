@@ -1319,7 +1319,11 @@ function Game({
           </DebugOverlay>
         )}
         {playing && showTouch && (
-          <TouchControls building={game().building} minimap={game().map !== undefined} />
+          <TouchControls
+            building={game().building}
+            minimap={game().map !== undefined}
+            simple={simpleControls}
+          />
         )}
         {game().building && <div className="crosshair" aria-hidden />}
         {playing && game().building && ghostCheck && !ghostCheck.ok && (

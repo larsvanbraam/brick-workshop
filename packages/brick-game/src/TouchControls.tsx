@@ -106,7 +106,16 @@ function PadButton({ spec }: { spec: ButtonSpec }) {
  * looks round, and buttons sit on the right. They press the virtual pad (`touch-pad.ts`), so each
  * does what the matching controller button does (see `gamepad.ts`).
  */
-export function TouchControls({ building, minimap }: { building: boolean; minimap: boolean }) {
+export function TouchControls({
+  building,
+  minimap,
+  simple,
+}: {
+  building: boolean;
+  minimap: boolean;
+  /** Simple controls turn with the walking stick, so there is no second stick to look with. */
+  simple: boolean;
+}) {
   useEffect(() => {
     setTouchPad(true);
     return () => setTouchPad(false);
@@ -152,7 +161,7 @@ export function TouchControls({ building, minimap }: { building: boolean; minima
   ];
 
   return (
-    <div className="touch-controls">
+    <div className={simple ? 'touch-controls' : 'touch-controls has-look'}>
       <div
         className="touch-look"
         onPointerDown={(event) => {
@@ -170,6 +179,9 @@ export function TouchControls({ building, minimap }: { building: boolean; minima
         ))}
       </div>
       <Stick className="touch-stick" onMove={(x, y) => setTouchStick('left', x, y)} />
+      {!simple && (
+        <Stick className="touch-stick look" onMove={(x, y) => setTouchStick('right', x, y)} />
+      )}
       <div className="touch-actions">
         {main.map((spec) => (
           <PadButton key={spec.title} spec={spec} />

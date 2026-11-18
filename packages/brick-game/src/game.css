@@ -1285,6 +1285,13 @@ kbd {
 
   .title-page {
     right: 16px;
+    left: 0;
+    width: auto;
+    max-height: calc(100dvh - 72px);
+  }
+
+  .paged .title-shade {
+    background: rgb(14 12 9 / 0.82);
   }
 }
 
@@ -1397,6 +1404,16 @@ kbd {
     flex-direction: column;
     align-items: stretch;
     gap: 6px;
+  }
+
+  /* In a column the 380px basis would become a height. */
+  .title-page .setting .choices {
+    flex: none;
+  }
+
+  .title-page .setting .tab {
+    flex: 1;
+    padding: 10px 6px;
   }
 }
 
@@ -1528,6 +1545,11 @@ kbd {
   pointer-events: auto;
 }
 
+.touch-stick.look {
+  left: auto;
+  right: max(24px, env(safe-area-inset-right));
+}
+
 .touch-knob {
   width: 56px;
   height: 56px;
@@ -1584,6 +1606,15 @@ kbd {
   flex-wrap: wrap;
   justify-content: flex-end;
   max-width: 150px;
+}
+
+.has-look .touch-actions {
+  bottom: calc(max(24px, env(safe-area-inset-bottom)) + 140px);
+  max-width: 170px;
+}
+
+.has-look .touch-extras {
+  bottom: calc(max(24px, env(safe-area-inset-bottom)) + 300px);
 }
 
 .touch-top {
