@@ -17,8 +17,7 @@ import {
   IDLE,
   VEHICLES,
   distanceTo,
-  exitSpot,
-  exitSpots,
+  exitPlace,
   isAtRest,
   forwardOf,
   parkedBoxes,
@@ -274,7 +273,7 @@ export function Vehicles({
     if (xDown && !live.padX && live.active) live.toggle = true;
     live.padX = xDown;
 
-    const current = live.driving
+    let current = live.driving
       ? vehicles.find((vehicle) => vehicle.id === live.driving)
       : undefined;
 
@@ -295,27 +294,11 @@ export function Vehicles({
           world.setBoxes(boxKey(current), parkedBoxes(current));
           live.parked.set(current.id, parkedAt(current));
         }
-        const fits = (x: number, z: number) => {
-          const y = airborne ? current.y : world.standingHeight(x, z, current.y);
-          // A platform stands a few studs over a train's track, so a train allows a taller step.
-          const reach = spec.handling === 'rail' ? 4.6 : 1.4;
-          return y - current.y < reach && world.blocking(x, y, z).length === 0;
-        };
-        let spot = exitSpot(current, fits);
-        if (current.rail) {
-          // Off either side, onto the platform if there is one: the highest place that fits.
-          let height = -Infinity;
-          for (const candidate of exitSpots(current)) {
-            if (!fits(candidate.x, candidate.z)) continue;
-            const up = world.standingHeight(candidate.x, candidate.z, current.y);
-            if (up > height) [spot, height] = [candidate, up];
-          }
-        }
-        const x = spot?.x ?? current.x;
-        const z = spot?.z ?? current.z;
+        const place = exitPlace(world, current, airborne);
+        const [x, z] = [place.x, place.z];
         walker.x = x;
         walker.z = z;
-        walker.y = airborne ? current.y : world.standingHeight(x, z, current.y);
+        walker.y = place.y;
         walker.velocityY = 0;
         walker.grounded = !airborne;
         walker.flying = airborne;
@@ -324,6 +307,10 @@ export function Vehicles({
           look.pitch = -0.08;
         }
         live.onDrive(null, airborne);
+        // Out for the rest of this frame too: the walker stays where it was set down, and is not
+        // carried along with the vehicle it has just left.
+        live.driving = null;
+        current = undefined;
       } else {
         const vehicle = vehicleInReach(vehicles, walker);
         if (vehicle) {

@@ -1150,6 +1150,33 @@ export function exitSpots(vehicle: Vehicle): { x: number; z: number }[] {
 }
 
 /**
+ * Where the minifigure stands once it has got out: a spot beside the vehicle where it fits, at the
+ * height it stands there, or the vehicle's own middle when nothing fits. A train allows a platform's
+ * step, and of its two sides takes the higher, which is the platform's.
+ */
+export function exitPlace(world: WalkWorld, vehicle: Vehicle, airborne: boolean) {
+  const reach = vehicle.rail ? 4.6 : 1.4;
+  const heightAt = (x: number, z: number) =>
+    airborne ? vehicle.y : world.standingHeight(x, z, vehicle.y);
+  const fits = (x: number, z: number) => {
+    const y = heightAt(x, z);
+    return y - vehicle.y < reach && world.blocking(x, y, z).length === 0;
+  };
+  let spot = exitSpot(vehicle, fits);
+  if (vehicle.rail) {
+    let best = -Infinity;
+    for (const candidate of exitSpots(vehicle)) {
+      if (!fits(candidate.x, candidate.z)) continue;
+      const y = heightAt(candidate.x, candidate.z);
+      if (y > best) [spot, best] = [candidate, y];
+    }
+  }
+  const x = spot?.x ?? vehicle.x;
+  const z = spot?.z ?? vehicle.z;
+  return { x, z, y: heightAt(x, z), found: spot !== null };
+}
+
+/**
  * Where to set the minifigure down when it gets out: the first of `exitSpots` that fits, or none.
  */
 export function exitSpot(vehicle: Vehicle, fits: (x: number, z: number) => boolean) {

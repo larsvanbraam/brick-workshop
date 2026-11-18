@@ -16,8 +16,11 @@ import type { StationSpot } from './rail.ts';
 const HALF = 24;
 const NEAR = 4;
 const FAR = 12;
-/** The platform's height above the ground, in plates: the cab floor, 10 plates over the track top. */
-const TOP = 13;
+/**
+ * The platform's height above the ground, in plates: the cab floor, 10 plates over the track's top
+ * (which stands a plate up on its bed of tiles).
+ */
+const TOP = 14;
 /** The canopy's posts, in plates: low enough to reach, with room to stand under. */
 const ROOF = 21;
 
@@ -126,7 +129,7 @@ export function stationBricks(spot: StationSpot): Brick[] {
   fill(add, 'tile', 14, rect(spot, -HALF, HALF, NEAR, NEAR + 1), GROUND + TOP - 1);
 
   // Steps down at both ends, a stride of three plates each.
-  [10, 7, 4, 1].forEach((height, index) => {
+  [11, 8, 5, 2].forEach((height, index) => {
     for (const side of [-1, 1])
       column(
         add,
@@ -143,7 +146,7 @@ export function stationBricks(spot: StationSpot): Brick[] {
 
   // A flight of steps down the back, to the town, a stride of three plates each.
   if (spot.access)
-    [10, 7, 4, 1].forEach((height, index) =>
+    [11, 8, 5, 2].forEach((height, index) =>
       column(add, 71, rect(spot, -3, 3, FAR + index, FAR + index + 1), height),
     );
 

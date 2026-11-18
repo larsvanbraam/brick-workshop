@@ -19,6 +19,11 @@ const START = { x: 272, z: 170 } as const;
 /** Straight sections along the east-west sides and the north-south sides. */
 const ACROSS = 18;
 const DOWN = 4;
+/**
+ * Plates up to the foot of the track: a plate over the ground, so the smooth tiles that pave the
+ * bed fit under it. The sleepers' studs never line up with the ground's, on a curve least of all.
+ */
+export const TRACK_BASE = RAIL_LAYER * 3 + 1;
 const TRACK_COLOR = 72;
 /** Studs between the points the ground corridor is drawn through. */
 const SAMPLE = 4;
@@ -42,7 +47,7 @@ function lay(): Brick[] {
       });
     },
     TRACK_COLOR,
-    { x: START.x, z: START.z, y: RAIL_LAYER * 3, angle: 0 },
+    { x: START.x, z: START.z, y: TRACK_BASE, angle: 0 },
     ROUTE,
   );
   return bricks;
