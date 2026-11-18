@@ -123,6 +123,13 @@ function couple(add: ExampleBrickAdder, y: number, at: number, length: number) {
   addRun(add, 'plate', COUPLING, 'x', at + length - HITCH_CELLS, y + 9, HITCH_Z, 2 * HITCH_CELLS);
 }
 
+/** Studs along the train from a car's rear to the near edge of each of its two bogies. */
+export const LOCOMOTIVE_BOGIES = [1, 9] as const;
+export const TENDER_BOGIES = [0, 5] as const;
+export const WAGON_BOGIES = [0, 6] as const;
+/** Studs along the train that a bogie takes up. */
+export const BOGIE_LENGTH = 3;
+
 /** The bogies of a car: each stands on the rails and carries the chassis on two studs. */
 function bogies(add: ExampleBrickAdder, y: number, color: number, ...at: number[]) {
   for (const x of at) add('2878c01', color, x, y, 0, 90);
@@ -175,7 +182,7 @@ function stairs(add: ExampleBrickAdder, x: number, floor: number, ground: number
 /** The locomotive: boiler, smokebox, chimney, dome, buffers and a cab with a roof. */
 function locomotive(add: ExampleBrickAdder, y: number, links: Links) {
   const length = LOCOMOTIVE_LENGTH;
-  bogies(add, y, RED, 1, 9);
+  bogies(add, y, RED, ...LOCOMOTIVE_BOGIES);
   chassis(add, y, length, RED, links);
   const deck = y + 10;
 
@@ -280,7 +287,7 @@ function locomotive(add: ExampleBrickAdder, y: number, links: Links) {
 /** The tender: a coal bin on a chassis, with a taller wall towards the cab and coal heaped in it. */
 function tender(add: ExampleBrickAdder, y: number, links: Links) {
   const length = TENDER_LENGTH;
-  bogies(add, y, RED, 0, 5);
+  bogies(add, y, RED, ...TENDER_BOGIES);
   chassis(add, y, length, RED, links);
   const deck = y + 10;
   walls(add, deck, length, [BLACK, BLACK]);
@@ -320,7 +327,7 @@ function wagon(
   bothSides: boolean,
 ) {
   const length = WAGON_LENGTH;
-  bogies(add, y, BLACK, 0, 6);
+  bogies(add, y, BLACK, ...WAGON_BOGIES);
   chassis(add, y, length, DARK_TIMBER, links);
   const deck = y + 10;
   const pick = random(seed);

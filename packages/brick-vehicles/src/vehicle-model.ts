@@ -2,8 +2,9 @@ import { Group, Matrix4 } from 'three';
 import { coloredLDrawModel } from '@brick-workshop/render/ldraw';
 import { LDRAW_SCALE } from '@brick-workshop/render/scene-frame';
 import { buildMinifig } from '@brick-workshop/walk/minifig';
-import type { Placement, Rider, VehicleModel } from './models';
+import type { Bogie, Placement, Rider, VehicleModel } from './models';
 import { carPoses } from './rail';
+import type { CarPose } from './rail';
 import type { Vehicle } from './vehicle';
 
 /** A vehicle's model in the scene, with the parts that move. */
@@ -15,6 +16,8 @@ export interface VehicleRig {
   driver: Driver | null;
   /** A train's cars behind the locomotive, each in the scene's own frame (see `poseVehicle`). */
   trailers: Group[];
+  /** The locomotive's two bogies, rear first, each swivelling on its pivot under the body. */
+  bogies: Group[];
 }
 
 interface Driver {
@@ -34,6 +37,17 @@ function place(models: Record<string, Group>, placement: Placement) {
     .set(a, b, c, x, d, e, f, y, g, h, i, z, 0, 0, 0, 1)
     .decompose(object.position, object.quaternion, object.scale);
   return object;
+}
+
+/** A bogie's parts about its own pivot, which the caller places and turns on the rails. */
+function buildBogie(models: Record<string, Group>, bogie: Bogie) {
+  const pivot = new Group();
+  const inner = new Group();
+  inner.scale.set(...LDRAW_SCALE);
+  inner.rotation.y = Math.PI;
+  for (const placement of bogie.parts) inner.add(place(models, placement));
+  pivot.add(inner);
+  return pivot;
 }
 
 /**
@@ -66,6 +80,8 @@ export function buildVehicle(model: VehicleModel, models: Record<string, Group>)
   const root = new Group();
   root.add(ldraw);
   root.visible = false;
+  const bogies = (model.bogies ?? []).map((bogie) => buildBogie(models, bogie));
+  for (const pivot of bogies) root.add(pivot);
   const trailers = (model.trailers ?? []).map((trailer) => {
     const car = new Group();
     const inner = new Group();
@@ -73,6 +89,10 @@ export function buildVehicle(model: VehicleModel, models: Record<string, Group>)
     inner.rotation.y = Math.PI;
     for (const placement of trailer.body) inner.add(place(models, placement));
     car.add(inner);
+    // Each bogie hangs under the car on its own pivot (see `poseBogies`).
+    const pivots = trailer.bogies.map((bogie) => buildBogie(models, bogie));
+    for (const pivot of pivots) car.add(pivot);
+    car.userData.bogies = pivots;
     car.visible = false;
     return car;
   });
@@ -80,7 +100,24 @@ export function buildVehicle(model: VehicleModel, models: Record<string, Group>)
     group.traverse((object) => {
       object.castShadow = true;
     });
-  return { root, moving, driver, trailers };
+  return { root, moving, driver, trailers, bogies };
+}
+
+/**
+ * Sets a car's bogies on the rails under it: each at its own point of the track, turned to follow
+ * it, as the car's body carries on between them.
+ */
+function poseBogies(pivots: readonly Group[], car: CarPose) {
+  const [cos, sin] = [Math.cos(car.yaw), Math.sin(car.yaw)];
+  car.bogies.forEach((bogie, index) => {
+    const pivot = pivots[index];
+    if (!pivot) return;
+    const [dx, dz] = [bogie.x - car.x, bogie.z - car.z];
+    // The car's own frame: the world turned back by the car's heading.
+    pivot.position.set(dx * cos - dz * sin, bogie.y - car.y, dx * sin + dz * cos);
+    const turn = bogie.yaw - car.yaw;
+    pivot.rotation.set(0, Math.atan2(Math.sin(turn), Math.cos(turn)), 0);
+  });
 }
 
 /**
@@ -101,7 +138,10 @@ export function poseVehicle(rig: VehicleRig, vehicle: Vehicle, y: number, showDr
       if (!pose) return;
       car.position.set(pose.x, pose.y - vehicle.y + y, pose.z);
       car.rotation.set(0, pose.yaw, 0);
+      poseBogies(car.userData.bogies as Group[], pose);
     });
+    const [front] = poses;
+    if (front) poseBogies(rig.bogies, front);
   }
   for (const { steer, spin, model } of rig.moving) {
     // LDraw's y points down, so a positive turn about it turns the front to the right.

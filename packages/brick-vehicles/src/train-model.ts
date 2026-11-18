@@ -1,6 +1,7 @@
 import { getLDrawTransform } from '@brick-workshop/engine';
 import type { Brick } from '@brick-workshop/engine';
 import {
+  BOGIE_LENGTH,
   LOCOMOTIVE_LENGTH,
   TENDER_LENGTH,
   WAGON_LENGTH,
@@ -15,6 +16,9 @@ import type { Matrix3, Placement } from './models';
  * y 0, the front facing -z like the other vehicles). The example lays the train along +x, so each
  * piece is turned a quarter to face -z.
  */
+
+/** The single-axle bogie each car stands on. */
+const BOGIE = '2878c01';
 
 /** Turns the example's +x (the way the train leads) onto -z: a quarter turn about the upright. */
 const QUARTER: Matrix3 = [0, 0, 1, 0, 1, 0, -1, 0, 0];
@@ -35,7 +39,13 @@ export interface TrainCar {
   kind: 'locomotive' | 'tender' | 'wagon';
   /** Studs from the front of the train to this car's middle. */
   offset: number;
+  /** Everything but the bogies, placed about the car's middle. */
   body: Placement[];
+  /**
+   * The car's two bogies, rear first. Each is placed about its own pivot, which is `along` studs
+   * from the car's middle (forward is positive), so it can swivel on the rails.
+   */
+  bogies: { along: number; parts: Placement[] }[];
 }
 
 /** The cars of the steam train, front car first, each ready to draw about its own middle. */
@@ -62,31 +72,39 @@ export function steamTrainCars(wagons = 2): TrainCar[] {
   return spans
     .map((span, index) => {
       const middle = span.from + span.length / 2;
-      const body: Placement[] = bricks
-        // The example's stairs beside each car stand outside the car's own width (the cars run
-        // from z -3 to 3), so they are left off: the stations bring the platform.
-        .filter(
-          (brick) =>
-            brick.x >= span.from - 1e-6 && brick.x < span.from + span.length && brick.z >= -3,
-        )
+      // The example's stairs beside each car stand outside the car's own width (the cars run from
+      // z -3 to 3), so they are left off: the stations bring the platform.
+      const mine = bricks.filter(
+        (brick) =>
+          brick.x >= span.from - 1e-6 && brick.x < span.from + span.length && brick.z >= -3,
+      );
+      const place = (brick: Brick, aroundZ = 0): Placement => {
+        const { x, y, z, matrix } = getLDrawTransform(brick);
+        return {
+          part: brick.partId,
+          color: brick.color,
+          // x leads along the train and z is across it: x becomes -z, z becomes x.
+          at: [z, y, -(x - middle * 20) - aroundZ] as const,
+          turn: times(QUARTER, matrix),
+        };
+      };
+      const body = mine.filter((brick) => brick.partId !== BOGIE).map((brick) => place(brick));
+      const bogies = mine
+        .filter((brick) => brick.partId === BOGIE)
         .map((brick) => {
-          const { x, y, z, matrix } = getLDrawTransform(brick);
-          const turn = times(QUARTER, matrix);
-          return {
-            part: brick.partId,
-            color: brick.color,
-            // x leads along the train and z is across it: x becomes -z, z becomes x.
-            at: [z, y, -(x - middle * 20)] as const,
-            turn,
-          };
-        });
+          // The pivot is the middle of the stretch of train the bogie takes up.
+          const along = brick.x + BOGIE_LENGTH / 2 - middle;
+          return { along, parts: [place(brick, -along * 20)] };
+        })
+        .sort((a, b) => a.along - b.along);
       return {
         kind: span.kind,
         offset: steamTrainLength(wagons) - middle,
         body,
+        bogies,
         index,
       };
     })
     .reverse()
-    .map(({ kind, offset, body }) => ({ kind, offset, body }));
+    .map(({ kind, offset, body, bogies }) => ({ kind, offset, body, bogies }));
 }

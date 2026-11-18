@@ -66,13 +66,24 @@ export interface Rider {
   eye?: Vec3;
 }
 
+/** One of a train's bogies: where its pivot is, and the parts about it. */
+export interface Bogie {
+  along: number;
+  parts: readonly Placement[];
+}
+
 export interface VehicleModel {
   kind: VehicleKind;
   body: readonly Placement[];
   moving: readonly Moving[];
   rider: Rider;
+  /**
+   * A train's bogies, which swivel on the rails: each is placed about its own pivot, `along` studs
+   * from the middle (forward is positive). The locomotive's are here, the cars' are in `trailers`.
+   */
+  bogies?: readonly Bogie[];
   /** Cars drawn behind a train, each hanging on the rails `offset` studs from its front. */
-  trailers?: readonly { offset: number; body: readonly Placement[] }[];
+  trailers?: readonly { offset: number; body: readonly Placement[]; bogies: readonly Bogie[] }[];
 }
 
 const turnY = (degrees: number): Matrix3 => {
@@ -371,7 +382,12 @@ function trainModel(): VehicleModel {
     kind: 'train',
     body: locomotive!.body,
     moving: [],
-    trailers: cars.map((car) => ({ offset: car.offset - locomotive!.offset, body: car.body })),
+    bogies: locomotive!.bogies,
+    trailers: cars.map((car) => ({
+      offset: car.offset - locomotive!.offset,
+      body: car.body,
+      bogies: car.bogies,
+    })),
     // Standing in the cab's floor, at the back of the locomotive, facing the front.
     // The head just clears the cab roof, 12 plates over the floor. In first person the camera
     // rides on the front of the boiler, where the driver's view is not the back of the firebox.
@@ -396,7 +412,10 @@ export const MODELS: Readonly<Record<VehicleKind, VehicleModel>> = Object.freeze
 export function modelParts(model: VehicleModel): string[] {
   const parts = new Set(model.body.map((placement) => placement.part));
   for (const trailer of model.trailers ?? [])
-    for (const placement of trailer.body) parts.add(placement.part);
+    for (const placement of [...trailer.body, ...trailer.bogies.flatMap((bogie) => bogie.parts)])
+      parts.add(placement.part);
+  for (const bogie of model.bogies ?? [])
+    for (const placement of bogie.parts) parts.add(placement.part);
   for (const moving of model.moving)
     for (const placement of moving.parts) parts.add(placement.part);
   return [...parts];

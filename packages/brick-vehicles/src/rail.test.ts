@@ -98,4 +98,25 @@ describe('rail', () => {
     const yaws = poses.map((pose) => pose.yaw);
     expect(new Set(yaws.map((yaw) => yaw.toFixed(2))).size).toBeGreaterThan(1);
   });
+
+  it('stands each car on two bogies that follow the rails while the body spans them', () => {
+    const straight = carPoses(lay('SSSSSS'), STEAM_TRAIN, parkTrain(80));
+    for (const car of straight) {
+      expect(car.bogies[0].yaw).toBeCloseTo(car.yaw, 5);
+      expect(car.bogies[1].yaw).toBeCloseTo(car.yaw, 5);
+    }
+    // In a curve the two bogies point along the rails at their own spots, a little apart, and the
+    // body faces between them.
+    const bend = lay('SRRRRSS');
+    const curved = carPoses(bend, STEAM_TRAIN, parkTrain(60))[0]!;
+    const [rear, front] = curved.bogies;
+    expect(Math.abs(rear.yaw - front.yaw)).toBeGreaterThan(0.01);
+    const [low, high] = [Math.min(rear.yaw, front.yaw), Math.max(rear.yaw, front.yaw)];
+    expect(curved.yaw).toBeGreaterThanOrEqual(low - 1e-6);
+    expect(curved.yaw).toBeLessThanOrEqual(high + 1e-6);
+    // The rear pivot is where the body puts it: behind its middle by the rear offset, along its heading.
+    const behind = STEAM_TRAIN.bogies[0]![0];
+    expect(rear.x).toBeCloseTo(curved.x - Math.sin(curved.yaw) * behind, 5);
+    expect(rear.z).toBeCloseTo(curved.z - Math.cos(curved.yaw) * behind, 5);
+  });
 });
