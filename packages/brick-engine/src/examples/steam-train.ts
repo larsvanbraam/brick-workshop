@@ -33,13 +33,13 @@ export const steamTrainLength = (wagons: number) =>
 const BLACK = 0;
 const DARK_STONE = 72;
 const STONE = 71;
-const DARK_RED = 320;
 const RED = 4;
 const GOLD = 297;
 const YELLOW = 14;
 const TIMBER = 70;
 const DARK_TIMBER = 308;
 const NOUGAT = 84;
+const COUPLING = DARK_STONE;
 
 /**
  * Turns pieces drawn in the train's own frame (x along the train, z across it) onto the board:
@@ -84,18 +84,43 @@ function rectMap(length: number, keep: (x: number, z: number) => string) {
   );
 }
 
+/** Which ends of a car are coupled to a neighbour: another car behind it, or one ahead of it. */
+interface Links {
+  behind: boolean;
+  ahead: boolean;
+}
+
+/** Studs of a car's upper chassis course left out at a coupled end: the drawbar fills them. */
+const HITCH_CELLS = 3;
+/** Where the drawbar runs along each car, the middle of its width. */
+const HITCH_Z = 2;
+
 /**
  * Two courses of plates under every car: the lower one in runs along the train, each across a
- * bogie's studs, and the upper one over it.
+ * bogie's studs, and the upper one over it. At a coupled end one stud of the upper course is
+ * left open for the drawbar (`couple`).
  */
-function chassis(add: ExampleBrickAdder, y: number, length: number, color: number) {
+function chassis(add: ExampleBrickAdder, y: number, length: number, color: number, links: Links) {
   for (let z = 0; z < TRAIN_WIDTH; z++) addRun(add, 'plate', color, 'x', 0, y + 8, z, length);
+  const open = (x: number, z: number) =>
+    z === HITCH_Z &&
+    ((links.ahead && x >= length - HITCH_CELLS) || (links.behind && x < HITCH_CELLS - 1));
   addAreaMap(
     add,
-    rectMap(length, () => 'p'),
+    rectMap(length, (x, z) => (open(x, z) ? ' ' : 'p')),
     y + 9,
     { p: ['plate', color] },
   );
+}
+
+/**
+ * The coupling between two cars: a drawbar of dark plates in the middle of the chassis that
+ * stands on the lower course of the rear car, crosses the stud of space between them and stands
+ * on the lower course of the front car, so it holds both. `at` is the rear car's start and
+ * `length` its length along the train.
+ */
+function couple(add: ExampleBrickAdder, y: number, at: number, length: number) {
+  addRun(add, 'plate', COUPLING, 'x', at + length - HITCH_CELLS, y + 9, HITCH_Z, 2 * HITCH_CELLS);
 }
 
 /** The bogies of a car: each stands on the rails and carries the chassis on two studs. */
@@ -148,10 +173,10 @@ function stairs(add: ExampleBrickAdder, x: number, floor: number, ground: number
 }
 
 /** The locomotive: boiler, smokebox, chimney, dome, buffers and a cab with a roof. */
-function locomotive(add: ExampleBrickAdder, y: number) {
+function locomotive(add: ExampleBrickAdder, y: number, links: Links) {
   const length = LOCOMOTIVE_LENGTH;
   bogies(add, y, RED, 1, 9);
-  chassis(add, y, length, RED);
+  chassis(add, y, length, RED, links);
   const deck = y + 10;
 
   // The cab: a minifigure (12 plates tall) stands inside on the 3 x 4 studs of the floor. Each side
@@ -253,10 +278,10 @@ function locomotive(add: ExampleBrickAdder, y: number) {
 }
 
 /** The tender: a coal bin on a chassis, with a taller wall towards the cab and coal heaped in it. */
-function tender(add: ExampleBrickAdder, y: number) {
+function tender(add: ExampleBrickAdder, y: number, links: Links) {
   const length = TENDER_LENGTH;
   bogies(add, y, RED, 0, 5);
-  chassis(add, y, length, RED);
+  chassis(add, y, length, RED, links);
   const deck = y + 10;
   walls(add, deck, length, [BLACK, BLACK]);
   // The wall at the cab end stands one course higher.
@@ -286,10 +311,16 @@ function tender(add: ExampleBrickAdder, y: number) {
 }
 
 /** An open wagon of timber planks on a chassis, with stakes at its corners. */
-function wagon(add: ExampleBrickAdder, y: number, planks: readonly [number, number], seed: number) {
+function wagon(
+  add: ExampleBrickAdder,
+  y: number,
+  planks: readonly [number, number],
+  seed: number,
+  links: Links,
+) {
   const length = WAGON_LENGTH;
   bogies(add, y, BLACK, 0, 6);
-  chassis(add, y, length, DARK_TIMBER);
+  chassis(add, y, length, DARK_TIMBER, links);
   const deck = y + 10;
   const pick = random(seed);
   const side = (): number => (pick() < 0.35 ? planks[1] : planks[0]);
@@ -336,12 +367,18 @@ export function addSteamTrain(
     [NOUGAT, TIMBER],
   ] as const;
   for (let index = 0; index < wagons; index++) {
-    wagon(shifted(frame, at, 0), y, palettes[index % palettes.length]!, 11 + index * 5);
+    wagon(shifted(frame, at, 0), y, palettes[index % palettes.length]!, 11 + index * 5, {
+      behind: index > 0,
+      ahead: true,
+    });
+    if (index > 0) couple(frame, y, at - GAP - WAGON_LENGTH, WAGON_LENGTH);
     at += WAGON_LENGTH + GAP;
   }
-  tender(shifted(frame, at, 0), y);
+  if (wagons > 0) couple(frame, y, at - GAP - WAGON_LENGTH, WAGON_LENGTH);
+  tender(shifted(frame, at, 0), y, { behind: wagons > 0, ahead: true });
+  couple(frame, y, at, TENDER_LENGTH);
   at += TENDER_LENGTH + GAP;
-  locomotive(shifted(frame, at, 0), y);
+  locomotive(shifted(frame, at, 0), y, { behind: true, ahead: false });
   const length = steamTrainLength(wagons);
   const lead =
     heading === 0

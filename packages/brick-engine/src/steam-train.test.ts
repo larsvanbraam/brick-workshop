@@ -1,5 +1,12 @@
-import { describe, expect, it } from 'vite-plus/test';
-import { assessPhysicalFeasibility, createExampleAssembly, validateAssembly } from './index.ts';
+import { afterAll, beforeAll, describe, expect, it } from 'vite-plus/test';
+import highsLoader from 'highs';
+import {
+  assessPhysicalFeasibility,
+  createExampleAssembly,
+  createHighsSolver,
+  setLinearSolver,
+  validateAssembly,
+} from './index.ts';
 import type { Brick } from './index.ts';
 import { layTrack } from './examples/layout.ts';
 import { addSteamTrain, steamTrainLength } from './examples/steam-train.ts';
@@ -47,6 +54,10 @@ function standing(heading: Heading, wagons: number) {
 }
 
 describe('steam train', () => {
+  // The workshop solves with HiGHS; the built-in simplex is slow on a train coupled into one body.
+  beforeAll(async () => setLinearSolver(createHighsSolver(await highsLoader())));
+  afterAll(() => setLinearSolver(null));
+
   it('measures a train by its cars', () => {
     expect(steamTrainLength(0)).toBe(23);
     expect(steamTrainLength(2)).toBe(43);
@@ -74,6 +85,15 @@ describe('steam train', () => {
     // The locomotive, the tender and two wagons have two bogies each.
     expect(bogies).toHaveLength(8);
     for (const bogie of bogies) expect(bogie.y).toBe(5);
+  });
+
+  it('couples every car to the next with a drawbar that stands on both', () => {
+    const { bricks } = standing(0, 2);
+    const bars = bricks.filter(
+      (brick) => brick.partId === '3666' && brick.color === 72 && brick.y === 14,
+    );
+    // Two wagons, the tender and the locomotive make three joins, each one plate six studs long.
+    expect(bars).toHaveLength(3);
   });
 
   it('ships as a standalone example', () => {
