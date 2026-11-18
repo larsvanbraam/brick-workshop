@@ -15,7 +15,7 @@ export const steamTrain: ExampleDefinition = {
   id: 'steam-train',
   name: 'Steam Train',
   tags: ['train', 'locomotive', 'wagons', 'track'],
-  expectedPieceCount: 311,
+  expectedPieceCount: 312,
   buildArea: SIZE,
   build(emit) {
     const { add, flush } = bottomUp(emit);

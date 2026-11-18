@@ -99,8 +99,8 @@ function chassis(add: ExampleBrickAdder, y: number, length: number, color: numbe
 }
 
 /** The bogies of a car: each stands on the rails and carries the chassis on two studs. */
-function bogies(add: ExampleBrickAdder, y: number, ...at: number[]) {
-  for (const x of at) add('2878c01', BLACK, x, y, 0, 90);
+function bogies(add: ExampleBrickAdder, y: number, color: number, ...at: number[]) {
+  for (const x of at) add('2878c01', color, x, y, 0, 90);
 }
 
 /** A perimeter wall of `courses` courses of bricks, one stud thick, with some cells left out. */
@@ -150,8 +150,8 @@ function stairs(add: ExampleBrickAdder, x: number, floor: number, ground: number
 /** The locomotive: boiler, smokebox, chimney, dome, buffers and a cab with a roof. */
 function locomotive(add: ExampleBrickAdder, y: number) {
   const length = LOCOMOTIVE_LENGTH;
-  bogies(add, y, 1, 9);
-  chassis(add, y, length, BLACK);
+  bogies(add, y, RED, 1, 9);
+  chassis(add, y, length, RED);
   const deck = y + 10;
 
   // The cab: a minifigure (12 plates tall) stands inside on the 3 x 4 studs of the floor. Each side
@@ -162,9 +162,9 @@ function locomotive(add: ExampleBrickAdder, y: number) {
   const pillar = (x: number, z: number) => (x === 0 || x === 3) && sides(x, z);
   const window = (x: number, z: number) => rear(x, z) && z % 2 === 1;
   [
-    [(x: number, z: number) => rear(x, z) || pillar(x, z), DARK_RED],
-    [(x: number, z: number) => (rear(x, z) && !window(x, z)) || pillar(x, z), DARK_RED],
-    [(x: number, z: number) => (rear(x, z) && !window(x, z)) || pillar(x, z), DARK_RED],
+    [(x: number, z: number) => rear(x, z) || pillar(x, z), BLACK],
+    [(x: number, z: number) => (rear(x, z) && !window(x, z)) || pillar(x, z), BLACK],
+    [(x: number, z: number) => (rear(x, z) && !window(x, z)) || pillar(x, z), BLACK],
     [(x: number, z: number) => rear(x, z) || pillar(x, z), BLACK],
   ].forEach(([keep, color], course) =>
     addAreaMap(
@@ -175,10 +175,17 @@ function locomotive(add: ExampleBrickAdder, y: number) {
     ),
   );
   stairs(add, 1, deck, y - 3);
+  // A black roof that overhangs the rear and both sides by a stud, in two plate courses.
   addAreaMap(
     add,
     rectMap(4, () => 'r'),
     deck + 12,
+    { r: ['plate', BLACK] },
+  );
+  addAreaMap(
+    shifted(add, -1, -1),
+    Array.from({ length: TRAIN_WIDTH + 2 }, () => 'rrrrr'),
+    deck + 13,
     { r: ['plate', BLACK] },
   );
 
@@ -189,10 +196,18 @@ function locomotive(add: ExampleBrickAdder, y: number) {
     addAreaMap(
       add,
       rectMap(length, (x, z) =>
-        boiler(x, z) ? (x >= 12 ? 's' : [6, 10].includes(x) && course === 1 ? 'g' : 'b') : ' ',
+        boiler(x, z)
+          ? x === 13 && course === 0
+            ? 'f'
+            : x >= 12
+              ? 's'
+              : [6, 10].includes(x) && course === 1
+                ? 'g'
+                : 'b'
+          : ' ',
       ),
       deck + course * 3,
-      { b: ['brick', BLACK], g: ['brick', DARK_STONE], s: ['brick', DARK_STONE] },
+      { b: ['brick', BLACK], g: ['brick', RED], s: ['brick', BLACK], f: ['brick', RED] },
     );
   const top = deck + 9;
   const flat = (x: number) => x >= 12 || (x >= 7 && x <= 9);
@@ -200,7 +215,7 @@ function locomotive(add: ExampleBrickAdder, y: number) {
     add,
     rectMap(length, (x, z) => (boiler(x, z) && flat(x) ? 't' : ' ')),
     top,
-    { t: ['plate', DARK_STONE] },
+    { t: ['plate', BLACK] },
   );
   for (let x = 4; x < length; x++) {
     if (flat(x)) continue;
@@ -208,25 +223,22 @@ function locomotive(add: ExampleBrickAdder, y: number) {
     add('3040b', BLACK, x, top, 3, 180);
   }
 
-  // The chimney of two round bricks capped with a plate, the dome and a lamp either side at the front.
+  // A tall chimney of black round bricks with a red ring and a flared cap, and two black domes.
   add('3941', BLACK, 12, top + 1, 2);
-  add('3941', DARK_STONE, 12, top + 4, 2);
-  add('6141', GOLD, 12, top + 7, 2);
-  add('6141', GOLD, 13, top + 7, 2);
-  add('6141', GOLD, 12, top + 7, 3);
-  add('6141', GOLD, 13, top + 7, 3);
-  add('3941', DARK_RED, 8, top + 1, 2);
-  add('6141', GOLD, 8, top + 4, 2);
-  add('6141', GOLD, 9, top + 4, 2);
-  add('6141', GOLD, 8, top + 4, 3);
-  add('6141', GOLD, 9, top + 4, 3);
+  add('3941', BLACK, 12, top + 4, 2);
+  add('3941', BLACK, 12, top + 7, 2);
+  add('3022', RED, 12, top + 10, 2);
+  add('3022', BLACK, 12, top + 11, 2);
+  add('3941', BLACK, 7, top + 1, 2);
+  add('3022', BLACK, 7, top + 4, 2);
+  for (const z of [2, 3]) add('3062b', BLACK, 9, top + 1, z);
   add('6141', YELLOW, 13, top + 1, 1);
   add('6141', YELLOW, 13, top + 1, 4);
 
   // Buffers either side of the front, on the stud-bearing edge of the chassis.
   for (const z of [0, TRAIN_WIDTH - 1]) {
     add('3062b', RED, 13, deck, z);
-    add('6141', STONE, 13, deck + 3, z);
+    add('6141', GOLD, 13, deck + 3, z);
   }
   // A red footplate lip along both sides of the boiler.
   for (const z of [0, TRAIN_WIDTH - 1])
@@ -243,8 +255,8 @@ function locomotive(add: ExampleBrickAdder, y: number) {
 /** The tender: a coal bin on a chassis, with a taller wall towards the cab and coal heaped in it. */
 function tender(add: ExampleBrickAdder, y: number) {
   const length = TENDER_LENGTH;
-  bogies(add, y, 0, 5);
-  chassis(add, y, length, BLACK);
+  bogies(add, y, RED, 0, 5);
+  chassis(add, y, length, RED);
   const deck = y + 10;
   walls(add, deck, length, [BLACK, BLACK]);
   // The wall at the cab end stands one course higher.
@@ -276,7 +288,7 @@ function tender(add: ExampleBrickAdder, y: number) {
 /** An open wagon of timber planks on a chassis, with stakes at its corners. */
 function wagon(add: ExampleBrickAdder, y: number, planks: readonly [number, number], seed: number) {
   const length = WAGON_LENGTH;
-  bogies(add, y, 0, 6);
+  bogies(add, y, BLACK, 0, 6);
   chassis(add, y, length, DARK_TIMBER);
   const deck = y + 10;
   const pick = random(seed);

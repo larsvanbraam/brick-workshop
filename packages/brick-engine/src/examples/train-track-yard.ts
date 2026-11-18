@@ -59,7 +59,7 @@ export const trainTrackYard: ExampleDefinition = {
   id: 'train-track-yard',
   name: 'Train Track Yard',
   tags: ['train', 'track', 'landscape', 'curves', 'switch'],
-  expectedPieceCount: 1268,
+  expectedPieceCount: 1269,
   buildArea: SIZE,
   build(emit) {
     const { add, flush } = bottomUp(emit);
