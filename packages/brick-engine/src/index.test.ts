@@ -2429,6 +2429,28 @@ describe('mixed-part engine builds', () => {
       expect(of(plant).length, plant).toBeGreaterThan(0);
   });
 
+  it('builds a jail tower: a rubble keep with a framed door, barred windows and a parapet', () => {
+    const assembly = createExampleAssembly('jail-tower');
+    expect(assembly.name).toBe('Jail Tower');
+    expect(assembly.bricks).toHaveLength(486);
+    expect(assembly.buildArea).toBe(24);
+    expect(validateAssembly(assembly)).toEqual([]);
+    const of = (partId: string) => assembly.bricks.filter((brick) => brick.partId === partId);
+    // A door in its frame, four barred windows (a frame and two bar panes each), loopholes.
+    expect(of('60596')).toHaveLength(1);
+    expect(of('60616a')).toHaveLength(1);
+    expect(of('60594')).toHaveLength(4);
+    expect(of('60608')).toHaveLength(8);
+    expect(of('2877').length).toBeGreaterThanOrEqual(2);
+    // Masonry walls in more than one grey, light quoins, merlons and a flag on a pole.
+    expect(of('15533').length + of('98283').length).toBeGreaterThan(20);
+    expect(new Set(of('3005').map((brick) => brick.color)).size).toBeGreaterThanOrEqual(2);
+    expect(of('3040b').length).toBeGreaterThanOrEqual(8);
+    expect(of('2335')).toHaveLength(1);
+    // Ivy and lanterns hang on side studs.
+    expect(assembly.bricks.filter((brick) => brick.facing).length).toBeGreaterThanOrEqual(10);
+  });
+
   it('provides named, valid examples with independent assembly instances', () => {
     expect(EXAMPLES.map((example) => example.id)).toEqual([
       'courtyard-house',
@@ -2441,6 +2463,7 @@ describe('mixed-part engine builds', () => {
       'western-town',
       'bakery',
       'wishing-well',
+      'jail-tower',
       'train-track-yard',
       'steam-train',
     ]);

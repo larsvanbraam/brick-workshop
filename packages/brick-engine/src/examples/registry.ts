@@ -10,6 +10,7 @@ import { nordiskaMuseet } from './nordiska-museet.ts';
 import { castle } from './castle.ts';
 import { bakery } from './bakery.ts';
 import { wishingWell } from './wishing-well.ts';
+import { jailTower } from './jail-tower.ts';
 import { hillValley } from './hill-valley.ts';
 import { steamTrain } from './steam-train-example.ts';
 import { trainTrackYard } from './train-track-yard.ts';
@@ -115,6 +116,7 @@ const registry = createExampleRegistry([
   westernTown,
   bakery,
   wishingWell,
+  jailTower,
   trainTrackYard,
   steamTrain,
 ]);
