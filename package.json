@@ -21,6 +21,7 @@
     "colors:import": "node apps/brick-studio/tooling/import-colors.ts",
     "colors:inventory": "node apps/brick-studio/tooling/import-inventory.ts",
     "rebrickable:report": "node apps/brick-studio/tooling/rebrickable-report.ts",
+    "example:score": "node apps/brick-studio/tooling/example-score.ts",
     "omr:analyse": "node apps/brick-studio/tooling/omr-analyse.ts",
     "omr:fetch": "node apps/brick-studio/tooling/omr-fetch.ts",
     "rebrickable:vocabulary": "node apps/brick-studio/tooling/rebrickable-vocabulary.ts",

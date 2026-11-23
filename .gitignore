@@ -9,6 +9,7 @@ dist/
 !.env.example
 data/ldraw/
 data/omr/
+data/example-fingerprints.json
 data/*.zip
 data/*.csv
 data/*.csv.gz

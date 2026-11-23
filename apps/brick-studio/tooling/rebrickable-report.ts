@@ -177,7 +177,7 @@ export function isBuildingItem(item: Item, catalogue: Catalogue): boolean {
   return category === undefined || !EXCLUDED_CATEGORIES.has(category);
 }
 
-function bucketOf(part: string, catalogue: Catalogue): string {
+export function bucketOf(part: string, catalogue: Catalogue): string {
   const category = catalogue.parts.get(part)?.category;
   if (category === undefined) return 'Not in Rebrickable';
   return BUCKET_OF.get(category) ?? OTHER_BUCKET;
