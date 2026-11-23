@@ -1,4 +1,5 @@
 import { PARTS, getPart } from './core.ts';
+import { MEASURED_PART_USES } from './measured-parts.ts';
 import type { Part } from './core.ts';
 
 /**
@@ -24,6 +25,7 @@ const FAMILY_USES: Record<NonNullable<Part['family']> | Part['kind'], string> = 
 };
 
 const PART_USES: Record<string, string> = {
+  ...MEASURED_PART_USES,
   // Plates and tiles worth singling out.
   '3024': 'single-stud detail, offsets, flower centres, steps in terrain',
   '3070b': 'single smooth stud, path stones, floor mosaics, coping',

@@ -1,3 +1,4 @@
+import { MEASURED_PARTS } from './measured-parts.ts';
 import { COLORS } from './color-catalog.ts';
 export { COLORS, COLOR_SOURCE } from './color-catalog.ts';
 
@@ -496,7 +497,7 @@ function switchBodies(sign: 1 | -1): readonly ModelBody[] {
   return [{ x: 0, z: 0, length: 640, width: TRACK_WIDTH, angle: 0 }, ...boxes];
 }
 
-export const PARTS: readonly Part[] = [
+const HAND_PARTS: readonly Part[] = [
   {
     id: '3001',
     name: 'Brick 2 x 4',
@@ -3186,6 +3187,9 @@ export const PARTS: readonly Part[] = [
     }),
   ),
 ];
+
+/** The hand-made catalogue, then the parts measured from LDraw meshes (see measured-parts.ts). */
+export const PARTS: readonly Part[] = [...HAND_PARTS, ...MEASURED_PARTS];
 
 const PARTS_BY_ID = new Map(PARTS.map((part) => [part.id, part]));
 const COLOR_IDS = new Set(COLORS.map((color) => color.id));
