@@ -2332,6 +2332,24 @@ describe('mixed-part engine builds', () => {
     expect(of('3062b').filter((brick) => brick.color === 2).length).toBeGreaterThan(10);
   });
 
+  it('builds a corner bakery: a two-storey shop with a striped awning on a street plot', () => {
+    const assembly = createExampleAssembly('bakery');
+    expect(assembly.name).toBe('Corner Bakery');
+    expect(assembly.bricks).toHaveLength(582);
+    expect(assembly.buildArea).toBe(32);
+    expect(validateAssembly(assembly)).toEqual([]);
+    const of = (partId: string) => assembly.bricks.filter((brick) => brick.partId === partId);
+    // A shop door, shop windows and upper windows, all glazed.
+    expect(of('60596')).toHaveLength(1);
+    expect(of('60623')).toHaveLength(1);
+    expect(of('60594')).toHaveLength(2);
+    expect(of('60593').length).toBeGreaterThanOrEqual(8);
+    // A red and white striped awning and a dark red roof of 45 degree slopes.
+    const awning = of('3040b').filter((brick) => brick.y === 21);
+    expect(new Set(awning.map((brick) => brick.color))).toEqual(new Set([4, 15]));
+    expect(of('3037').length).toBeGreaterThan(10);
+  });
+
   it('provides named, valid examples with independent assembly instances', () => {
     expect(EXAMPLES.map((example) => example.id)).toEqual([
       'courtyard-house',
@@ -2342,6 +2360,7 @@ describe('mixed-part engine builds', () => {
       'castle',
       'hill-valley',
       'western-town',
+      'bakery',
       'train-track-yard',
       'steam-train',
     ]);
