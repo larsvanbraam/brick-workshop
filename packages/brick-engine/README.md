@@ -88,6 +88,9 @@ rendering and export. Families:
 - Architecture: arches, quarter arches, half-arch bricks, columns, cones (plain and with a
   top groove), doors
   and frames, windows, glass and casements.
+- Bars: the rigid parts of LDraw's Bar category, meaning rods with a bar to clip onto, studded
+  and clip bars, towball bars, grilles, gates, fences and barred windows. Only the clips of `11090` and
+  `3628` grip; the other clip, hub and ball-joint ends are not modelled yet.
 - Foliage: trees, bushes, grass, leaves and flowers.
 
 Plain parts connect on every cell. Shaped parts connect only where they really
