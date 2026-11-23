@@ -45,7 +45,7 @@ In code, the standard maps onto these helpers:
 
 - Tilted roof panels: tilt hinge tops (`3938`) with `getHingeTilt` (packages/brick-engine/README.md, "Hinges and
   tilted frames").
-- The roof in `courtyard-house.ts` is the worked roof recipe; reuse it.
+- `courtyard-house.ts` is the worked recipe for a gabled, hinge-tiled roof. Reuse it only when the design brief calls for that roof; a second build with the same roof is a failure (see the brief below).
 - Trees: `addTree` in `trees.ts`. Crates, benches, buckets and pots: see `flower-stall.ts`.
 - Plant receivers: check a part's `connections` in `core.ts` before placing it.
 - Scatter shades with a seeded hash or `random(seed)` from `trees.ts`, so each example stays
@@ -85,21 +85,33 @@ hand. Smoothing pieces count towards `expectedPieceCount`.
 
 ## 0. Intake
 
-Before anything else, work out four things from the request and any attached images, and ask
-(one `AskUserQuestion` call, at most these four) only for what is missing. If the user says to
-just build, state your assumptions in one line and go on.
+Do this before reading any code. A request like "make a bakery" is under-specified, and the
+usual failure is a build that looks like the last one, so **ask unless the user already gave
+every answer below or said "just build" in those words**. One `AskUserQuestion` call, these four
+questions (skip one only if the request or an attached image already answers it):
 
-1. **Subject and references.** What is it, and are there reference images? Without any, ask for
-   them.
-2. **Setting.** Landscape, street, desert or waterfront (see the build standard). It decides the
-   base and the ground rules.
-3. **Size.** A small prop, a single building or a full scene. It sets the piece budget (under
+1. **References.** Will you attach reference images? Options: "I'll attach images", "No
+   reference, use your judgement".
+2. **Style direction (the most important one).** Offer three or four distinct directions for
+   the subject, drawn from the notes, so the build does not default to the house style. For a
+   bakery: Tudor half-timber corner shop with a jetty, brick modular with striped awning and
+   mansard roof, rendered Mediterranean with terracotta and a pergola, rustic stone cottage with
+   a thatched roof. For a saloon: false-front clapboard, adobe, brick bank. Name the wall
+   material, roof type and palette in each option.
+3. **Setting.** Landscape, street, desert or waterfront (see the build standard).
+4. **Size.** A small prop, a single building or a full scene. It sets the piece budget (under
    2,500 for the instructions tests, under 1,000 for the full physics solve) and `buildArea`.
-4. **New or rework.** For a rework, which example: read its file before planning.
 
-Then read only the notes the subject needs, not all of them:
+For a rework, ask which example instead and read its file first. If the user said "just build",
+pick the direction yourself, make it differ from the existing examples' walls and roofs, and
+state it in one line.
 
-| Subject                    | Read first                                                       |
+### Read the notes (required, not optional)
+
+Before planning, open these files with the Read tool; do not write code until you have. The
+table gives the minimum per subject.
+
+| Subject                    | Read                                                             |
 | -------------------------- | ---------------------------------------------------------------- |
 | Town house, shop, modular  | walls, facades-and-openings, roofs-and-rooflines, city-and-props |
 | Castle, tower, ruin        | walls, roofs-and-rooflines, flora-and-terrain                    |
@@ -107,10 +119,29 @@ Then read only the notes the subject needs, not all of them:
 | Vehicle, train, boat       | vehicles, then city-and-props for its scene                      |
 | Garden, landscape, animals | flora-and-terrain, fauna                                         |
 
-Add vehicles when a scene has a wagon, train or boat, and fauna when it has animals. The notes
-are in [docs/techniques/](../../../docs/techniques/README.md); the matching benchmark group is in
-[docs/rebrickable-benchmarks.md](../../../docs/rebrickable-benchmarks.md) and
-[docs/techniques/placement-statistics.md](../../../docs/techniques/placement-statistics.md).
+Files are `docs/techniques/<name>.md`; also read the subject's group in
+`docs/rebrickable-benchmarks.md` and the matching topic in `docs/techniques/placement-statistics.md`
+(for the targets: small-part share, sideways share, roof slopes). Add vehicles when a scene has a
+wagon, train or boat, and fauna when it has animals.
+
+### Write a design brief before any code
+
+Post this brief to the user (short, concrete, no code), then build to it. It is the check that
+the notes were used and that the build is not a copy of an earlier one.
+
+- **Direction** chosen and why.
+- **Walls**: material per storey (at least two), the depth levels used (recess, proud headers,
+  side-stud bricks, piers), quoins, bands, plinth.
+- **Facade**: focal point, window types and their sills, heads and dressing, entrance, one
+  projecting element (bay, jetty, balcony, porch).
+- **Roof**: type and pitch method, and how it differs from the roofs of `courtyard-house`,
+  `castle` and the other examples; three things on it (chimney, dormer, finial, flag, gutter).
+- **Ground and planting**: ground materials (three or four), the tree species, bushes, flowers
+  in clumps, rock or water if any.
+- **Props and story**: at least eight props from four or more groups, and what is going on.
+- **Palette**: the colour IDs with rough shares, base, shadow and highlight per material.
+- **Targets**: expected piece count, small-part share (benchmark 40-56%), and the share built
+  sideways (benchmark 5-10%).
 
 ## How to build one
 
@@ -155,12 +186,22 @@ are in [docs/techniques/](../../../docs/techniques/README.md); the matching benc
 8. **Compare.** Write a point-by-point diff of the render against the reference and the
    standard above, fix the biggest silhouette and colour gaps first, and render again. Rework
    the model itself (roof, windows, towers, steps), not just the scenery around it.
-9. **Verify.** `pnpm test` and `pnpm check`.
+9. **Score.** Run `pnpm example:score <id>` after the bulk, and again after the detail pass. It
+   measures part variety, small-part share, side-mounted detail, sloped top, colours, thin layers,
+   wall relief (how much the walls step in and out), planting variety and how alike the build is
+   to the other examples, against what official sets do. Every `LOW`
+   line names the fix; work through them (in the design brief's terms) and rerun until none is
+   low, or say why one is not wanted (a flat-roofed build has no sloped top). Side-mounted detail
+   is where examples fall shortest: the existing examples mount about 0.1% of their pieces on
+   side studs against 3-10% in official models, so plan sills, shutters, lamps, ivy and signs
+   with `seatOnSideStud` from the start.
+10. **Verify.** `pnpm test` and `pnpm check`.
 
 ## Before calling an example done
 
-Run the checklist at the end of [docs/build-standard.md](../../../docs/build-standard.md), and check
-that the example is deterministic, valid and that `expectedPieceCount` is right.
+Run the checklist at the end of [docs/build-standard.md](../../../docs/build-standard.md), check
+that the example is deterministic, valid and that `expectedPieceCount` is right, and that
+`pnpm example:score <id>` shows no unexplained `LOW`.
 
 ## Looking at it headlessly
 
