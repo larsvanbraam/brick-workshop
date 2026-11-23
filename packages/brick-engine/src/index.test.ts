@@ -215,6 +215,63 @@ const finishingAndRoundIds = [
   '2423',
   '30374',
   '87994',
+  '11090',
+  '11216',
+  '15303',
+  '21699',
+  '22484',
+  '23443',
+  '23444',
+  '2486',
+  '2583',
+  '2714b',
+  '2714a',
+  '30095',
+  '30359b',
+  '30219',
+  '30359a',
+  '3484',
+  '35365',
+  '35654',
+  '35366',
+  '3803',
+  '3628',
+  '4095',
+  '4042',
+  '3813',
+  '40942',
+  '4083',
+  '42445',
+  '48729a',
+  '55529',
+  '6020',
+  '48723',
+  '48729b',
+  '6190a',
+  '62113',
+  '49546',
+  '48457',
+  '4873',
+  '66909',
+  '68211',
+  '7078',
+  '6016',
+  '6046',
+  '7768',
+  '84868',
+  '88695',
+  '89519',
+  '92690',
+  '95229',
+  '6076',
+  '6187',
+  '6140',
+  '99784',
+  '99061',
+  'u9531a',
+  '63965a',
+  '64727',
+  '67131',
   '2432',
   '2540',
   '4081b',
@@ -1013,7 +1070,7 @@ describe('architectural part families', () => {
     const included = assembly.bricks.filter((brick) =>
       architecturalParts.some((part) => part.id === brick.partId),
     );
-    expect(included).toHaveLength(211);
+    expect(included).toHaveLength(268);
     expect(new Set(included.map((brick) => brick.partId))).toEqual(
       new Set(architecturalParts.map((part) => part.id)),
     );
@@ -1619,9 +1676,9 @@ describe('upright brick engine', () => {
       ).toEqual(expected);
     }
   });
-  it('contains 301 unique building and foliage parts with explicit connection sites', () => {
-    expect(PARTS).toHaveLength(301);
-    expect(new Set(PARTS.map((part) => part.id)).size).toBe(301);
+  it('contains 358 unique building and foliage parts with explicit connection sites', () => {
+    expect(PARTS).toHaveLength(358);
+    expect(new Set(PARTS.map((part) => part.id)).size).toBe(358);
     expect(PARTS.filter((part) => part.family === 'tall')).toHaveLength(10);
     expect(PARTS.filter((part) => part.family === 'slope')).toHaveLength(35);
     expect(PARTS.filter((part) => part.family === 'round')).toHaveLength(38);
@@ -1631,7 +1688,7 @@ describe('upright brick engine', () => {
       ['cone', 5],
       ['door', 7],
       ['window', 16],
-      ['detail', 75],
+      ['detail', 132],
       ['foliage', 11],
     ] as const)
       expect(PARTS.filter((part) => part.family === family)).toHaveLength(count);
@@ -2034,7 +2091,7 @@ describe('upright brick engine', () => {
 
 describe('mixed-part engine builds', () => {
   it('lays complete catalogue and tile displays on one larger board without stacking', () => {
-    for (const [id, count] of [['catalog-sampler', 301]] as const) {
+    for (const [id, count] of [['catalog-sampler', 358]] as const) {
       const assembly = createExampleAssembly(id);
       expect(assembly.buildArea).toBe(112);
       expect(assembly.bricks).toHaveLength(count);
@@ -2350,6 +2407,26 @@ describe('mixed-part engine builds', () => {
     expect(of('3037').length).toBeGreaterThan(10);
   });
 
+  it('builds a wishing well: a rubble rim with ivy on side studs, a thatch gable on posts', () => {
+    const assembly = createExampleAssembly('wishing-well');
+    expect(assembly.name).toBe('Wishing Well');
+    expect(assembly.bricks).toHaveLength(571);
+    expect(assembly.buildArea).toBe(24);
+    expect(validateAssembly(assembly)).toEqual([]);
+    const of = (partId: string) => assembly.bricks.filter((brick) => brick.partId === partId);
+    // Ivy, a lantern, a sign and a bucket hang or stand on side-stud hosts and the cap.
+    expect(assembly.bricks.filter((brick) => brick.facing).length).toBeGreaterThanOrEqual(12);
+    expect(of('87087').length).toBeGreaterThanOrEqual(12);
+    expect(of('3941').length).toBeGreaterThanOrEqual(3);
+    // Masonry rim in two or more greys, round corner quoins, and straw coloured roof slopes.
+    expect(of('15533').length + of('98283').length).toBeGreaterThan(10);
+    expect(new Set(of('3062b').map((brick) => brick.color)).size).toBeGreaterThanOrEqual(2);
+    expect(of('3037').length).toBeGreaterThanOrEqual(2);
+    // Planted in several kinds: flowers, a bush, a fern, tall grass.
+    for (const plant of ['24866', '6064', '6255', '30093'])
+      expect(of(plant).length, plant).toBeGreaterThan(0);
+  });
+
   it('provides named, valid examples with independent assembly instances', () => {
     expect(EXAMPLES.map((example) => example.id)).toEqual([
       'courtyard-house',
@@ -2361,6 +2438,7 @@ describe('mixed-part engine builds', () => {
       'hill-valley',
       'western-town',
       'bakery',
+      'wishing-well',
       'train-track-yard',
       'steam-train',
     ]);

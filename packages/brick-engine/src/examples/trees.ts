@@ -12,6 +12,14 @@ export function random(seed: number) {
   };
 }
 
+/** A fixed scatter for fruit, so it never touches the tree's own random sequence. */
+const hashFruit = (a: number, b: number, c: number) => {
+  let h =
+    Math.imul(a + 59, 374761393) ^ Math.imul(b + 83, 668265263) ^ Math.imul(c + 41, 2147483629);
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+};
+
 const range = (from: number, to: number) =>
   Array.from({ length: to - from + 1 }, (_, index) => from + index);
 const TURNS = [0, 90, 180, 270] as const satisfies readonly Rotation[];
@@ -75,7 +83,25 @@ export function addTree(
    * The tree's form. Without a foot the trunk stands straight on the base, like a street tree
    * in a pit; radii give each crown layer's reach in studs, lowest first, for a smaller crown.
    */
-  { foot = true, radii: layerRadii }: { foot?: boolean; radii?: readonly number[] } = {},
+  {
+    foot = true,
+    radii: layerRadii,
+    accent,
+    gnarled = false,
+    solid,
+  }: {
+    foot?: boolean;
+    radii?: readonly number[];
+    /**
+     * A thick, tapering trunk of log bricks in three browns with a knobby bulge and roots, in
+     * place of the stack of round bricks. It ends in the same 2 x 2 top the crown sits on.
+     */
+    gnarled?: boolean;
+    /** Where there is ground to stand roots on, in world studs; roots go only there. */
+    solid?: (x: number, z: number) => boolean;
+    /** Fruit or blossom: this colour replaces `chance` of the round buds dotted on the crown. */
+    accent?: { color: number; chance: number };
+  } = {},
 ) {
   const next = random(seed * 7919 + 17);
   const boxes: Box[] = [];
@@ -148,7 +174,65 @@ export function addTree(
   // The trunk stands tall and bare below the crown.
   const courses = foot ? trunk + 3 : trunk;
   if (foot) place('3958', shade, -3, base, -3);
-  for (let course = 0; course < courses; course++) place('3941', bark, -1, ground + course * 3, -1);
+  if (gnarled) {
+    // Bark: mostly the given colour, with dark and light patches, never in a pattern.
+    const bark3 = (u: number, v: number, y: number) => {
+      const roll = hashFruit(u, y, v + 7);
+      return roll < 0.28 ? 308 : roll > 0.9 ? 84 : bark;
+    };
+    // A rectangle of log bricks, laid in rows along u or along v so each course crosses the last.
+    const fill = (u0: number, v0: number, w: number, d: number, y: number, alongU: boolean) => {
+      const lines = alongU ? d : w;
+      const length = alongU ? w : d;
+      for (let line = 0; line < lines; line++) {
+        let at = 0;
+        while (at < length) {
+          const size = [4, 2, 1].find((candidate) => candidate <= length - at)!;
+          const part = size === 4 ? '30137' : size === 2 ? '30136' : '3005';
+          const u = alongU ? u0 + at : u0 + line;
+          const v = alongU ? v0 + line : v0 + at;
+          place(part, bark3(u, v, y), u, y, v, alongU && size > 1 ? 90 : 0);
+          at += size;
+        }
+      }
+    };
+    // From the wide base the trunk narrows in steps to the 2 x 2 the crown sits on: a broad
+    // foot, a thicker middle, and a bulge on one side where a limb once grew.
+    const sections: readonly (readonly [number, number, number, number])[] = [
+      [-2, -2, 4, 4],
+      [-2, -2, 3, 4],
+      [-2, -1, 3, 3],
+      [-2, -1, 3, 2],
+    ];
+    for (let course = 0; course < courses; course++) {
+      const y = ground + course * 3;
+      const section = sections[course];
+      if (section) fill(section[0], section[1], section[2], section[3], y, course % 2 === 0);
+      else {
+        fill(-1, -1, 2, 2, y, course % 2 === 1);
+        if (course === sections.length) fill(-2, -1, 1, 2, y, false);
+      }
+    }
+    // Roots: cheese slopes round the base where there is room, sloping down to the ground.
+    for (const [u, v, rotation] of [
+      [-3, -1, 90],
+      [-3, 0, 90],
+      [2, -1, 270],
+      [2, 0, 270],
+      [-1, -3, 0],
+      [0, -3, 0],
+      [-1, 2, 180],
+      [0, 2, 180],
+    ] as const)
+      if (
+        next() < 0.8 &&
+        (solid?.(x + u, z + v) ?? true) &&
+        fits({ u0: u, u1: u + 1, v0: v, v1: v + 1, y0: ground, y1: ground + 2 })
+      )
+        place('54200', bark3(u, v, ground), u, ground, v, rotation, false);
+  } else
+    for (let course = 0; course < courses; course++)
+      place('3941', bark, -1, ground + course * 3, -1);
   if (foot) {
     // Each side steps down from the trunk to the plate: a stack of plates capped with a cheese
     // slope against the trunk, then a lower cheese slope outside it, so the foot flares out low
@@ -333,7 +417,11 @@ export function addTree(
         [box.u0, box.u1 - 1].every((u) => [box.v0, box.v1 - 1].every((v) => open(u, v, sy)))
       )
         place('32607', next() < 0.6 ? light : body, box.u0, sy, box.v0, rotation, false);
-    } else if (roll < 0.42 && fits(boxOf('6141', 0, su, sy, sv)))
-      place('6141', next() < 0.5 ? light : body, su, sy, sv, 0, false);
+    } else if (roll < 0.42 && fits(boxOf('6141', 0, su, sy, sv))) {
+      const colour = next() < 0.5 ? light : body;
+      // Fruit or blossom: only drawn when asked for, so other trees grow as they always did.
+      const fruit = accent !== undefined && hashFruit(su, sy, sv) < accent.chance;
+      place('6141', fruit ? accent.color : colour, su, sy, sv, 0, false);
+    }
   }
 }
