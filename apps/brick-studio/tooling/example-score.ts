@@ -126,12 +126,13 @@ export const CHECKS: readonly Check[] = [
   {
     key: 'plants',
     label: 'Planting',
-    target: '0.5-8% foliage in at least four different plant designs',
+    target:
+      'at least 0.5% foliage in four or more plant designs, at most 20% (a big tree is a large share of a small build)',
     measure: (s) => `${pct(s.plantShare)} in ${s.plantDesigns} designs`,
     pass: (s) =>
       s.pieces < 300
         ? undefined
-        : s.plantShare >= 0.005 && s.plantShare <= 0.08 && s.plantDesigns >= 4,
+        : s.plantShare >= 0.005 && s.plantShare <= 0.2 && s.plantDesigns >= 4,
     fix: 'Plant in clusters of several kinds and heights: trees, bushes, tall grass, ferns, flowers in clumps of one colour, ivy and window boxes (flora-and-terrain.md).',
   },
   {
@@ -267,8 +268,10 @@ export function scoreAssembly(
   const mappings = DEFAULT_PART_COLOR_EVIDENCE.mappings.parts;
   const bricks = assembly.bricks;
   const detail = bricks.filter((brick) => brick.facing !== undefined || brick.tilt !== undefined);
-  const top = bricks.length ? Math.max(...bricks.map((brick) => brick.y)) : 0;
-  const roof = bricks.filter((brick) => brick.y >= top * 0.8);
+  // The top is the building's, not a tree's: foliage is scenery and may rise above the roof.
+  const structure = bricks.filter((brick) => !PLANT_PARTS.has(brick.partId));
+  const top = structure.length ? Math.max(...structure.map((brick) => brick.y)) : 0;
+  const roof = structure.filter((brick) => brick.y >= top * 0.8);
   const bucket = (partId: string) =>
     bucketOf(toRebrickablePart(partId, mappings, catalogue.parts), catalogue);
   const sloped = roof.filter((brick) => {
