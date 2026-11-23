@@ -179,6 +179,28 @@ const finishingAndRoundIds = [
   '3957a',
   '38583',
   '38585',
+  '3455',
+  '6108',
+  '6183',
+  '6184',
+  '12939',
+  '30528',
+  '5850',
+  '3572',
+  '13965',
+  '80543',
+  '2339',
+  '14395',
+  '16577',
+  '14707',
+  '18838',
+  '4743',
+  '2145',
+  '19063',
+  '30613',
+  '18653',
+  '78666',
+  '30099',
   '6005',
   '88292',
   '43888',
@@ -991,7 +1013,7 @@ describe('architectural part families', () => {
     const included = assembly.bricks.filter((brick) =>
       architecturalParts.some((part) => part.id === brick.partId),
     );
-    expect(included).toHaveLength(189);
+    expect(included).toHaveLength(211);
     expect(new Set(included.map((brick) => brick.partId))).toEqual(
       new Set(architecturalParts.map((part) => part.id)),
     );
@@ -1597,14 +1619,14 @@ describe('upright brick engine', () => {
       ).toEqual(expected);
     }
   });
-  it('contains 279 unique building and foliage parts with explicit connection sites', () => {
-    expect(PARTS).toHaveLength(279);
-    expect(new Set(PARTS.map((part) => part.id)).size).toBe(279);
+  it('contains 301 unique building and foliage parts with explicit connection sites', () => {
+    expect(PARTS).toHaveLength(301);
+    expect(new Set(PARTS.map((part) => part.id)).size).toBe(301);
     expect(PARTS.filter((part) => part.family === 'tall')).toHaveLength(10);
     expect(PARTS.filter((part) => part.family === 'slope')).toHaveLength(35);
     expect(PARTS.filter((part) => part.family === 'round')).toHaveLength(38);
     for (const [family, count] of [
-      ['arch', 11],
+      ['arch', 33],
       ['baseplate', 2],
       ['cone', 5],
       ['door', 7],
@@ -2012,7 +2034,7 @@ describe('upright brick engine', () => {
 
 describe('mixed-part engine builds', () => {
   it('lays complete catalogue and tile displays on one larger board without stacking', () => {
-    for (const [id, count] of [['catalog-sampler', 279]] as const) {
+    for (const [id, count] of [['catalog-sampler', 301]] as const) {
       const assembly = createExampleAssembly(id);
       expect(assembly.buildArea).toBe(112);
       expect(assembly.bricks).toHaveLength(count);

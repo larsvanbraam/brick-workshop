@@ -1072,6 +1072,71 @@ export const PARTS: readonly Part[] = [
   architecturalPart('92950', 'Raised arch 1 x 6', 1, 6, 3, 'arch'),
   // Its opening is a half circle two studs round from the base, which a half-round window fills.
   architecturalPart('15254', 'Arch 1 x 6 x 2, thin top', 1, 6, 6, 'arch'),
+  architecturalPart('3455', 'Arch 1 x 6', 1, 6, 3, 'arch'),
+  // Where the top steps down at the ends, only the studs on the top plane count as mounting
+  // sites; the stepped ones are lower than the part's top.
+  architecturalPart('6108', 'Arch 1 x 12 x 3, stepped ends', 1, 12, 9, 'arch', {
+    connections: {
+      topStuds: spans(null, null, [0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0]),
+      bottomReceivers: spans([0, 0], ...Array(10).fill(null), [0, 0]),
+    },
+  }),
+  // The curved tops carry two studs at the crown.
+  architecturalPart('6183', 'Arch 1 x 6 x 2, curved top', 1, 6, 6, 'arch', {
+    connections: {
+      topStuds: spans(null, null, [0, 0], [0, 0]),
+      bottomReceivers: spans([0, 0], null, null, null, null, [0, 0]),
+    },
+  }),
+  architecturalPart('6184', 'Arch 1 x 12 x 5, curved top', 1, 12, 15, 'arch', {
+    connections: {
+      topStuds: spans(null, null, null, null, null, [0, 0], [0, 0]),
+      bottomReceivers: spans([0, 0], ...Array(10).fill(null), [0, 0]),
+    },
+  }),
+  architecturalPart('12939', 'Arch 1 x 6 x 2, very thin top', 1, 6, 6, 'arch'),
+  architecturalPart('30528', 'Arch 1 x 8 x 6', 1, 8, 18, 'arch', {
+    connections: {
+      topStuds: spans(null, null, [0, 0], [0, 0], [0, 0], [0, 0]),
+      bottomReceivers: spans([0, 0], ...Array(6).fill(null), [0, 0]),
+    },
+  }),
+  // Raised arches keep their studs on the flat middle and step down at the ends.
+  architecturalPart('16577', 'Arch 1 x 8 x 2, raised', 1, 8, 6, 'arch'),
+  architecturalPart('14707', 'Arch 1 x 12 x 3, raised', 1, 12, 9, 'arch', {
+    connections: {
+      topStuds: spans(null, null, [0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0]),
+      bottomReceivers: spans([0, 0], ...Array(10).fill(null), [0, 0]),
+    },
+  }),
+  architecturalPart('18838', 'Arch 1 x 12 x 3, raised, with ribs', 1, 12, 9, 'arch', {
+    connections: {
+      topStuds: spans(null, null, [0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0]),
+      bottomReceivers: spans([0, 0], ...Array(10).fill(null), [0, 0]),
+    },
+  }),
+  architecturalPart('4743', 'Arch 2 x 8 x 3', 2, 8, 9, 'arch'),
+  // Ornamented arches carry studs on the two end pillars and one row along the top.
+  architecturalPart('2145', 'Arch 2 x 6 x 5, ornamented', 2, 6, 15, 'arch', {
+    connections: {
+      topStuds: spans([0, 1], [0, 0], [0, 0], [0, 0], [0, 0], [0, 1]),
+      bottomReceivers: spans([0, 1], null, null, null, null, [0, 1]),
+    },
+  }),
+  architecturalPart('19063', 'Arch 3 x 6 x 5, ornamented', 3, 6, 15, 'arch', {
+    ldrawCenter: { x: 0, z: 20 },
+    connections: {
+      topStuds: spans([0, 2], [0, 0], [0, 0], [0, 0], [0, 0], [0, 2]),
+      bottomReceivers: spans([0, 2], null, null, null, null, [0, 2]),
+    },
+  }),
+  architecturalPart('30613', 'Arch 3 x 6 x 5, ornamented, hollow stud', 3, 6, 15, 'arch', {
+    ldrawCenter: { x: 0, z: 20 },
+    connections: {
+      topStuds: spans([0, 2], [0, 0], [0, 0], [0, 0], [0, 0], [0, 2]),
+      bottomReceivers: spans([0, 2], null, null, null, null, [0, 2]),
+    },
+  }),
   architecturalPart('3865', 'Baseplate 8 x 16', 8, 16, 0.5, 'baseplate'),
   architecturalPart('3867', 'Baseplate 16 x 16', 16, 16, 0.5, 'baseplate'),
   architecturalPart('4589', 'Cone 1 x 1', 1, 1, 3, 'cone', {
@@ -1834,6 +1899,97 @@ export const PARTS: readonly Part[] = [
     },
     { ldrawCenter: { x: 0, z: 20 } },
   ),
+  // More quarter arches: one leg at the first stud, the curve running out over the rest. Their
+  // studs sit partway down the curve, so only 80543 has one on its top plane.
+  contouredPart(
+    '5850',
+    'Quarter arch 1 x 3 x 2',
+    1,
+    3,
+    6,
+    'brick',
+    'arch',
+    { top: spans(null, [0, 0], [0, 0]), bottom: spans([0, 0]) },
+    { ldrawCenter: { x: 0, z: 20 } },
+  ),
+  contouredPart(
+    '3572',
+    'Quarter arch 1 x 5 x 2',
+    1,
+    5,
+    6,
+    'brick',
+    'arch',
+    { top: spans(null, [0, 0], [0, 0], [0, 0], [0, 0]), bottom: spans([0, 0]) },
+    { ldrawCenter: { x: 0, z: 40 } },
+  ),
+  contouredPart(
+    '13965',
+    'Quarter arch 1 x 3 x 3, pointed',
+    1,
+    3,
+    9,
+    'brick',
+    'arch',
+    { top: spans(null, [0, 0], [0, 0]), bottom: spans([0, 0]) },
+    { ldrawCenter: { x: 0, z: 20 } },
+  ),
+  contouredPart(
+    '80543',
+    'Quarter arch 1 x 4 x 3',
+    1,
+    4,
+    9,
+    'brick',
+    'arch',
+    { top: spans(null, [0, 0]), bottom: spans([0, 0]) },
+    { ldrawCenter: { x: 0, z: 30 } },
+  ),
+  contouredPart(
+    '2339',
+    'Quarter arch 1 x 5 x 4',
+    1,
+    5,
+    12,
+    'brick',
+    'arch',
+    { top: spans(null, null, [0, 0]), bottom: spans([0, 0]) },
+    { ldrawCenter: { x: 0, z: 40 } },
+  ),
+  contouredPart(
+    '14395',
+    'Quarter arch 1 x 5 x 4, thin walls',
+    1,
+    5,
+    12,
+    'brick',
+    'arch',
+    { top: spans(null, null, [0, 0]), bottom: spans([0, 0]) },
+    { ldrawCenter: { x: 0, z: 40 } },
+  ),
+  // Inverted quarter arches hang their curve from a leg that carries the one stud on top. The
+  // foot at the far end sits at the base and is not a mounting site here.
+  sculptedPart('18653', 'Inverted quarter arch 1 x 3 x 2', 1, 3, 6, 'arch', {
+    kind: 'brick',
+    shape: 'detail',
+    ldrawRotation: 270,
+    ldrawCenter: { x: 20, z: 0 },
+    connections: { topStuds: spans([0, 0]), bottomReceivers: spans([0, 0]) },
+  }),
+  sculptedPart('78666', 'Inverted quarter arch 1 x 2 x 1', 1, 2, 3, 'arch', {
+    kind: 'brick',
+    shape: 'detail',
+    ldrawRotation: 270,
+    ldrawCenter: { x: 10, z: 0 },
+    connections: { topStuds: spans([0, 0]), bottomReceivers: spans([0, 0]) },
+  }),
+  sculptedPart('30099', 'Inverted quarter arch 1 x 5 x 4', 1, 5, 12, 'arch', {
+    kind: 'brick',
+    shape: 'detail',
+    ldrawRotation: 270,
+    ldrawCenter: { x: 40, z: 0 },
+    connections: { topStuds: spans([0, 0]), bottomReceivers: spans([0, 0]) },
+  }),
   contouredPart(
     '43888',
     'Round column 1 x 1 x 6',
