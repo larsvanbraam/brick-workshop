@@ -45,6 +45,7 @@ import {
   getPartUses,
   searchParts,
 } from '@brick-workshop/engine';
+import { STYLE_NOTE_IDS, readStyleNote } from './style-notes.ts';
 import { MAX_SHEET_PARTS, RENDER_VIEWS, renderAssembly, renderPartSheet } from './render.ts';
 import type { RenderOptions, RenderView } from './render.ts';
 import type {
@@ -261,6 +262,23 @@ export const BUILDER_TOOLS: readonly Anthropic.Tool[] = [
         includeExamples: { type: 'boolean' },
       },
       [],
+    ),
+  },
+  {
+    name: 'brick_style_notes',
+    description:
+      "Read the builder's technique notes for the subjects of your build (walls, facades, roofs, flora, vehicles, fauna, street): recipes with part IDs, colours, depth levels, measured targets from official models and a closing checklist each. Pass up to three topics in one call, before you place that kind of surface or object. Advice only: it never changes the assembly, and every part still needs brick_catalog and the engine to accept it.",
+    input_schema: objectSchema(
+      {
+        topics: {
+          type: 'array',
+          items: { type: 'string', enum: STYLE_NOTE_IDS },
+          minItems: 1,
+          maxItems: 3,
+          uniqueItems: true,
+        },
+      },
+      ['topics'],
     ),
   },
   {
@@ -946,6 +964,18 @@ export function createBuilderSession(
         ok: true,
         revision,
         data: describeVoxelLayer(reference.model, reference.origin, assembly, args.layer as number),
+      };
+    }
+    if (name === 'brick_style_notes') {
+      return {
+        ok: true,
+        revision,
+        data: {
+          notes: (args.topics as (typeof STYLE_NOTE_IDS)[number][]).map((topic) => ({
+            topic,
+            text: readStyleNote(topic),
+          })),
+        },
       };
     }
     if (name === 'brick_techniques') {

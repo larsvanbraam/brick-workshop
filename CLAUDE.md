@@ -67,6 +67,10 @@ so edit it there to change both.
 
 @docs/build-standard.md
 
+The standard says what a good build looks like; [docs/techniques/](docs/techniques/README.md) says how, one
+subject at a time (walls, facades, roofs, flora and terrain, vehicles, fauna, city props). Read the notes
+for every kind of surface or object in the build before the detail pass, and tick their checklists.
+
 In code, the standard maps onto these helpers:
 
 - Tilted roof panels: tilt hinge tops (`3938`) with `getHingeTilt` (packages/brick-engine/README.md, "Hinges and

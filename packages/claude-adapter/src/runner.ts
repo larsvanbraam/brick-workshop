@@ -1,3 +1,4 @@
+import { styleNoteIndex } from './style-notes.ts';
 import { readFileSync } from 'node:fs';
 import type Anthropic from '@anthropic-ai/sdk';
 import { MODEL_TOOLS, compactAssembly, splitToolImage } from './session.ts';
@@ -83,7 +84,11 @@ const designInstructions = `Scenes, buildings, landscapes and other subjects tha
 
 <build_standard>
 ${buildStandard.trim()}
-</build_standard>`;
+</build_standard>
+
+Technique notes say how to reach that standard for each kind of subject. Before you place a kind of surface or object for the first time, read its notes with brick_style_notes (up to three topics per call, in the same turn as your other reading calls), and tick the checklist at the end of each:
+${styleNoteIndex()}
+Use only parts that brick_catalog offers.`;
 
 /** Initial assemblies up to this size are listed brick by brick in the first message. */
 const MAX_LISTED_BRICKS = 150;

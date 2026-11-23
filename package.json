@@ -21,6 +21,9 @@
     "colors:import": "node apps/brick-studio/tooling/import-colors.ts",
     "colors:inventory": "node apps/brick-studio/tooling/import-inventory.ts",
     "rebrickable:report": "node apps/brick-studio/tooling/rebrickable-report.ts",
+    "omr:analyse": "node apps/brick-studio/tooling/omr-analyse.ts",
+    "omr:fetch": "node apps/brick-studio/tooling/omr-fetch.ts",
+    "rebrickable:vocabulary": "node apps/brick-studio/tooling/rebrickable-vocabulary.ts",
     "claude:build": "node --env-file-if-exists=.env packages/claude-adapter/src/cli.ts",
     "workshop:server": "node --env-file-if-exists=.env packages/claude-adapter/src/server.ts"
   },

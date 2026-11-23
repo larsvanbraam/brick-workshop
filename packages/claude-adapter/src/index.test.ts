@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vite-plus/test';
 import { MAX_BUILD_AREA, validateAssembly } from '@brick-workshop/engine';
+import { BUILD_SYSTEM_PROMPT } from './runner.ts';
 import { MODEL_TOOLS, createBuilderSession, runClaudeBuild } from './index.ts';
 import type { ClaudeTransport } from './index.ts';
 import Anthropic from '@anthropic-ai/sdk';
@@ -1291,5 +1292,26 @@ describe('headless Claude builder tools', () => {
         checks: { geometry: 'validated', strength: 'within-supplied-limit', stock: 'unknown' },
       },
     });
+  });
+});
+
+describe('style notes on demand', () => {
+  it('serves the requested notes and refuses unknown topics', () => {
+    const session = createBuilderSession();
+    const result = session.runTool('brick_style_notes', { topics: ['walls', 'roofs'] });
+    if (!result.ok) throw new Error('style notes refused');
+    const notes = (result.data as { notes: { topic: string; text: string }[] }).notes;
+    expect(notes.map((note) => note.topic)).toEqual(['walls', 'roofs']);
+    expect(notes[0]!.text).toContain('Measured in official models');
+    expect(session.runTool('brick_style_notes', { topics: ['nonsense'] }).ok).toBe(false);
+    expect(session.runTool('brick_style_notes', { topics: [] }).ok).toBe(false);
+    expect(session.snapshot().bricks).toEqual([]);
+  });
+
+  it('keeps only an index of the notes in the system prompt', () => {
+    expect(BUILD_SYSTEM_PROMPT).toContain('brick_style_notes');
+    expect(BUILD_SYSTEM_PROMPT).toContain('- vehicles:');
+    expect(BUILD_SYSTEM_PROMPT).not.toContain('Measured in official models');
+    expect(MODEL_TOOLS.some((tool) => tool.name === 'brick_style_notes')).toBe(true);
   });
 });
