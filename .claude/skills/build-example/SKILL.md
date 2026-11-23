@@ -47,7 +47,16 @@ In code, the standard maps onto these helpers:
   tilted frames").
 - `courtyard-house.ts` is the worked recipe for a gabled, hinge-tiled roof. Reuse it only when the design brief calls for that roof; a second build with the same roof is a failure (see the brief below).
 - Trees: `addTree` in `trees.ts`. Crates, benches, buckets and pots: see `flower-stall.ts`.
-- Plant receivers: check a part's `connections` in `core.ts` before placing it.
+- Plant receivers: check a part's `connections` in `core.ts` before placing it. A plant plugs into
+  one stud by a receiver off its own corner (bush `(1.5, 1.5)`, fern `(2, 1.5)`, tall grass
+  `(1.5, 0)`), and its box is large (a bush is 4 x 4), so place each plant with a collision check
+  and a lawn stud under that one stud, never on a tile (see `wishing-well.ts`).
+- Trees must not be round poles: use `addTree(..., { gnarled: true })` for a thick, tapering log
+  trunk, a grove of a main tree and smaller companions, and an `accent` for fruit or blossom
+  (the flora note has the rules). Leave 5 studs of board round a tree; a 16-stud board is too
+  small beside a building.
+- Side-mounted detail uses 1 x 1 parts (round plate `6141`, cheese slope `54200`, plate `3024`).
+  The 2 x 2 sprig `32607` collides with its own host when mounted sideways.
 - Scatter shades with a seeded hash or `random(seed)` from `trees.ts`, so each example stays
   deterministic.
 - A gabled roof of 45° slope courses needs one more course on each side than the gable wall

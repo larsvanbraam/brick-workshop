@@ -35,6 +35,32 @@ than a storey. Make species, not just "a tree".
 | Palm       | tan `19` / `28` ring-stacked, curved                          | 4 to 6 leaves `30176` radiating                                     |
 | Dead tree  | `308` forked, no crown                                        | a few bare twigs (bars, antennas), a bird                           |
 
+**A trunk is never a round pole.** A tall stack of 2 x 2 round bricks reads as a lamppost, and a
+bare run of 2 x 2 reads the same however it is coloured. Build the trunk to be thick at the
+foot and narrow as it rises:
+
+- Start 4 x 4 studs wide and step down through 3 x 4, 3 x 3 and 3 x 2 to the 2 x 2 that carries
+  the crown; keep the bare 2 x 2 run to three courses or fewer.
+- Use log bricks (`30136`, `30137`) in three browns (`70` base, `308` dark patches, `84` a few
+  light ones), laid in rows that cross from course to course, so the bark has grain and patches.
+- Add a bulge where a limb once grew (a 1 x 2 log proud on one side of a wider course below) and
+  root knuckles of cheese slopes (`54200`, `85984`) round the base, only where there is ground.
+- In code: `addTree(..., { gnarled: true })`; the default round trunk is for street trees in a
+  pit. `foot: true` adds a plate and a root flare instead, and does not combine with `gnarled`.
+
+**Plant a grove, not a single tree.** One tree on a base reads as a prop. Put a main tree and
+one or two smaller companions in lighter greens beside it, so the crowns overlap and the
+skyline has several trunks and heights. Let the main tree rise clearly above the nearest roof:
+get the height from a fuller crown of 8 or 9 layers (radii up to about 4.8), not from a long
+trunk. Dot the crown with fruit or blossom (`accent: { color, chance }`: red apples, pink
+cherry blossom) and put windfalls, mushrooms (a white `3062b` with a red `6141` cap) and
+roots round the foot.
+
+Space: a broadleaf crown reaches about 5 studs from its trunk and its foliage pieces are 2 to
+6 studs wide, so the board needs 5 studs of margin on every side of a tree, and trunks need
+free ground for their wide base. A 16-stud board with a building on it has no room for a big
+tree; use 24 or 32 studs, or a smaller crown.
+
 Build rules:
 
 - Crown colours: darkest inside and below (`288`), `2` in the middle, `10` / `27` on top and
