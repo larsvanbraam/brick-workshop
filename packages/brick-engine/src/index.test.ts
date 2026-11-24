@@ -1235,6 +1235,21 @@ describe('architectural part families', () => {
       expect(placeBrick({ ...empty, bricks: [support] }, door).ok, partId).toBe(false);
     }
   });
+  it('hangs the older latticed pane in a 1 x 4 x 3 frame exactly as the newer one hangs', () => {
+    const support = { ...base, partId: '3010', rotation: 90 as const };
+    const frame = { ...base, id: 'frame', partId: '60594', y: 3, rotation: 90 as const };
+    const placed = { ...empty, bricks: [support, frame] };
+    for (const partId of ['2529', '60607']) {
+      const left = { ...base, id: 'left', partId, x: 2, y: 3, rotation: 90 as const };
+      const right: Brick = { ...left, id: 'right', x: 0, upsideDown: true };
+      expect(placeBrick(placed, left).ok, partId).toBe(true);
+      expect(placeBrick({ ...placed, bricks: [...placed.bricks, left] }, right).ok, partId).toBe(
+        true,
+      );
+      // Not at the frame's own origin, where glass would go.
+      expect(placeBrick(placed, { ...left, x: 0 }).ok, partId).toBe(false);
+    }
+  });
   it('hangs latticed casements in both ends of a 1 x 4 x 3 frame, one upside down', () => {
     const support = { ...base, partId: '3010', rotation: 90 as const };
     const frame = { ...base, id: 'frame', partId: '60594', y: 3, rotation: 90 as const };

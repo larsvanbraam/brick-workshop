@@ -4185,7 +4185,7 @@ const HINGED_DOORS = new Set(['3193a', '3192a']);
 /** Doors hung on the frame's hinge pins: native origin at frame-local (±32, 5), turned to match. */
 const PINNED_DOORS = new Set(['60616a', '60623']);
 /** Panes hung by their corner pins in the pockets at either end of a frame's opening. */
-const CASEMENT_PANES = new Set(['60607', '60608']);
+const CASEMENT_PANES = new Set(['60607', '60608', '2529']);
 
 export function isMatchingInsertFrame(insert: Brick, frame: Brick): boolean {
   const framePartId = INSERT_FRAME_PARTS[insert.partId];
