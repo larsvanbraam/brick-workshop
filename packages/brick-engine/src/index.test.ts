@@ -246,11 +246,11 @@ const finishingAndRoundIds = [
   '40942',
   '4083',
   '42445',
-  '48734a',
+  '48729a',
   '55529',
   '6020',
   '48723',
-  '48734b',
+  '48729b',
   '6190a',
   '62113',
   '49546',
@@ -1635,10 +1635,10 @@ describe('upright brick engine', () => {
   it('matches brute-force support and collision results across half-unit grid bucket boundaries', () => {
     // Resting parts stand without studs, which the brute force leaves out.
     const STUD_ONLY_PARTS = DEFAULT_BOARD_PARTS.filter((part) => !part.rests);
-    let seed = 104734;
+    let seed = 104729;
     const random = () => {
       seed = (seed * 1664525 + 1013904223) >>> 0;
-      return seed / 4294967346;
+      return seed / 4294967296;
     };
     for (let sample = 0; sample < 150; sample++) {
       const bricks = Array.from({ length: 25 }, (_, index) => {
