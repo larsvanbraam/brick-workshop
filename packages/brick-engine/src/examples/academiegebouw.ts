@@ -250,7 +250,7 @@ export const academiegebouw: ExampleDefinition = {
   id: 'academiegebouw',
   name: 'Academiegebouw',
   tags: ['neo-renaissance', 'town', 'landmark', 'brick', 'sandstone', 'utrecht', 'square', 'tower'],
-  expectedPieceCount: 3789,
+  expectedPieceCount: 3761,
   buildArea: SIZE,
   brickIdPrefix: 'aca',
   build(drawnAdd) {
@@ -949,36 +949,31 @@ export const academiegebouw: ExampleDefinition = {
     add('3957a', BLACK, 39.5, SY + 35, 33.5, 0);
     add('2335', RED, 39.5, SY + 44, 33.5, 90);
 
-    // ---- A stone gable in front of the tower on each outward face of the pavilion, as in the
-    // photo: piers carry an arch over an open niche, a lintel row and a stepped pediment above,
-    // with cheese slopes on the steps. It stands on the slab, a stud clear of the tower.
-    const gable = (alongX: boolean, u0: number, wall: number) => {
-      const at = (u: number, py: number, id: string, color: number, rot?: Rotation) => {
-        const [px, pz] = alongX ? [u, wall] : [wall, u];
-        add(id, color, px, py, pz, rot ?? (alongX ? 90 : 0));
-      };
-      const along = alongX ? 90 : 0;
+    // ---- One stone gable on the pavilion's inner corner, on the roofline in front of the tower and
+    // facing the bay and the square on the diagonal from one wing to the other, as in the photo.
+    // Facet bricks (the bay's own trick) give the diagonal face: a plinth course, two piers round
+    // an open niche with a statue in it, then a lintel course and a light stone cornice, and a
+    // gold pinnacle on each end. The niche shows the tower's stone behind it.
+    {
       const gy = (c: number) => TY + c * 3;
-      at(u0, gy(0), '3008', TAN, along);
-      for (let c = 1; c <= 4; c++) for (const u of [u0, u0 + 6]) at(u, gy(c), '3004', TAN, along);
-      // The arch rests on the inner studs of the piers and the piers beside it close the course.
-      at(u0 + 1, gy(5), '3455', LIGHT_STONE, along);
-      for (const u of [u0, u0 + 7]) at(u, gy(5), '3005', LIGHT_STONE, along);
-      at(u0, gy(6), '3008', LIGHT_STONE, along);
-      at(u0 + 1, gy(7), '3009', TAN, along);
-      at(u0 + 2, gy(8), '3010', TAN, along);
-      at(u0 + 3, gy(9), '3004', TAN, along);
-      // Cheese slopes on the exposed studs of each step, leaning in towards the top.
-      const lean: Rotation = alongX ? 90 : 0;
-      const leanBack: Rotation = alongX ? 270 : 180;
-      for (let k = 0; k < 4; k++) {
-        const c = 7 + k;
-        at(u0 + k, gy(c), '54200', LIGHT_STONE, lean);
-        at(u0 + 7 - k, gy(c), '54200', LIGHT_STONE, leanBack);
+      const FACE: [number, number][] = [
+        [35, 31],
+        [37, 29],
+      ];
+      for (const [fx, fz] of FACE) add('87620', LIGHT_STONE, fx, gy(0), fz, 90);
+      for (let c = 1; c <= 4; c++) {
+        add('3004', TAN, 35, gy(c), 32, 90);
+        add('3004', TAN, 38, gy(c), 29, 0);
       }
-    };
-    gable(true, 36, 38);
-    gable(false, 30, 44);
+      // The statue: white round bricks in the niche, with a gold head.
+      for (let c = 1; c <= 3; c++) add('3062b', WHITE, 36, gy(c), 31, 0);
+      add('4589', GOLD, 36, gy(4), 31, 0);
+      for (const [fx, fz] of FACE) add('87620', TAN, fx, gy(5), fz, 90);
+      for (const [fx, fz] of FACE) add('87620', LIGHT_STONE, fx, gy(6), fz, 90);
+      // A pinnacle on the outer stud of each end.
+      add('4589', GOLD, 35, gy(7), 32, 0);
+      add('4589', GOLD, 38, gy(7), 29, 0);
+    }
 
     // The square and everything on it are drawn in board coordinates.
     {
