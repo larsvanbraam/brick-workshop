@@ -2531,7 +2531,7 @@ describe('mixed-part engine builds', () => {
   it('builds a jail tower: four different faces, string courses, a corbel table and a deck', () => {
     const assembly = createExampleAssembly('jail-tower');
     expect(assembly.name).toBe('Jail Tower');
-    expect(assembly.bricks).toHaveLength(813);
+    expect(assembly.bricks).toHaveLength(955);
     expect(assembly.buildArea).toBe(32);
     expect(validateAssembly(assembly)).toEqual([]);
     const of = (partId: string) => assembly.bricks.filter((brick) => brick.partId === partId);
@@ -2567,8 +2567,23 @@ describe('mixed-part engine builds', () => {
     expect(of('3003').length).toBeGreaterThanOrEqual(14);
     expect(of('3665a').length).toBeGreaterThanOrEqual(20);
     expect(of('54200').length).toBeGreaterThanOrEqual(30);
-    expect(of('3942c')).toHaveLength(1);
     expect(of('2335')).toHaveLength(1);
+    // The upper stages: an open arcade (four-stud arches front and back, three-stud arches on the
+    // sides, round piers, a bell and two braziers), a balcony, a round watch turret, a lantern with
+    // a light in it, a cone cap and a gold finial. Cones: bell, stair turret, cap.
+    expect(of('3659')).toHaveLength(4);
+    expect(of('4490')).toHaveLength(4);
+    expect(of('87081')).toHaveLength(3);
+    expect(of('3943b')).toHaveLength(1);
+    expect(of('3942c')).toHaveLength(3);
+    expect(of('59900')).toHaveLength(1);
+    expect(of('3957a')).toHaveLength(1);
+    expect(assembly.bricks.filter((brick) => brick.color === 46).length).toBeGreaterThanOrEqual(3);
+    // Five or more distinct levels: the stage floors rise in order.
+    const stageTops = [of('3659'), of('87081'), of('3943b')].map((bricks) =>
+      Math.min(...bricks.map((brick) => brick.y)),
+    );
+    expect(stageTops).toEqual([...stageTops].sort((a, b) => a - b));
     // Ivy, sills and lanterns hang on side studs.
     expect(assembly.bricks.filter((brick) => brick.facing).length).toBeGreaterThanOrEqual(30);
     // The tower is the build: at least two thirds of the pieces stand on the tower itself.

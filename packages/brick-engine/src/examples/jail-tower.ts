@@ -30,6 +30,7 @@ const OLIVE = 330;
 const RED = 4;
 const BLACK = 0;
 const LAMP = 46;
+const GOLD = 297;
 
 const hash = (a: number, b: number, c: number) => {
   let h =
@@ -103,12 +104,19 @@ export const jailTower: ExampleDefinition = {
   id: 'jail-tower',
   name: 'Jail Tower',
   tags: ['medieval', 'tower', 'jail', 'stone', 'barred-windows', 'courtyard', 'landscape'],
-  expectedPieceCount: 813,
+  expectedPieceCount: 955,
   buildArea: SIZE,
   brickIdPrefix: 'jail',
   build(drawnAdd) {
     const order = bottomUp(drawnAdd);
-    const boxes: { u0: number; u1: number; v0: number; v1: number; y0: number; y1: number }[] = [];
+    const boxes: {
+      u0: number;
+      u1: number;
+      v0: number;
+      v1: number;
+      y0: number;
+      y1: number;
+    }[] = [];
     const add: ExampleBrickAdder = (partId, color, x, y, z, rotation = 0, facing, ...rest) => {
       const size = footprint({
         id: '',
@@ -150,7 +158,16 @@ export const jailTower: ExampleDefinition = {
     };
     const mount = (host: Piece, partId: string, color: number, facing: Facing) => {
       const seated = seatOnSideStuds(
-        { id: 'mount', partId, color, x: host.x, y: host.y, z: host.z, rotation: 0, facing },
+        {
+          id: 'mount',
+          partId,
+          color,
+          x: host.x,
+          y: host.y,
+          z: host.z,
+          rotation: 0,
+          facing,
+        },
         { id: 'host', ...host },
       );
       if (!seated) throw new Error(`Nothing to mount ${partId} at ${host.x},${host.y},${host.z}.`);
@@ -163,7 +180,14 @@ export const jailTower: ExampleDefinition = {
           [-0.5, 0],
           [0, -0.5],
         ]) {
-          const host: Piece = { partId: '87087', color, x: x + dx, y, z: z + dz, rotation };
+          const host: Piece = {
+            partId: '87087',
+            color,
+            x: x + dx,
+            y,
+            z: z + dz,
+            rotation,
+          };
           const size = footprint({ id: '', ...host });
           const body = facing.endsWith('x')
             ? facing === '-x'
@@ -174,7 +198,16 @@ export const jailTower: ExampleDefinition = {
               : host.z === z && size.depth === 1.5;
           if (!body) continue;
           const probe = seatOnSideStuds(
-            { id: 'p', partId: '3024', color, x: 0, y, z: 0, rotation: 0, facing },
+            {
+              id: 'p',
+              partId: '3024',
+              color,
+              x: 0,
+              y,
+              z: 0,
+              rotation: 0,
+              facing,
+            },
             { id: 'h', ...host },
           );
           if (!probe) continue;
@@ -393,7 +426,14 @@ export const jailTower: ExampleDefinition = {
     }
 
     // ---- The front: a door in its frame under a stone portal.
-    const frame: Piece = { partId: '60596', color: DARK_STONE, x: 8, y: base, z: T0, rotation: 90 };
+    const frame: Piece = {
+      partId: '60596',
+      color: DARK_STONE,
+      x: 8,
+      y: base,
+      z: T0,
+      rotation: 90,
+    };
     add(frame.partId, frame.color, frame.x, frame.y, frame.z, frame.rotation);
     let fitted = false;
     for (const rotation of [90, 270] as Rotation[])
@@ -550,19 +590,140 @@ export const jailTower: ExampleDefinition = {
     };
     for (const face of FACES) merlons(face);
 
-    // The roof furniture: a round turret with a cone, a chimney with a pot over the breast, a
-    // flag on a pole in one corner.
-    for (let level = 0; level < 4; level++)
-      add('3941', level % 2 ? STONE : DARK_STONE, 9, top + level * 3, 8);
-    add('3942c', DARK_STONE, 9, top + 12, 8);
+    // ---- The upper stages, each narrower than the one below and each a different shape. A stair
+    // turret and a chimney climb past them through two notches in the balcony.
+    const notches = new Set(['8,14', '9,14', '14,5']);
+    // A run of plates along one axis that skips the notches.
+    const plateRun = (
+      axis: 'x' | 'z',
+      fixed: number,
+      from: number,
+      to: number,
+      y: number,
+      color: number,
+    ) => {
+      let start = from;
+      for (let u = from; u <= to + 1; u++) {
+        const [x, z] = axis === 'x' ? [u, fixed] : [fixed, u];
+        if (u > to || notches.has(`${x},${z}`)) {
+          if (u > start) {
+            // A run ending past the supported rows (z = 14) lays its odd plate first, over a
+            // supported cell, so no plate hangs on nothing.
+            const lead = axis === 'z' && u - 1 === to && u - start === 9 ? 1 : 0;
+            if (lead) addRun(add, 'plate', color, axis, fixed, y, start, 1);
+            addRun(
+              add,
+              'plate',
+              color,
+              axis,
+              axis === 'x' ? start : fixed,
+              y,
+              axis === 'x' ? fixed : start + lead,
+              u - start - lead,
+            );
+          }
+          start = u + 1;
+        }
+      }
+    };
+
+    // Stage 3, the guard arcade: an eight by eight open storey on the deck. Round piers carry two
+    // arches on each face, so you see straight through it; a bell hangs in the middle, with two
+    // braziers by the piers.
+    // The front and back have two four-stud arches; the sides have two three-stud arches between
+    // the corner piers' neighbours, so the corners are the front's and back's.
+    const pierCells = new Set<string>();
+    for (const a of [6, 9, 10, 13]) for (const b of [6, 13]) pierCells.add(`${a},${b}`);
+    for (const a of [7, 9, 10, 12]) for (const b of [6, 13]) pierCells.add(`${b},${a}`);
+    for (const cellKey of pierCells) {
+      const [x, z] = cellKey.split(',').map(Number) as [number, number];
+      for (const c of [0, 1]) add('3062b', stone(x, 40 + c, z), x, top + c * 3, z);
+    }
+    for (const u of [6, 10]) {
+      add('3659', LIGHT_STONE, u, top + 6, 6, 90);
+      add('3659', LIGHT_STONE, u, top + 6, 13, 90);
+    }
+    for (const u of [7, 10]) {
+      add('4490', LIGHT_STONE, 6, top + 6, u, 0);
+      add('4490', LIGHT_STONE, 13, top + 6, u, 0);
+    }
+    add('3941', GOLD, 9, top, 9);
+    add('3942c', GOLD, 9, top + 3, 9);
+    for (const [x, z] of [
+      [7, 12],
+      [12, 7],
+    ]) {
+      add('3062b', BLACK, x, top, z);
+      add('3062b', LAMP, x, top + 3, z);
+    }
+
+    // Stage 4, the balcony: a ten by ten slab, a stud proud of the arcade on every side, in two
+    // crossed layers, with a balustrade of round posts and a pinnacle on three corners.
+    const BAL = top + 9;
+    for (let z = 6; z <= 13; z++) plateRun('x', z, 5, 14, BAL, DARK_STONE);
+    for (let x = 5; x <= 14; x++) plateRun('z', x, 5, 14, BAL + 1, STONE);
+    for (let x = 5; x <= 14; x++)
+      for (let z = 5; z <= 14; z++) {
+        if (x !== 5 && x !== 14 && z !== 5 && z !== 14) continue;
+        if (notches.has(`${x},${z}`)) continue;
+        const corner = (x === 5 || x === 14) && (z === 5 || z === 14);
+        if (!corner && (x + z) % 2) continue;
+        add('3062b', LIGHT_STONE, x, BAL + 2, z);
+        if (corner) {
+          add('3062b', LIGHT_STONE, x, BAL + 5, z);
+          add('4589', DARK_STONE, x, BAL + 8, z);
+        }
+      }
+
+    // Stage 5, the watch turret: round, four studs across, three courses of stone.
+    const WY = BAL + 2;
     for (let level = 0; level < 3; level++)
-      add('3003', level % 2 ? DARK_STONE : STONE, 8, top + level * 3, 12);
-    add('3022', DARK_STONE, 8, top + 9, 12);
-    add('3062b', BLACK, 8, top + 10, 12);
-    add('3062b', BLACK, 9, top + 10, 13);
-    add('4589', BLACK, F0 + 1, top, F0 + 1);
-    add('3957a', BLACK, F0 + 1, top + 3, F0 + 1);
-    add('2335', RED, F0 + 1, top + 9, F0 + 1, 90);
+      add('87081', stone(8, 42 + level * 3, 8), 8, WY + level * 3, 8);
+    // Its cornice: a six by six slab that swells out a stud on every side, with pinnacles.
+    const CY = WY + 9;
+    for (let z = 8; z <= 11; z++) addRun(add, 'plate', DARK_STONE, 'x', 7, CY, z, 6);
+    for (let x = 7; x <= 12; x++) addRun(add, 'plate', STONE, 'z', x, CY + 1, 7, 6);
+    for (const [x, z] of [
+      [7, 7],
+      [12, 7],
+      [7, 12],
+      [12, 12],
+    ]) {
+      add('3062b', LIGHT_STONE, x, CY + 2, z);
+      add('4589', DARK_STONE, x, CY + 5, z);
+    }
+
+    // Stage 6, the lantern: four slim posts round a light, open on every side.
+    for (const [x, z] of [
+      [8, 8],
+      [11, 8],
+      [8, 11],
+      [11, 11],
+    ])
+      for (const c of [0, 1]) add('3062b', LIGHT_STONE, x, CY + 2 + c * 3, z);
+    add('3941', LAMP, 9, CY + 2, 9);
+
+    // Stage 7, the cap and the finial: a plate and a round plate swell out over the lantern, a
+    // dark cone, a small cone, a gold ball and a flag on a pole.
+    const LY = CY + 8;
+    add('3031', DARK_STONE, 8, LY, 8);
+    add('60474', STONE, 8, LY + 1, 8);
+    add('3943b', DARK_STONE, 8, LY + 2, 8);
+    add('3942c', DARK_STONE, 9, LY + 8, 9);
+    add('59900', GOLD, 9.5, LY + 14, 9.5);
+    add('3957a', BLACK, 9.5, LY + 17, 9.5);
+    add('2335', RED, 9.5, LY + 26, 9.5, 90);
+
+    // Beside the arcade, on the deck: a round stair turret with a cone, and a chimney with pots,
+    // both rising through the notches in the balcony.
+    for (let level = 0; level < 4; level++)
+      add('3941', level % 2 ? STONE : DARK_STONE, 14, top + level * 3, 4);
+    add('3942c', DARK_STONE, 14, top + 12, 4);
+    for (let level = 0; level < 5; level++)
+      add('3003', hash(8, level, 16) < 0.3 ? DARK_STONE : STONE, 8, top + level * 3, 14);
+    add('3022', DARK_STONE, 8, top + 15, 14);
+    add('3062b', BLACK, 8, top + 16, 14);
+    add('3062b', BLACK, 9, top + 16, 15);
 
     // ---- The yard: a barrel and crates by the door, lampposts on the path, rocks, pines, a few
     // plants. Kept small so the tower is the build.
