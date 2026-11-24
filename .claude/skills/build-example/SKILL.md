@@ -95,7 +95,14 @@ hand. Smoothing pieces count towards `expectedPieceCount`.
 
 ## 0. Intake
 
-Do this before reading any code. A request like "make a bakery" is under-specified, and the
+**Name the session first.** As soon as you know the subject (from the request, or from the file
+for a rework), rename this session after it with `mcp__ccd_session_mgmt__set_session_title`
+(`session_id: "self"`; load it with `ToolSearch` `select:mcp__ccd_session_mgmt__set_session_title`
+if it is deferred). Use the building's name, not "Build example": "Dom Tower of Utrecht", "Tudor
+bakery". If the subject changes or the intake answers sharpen it (a style direction, a different
+building), rename again. Skip silently if the tool is unavailable.
+
+Then do this before reading any code. A request like "make a bakery" is under-specified, and the
 usual failure is a build that looks like the last one, so **ask unless the user already gave
 every answer below or said "just build" in those words**. One `AskUserQuestion` call, these four
 questions (skip one only if the request or an attached image already answers it):
