@@ -1,5 +1,11 @@
 /* The boot splash, shared by the workshop and Brick World. An app sets its colours with
    --splash-bg, --splash-ink, --splash-muted and --splash-shadow (splashPlugin passes them). */
+/* Pin box-sizing: an app's own `* { box-sizing: border-box }` arrives when its CSS loads and would
+   shrink the letter bricks mid-animation. */
+#app-splash,
+#app-splash * {
+  box-sizing: content-box;
+}
 #app-splash {
   position: fixed;
   inset: 0;
@@ -35,6 +41,9 @@
   font-size: clamp(36px, 7vw, 76px);
   font-weight: 800;
   line-height: 1;
+  /* Keep the logo on its own layer from the first frame. Otherwise it is promoted when the float
+     starts, right as the last letter lands, and the text re-rasterises (a visible size/weight jump). */
+  will-change: transform;
   animation: splash-float 6s ease-in-out calc(400ms + var(--letters, 12) * 70ms + 400ms) infinite;
 }
 #app-splash .splash-word {
