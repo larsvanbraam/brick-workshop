@@ -250,7 +250,7 @@ export const academiegebouw: ExampleDefinition = {
   id: 'academiegebouw',
   name: 'Academiegebouw',
   tags: ['neo-renaissance', 'town', 'landmark', 'brick', 'sandstone', 'utrecht', 'square', 'tower'],
-  expectedPieceCount: 3676,
+  expectedPieceCount: 3789,
   buildArea: SIZE,
   brickIdPrefix: 'aca',
   build(drawnAdd) {
@@ -876,7 +876,34 @@ export const academiegebouw: ExampleDefinition = {
     add('3032', DARK_STONE, 37, TY + 27, 31, 90);
     add('3666', DARK_STONE, 37, TY + 27, 35, 90);
     add('3666', DARK_STONE, 37, TY + 27, 36, 90);
-    // The lantern is 4 x 4, inside the stage: x 38..41, z 32..35.
+    // Stage 2, an open belfry: eight round piers (two to each corner, one under each arch's end)
+    // carry four arches, so the sky shows through the middle and a gold bell hangs inside.
+    const AY = TY + 28;
+    for (const px of [37, 42])
+      for (const pz of [31, 36])
+        for (const qz of [pz, pz === 31 ? 32 : 35])
+          for (const c of [0, 1]) add('3062b', WHITE, px, AY + c * 3, qz, 0);
+    for (const bz of [31, 36]) add('3455', LIGHT_STONE, 37, AY + 6, bz, 90);
+    for (const bx of [37, 42]) add('3659', LIGHT_STONE, bx, AY + 6, 32, 0);
+    add('3941', GOLD, 39, AY, 33, 0);
+    add('3942c', GOLD, 39, AY + 3, 33, 0);
+    // The balcony: an eight by eight slab round the belfry's roof, with a balustrade of round posts
+    // and a pinnacle on each corner.
+    add('3035', LIGHT_STONE, 36, AY + 9, 30, 90);
+    add('3035', LIGHT_STONE, 36, AY + 9, 34, 90);
+    const BY = AY + 10;
+    for (let bx = 36; bx <= 43; bx++)
+      for (let bz = 30; bz <= 37; bz++) {
+        if (bx !== 36 && bx !== 43 && bz !== 30 && bz !== 37) continue;
+        const corner = (bx === 36 || bx === 43) && (bz === 30 || bz === 37);
+        if (!corner && (bx + bz) % 2) continue;
+        add('3062b', WHITE, bx, BY, bz, 0);
+        if (corner) {
+          add('3062b', WHITE, bx, BY + 3, bz, 0);
+          add('4589', GOLD, bx, BY + 6, bz, 0);
+        }
+      }
+    // Stage 3 is a closed lantern, 4 x 4 inside the stage: x 38..41, z 32..35, with a window each side.
     const lanternBox: Face[] = [
       [39, 35, 90],
       [39, 32, 90],
@@ -887,18 +914,71 @@ export const academiegebouw: ExampleDefinition = {
     for (const face of lanternBox)
       for (let c = 1; c <= 3; c++)
         for (const k of [0, 1]) lanternGaps.add(key(c, ...cellAt(face, k)));
-    const LY = TY + 28;
-    stage(38, 41, 32, 35, LY, 4, lanternGaps);
-    for (const [fx, fz, rot] of lanternBox) add('60593', WHITE, fx, LY + 3, fz, rot);
-    add('3031', DARK_STONE, 38, LY + 15, 32, 0);
-    // The spire: a cone, a stack of round bricks, a cap and a gold finial with a flag.
-    const SY = LY + 16;
-    add('3943b', DARK_STONE, 38, SY, 32, 0);
-    for (let i = 0; i < 4; i++) add('3941', i % 2 ? STONE : DARK_STONE, 39, SY + 6 + i * 3, 33, 0);
-    add('3942c', DARK_STONE, 39, SY + 18, 33, 0);
-    add('59900', GOLD, 39.5, SY + 24, 33.5, 0);
-    add('3957a', BLACK, 39.5, SY + 27, 33.5, 0);
-    add('2335', RED, 39.5, SY + 36, 33.5, 90);
+    stage(38, 41, 32, 35, BY, 4, lanternGaps);
+    for (const [fx, fz, rot] of lanternBox) add('60593', WHITE, fx, BY + 3, fz, rot);
+    // Its cornice juts out a stud each side, with a pinnacle on each corner.
+    const CY = BY + 15;
+    add('3032', LIGHT_STONE, 37, CY, 32, 90);
+    for (const [cx, cz] of [
+      [37, 32],
+      [42, 32],
+      [37, 35],
+      [42, 35],
+    ]) {
+      add('3062b', WHITE, cx, CY + 1, cz, 0);
+      add('4589', GOLD, cx, CY + 4, cz, 0);
+    }
+    // The cap: a cone that swells out over the cornice, a gold neck, then a second, open lantern.
+    const SY = CY + 1;
+    add('3943b', STONE, 38, SY, 32, 0);
+    add('3941', GOLD, 39, SY + 6, 33, 0);
+    add('3941', DARK_STONE, 39, SY + 9, 33, 0);
+    add('3031', LIGHT_STONE, 38, SY + 12, 32, 0);
+    for (const [cx, cz] of [
+      [38, 32],
+      [41, 32],
+      [38, 35],
+      [41, 35],
+    ])
+      for (const c of [0, 1]) add('3062b', WHITE, cx, SY + 13 + c * 3, cz, 0);
+    add('3031', LIGHT_STONE, 38, SY + 19, 32, 0);
+    // The spire on it: a slim cone, a gold ball, and a vane with a flag.
+    add('3943b', DARK_STONE, 38, SY + 20, 32, 0);
+    add('3942c', DARK_STONE, 39, SY + 26, 33, 0);
+    add('59900', GOLD, 39.5, SY + 32, 33.5, 0);
+    add('3957a', BLACK, 39.5, SY + 35, 33.5, 0);
+    add('2335', RED, 39.5, SY + 44, 33.5, 90);
+
+    // ---- A stone gable in front of the tower on each outward face of the pavilion, as in the
+    // photo: piers carry an arch over an open niche, a lintel row and a stepped pediment above,
+    // with cheese slopes on the steps. It stands on the slab, a stud clear of the tower.
+    const gable = (alongX: boolean, u0: number, wall: number) => {
+      const at = (u: number, py: number, id: string, color: number, rot?: Rotation) => {
+        const [px, pz] = alongX ? [u, wall] : [wall, u];
+        add(id, color, px, py, pz, rot ?? (alongX ? 90 : 0));
+      };
+      const along = alongX ? 90 : 0;
+      const gy = (c: number) => TY + c * 3;
+      at(u0, gy(0), '3008', TAN, along);
+      for (let c = 1; c <= 4; c++) for (const u of [u0, u0 + 6]) at(u, gy(c), '3004', TAN, along);
+      // The arch rests on the inner studs of the piers and the piers beside it close the course.
+      at(u0 + 1, gy(5), '3455', LIGHT_STONE, along);
+      for (const u of [u0, u0 + 7]) at(u, gy(5), '3005', LIGHT_STONE, along);
+      at(u0, gy(6), '3008', LIGHT_STONE, along);
+      at(u0 + 1, gy(7), '3009', TAN, along);
+      at(u0 + 2, gy(8), '3010', TAN, along);
+      at(u0 + 3, gy(9), '3004', TAN, along);
+      // Cheese slopes on the exposed studs of each step, leaning in towards the top.
+      const lean: Rotation = alongX ? 90 : 0;
+      const leanBack: Rotation = alongX ? 270 : 180;
+      for (let k = 0; k < 4; k++) {
+        const c = 7 + k;
+        at(u0 + k, gy(c), '54200', LIGHT_STONE, lean);
+        at(u0 + 7 - k, gy(c), '54200', LIGHT_STONE, leanBack);
+      }
+    };
+    gable(true, 36, 38);
+    gable(false, 30, 44);
 
     // The square and everything on it are drawn in board coordinates.
     {

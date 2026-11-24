@@ -9,7 +9,7 @@ subject at a time, with the engine's part IDs.
 | [walls.md](walls.md)                               | stone, brick, half-timber, siding, log, render; depth levels; arches; quoins          |
 | [facades-and-openings.md](facades-and-openings.md) | storeys and bands, windows, doors, bays, awnings, balconies, signs                    |
 | [roofs-and-rooflines.md](roofs-and-rooflines.md)   | roof types, texture, chimneys, dormers, towers, spires, skyline                       |
-| [towers.md](towers.md)                             | towers, keeps, gatehouses: features per face, loopholes, corbels, crenellations       |
+| [towers.md](towers.md)                             | towers, keeps, gatehouses, tiered belfries and steeples: features per face, stages    |
 | [flora-and-terrain.md](flora-and-terrain.md)       | ground, trees by species, bushes, flowers, rocks, water, paths, base outlines         |
 | [vehicles.md](vehicles.md)                         | cars, wagons, trains, boats: silhouette, colour, wheels, scenes                       |
 | [fauna.md](fauna.md)                               | animals from catalogue parts, posture, habitat, groups                                |

@@ -51,6 +51,10 @@ plain is not finished.
 - Vary the surface: a few bricks or tiles stand half a stud proud (headlight and side-stud
   bricks), beam ends and corbels stick out, loopholes and small arched windows break it up.
 - Battered bases, buttresses and corbelled turrets keep towers from being straight tubes.
+- Towers and steeples are tiered, not a shaft plus a cone: several stages that narrow as they
+  rise, at least one of them open (arches and columns you can see sky through), a balcony or
+  cornice at each change of stage, then a bulbous cap, lantern and finial with a vane
+  (`towers.md`, "Tiered towers").
 
 **A base that fits the subject, not a board with a building on it.**
 

@@ -47,6 +47,51 @@ poorest face. If that face is under 24, it needs more of the list above.
 | Stair turret       | a round or octagonal stack `87081` / `2577` against one corner, taller than the shaft, with its own cone `3942c` and loopholes |
 | Roof turret / flag | a stud-thick pole on an antenna `3957a` with flag `2335`; a cone `4589` or `59900` finial on a small turret                    |
 
+## Tiered towers (belfries, steeples, civic and church towers)
+
+A square block with a grey cone and a pole on top is not a tower, it is a placeholder. Real
+civic and church towers (the Utrecht Academiegebouw tower, a Dutch carillon tower, a town-hall
+belfry) are a **stack of different stages**, each narrower and lighter than the one below, and
+the sky shows through the upper ones. Build the stages from the reference photo; list them
+first, bottom to top.
+
+| Stage              | What it is                                                                                                | Parts and tricks                                                                                                                 |
+| ------------------ | --------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| 1. Base / shaft    | solid masonry with a few windows or loopholes, clock face on one side                                     | the plain wall of the tower; battered foot, string courses, corner quoins in a second colour                                     |
+| 2. Cornice         | a projecting band that closes the stage: one stud proud                                                   | plates or tiles in `72` / `151`, inverted slopes `3665a` / `3660a` under it, corner pinnacles on 1 x 1 round `3062b`             |
+| 3. Open arcade     | a **belfry**: the wall pulled back one stud, with arches and columns you can see through                  | columns of `3062b` / `30374` bars or 1 x 1 bricks, arches `3659` / `6091` / `85984` above, a bell (`4589`) inside                |
+| 4. Balcony         | a gallery around the top of the arcade, wider than the stage below the next                               | 1 x 2 plates in a ring, balustrade of `30055` / `3633` railing or round 1 x 1 posts, urns at the corners                         |
+| 5. Second stage    | smaller than stage 3, **a different shape** (square to octagon, octagon to round), also arched or louvred | cut corners with `3045` / `3675` / `3040b`, narrow arched windows `4070` + `3659`, louvres from `2877` grilles                   |
+| 6. Swelling cap    | the bulbous or bell-shaped roof (a "uivormige" cap) sitting on a cornice, wider than its own stage        | stacked round plates `4073` / `6141` growing then shrinking by a stud, cones `4589`, round plates, dishes, curved slopes `11477` |
+| 7. Lantern         | a small open turret on the cap: four slender posts, four tiny arches, its own tiny cap                    | 1 x 1 round bricks as posts, `3062b` rings, a cone `4589` or `59900` on top                                                      |
+| 8. Finial and vane | gilded ball, cross bar, then an antenna with a vane and flag                                              | gold `297` ball, antenna `3957a` with a 1 x 1 plate and flag `2335`                                                              |
+
+Rules for making it interesting:
+
+- **At least five stages**, at least **one open** (arches with columns, not printed on a wall).
+  Two open stages is better.
+- **Each stage differs** from the one below in width (narrower by 1 to 2 studs), plan shape
+  (square, octagon, round), opening type (arch, louvre, loophole, clock) and colour (stone
+  `19` / `28`, white `1` for dressings, grey `71` / `72` for lead cladding, gold `297` accents).
+- **Every change of stage gets a ledge**: a cornice, a balcony or a swelling. A stage that
+  steps in with no ledge reads as a stack of boxes.
+- **The cap is not a cone**. Use a bulb, a stepped dome or a bell shape, and put a lantern on
+  it. A plain cone is only for a round stair turret.
+- **Corner pinnacles** at the cornice and balcony corners (a 1 x 1 round brick with a stud or
+  a cone on top), two or four of them, as on the reference's lower balcony.
+- **Gold and dark accents**: a gilded ball, clock hands and numerals, a dark vane. They are
+  small and few, and they are what the eye reads as "expensive".
+- **Taper by proportion**: the stage heights run roughly 1 : 0.8 : 0.6 : 0.5 and widths
+  step in by about a quarter each time. The finial and vane are as tall as the lantern.
+- **Back and sides get the arches too**: an open arcade has an opening on all four faces
+  (you see through it), so it is the same on every side.
+- **Build bottom-up and check support.** Open stages sit on columns, so every column stands on
+  something and the next stage's floor spans all of them (plates over the columns). Use a
+  full ring of plates at each cornice, then the columns.
+
+Render the tower alone from slightly below at 3/4 and from head-on: the silhouette must show
+five or more distinct levels and daylight through at least one stage.
+
 ## Plan before code
 
 Write the tower down as a table before any `add()` call:
@@ -93,6 +138,8 @@ paste excerpts into code comments or docs.
 - A table of features per face, no empty cell, no two faces alike.
 - Poorest face at 24 or more distinct part and colour pairs in `example:score`.
 - At least three heights in the silhouette (shaft, turret, parapet or roof, flag).
+- Belfry and steeple towers: a stage table with five or more stages, one or more open
+  arcades, a ledge at each change of stage, a bulb cap with a lantern, a finial and vane.
 - A string course on every face and a battered base or plinth.
 - Side-stud details by hand on every face, not only the front.
 - More than two thirds of the pieces on the tower and its base.
