@@ -26,6 +26,12 @@ export interface Placed {
   readonly up: number;
   /** Height of the part's origin above the model's lowest origin, in plates. */
   readonly y: number;
+  /** Position of the part's origin across the model, in studs (LDraw x). */
+  readonly x: number;
+  /** Position of the part's origin along the model's depth, in studs (LDraw z). */
+  readonly z: number;
+  /** The part's turn about the vertical axis in degrees, when it stands upright (else 0). */
+  readonly yaw: number;
 }
 
 type Matrix = readonly [number, number, number, number, number, number, number, number, number];
@@ -97,7 +103,7 @@ export function flatten(text: string): Placed[] {
   const files = splitFiles(text);
   const main = files.keys().next().value as string | undefined;
   if (!main) return [];
-  const raw: { part: string; color: number; up: number; y: number }[] = [];
+  const raw: Placed[] = [];
   const walk = (name: string, matrix: Matrix, origin: Vector, color: number, depth: number) => {
     if (depth > 12 || raw.length > MAX_PARTS) return;
     for (const line of files.get(name) ?? []) {
@@ -120,6 +126,11 @@ export function flatten(text: string): Placed[] {
           color: inherited,
           up: combined[4],
           y: -position[1],
+          x: position[0] / 20,
+          z: position[2] / 20,
+          yaw:
+            (Math.round((Math.atan2(combined[2], combined[0]) * 180) / Math.PI / 90) * 90 + 360) %
+            360,
         });
       }
     }
@@ -237,7 +248,7 @@ export function measure(
   };
 }
 
-async function readParts(dir: string): Promise<Map<string, PartInfo | null>> {
+export async function readParts(dir: string): Promise<Map<string, PartInfo | null>> {
   const read = async (file: string, onRow: (row: Record<string, string>) => void) => {
     const parser = parse({ bom: true, columns: true, skip_empty_lines: true });
     const done = pipeline(createReadStream(join(dir, file)), createGunzip(), parser);

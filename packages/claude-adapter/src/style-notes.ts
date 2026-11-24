@@ -22,6 +22,11 @@ export const STYLE_NOTES = [
     use: 'roof types and texture, chimneys, dormers, towers, spires, skyline',
   },
   {
+    id: 'towers',
+    file: 'towers',
+    use: 'towers, keeps, turrets and gatehouses: detail per face, loopholes, barred windows, corbels, crenellations, buttresses',
+  },
+  {
     id: 'flora',
     file: 'flora-and-terrain',
     use: 'ground, trees by species, bushes, flowers, rocks, water, paths, base outlines',

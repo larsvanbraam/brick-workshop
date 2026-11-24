@@ -124,6 +124,7 @@ const architecturalExpansionIds = [
   '86210',
   '2494',
   '60607',
+  '2529',
   '60608',
   '57894',
   '15254',
@@ -245,11 +246,11 @@ const finishingAndRoundIds = [
   '40942',
   '4083',
   '42445',
-  '48729a',
+  '48734a',
   '55529',
   '6020',
   '48723',
-  '48729b',
+  '48734b',
   '6190a',
   '62113',
   '49546',
@@ -433,6 +434,7 @@ describe('catalogue-reported weights', () => {
     ).toEqual(
       new Set([
         ...MEASURED_PARTS.map((part) => part.id),
+        '2529',
         '39266',
         '3937',
         '3938',
@@ -1454,7 +1456,9 @@ describe('shaped and carried pieces in the static solver', () => {
     expect(report.gravity).not.toBe('not-assessed');
     expect(report.masses.map(({ brickId }) => brickId)).toEqual(['bracket', 'plate']);
   });
-  it.each(SMALL_EXAMPLES)(
+  // The Jail Tower's gravity is solved with HiGHS in physics-solver.test.ts: the built-in simplex
+  // fallback takes minutes on its thin hollow walls.
+  it.each(SMALL_EXAMPLES.filter(({ id }) => id !== 'jail-tower'))(
     'assesses gravity for the $name example',
     ({ id }) => {
       const assembly = createExampleAssembly(id);
@@ -1631,10 +1635,10 @@ describe('upright brick engine', () => {
   it('matches brute-force support and collision results across half-unit grid bucket boundaries', () => {
     // Resting parts stand without studs, which the brute force leaves out.
     const STUD_ONLY_PARTS = DEFAULT_BOARD_PARTS.filter((part) => !part.rests);
-    let seed = 104729;
+    let seed = 104734;
     const random = () => {
       seed = (seed * 1664525 + 1013904223) >>> 0;
-      return seed / 4294967296;
+      return seed / 4294967346;
     };
     for (let sample = 0; sample < 150; sample++) {
       const bricks = Array.from({ length: 25 }, (_, index) => {
@@ -1680,9 +1684,9 @@ describe('upright brick engine', () => {
       ).toEqual(expected);
     }
   });
-  it('contains 729 unique building and foliage parts with explicit connection sites', () => {
-    expect(PARTS).toHaveLength(729);
-    expect(new Set(PARTS.map((part) => part.id)).size).toBe(729);
+  it('contains 734 unique building and foliage parts with explicit connection sites', () => {
+    expect(PARTS).toHaveLength(734);
+    expect(new Set(PARTS.map((part) => part.id)).size).toBe(734);
     expect(PARTS.filter((part) => part.family === 'tall')).toHaveLength(10);
     expect(PARTS.filter((part) => part.family === 'slope')).toHaveLength(35);
     expect(PARTS.filter((part) => part.family === 'round')).toHaveLength(38);
@@ -1691,7 +1695,7 @@ describe('upright brick engine', () => {
       ['baseplate', 2],
       ['cone', 5],
       ['door', 7],
-      ['window', 16 + MEASURED_PARTS.filter((part) => part.family === 'window').length],
+      ['window', 17 + MEASURED_PARTS.filter((part) => part.family === 'window').length],
       ['detail', 132 + MEASURED_PARTS.filter((part) => part.family === 'detail').length],
       ['foliage', 11],
     ] as const)
@@ -2095,7 +2099,7 @@ describe('upright brick engine', () => {
 
 describe('mixed-part engine builds', () => {
   it('lays complete catalogue and tile displays on one larger board without stacking', () => {
-    for (const [id, count] of [['catalog-sampler', 729]] as const) {
+    for (const [id, count] of [['catalog-sampler', 734]] as const) {
       const assembly = createExampleAssembly(id);
       expect(assembly.buildArea).toBe(128);
       expect(assembly.bricks).toHaveLength(count);
@@ -2431,26 +2435,56 @@ describe('mixed-part engine builds', () => {
       expect(of(plant).length, plant).toBeGreaterThan(0);
   });
 
-  it('builds a jail tower: a rubble keep with a framed door, barred windows and a parapet', () => {
+  it('builds a jail tower: four different faces, string courses, a corbel table and a deck', () => {
     const assembly = createExampleAssembly('jail-tower');
     expect(assembly.name).toBe('Jail Tower');
-    expect(assembly.bricks).toHaveLength(486);
-    expect(assembly.buildArea).toBe(24);
+    expect(assembly.bricks).toHaveLength(813);
+    expect(assembly.buildArea).toBe(32);
     expect(validateAssembly(assembly)).toEqual([]);
     const of = (partId: string) => assembly.bricks.filter((brick) => brick.partId === partId);
-    // A door in its frame, four barred windows (a frame and two bar panes each), loopholes.
+    // The board puts the 20-stud plan 6 studs in; the tower's ring runs from plan 5 to 14.
+    const plan = (brick: { x: number; z: number }) => [brick.x - 6, brick.z - 6];
+    // A door in its frame under a portal arch, and one barred window on each face, two on the
+    // left at stepped heights.
     expect(of('60596')).toHaveLength(1);
     expect(of('60616a')).toHaveLength(1);
-    expect(of('60594')).toHaveLength(4);
-    expect(of('60608')).toHaveLength(8);
-    expect(of('2877').length).toBeGreaterThanOrEqual(2);
-    // Masonry walls in more than one grey, light quoins, merlons and a flag on a pole.
-    expect(of('15533').length + of('98283').length).toBeGreaterThan(20);
+    expect(of('3455')).toHaveLength(1);
+    const windows = of('60594').map(plan);
+    expect(windows).toHaveLength(5);
+    expect(windows.filter(([, z]) => z === 5)).toHaveLength(1);
+    expect(windows.filter(([, z]) => z === 14)).toHaveLength(1);
+    expect(windows.filter(([x]) => x === 14)).toHaveLength(1);
+    const left = of('60594')
+      .filter((brick) => plan(brick)[0] === 5)
+      .map((brick) => brick.y);
+    expect(left).toHaveLength(2);
+    expect(Math.abs(left[0]! - left[1]!)).toBeGreaterThan(15);
+    expect(of('60608')).toHaveLength(10);
+    expect(of('2877').length).toBeGreaterThanOrEqual(12);
+    // Masonry and logs in the walls, light quoins, a tan back storey.
+    expect(of('15533').length + of('98283').length).toBeGreaterThan(40);
     expect(new Set(of('3005').map((brick) => brick.color)).size).toBeGreaterThanOrEqual(2);
-    expect(of('3040b').length).toBeGreaterThanOrEqual(8);
+    const tan = assembly.bricks.filter(
+      (brick) => (brick.color === 19 || brick.color === 28) && plan(brick)[1] === 14,
+    );
+    expect(tan.length).toBeGreaterThanOrEqual(10);
+    // Buttresses, a chimney breast, a corbel table under the deck, merlons with slope caps, a
+    // turret with a cone and a flag.
+    expect(of('3004').length).toBeGreaterThanOrEqual(30);
+    expect(of('3003').length).toBeGreaterThanOrEqual(14);
+    expect(of('3665a').length).toBeGreaterThanOrEqual(20);
+    expect(of('54200').length).toBeGreaterThanOrEqual(30);
+    expect(of('3942c')).toHaveLength(1);
     expect(of('2335')).toHaveLength(1);
-    // Ivy and lanterns hang on side studs.
-    expect(assembly.bricks.filter((brick) => brick.facing).length).toBeGreaterThanOrEqual(10);
+    // Ivy, sills and lanterns hang on side studs.
+    expect(assembly.bricks.filter((brick) => brick.facing).length).toBeGreaterThanOrEqual(30);
+    // The tower is the build: at least two thirds of the pieces stand on the tower itself.
+    const scenery = new Set(['3471', '6064', '6255', '30093', '24866', '4727', '32607', '2039']);
+    const tower = assembly.bricks.filter((brick) => {
+      const [x, z] = plan(brick);
+      return brick.y >= 3 && x >= 3 && x <= 17 && z >= 3 && z <= 17 && !scenery.has(brick.partId);
+    });
+    expect(tower.length / assembly.bricks.length).toBeGreaterThanOrEqual(2 / 3);
   });
 
   it('provides named, valid examples with independent assembly instances', () => {
@@ -3173,6 +3207,10 @@ describe('pieces mounted on side studs', () => {
       ['848', '31b'],
       ['845', '29b'],
       ['4862', '2377'],
+      ['38320', '60592'],
+      ['30045', '30044'],
+      ['30046', '30044'],
+      ['60603', '60594'],
     ] as const) {
       expect(INSERT_FRAME_PARTS[glass]).toBe(frame);
       expect(getPart(glass)).toMatchObject({

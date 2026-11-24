@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { flatten, measure, readHeader, splitFiles } from './omr-analyse.ts';
+import { formatLayers, neighbourhood } from './omr-excerpt.ts';
 import { mainModelUrl, parseSetList } from './omr-fetch.ts';
 
 const MODEL = `0 FILE main.ldr
@@ -60,5 +61,33 @@ describe('OMR pages', () => {
     expect(mainModelUrl(html, '10001-1')).toBe(
       'https://library.ldraw.org/media/omr_models/6/10001-1.mpd',
     );
+  });
+});
+
+describe('OMR excerpts', () => {
+  it('flattens positions in studs and reads the turn about the vertical', () => {
+    const [brick, tile] = flatten(
+      [
+        '1 4 40 0 -20 0 0 1 0 1 0 -1 0 0 3004.dat',
+        '1 15 60 -24 -20 1 0 0 0 1 0 0 0 1 3069b.dat',
+      ].join('\n'),
+    );
+    expect(brick).toMatchObject({ part: '3004', x: 2, z: -1, yaw: 90 });
+    expect(tile).toMatchObject({ x: 3, z: -1, yaw: 0, y: 3 });
+  });
+
+  it('keeps the parts round a centre and prints them layer by layer', () => {
+    const placed = flatten(
+      [
+        '1 4 0 0 0 1 0 0 0 1 0 0 0 1 2877.dat',
+        '1 15 20 -24 0 1 0 0 0 1 0 0 0 1 3069b.dat',
+        '1 15 400 0 0 1 0 0 0 1 0 0 0 1 3001.dat',
+      ].join('\n'),
+    );
+    const near = neighbourhood(placed, placed[0]!, 3, 4, 12);
+    expect(near.map((p) => p.part).sort()).toEqual(['2877', '3069b']);
+    const text = formatLayers(near, placed[0]!, new Map()).join('\n');
+    expect(text).toMatch(/y 0\n\s+x\s+0\.0\s+z\s+0\.0\s+yaw\s+0\s+2877/);
+    expect(text).toMatch(/y 3\n\s+x\s+1\.0/);
   });
 });

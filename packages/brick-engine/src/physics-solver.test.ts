@@ -12,6 +12,11 @@ import {
 import type { Assembly, PhysicalOptions } from './index.ts';
 
 const SMALL_EXAMPLES = EXAMPLES.filter((example) => example.expectedPieceCount < 2500);
+/**
+ * The built-in simplex fallback takes minutes on the Jail Tower (813 pieces of thin hollow wall
+ * and a two-layer deck) where HiGHS takes under a second, so the cross-check skips it.
+ */
+const SIMPLEX_TOO_SLOW: ReadonlySet<string> = new Set(['jail-tower']);
 const options: PhysicalOptions = { estimateMissingMasses: true };
 // Assessments are cached by bricks array, so each solver gets its own copy.
 const fresh = (assembly: Assembly): Assembly => structuredClone(assembly);
@@ -40,7 +45,10 @@ describe('HiGHS static solver', () => {
   afterAll(() => setLinearSolver(null));
 
   it.each([
-    ...SMALL_EXAMPLES.map(({ id, name }) => ({ name, build: () => createExampleAssembly(id) })),
+    ...SMALL_EXAMPLES.filter(({ id }) => !SIMPLEX_TOO_SLOW.has(id)).map(({ id, name }) => ({
+      name,
+      build: () => createExampleAssembly(id),
+    })),
     { name: 'a holding overhang', build: () => overhang(8) },
     { name: 'an overloaded overhang', build: () => overhang(16) },
   ])(
@@ -63,6 +71,16 @@ describe('HiGHS static solver', () => {
     },
     60_000,
   );
+});
+
+describe('the Jail Tower under HiGHS', () => {
+  afterAll(() => setLinearSolver(null));
+  it('holds under gravity with every connection inside its limit', async () => {
+    setLinearSolver(createHighsSolver(await highsLoader()));
+    const report = assessPhysicalFeasibility(createExampleAssembly('jail-tower'), options);
+    expect(['balanced', 'requires-clutch']).toContain(report.gravity);
+    expect(report.overloadedConnections).toHaveLength(0);
+  }, 60_000);
 });
 
 describe('physical checks run elsewhere', () => {

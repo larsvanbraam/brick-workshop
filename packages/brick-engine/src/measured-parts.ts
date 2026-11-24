@@ -12066,6 +12066,64 @@ export const MEASURED_PARTS: readonly Part[] = [
     ldrawRotation: 0,
     connections: { topStuds: [], bottomReceivers: [] },
   },
+  {
+    id: '30045',
+    name: 'Window 1 x 2 x 2 & 2/3 Pane Twisted Bar with Rounded Top',
+    width: 1,
+    depth: 2,
+    height: 8,
+    kind: 'brick',
+    family: 'window',
+    shape: 'detail',
+    clearance: 'reserved',
+    ldrawRotation: 90,
+    connections: { topStuds: [], bottomReceivers: [] },
+    ldrawCenter: { x: 0, z: 4 },
+    ldrawBaseY: 40,
+  },
+  {
+    id: '30046',
+    name: 'Window 1 x 2 x 2 2/3 Pane Lattice Diamond with Rounded Top',
+    width: 1,
+    depth: 2,
+    height: 8,
+    kind: 'brick',
+    family: 'window',
+    shape: 'detail',
+    clearance: 'reserved',
+    ldrawRotation: 90,
+    connections: { topStuds: [], bottomReceivers: [] },
+    ldrawCenter: { x: 0, z: 4 },
+    ldrawBaseY: 40,
+  },
+  {
+    id: '38320',
+    name: 'Window Pane Latticed 1 x 2 x 2',
+    width: 1,
+    depth: 2,
+    height: 6,
+    kind: 'brick',
+    family: 'window',
+    shape: 'detail',
+    clearance: 'reserved',
+    ldrawRotation: 90,
+    connections: { topStuds: [], bottomReceivers: [] },
+  },
+  {
+    id: '60603',
+    name: 'Glass for Window 1 x 4 x 3 [Opening]',
+    width: 1,
+    depth: 4,
+    height: 9,
+    kind: 'brick',
+    family: 'window',
+    shape: 'detail',
+    clearance: 'reserved',
+    ldrawRotation: 90,
+    connections: { topStuds: [], bottomReceivers: [] },
+    ldrawCenter: { x: 0, z: -3 },
+    ldrawBaseY: 64,
+  },
 ];
 
 /** Glass that sits in a frame, and the frame it fits (merged into INSERT_FRAME_PARTS). */
@@ -12076,6 +12134,10 @@ export const MEASURED_INSERT_FRAMES: Readonly<Record<string, string>> = {
   '848': '31b',
   '3082': '3081b',
   '4862': '2377',
+  '30045': '30044',
+  '30046': '30044',
+  '38320': '60592',
+  '60603': '60594',
 };
 
 /** What each measured part is for, in a builder's words (see part-uses.ts). */
@@ -12727,19 +12789,19 @@ export const MEASURED_PART_USES: Readonly<Record<string, string>> = {
   '6236':
     'windows, lattice and glazed openings, facades, arched wall panels (Window 2 x 6 x 6 Freestyle)',
   '60808':
-    'windows, lattice and glazed openings, facades, arched wall panels (Panel 1 x 4 x 5 with Arched Window)',
+    'lattice and barred panes for window frames, cottage and castle windows (Panel 1 x 4 x 5 with Arched Window)',
   '30246':
-    'windows, lattice and glazed openings, facades, arched wall panels (Panel 3 x 4 x 6 with Arched Window)',
+    'lattice and barred panes for window frames, cottage and castle windows (Panel 3 x 4 x 6 with Arched Window)',
   '4444':
-    'windows, lattice and glazed openings, facades, arched wall panels (Panel 2 x 5 x 6 Wall with Arched Window)',
+    'lattice and barred panes for window frames, cottage and castle windows (Panel 2 x 5 x 6 Wall with Arched Window)',
   '48490':
-    'windows, lattice and glazed openings, facades, arched wall panels (Panel 3 x 8 x 6 with Arched Window)',
+    'lattice and barred panes for window frames, cottage and castle windows (Panel 3 x 8 x 6 with Arched Window)',
   '15627':
-    'windows, lattice and glazed openings, facades, arched wall panels (Panel 1 x 6 x 6 with Window)',
+    'lattice and barred panes for window frames, cottage and castle windows (Panel 1 x 6 x 6 with Window)',
   '30288':
-    'windows, lattice and glazed openings, facades, arched wall panels (Panel 3 x 6 x 6 Sloped with Window)',
+    'lattice and barred panes for window frames, cottage and castle windows (Panel 3 x 6 x 6 Sloped with Window)',
   '22387':
-    'windows, lattice and glazed openings, facades, arched wall panels (Panel 2 x 6 x 6 with Window Slot)',
+    'lattice and barred panes for window frames, cottage and castle windows (Panel 2 x 6 x 6 with Window Slot)',
   '3081a':
     'glazing: sits in its frame (Window 1 x 2 x 2 Classic, Extended Lip, Solid Studs [no Glass])',
   '3081b':
@@ -12760,4 +12822,11 @@ export const MEASURED_PART_USES: Readonly<Record<string, string>> = {
   '848': 'glazing: sits in its frame (Window  1 x  3 x  2 Classic Glass)',
   '3082': 'glazing: sits in its frame (Window 1 x 2 x 2 Classic Glass)',
   '4862': 'glazing: sits in its frame (Glass for Window 1 x 2 x 2 Plane)',
+  '30045':
+    'lattice and barred panes for window frames, cottage and castle windows (Window 1 x 2 x 2 & 2/3 Pane Twisted Bar with Rounded Top)',
+  '30046':
+    'lattice and barred panes for window frames, cottage and castle windows (Window 1 x 2 x 2 2/3 Pane Lattice Diamond with Rounded Top)',
+  '38320':
+    'lattice and barred panes for window frames, cottage and castle windows (Window Pane Latticed 1 x 2 x 2)',
+  '60603': 'glazing: sits in its frame (Glass for Window 1 x 4 x 3 [Opening])',
 };

@@ -27,8 +27,9 @@ Rules the registry and the tests enforce:
 - **Physics.** The full gravity solve runs up to `MAX_PHYSICS_PIECES` (1,000 pieces). Above
   that only tipping is checked, so the example gravity test expects `not-assessed` there.
 - **Instructions.** Examples under 2,500 pieces also run through the building instructions
-  tests. Keep a single-subject scene (a house, a tower) under that, and spend no more pieces
-  on scenery than on the subject.
+  tests. Keep a single-subject scene (a house, a tower) under that, and give the subject at
+  least two thirds of the pieces: scenery gets at most a third. A 500-piece tower on a 24-stud
+  board with trees, rocks and a fence has about 150 pieces left for the tower, and reads thin.
 - **Hidden supports.** Pieces only bond through studs, so a hollow shell (a roof, a dome) can
   leave cells nothing holds. Hidden posts inside it are fine: dark colour (`308` or `72`),
   never visible from any side, and counted (the courtyard house's roof needs about 100).
@@ -123,7 +124,7 @@ table gives the minimum per subject.
 | Subject                    | Read                                                             |
 | -------------------------- | ---------------------------------------------------------------- |
 | Town house, shop, modular  | walls, facades-and-openings, roofs-and-rooflines, city-and-props |
-| Castle, tower, ruin        | walls, roofs-and-rooflines, flora-and-terrain                    |
+| Castle, tower, ruin        | walls, towers, roofs-and-rooflines, flora-and-terrain            |
 | Western town, harbour      | walls, facades-and-openings, city-and-props, flora-and-terrain   |
 | Vehicle, train, boat       | vehicles, then city-and-props for its scene                      |
 | Garden, landscape, animals | flora-and-terrain, fauna                                         |
@@ -147,10 +148,15 @@ the notes were used and that the build is not a copy of an earlier one.
   `castle` and the other examples; three things on it (chimney, dormer, finial, flag, gutter).
 - **Ground and planting**: ground materials (three or four), the tree species, bushes, flowers
   in clumps, rock or water if any.
+- **Faces** (any building, tower or vehicle seen from all sides): a table with one row per
+  face (front, back, left, right) and columns for openings, relief, bands, material and side-stud
+  details. No cell is empty and no two rows match. The back is where builds go bare, so write
+  it first. Subject notes may give the columns in more detail (towers.md).
 - **Props and story**: at least eight props from four or more groups, and what is going on.
 - **Palette**: the colour IDs with rough shares, base, shadow and highlight per material.
 - **Targets**: expected piece count, small-part share (benchmark 40-56%), and the share built
-  sideways (benchmark 5-10%).
+  sideways (benchmark 5-10%), and the split of pieces between subject and scenery (subject at
+  least two thirds).
 
 ## How to build one
 
@@ -177,7 +183,13 @@ the notes were used and that the build is not a copy of an earlier one.
 3. **Bulk.** Lay floors with `layPlateFloor` (`board.ts`) and walls and slabs with the
    `layout.ts` helpers: `addRun`, `addRing`, `addBondedMap`, `addAreaMap`, `addRowMap`, and
    `glazeWindows` for glass. Keep joints staggered between courses.
-4. **Detail.** Read the technique notes for each surface and object in the build ([docs/techniques/](../../../docs/techniques/README.md): walls, facades-and-openings, roofs-and-rooflines, flora-and-terrain, vehicles, fauna, city-and-props) and go over every surface with the detail list above, by hand where it shows. This
+4. **Detail.** Procedural loops (hash-patched stone, `addRowMap` runs) are for the plain wall
+   only. Everything in the brief's **Faces** table is placed by hand, one face at a time, so
+   each face has its own windows, bands, relief and side-stud details. When unsure how a
+   construction goes together (a corbel table, a window surround, a parapet), look at how
+   official sets do it: `pnpm omr:excerpt find <part>` prints the parts round a part in the
+   LDraw models in `data/omr/` (see towers.md); adapt the idea in your own coordinates, never
+   the parts themselves, and do not paste the output into the repository. Read the technique notes for each surface and object in the build ([docs/techniques/](../../../docs/techniques/README.md): walls, facades-and-openings, roofs-and-rooflines, flora-and-terrain, vehicles, fauna, city-and-props) and go over every surface with the detail list above, by hand where it shows. This
    pass takes as long as the bulk, and it is where an example becomes good.
 5. **Smooth.** Add `smooth` passes for rocks, terrain, roots and lawns.
 6. **Count.** Update `expectedPieceCount`. To find the count and the first failing piece fast,
@@ -186,6 +198,8 @@ the notes were used and that the build is not a copy of an earlier one.
    then hangs on "Preparing build…".
 7. **Look.** Run `pnpm dev:studio`, open the example from **File**, check the badge reads
    "<n> pieces · Valid", and look at it from every side, including the back and from above.
+   Judge each face head-on against its row of the Faces table; the front looking good says
+   nothing about the others.
    The workshop autosaves the build it shows, so after each change reopen the example from
    **File**. Orbit by dragging (the angle per drag varies, so check where you ended up);
    scroll zoom is coarse; the **Top** and **Front** camera buttons give fixed views. Judge colours in the cinematic view: the normal
@@ -203,7 +217,11 @@ the notes were used and that the build is not a copy of an earlier one.
    low, or say why one is not wanted (a flat-roofed build has no sloped top). Side-mounted detail
    is where examples fall shortest: the existing examples mount about 0.1% of their pieces on
    side studs against 3-10% in official models, so plan sills, shutters, lamps, ivy and signs
-   with `seatOnSideStud` from the start.
+   with `seatOnSideStud` from the start. `Every face detailed` counts the distinct part and
+   colour pairs on the poorest face of the build; a bare back wall fails it. `Plain wall` is
+   the share of the visible wall that is a field of one brick and colour. Both are heuristics
+   calibrated on the examples: they catch a flat face, not a dull design, so the render
+   comparison in step 8 still decides.
 10. **Verify.** `pnpm test` and `pnpm check`.
 
 ## Before calling an example done

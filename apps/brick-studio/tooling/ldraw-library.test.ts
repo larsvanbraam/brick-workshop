@@ -70,6 +70,8 @@ const OVERHANGING_SIDES: Readonly<
 > = {
   u66: { x: [37, 0] },
   '74746': { x: [9, 9] },
+  // The older latticed pane's joint reaches a LDU past the footprint 60607 is measured to.
+  '2529': { z: [1, 0] },
   // A switch's command rod and tongue reach a few LDU past the end of its route's box.
   '75541-f1': { x: [0, 5] },
   '75541-f2': { x: [0, 5] },
@@ -912,6 +914,7 @@ describe('local LDraw assets', () => {
               '60602',
               '86210',
               '60607',
+              '2529',
               '60608',
               '57895',
               '2494',

@@ -1236,6 +1236,14 @@ const HAND_PARTS: readonly Part[] = [
     flippable: true,
     connections: { topStuds: [], bottomReceivers: [] },
   }),
+  // The older mould of the same pane (60607 adds reinforced joints), hung the same way.
+  architecturalPart('2529', 'Window pane 1 x 2 x 3, latticed (older)', 1, 2, 9, 'window', {
+    ldrawRotation: 0,
+    ldrawCenter: { x: -3.5, z: -13 },
+    ldrawBaseY: 68,
+    flippable: true,
+    connections: { topStuds: [], bottomReceivers: [] },
+  }),
   // The same hanging, with two glazing bars across instead of a lattice: a pair makes a grid.
   architecturalPart('60608', 'Window pane 1 x 2 x 3, two bars', 1, 2, 9, 'window', {
     ldrawRotation: 0,
@@ -4137,6 +4145,7 @@ export const INSERT_FRAME_PARTS: Readonly<Record<string, string>> = Object.freez
   '60602': '60593',
   '86210': '60594',
   '60607': '60594',
+  '2529': '60594',
   '60608': '60594',
   '57895': '57894',
   '2494': '2493b',

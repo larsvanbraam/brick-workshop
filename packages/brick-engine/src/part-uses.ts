@@ -311,6 +311,7 @@ const PART_USES: Record<string, string> = {
   '4035': 'one-piece window with glazing, simple windows',
   '60594': 'wide window frame, needs glass 86210',
   '86210': 'glass for window frame 60594',
+  '2529': 'latticed casement pane (older mould), cottage windows, frame 60594',
   '60607': 'latticed casement pane, cottage windows, frame 60593',
   '60608': 'barred casement pane, shutters, frame 60593',
   '57894': 'tall window frame with three lights, shop fronts, church windows',

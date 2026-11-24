@@ -18,7 +18,7 @@ import { pathToFileURL } from 'node:url';
 import { createGunzip } from 'node:zlib';
 import { parse } from 'csv-parse';
 import { getWorldBounds } from '../../../packages/brick-engine/src/core.ts';
-import type { Assembly } from '../../../packages/brick-engine/src/core.ts';
+import type { Assembly, Brick } from '../../../packages/brick-engine/src/core.ts';
 import { DEFAULT_PART_COLOR_EVIDENCE } from '../../../packages/brick-engine/src/part-color-evidence.ts';
 import {
   assemblyItems,
@@ -43,6 +43,11 @@ export interface Score {
   readonly platesPerBrick: number;
   /** Share of neighbouring visible wall cells at different depths: 0 is a flat box. */
   readonly wallRelief: number;
+  /** Share of visible wall cells inside a field of identical pieces at one depth. */
+  readonly plainWall: number;
+  /** Distinct part and colour pairs on the poorest and the richest face of the build. */
+  readonly poorestFace: number;
+  readonly richestFace: number;
   /** Foliage parts as a share of pieces, and how many different ones. */
   readonly plantShare: number;
   readonly plantDesigns: number;
@@ -65,6 +70,15 @@ const pct = (value: number) => `${Math.round(value * 100)}%`;
 /** Designs a build of this size should use: about 8 per 100 pieces, 40 to 150. */
 export const targetDesigns = (pieces: number) =>
   Math.min(150, Math.max(40, Math.round(pieces * 0.08)));
+
+/**
+ * Distinct part and colour pairs the poorest face of a build of 300 or more pieces should show,
+ * and the most plain wall it may have. Heuristics calibrated on the examples (the best ones sit
+ * at 31 to 83 pairs and under 25% plain wall), not measured on official sets, whose LDraw
+ * models carry no footprints to look at from four sides.
+ */
+export const FACE_TARGET = 24;
+export const PLAIN_LIMIT = 0.25;
 
 export const CHECKS: readonly Check[] = [
   {
@@ -124,6 +138,22 @@ export const CHECKS: readonly Check[] = [
     fix: 'Break the wall plane: recess openings, push headers, piers, sills and cornices a stud out, mount bay windows, porches and buttresses (walls.md, depth levels).',
   },
   {
+    key: 'faces',
+    label: 'Every face detailed',
+    target: `the poorest face of the build shows at least ${FACE_TARGET} different part and colour pairs`,
+    measure: (s) => `${s.poorestFace} on the poorest face, ${s.richestFace} on the richest`,
+    pass: (s) => (s.pieces < 300 ? undefined : s.poorestFace >= FACE_TARGET),
+    fix: 'Go round to the poorest face and give it what the front has: its own windows with sills and heads, a second wall material, bands, corbels, bars, side-mounted lamps and ivy. Hand-place these; do not let a loop fill the wall.',
+  },
+  {
+    key: 'plain',
+    label: 'Plain wall',
+    target: `at most ${pct(PLAIN_LIMIT)} of the visible wall is a field of identical pieces`,
+    measure: (s) => pct(s.plainWall),
+    pass: (s) => (s.pieces < 300 ? undefined : s.plainWall <= PLAIN_LIMIT),
+    fix: 'Break up the large fields of one brick and colour: patches of a second shade, headers, string courses, openings, side-stud bricks (walls.md).',
+  },
+  {
     key: 'plants',
     label: 'Planting',
     target:
@@ -177,18 +207,20 @@ export const PLANT_PARTS: ReadonlySet<string> = new Set([
   '2423',
 ]);
 
-/**
- * How much the visible wall surface steps in and out. Looking at the build from each of the
- * four sides, every row of the wall zone (the middle of the build's height, where roofs and
- * the base do not dominate) has a first piece in each column; relief is the share of
- * neighbouring columns and rows whose first piece sits at a different depth, in half studs.
- * Foliage is left out so trees do not count as wall relief.
- */
-export function wallRelief(assembly: Assembly): number {
-  const boxes = assembly.bricks
-    .filter((brick) => !PLANT_PARTS.has(brick.partId))
-    .map((brick) => getWorldBounds(brick));
-  if (!boxes.length) return 0;
+interface WallGrid {
+  /** Brick index + 1 per half-stud column and plate row of the wall zone; 0 is empty. */
+  readonly grid: Uint32Array;
+  readonly nx: number;
+  readonly nz: number;
+  readonly rows: number;
+  readonly bricks: readonly Brick[];
+}
+
+/** The wall zone (the middle half of the build's height) as a grid of the bricks filling it. */
+function wallGrid(assembly: Assembly): WallGrid | undefined {
+  const bricks = assembly.bricks.filter((brick) => !PLANT_PARTS.has(brick.partId));
+  const boxes = bricks.map((brick) => getWorldBounds(brick));
+  if (!boxes.length) return undefined;
   const minX = Math.min(...boxes.map((b) => b.minX));
   const minZ = Math.min(...boxes.map((b) => b.minZ));
   const minY = Math.min(...boxes.map((b) => b.minY));
@@ -198,10 +230,9 @@ export function wallRelief(assembly: Assembly): number {
   const ny = Math.ceil(maxY - minY);
   const lo = Math.floor(ny * 0.25);
   const hi = Math.ceil(ny * 0.75);
-  if (hi - lo < 3) return 0;
-  const grid = new Uint8Array(nx * nz * (hi - lo));
-  const at = (x: number, y: number, z: number) => (y * nz + z) * nx + x;
-  for (const b of boxes) {
+  if (hi - lo < 3) return undefined;
+  const grid = new Uint32Array(nx * nz * (hi - lo));
+  boxes.forEach((b, index) => {
     const x0 = Math.floor((b.minX - minX) * 2 + 1e-6);
     const x1 = Math.ceil((b.maxX - minX) * 2 - 1e-6);
     const z0 = Math.floor((b.minZ - minZ) * 2 + 1e-6);
@@ -209,13 +240,17 @@ export function wallRelief(assembly: Assembly): number {
     const y0 = Math.max(lo, Math.floor(b.minY - minY + 1e-6));
     const y1 = Math.min(hi, Math.ceil(b.maxY - minY - 1e-6));
     for (let y = y0; y < y1; y++)
-      for (let z = z0; z < z1; z++) for (let x = x0; x < x1; x++) grid[at(x, y - lo, z)] = 1;
-  }
-  let pairs = 0;
-  let steps = 0;
-  const rows = hi - lo;
-  // depth[y][lateral] from each of four sides; -1 where the ray finds nothing.
-  const faces: {
+      for (let z = z0; z < z1; z++)
+        for (let x = x0; x < x1; x++) grid[(y - lo) * nz * nx + z * nx + x] = index + 1;
+  });
+  return { grid, nx, nz, rows: hi - lo, bricks };
+}
+
+/** What a viewer sees from one side: per row and column, the first brick and its depth. */
+function faces(wall: WallGrid) {
+  const { grid, nx, nz, rows } = wall;
+  const at = (x: number, y: number, z: number) => (y * nz + z) * nx + x;
+  const sides: {
     lateral: number;
     depth: number;
     cell: (l: number, d: number, y: number) => number;
@@ -225,28 +260,107 @@ export function wallRelief(assembly: Assembly): number {
     { lateral: nz, depth: nx, cell: (l, d, y) => at(d, y, l) },
     { lateral: nz, depth: nx, cell: (l, d, y) => at(nx - 1 - d, y, l) },
   ];
-  for (const face of faces) {
-    const first = new Int32Array(rows * face.lateral).fill(-1);
+  return sides.map((side) => {
+    const depth = new Int32Array(rows * side.lateral).fill(-1);
+    const brick = new Uint32Array(rows * side.lateral);
     for (let y = 0; y < rows; y++)
-      for (let l = 0; l < face.lateral; l++)
-        for (let d = 0; d < face.depth; d++)
-          if (grid[face.cell(l, d, y)]) {
-            first[y * face.lateral + l] = d;
+      for (let l = 0; l < side.lateral; l++)
+        for (let d = 0; d < side.depth; d++) {
+          const found = grid[side.cell(l, d, y)]!;
+          if (found) {
+            depth[y * side.lateral + l] = d;
+            brick[y * side.lateral + l] = found;
             break;
           }
-    const compare = (a: number, b: number) => {
-      if (a < 0 || b < 0) return;
-      pairs++;
-      if (a !== b) steps++;
-    };
-    for (let y = 0; y < rows; y++)
+        }
+    return { lateral: side.lateral, depth, brick };
+  });
+}
+
+/**
+ * How much the visible wall surface steps in and out. Looking at the build from each of the
+ * four sides, every row of the wall zone (the middle of the build's height, where roofs and
+ * the base do not dominate) has a first piece in each column; relief is the share of
+ * neighbouring columns and rows whose first piece sits at a different depth, in half studs.
+ * Foliage is left out so trees do not count as wall relief.
+ */
+export function wallRelief(assembly: Assembly): number {
+  const wall = wallGrid(assembly);
+  if (!wall) return 0;
+  let pairs = 0;
+  let steps = 0;
+  const compare = (a: number, b: number) => {
+    if (a < 0 || b < 0) return;
+    pairs++;
+    if (a !== b) steps++;
+  };
+  for (const face of faces(wall)) {
+    for (let y = 0; y < wall.rows; y++)
       for (let l = 0; l < face.lateral; l++) {
-        const here = first[y * face.lateral + l]!;
-        if (l + 1 < face.lateral) compare(here, first[y * face.lateral + l + 1]!);
-        if (y + 1 < rows) compare(here, first[(y + 1) * face.lateral + l]!);
+        const here = face.depth[y * face.lateral + l]!;
+        if (l + 1 < face.lateral) compare(here, face.depth[y * face.lateral + l + 1]!);
+        if (y + 1 < wall.rows) compare(here, face.depth[(y + 1) * face.lateral + l]!);
       }
   }
   return pairs ? steps / pairs : 0;
+}
+
+/** Detail of the visible wall, per face of the build. */
+export interface WallDetail {
+  /** Share of visible wall cells whose four neighbours are the same part, colour and depth. */
+  readonly plain: number;
+  /** Distinct part and colour combinations seen on each face; the poorest face. */
+  readonly poorestFace: number;
+  /** The same for the richest face. */
+  readonly richestFace: number;
+}
+
+/**
+ * Measures how plain the visible wall is, from the same four views as `wallRelief`. A cell is
+ * plain when its left, right, upper and lower neighbours are the same part in the same colour
+ * at the same depth: the inside of a field of identical bricks. A face counts its distinct
+ * part and colour pairs, so a bare back wall shows up next to a decorated front. Faces that
+ * show almost nothing (the build's depth seen end-on) are left out.
+ */
+export function wallDetail(assembly: Assembly): WallDetail {
+  const wall = wallGrid(assembly);
+  if (!wall) return { plain: 0, poorestFace: 0, richestFace: 0 };
+  let cells = 0;
+  let plain = 0;
+  const variety: number[] = [];
+  for (const face of faces(wall)) {
+    const key = (index: number) => {
+      const brick = face.brick[index]!;
+      if (!brick) return '';
+      const { partId, color } = wall.bricks[brick - 1]!;
+      return `${partId}:${color}:${face.depth[index]}`;
+    };
+    const seen = new Set<string>();
+    let visible = 0;
+    for (let y = 0; y < wall.rows; y++)
+      for (let l = 0; l < face.lateral; l++) {
+        const index = y * face.lateral + l;
+        const here = key(index);
+        if (!here) continue;
+        visible++;
+        seen.add(here.slice(0, here.lastIndexOf(':')));
+        if (y === 0 || y === wall.rows - 1 || l === 0 || l === face.lateral - 1) continue;
+        cells++;
+        if (
+          key(index - 1) === here &&
+          key(index + 1) === here &&
+          key(index - face.lateral) === here &&
+          key(index + face.lateral) === here
+        )
+          plain++;
+      }
+    if (visible > wall.rows * 4) variety.push(seen.size);
+  }
+  return {
+    plain: cells ? plain / cells : 0,
+    poorestFace: variety.length ? Math.min(...variety) : 0,
+    richestFace: variety.length ? Math.max(...variety) : 0,
+  };
 }
 
 export function partMix(assembly: Assembly, catalogue: Catalogue): Map<string, number> {
@@ -280,6 +394,7 @@ export function scoreAssembly(
   });
   const plants = bricks.filter((brick) => PLANT_PARTS.has(brick.partId));
   const mix = partMix(assembly, catalogue);
+  const detailOf = wallDetail(assembly);
   let nearest: Score['nearest'];
   for (const [other, vector] of others) {
     if (other === id) continue;
@@ -296,6 +411,9 @@ export function scoreAssembly(
     mainColors: summary.mainColors,
     platesPerBrick: summary.platesPerBrick,
     wallRelief: wallRelief(assembly),
+    plainWall: detailOf.plain,
+    poorestFace: detailOf.poorestFace,
+    richestFace: detailOf.richestFace,
     plantShare: bricks.length ? plants.length / bricks.length : 0,
     plantDesigns: new Set(plants.map((brick) => brick.partId)).size,
     ...(nearest ? { nearest } : {}),

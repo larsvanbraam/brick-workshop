@@ -3,13 +3,15 @@ import type { Brick, Facing, Rotation } from '../core.ts';
 import { addRowMap, addRun, bottomUp } from './layout.ts';
 import type { ExampleBrickAdder, ExampleDefinition } from './types.ts';
 
-// A squat medieval jail tower in a gravelled courtyard: rubble stone with light quoins on a
-// battered plinth, a heavy door in its frame, barred windows on three storeys, an overhanging
-// parapet with merlons and a small round turret on the roof, ivy and a lantern on side studs,
-// pines, rocks and a fence round the edge. The board is 24 studs square, front at low z.
-const SIZE = 24;
-/** The plan is drawn from a 16-stud corner; the board puts it this far in. */
-const OFF = (SIZE - 16) / 2;
+// A medieval jail tower, ten studs square and nineteen bricks tall, in a small gravelled yard.
+// Every face is its own: the front has a framed door in a stone portal; the right has two
+// buttresses and a loophole; the back has a tan lower storey, a chimney breast and a window; the
+// left has dark stone below, two barred windows at stepped heights and a climb of ivy. All four
+// share string courses, a corbel table under an overhanging crenellated deck, a round turret, a
+// chimney and a flag. The tower is two thirds of the pieces; the yard is the rest.
+const SIZE = 32;
+/** The plan is drawn from a 20-stud corner; the board puts it this far in. */
+const OFF = (SIZE - 20) / 2;
 /** The two-layer plate floor under the plan. */
 const FLOOR = 2;
 
@@ -36,27 +38,54 @@ const hash = (a: number, b: number, c: number) => {
   return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
 };
 
-// The courtyard: a blob of ground with bays, bare bedrock at the board's edge.
+// The tower's ring of wall: x and z from T0 to T1, with cells U0 to U1 between the corners.
+const T0 = 5;
+const T1 = 14;
+const U0 = 6;
+const U1 = 13;
+/** The overhanging deck runs this far out and in: from F0 to F1 on both axes. */
+const F0 = T0 - 2;
+const F1 = T1 + 2;
+
+type Face = 'F' | 'B' | 'L' | 'R';
+/** The turn that leans a slope's low side outwards from a face. */
+const OUTWARD: Record<Face, Rotation> = { F: 0, B: 180, L: 90, R: 270 };
+const FACES: Face[] = ['F', 'B', 'L', 'R'];
+const FACING: Record<Face, Facing> = { F: '-z', B: '+z', L: '-x', R: '+x' };
+const alongX = (face: Face) => face === 'F' || face === 'B';
+/** The wall cell of a face at position `u` along it. */
+const cell = (face: Face, u: number): [number, number] =>
+  face === 'F' ? [u, T0] : face === 'B' ? [u, T1] : face === 'L' ? [T0, u] : [T1, u];
+
+// The courtyard: a blob of ground round the tower, bare bedrock at the board's edge.
 const onGround = (x: number, z: number) =>
-  Math.sqrt((x - 7.5) ** 2 * 0.9 + (z - 7.5) ** 2 * 1) <
-  12.2 - 3 * hash(Math.floor(x / 3), Math.floor(z / 3), 5);
-const onPath = (x: number, z: number) => (x === 7 || x === 8) && z >= -3 && z <= 3;
-const inTower = (x: number, z: number) => x >= 4 && x <= 11 && z >= 4 && z <= 11;
+  Math.hypot(x - 9.5, z - 9.5) < 11.6 - 2.4 * hash(Math.floor(x / 3), Math.floor(z / 3), 5);
+const onPath = (x: number, z: number) => x >= 8 && x <= 11 && z >= -3 && z <= 3;
+const inTower = (x: number, z: number) => x >= T0 - 1 && x <= T1 + 1 && z >= T0 - 1 && z <= T1 + 1;
 
 const groundChar = (x: number, z: number) => {
-  const d = Math.hypot(x - 7.5, z - 7.5);
+  const d = Math.hypot(x - 9.5, z - 9.5);
   const roll = hash(Math.floor(x / 2), Math.floor(z / 2), 3);
-  if (d < 6.5) return roll < 0.3 ? 'V' : roll > 0.9 ? 't' : 'v';
-  if (d < 9.5) return roll < 0.35 ? 'E' : roll > 0.85 ? 'n' : 'e';
+  if (d < 8) return roll < 0.3 ? 'V' : roll > 0.9 ? 't' : 'v';
+  if (d < 10.5) return roll < 0.35 ? 'E' : roll > 0.85 ? 'n' : 'e';
   return roll < 0.3 ? 'G' : 'g';
 };
 
 /** Rubble: Light Bluish Grey with dark patches low down and tan and light ones high up. */
 const stone = (x: number, y: number, z: number) => {
   const patch = hash(Math.floor(x / 2) + 3 * y, Math.floor(z / 2), 7);
-  const dark = 0.36 - y * 0.008;
-  const light = 0.87 + y * 0.003;
+  const dark = 0.36 - y * 0.006;
+  const light = 0.87 + y * 0.002;
   return patch < dark ? DARK_STONE : patch > light ? (hash(x, y, z) < 0.5 ? TAN : DARK_TAN) : STONE;
+};
+
+/** The wall colour of a cell: each face has its own lower storey. */
+const wallColor = (face: Face, course: number, x: number, z: number) => {
+  const patch = hash(Math.floor(x / 2) + 3 * course, Math.floor(z / 2), 11);
+  if (face === 'B' && course < 6) return patch < 0.3 ? DARK_TAN : patch > 0.93 ? STONE : TAN;
+  if (face === 'L' && course < 6)
+    return patch < 0.28 ? STONE : patch > 0.94 ? LIGHT_STONE : DARK_STONE;
+  return stone(x, course * 3, z);
 };
 
 type Piece = {
@@ -68,11 +97,13 @@ type Piece = {
   rotation: Rotation;
 };
 
+type Claim = { kind: 'open' } | { kind: 'host'; leaf: 'ivy' | 'lamp' | 'sill' } | { kind: 'quoin' };
+
 export const jailTower: ExampleDefinition = {
   id: 'jail-tower',
   name: 'Jail Tower',
   tags: ['medieval', 'tower', 'jail', 'stone', 'barred-windows', 'courtyard', 'landscape'],
-  expectedPieceCount: 486,
+  expectedPieceCount: 813,
   buildArea: SIZE,
   brickIdPrefix: 'jail',
   build(drawnAdd) {
@@ -153,35 +184,41 @@ export const jailTower: ExampleDefinition = {
       throw new Error(`No side stud facing ${facing}.`);
     };
 
-    // A 24 x 24 floor in two layers, every seam of the top over the middle of a plate below.
+    // The floor under the plan: 32 x 32 in two layers of big plates, every seam of the top over
+    // the middle of a plate below. It is the board's bedrock.
     const plates: [string, number, number, number, Rotation][] = [
-      ['41539', 0, 0, 0, 0],
-      ['92438', 8, 0, 0, 90],
-      ['92438', 0, 8, 0, 0],
-      ['91405', 8, 8, 0, 0],
-      ['91405', 0, 0, 1, 0],
-      ['92438', 16, 0, 1, 0],
-      ['92438', 0, 16, 1, 90],
-      ['41539', 16, 16, 1, 0],
+      ['91405', 0, 0, 0, 0],
+      ['91405', 16, 0, 0, 0],
+      ['91405', 0, 16, 0, 0],
+      ['91405', 16, 16, 0, 0],
+      ['91405', 8, 8, 1, 0],
+      ['92438', 0, 8, 1, 0],
+      ['92438', 24, 8, 1, 0],
+      ['92438', 8, 0, 1, 90],
+      ['92438', 8, 24, 1, 90],
+      ['41539', 0, 0, 1, 0],
+      ['41539', 24, 0, 1, 0],
+      ['41539', 0, 24, 1, 0],
+      ['41539', 24, 24, 1, 0],
     ];
     for (const [partId, x, z, y, rotation] of plates) order.add(partId, BEDROCK, x, y, z, rotation);
 
     // The courtyard, a plate high: gravel by the tower, earth round it, grass at the edge, and a
     // path of tan tiles to the door.
+    const counted = add;
     const ground: string[] = [];
-    for (let row = 0; row < SIZE; row++) {
+    for (let row = 0; row < 20; row++) {
       let line = '';
-      for (let col = 0; col < SIZE; col++) {
-        const x = col - OFF;
-        const z = row - OFF;
-        if (onPath(x, z)) line += (x + z) % 2 || hash(x, z, 9) < 0.3 ? 'p' : 'q';
-        else if (!onGround(x, z) && !inTower(x, z)) line += ' ';
-        else line += groundChar(x, z);
+      for (let col = 0; col < 20; col++) {
+        if (onPath(col, row) && row <= 1)
+          line += (col + row) % 2 || hash(col, row, 9) < 0.3 ? 'p' : 'q';
+        else if (!onGround(col, row) && !inTower(col, row)) line += ' ';
+        else line += groundChar(col, row);
       }
       ground.push(line);
     }
     const onBoard: ExampleBrickAdder = (partId, color, x, y, z, ...rest) =>
-      add(partId, color, x - OFF, y, z - OFF, ...rest);
+      counted(partId, color, x, y, z, ...rest);
     addRowMap(onBoard, ground, 1, {
       v: ['plate', STONE],
       V: ['plate', DARK_STONE],
@@ -195,156 +232,168 @@ export const jailTower: ExampleDefinition = {
       q: ['tile', DARK_TAN],
     });
     const base = 2;
+    /** The height of the bottom of a wall course; each string course adds a plate above it. */
+    const yOf = (course: number) =>
+      base + course * 3 + (course >= 6 ? 1 : 0) + (course >= 12 ? 1 : 0) + (course >= 18 ? 1 : 0);
+    const COURSES = 18;
+    const cap = COURSES; // the cap course under the deck
 
-    // A plinth of dark plates one stud proud of the walls.
+    // A plinth of dark plates one stud proud of the walls, left open at the door and the breast.
     for (const [x, z, length, axis] of [
-      [5, 4, 1, 'x'],
-      [10, 4, 1, 'x'],
-      [5, 11, 6, 'x'],
-      [4, 5, 6, 'z'],
-      [11, 5, 6, 'z'],
+      [T0, T0 - 1, 3, 'x'],
+      [12, T0 - 1, 3, 'x'],
+      [T0 - 1, T0 - 1, T1 - T0 + 3, 'z'],
+      [T1 + 1, T0 - 1, T1 - T0 + 3, 'z'],
+      [T0, T1 + 1, 3, 'x'],
+      [10, T1 + 1, 5, 'x'],
     ] as [number, number, number, 'x' | 'z'][])
       addRun(add, 'plate', DARK_STONE, axis, x, base, z, length);
 
-    // Ivy hosts: side-stud bricks in the wall, one cell each, and lantern hosts by the door.
-    const hosts = new Map<string, Facing>();
-    for (const [x, y, z, facing] of [
-      [5, 11, 6, '-x'],
-      [5, 5, 9, '-x'],
-      [10, 8, 6, '+x'],
-      [10, 11, 9, '+x'],
+    // ---- The faces, planned: what is claimed here is left out of the plain wall and then placed
+    // by hand below.
+    const claims = new Map<string, Claim>();
+    const key = (face: Face, u: number, course: number) => `${face}${u},${course}`;
+    const claim = (face: Face, u0: number, u1: number, c0: number, c1: number, what: Claim) => {
+      for (let u = u0; u <= u1; u++)
+        for (let c = c0; c <= c1; c++) {
+          if (claims.has(key(face, u, c))) throw new Error(`Claimed twice: ${face} ${u},${c}.`);
+          claims.set(key(face, u, c), what);
+        }
+    };
+    const host = (face: Face, u: number, course: number, leaf: 'ivy' | 'lamp' | 'sill') =>
+      claim(face, u, u, course, course, { kind: 'host', leaf });
 
-      [5, 8, 5, '-x'],
-      [10, 5, 5, '+x'],
-      [5, 11, 5, '-x'],
-      [10, 11, 5, '+x'],
-      [5, 14, 5, '-x'],
-      [6, 8, 10, '+z'],
-      [9, 11, 10, '+z'],
-      [6, 14, 10, '+z'],
-      [9, 5, 10, '+z'],
-      [5, 14, 9, '-x'],
-      [5, 8, 6, '-x'],
-      [10, 14, 6, '+x'],
-      [10, 5, 9, '+x'],
-      [5, 17, 9, '-x'],
-      [5, 20, 6, '-x'],
-      [10, 17, 6, '+x'],
-      [10, 20, 9, '+x'],
-      [6, 17, 10, '+z'],
-      [9, 20, 10, '+z'],
+    const windows: [Face, number, number][] = [
+      ['F', 8, 8],
+      ['R', 8, 8],
+      ['B', 10, 8],
+      ['L', 6, 2],
+      ['L', 10, 8],
+    ];
+    for (const [face, u, course] of windows) {
+      claim(face, u, u + 3, course, course + 2, { kind: 'open' });
+      claim(face, u, u + 3, course + 3, course + 3, { kind: 'open' });
+      for (let i = 0; i < 4; i++) host(face, u + i, course - 1, 'sill');
+    }
+    const slits: [Face, number, number, number][] = [
+      ['F', 6, 13, 14],
+      ['F', 12, 13, 14],
+      ['R', 9, 3, 3],
+      ['R', 9, 13, 14],
+      ['B', 6, 8, 8],
+      ['B', 11, 13, 14],
+      ['L', 9, 13, 14],
+      ['L', 6, 8, 9],
+    ];
+    for (const [face, u, c0, c1] of slits) claim(face, u, u + 1, c0, c1, { kind: 'open' });
+    // The door: a frame the width of four studs, six bricks tall, in a stone portal.
+    claim('F', 8, 11, 0, 5, { kind: 'open' });
+    // Lanterns beside the portal.
+    host('F', 6, 3, 'lamp');
+    host('F', 13, 3, 'lamp');
+    host('B', 12, 4, 'lamp');
+    host('L', 13, 6, 'lamp');
+    // Ivy climbing the left face and the right face's lower corner.
+    for (const [u, c] of [
+      [10, 1],
+      [11, 2],
+      [10, 3],
+      [11, 3],
+      [11, 5],
+      [12, 6],
+      [13, 7],
+    ] as [number, number][])
+      if (!claims.has(key('L', u, c))) host('L', u, c, 'ivy');
+    for (const [u, c] of [
+      [8, 1],
+      [11, 1],
+      [8, 2],
+      [11, 3],
+      [11, 4],
+    ] as [number, number][])
+      if (!claims.has(key('R', u, c))) host('R', u, c, 'ivy');
+    // Light quoin cells beside the corners on every odd course: long and short bricks alternate.
+    for (const face of FACES)
+      for (const u of [U0, U1])
+        for (let c = 1; c <= cap; c += 2)
+          if (!claims.has(key(face, u, c))) claims.set(key(face, u, c), { kind: 'quoin' });
 
-      [10, 14, 5, '+x'],
-    ] as [number, number, number, Facing][])
-      hosts.set(`${x},${y},${z}`, facing);
-
-    // The walls: a hollow ring 6 studs square, a course every three plates, light quoins at the
-    // corners, a door in the front, barred windows, loopholes of grille bricks.
-    const DOOR_COURSES = 6;
-    const WINDOW_COURSES = [7, 8, 9];
-    const windowAt = (x: number, z: number, course: number) =>
-      WINDOW_COURSES.includes(course) &&
-      (((z === 5 || z === 10) && x >= 6 && x <= 9) || ((x === 5 || x === 10) && z >= 6 && z <= 9));
-    const slitAt = (x: number, z: number, course: number) =>
-      course === 3 && ((x === 5 && z === 6) || (x === 10 && z === 7) || (z === 10 && x === 6));
-    const courses = 14;
-    for (let course = 0; course < courses; course++) {
-      // The stringcourse plates sit between course 9 and 10, so the courses above rise a plate.
-      const y = base + course * 3 + (course >= 10 ? 1 : 0);
+    // ---- The plain wall: a hollow ring one brick thick, a course every three plates.
+    for (let c = 0; c <= cap; c++) {
+      const y = c === cap ? yOf(18) : yOf(c);
       for (const [x, z] of [
-        [5, 5],
-        [10, 5],
-        [5, 10],
-        [10, 10],
-      ]) {
-        const facing = hosts.get(`${x},${y},${z}`);
-        if (facing) {
-          const host = sideStud(x, y, z, facing, course % 2 ? STONE : LIGHT_STONE);
-          // The two corners by the door carry lanterns; the rest, ivy.
-          if (y === 14) mount(host, '3062b', LAMP, facing);
-          else mount(host, '6141', y < 10 ? OLIVE : DARK_GRASS, facing);
-        } else add('3005', course % 2 ? STONE : LIGHT_STONE, x, y, z);
-      }
-      const walls: ['x' | 'z', number][] = [
-        ['x', 5],
-        ['x', 10],
-        ['z', 5],
-        ['z', 10],
-      ];
-      for (const [axis, fixed] of walls) {
-        let cell = 0;
-        const blocked = (at: number) => {
-          const [x, z] = axis === 'x' ? [at, fixed] : [fixed, at];
-          return (
-            (axis === 'x' && fixed === 5 && course < DOOR_COURSES) ||
-            windowAt(x, z, course) ||
-            slitAt(x, z, course) ||
-            hosts.has(`${x},${y},${z}`)
-          );
-        };
-        while (cell < 4) {
-          const at = 6 + cell;
-          const [x, z] = axis === 'x' ? [at, fixed] : [fixed, at];
-          const facing = hosts.get(`${x},${y},${z}`);
-          if (facing) {
-            const host = sideStud(x, y, z, facing, stone(x, y, z));
-            const leaf = hash(x, y, z);
-            mount(
-              host,
-              leaf < 0.4 ? '6141' : leaf < 0.75 ? '54200' : '3024',
-              y < 10 ? OLIVE : leaf < 0.5 ? DARK_GRASS : GRASS,
-              facing,
-            );
-            cell++;
+        [T0, T0],
+        [T1, T0],
+        [T0, T1],
+        [T1, T1],
+      ])
+        add('3005', c % 2 ? STONE : LIGHT_STONE, x, y, z);
+      for (const face of FACES) {
+        const horizontal = alongX(face);
+        let u = U0;
+        while (u <= U1) {
+          const claimed = claims.get(key(face, u, c));
+          const [x, z] = cell(face, u);
+          if (claimed?.kind === 'host') {
+            const piece = sideStud(x, y, z, FACING[face], wallColor(face, c, x, z));
+            if (claimed.leaf === 'lamp') mount(piece, '3062b', LAMP, FACING[face]);
+            else if (claimed.leaf === 'sill') mount(piece, '3024', LIGHT_STONE, FACING[face]);
+            else {
+              const leaf = hash(x, y, z);
+              mount(
+                piece,
+                leaf < 0.4 ? '6141' : leaf < 0.75 ? '54200' : '3024',
+                c < 4 ? OLIVE : leaf < 0.5 ? DARK_GRASS : GRASS,
+                FACING[face],
+              );
+            }
+            u++;
             continue;
           }
-          if (slitAt(x, z, course)) {
-            // A loophole: a grille brick across two cells, in the wall's colour.
-            add('2877', DARK_STONE, x, y, z, axis === 'x' ? 90 : 0);
-            cell += 2;
+          if (claimed?.kind === 'quoin') {
+            add(c % 4 === 1 ? '4070' : '3005', LIGHT_STONE, x, y, z);
+            u++;
             continue;
           }
-          if (blocked(at)) {
-            cell++;
+          if (claimed) {
+            u++;
             continue;
           }
           let run = 1;
-          while (cell + run < 4 && !blocked(at + run)) run++;
-          const max = course % 2 ? 2 : 4;
+          while (u + run <= U1 && !claims.has(key(face, u + run, c))) run++;
+          const max = c % 2 ? 3 : 4;
           let left = run;
-          let start = at;
+          let start = u;
           while (left > 0) {
-            const size = [4, 2, 1].find((s) => s <= left && s <= max)!;
-            const plain = hash(start, y, fixed) < 0.22;
+            const size = [4, 3, 2, 1].find((s) => s <= left && s <= max)!;
+            const [px, pz] = cell(face, start);
+            const roll = hash(start, y, px + pz);
+            const plain = roll < 0.22;
             const part =
               size === 4
                 ? plain
                   ? '3010'
                   : '15533'
-                : size === 2
-                  ? plain
-                    ? '4216'
-                    : '98283'
-                  : '3005';
-            const [px, pz] = axis === 'x' ? [start, fixed] : [fixed, start];
-            add(part, stone(px, y, pz), px, y, pz, axis === 'x' && size > 1 ? 90 : 0);
+                : size === 3
+                  ? '3622'
+                  : size === 2
+                    ? plain
+                      ? '4216'
+                      : roll > 0.93
+                        ? '30136'
+                        : '98283'
+                    : '3005';
+            add(part, wallColor(face, c, px, pz), px, y, pz, horizontal && size > 1 ? 90 : 0);
             start += size;
             left -= size;
           }
-          cell += run;
+          u += run;
         }
       }
     }
 
-    // The door: a frame the width of the front wall and a heavy leaf in dark timber.
-    const frame: Piece = {
-      partId: '60596',
-      color: DARK_STONE,
-      x: 6,
-      y: base,
-      z: 5,
-      rotation: 90,
-    };
+    // ---- The front: a door in its frame under a stone portal.
+    const frame: Piece = { partId: '60596', color: DARK_STONE, x: 8, y: base, z: T0, rotation: 90 };
     add(frame.partId, frame.color, frame.x, frame.y, frame.z, frame.rotation);
     let fitted = false;
     for (const rotation of [90, 270] as Rotation[])
@@ -366,219 +415,205 @@ export const jailTower: ExampleDefinition = {
           }
         }
     if (!fitted) throw new Error('No fit for the jail door.');
+    // Two steps up to the door: slopes and plates on the path.
+    add('3039', STONE, 8, base, T0 - 3, 180);
+    add('3039', STONE, 10, base, T0 - 3, 180);
+    // Two pillars a stud out from the wall flank the frame, with a light lintel across them that
+    // doubles as the front's first string course.
+    for (const x of [7, 12])
+      for (let level = 0; level < 6; level++)
+        add('3005', stone(x, level, 3), x, base + 1 + level * 3, T0 - 1);
+    add('3455', LIGHT_STONE, 7, base + 19, T0 - 1, 90);
 
-    // Barred windows above the door on every side: a four-wide frame with a pane of two bars at
-    // each end, one of them turned upside down so the two mirror each other.
-    {
-      const y = base + WINDOW_COURSES[0]! * 3;
-      for (const [x, z, rotation, along] of [
-        [6, 5, 90, 'x'],
-        [6, 10, 90, 'x'],
-        [5, 6, 0, 'z'],
-        [10, 6, 0, 'z'],
-      ] as [number, number, Rotation, 'x' | 'z'][]) {
-        add('60594', DARK_STONE, x, y, z, rotation);
-        add('60608', BLACK, along === 'x' ? x + 2 : x, y, along === 'x' ? z : z + 2, rotation);
-        add('60608', BLACK, x, y, z, rotation, undefined, true);
+    // ---- Windows: a four-wide frame with a pane of bars at each end, one turned upside down; a
+    // light lintel above and a sill of plates on side studs below (planned above).
+    for (const [face, u, course] of windows) {
+      const [x, z] = cell(face, u);
+      const horizontal = alongX(face);
+      const rotation: Rotation = horizontal ? 90 : 0;
+      const y = yOf(course);
+      add('60594', DARK_STONE, x, y, z, rotation);
+      add('60608', BLACK, horizontal ? x + 2 : x, y, horizontal ? z : z + 2, rotation);
+      add('60608', BLACK, x, y, z, rotation, undefined, true);
+      add('3010', LIGHT_STONE, x, yOf(course + 3), z, rotation);
+    }
+    // Loopholes: grille bricks across two cells, a stack of one or two.
+    for (const [face, u, c0, c1] of slits)
+      for (let c = c0; c <= c1; c++) {
+        const [x, z] = cell(face, u);
+        add('2877', DARK_STONE, x, yOf(c), z, alongX(face) ? 90 : 0);
+      }
+
+    // ---- Relief: buttresses on the right face, topped with cheese slopes under the string
+    // course; the chimney breast on the back face, rising to a pitched cap.
+    for (const z of [6, 12]) {
+      for (let level = 0; level < 11; level++)
+        add('3004', stone(T1 + 1, level, z), T1 + 1, base + 1 + level * 3, z);
+      for (let i = 0; i < 2; i++) add('54200', LIGHT_STONE, T1 + 1, base + 34, z + i, 270);
+    }
+    for (let level = 0; level < 5; level++)
+      add('3004', stone(T0 - 1, level, 12), T0 - 1, base + 1 + level * 3, 12);
+    for (let i = 0; i < 2; i++) add('54200', LIGHT_STONE, T0 - 1, base + 16, 12 + i, 90);
+    for (let level = 0; level < 14; level++)
+      add('3003', hash(8, level, 16) < 0.3 ? DARK_STONE : STONE, 8, base + level * 3, T1 + 1);
+    add('3022', LIGHT_STONE, 8, base + 42, T1 + 1);
+
+    // ---- String courses: one at the foot of course 6, one at 12, one under the cap course.
+    // They are flush bands on the front and back, and step a stud out on the left, the right (the
+    // upper two) and, under the deck, on every face.
+    const projecting = (ring: number, face: Face) =>
+      ring === 3 || ((face === 'L' || face === 'B') && ring <= 2) || (face === 'R' && ring === 2);
+    for (const ring of [1, 2, 3]) {
+      const y = yOf(ring * 6 - 1) + 3;
+      const color = ring === 2 ? STONE : LIGHT_STONE;
+      const leftOut = projecting(ring, 'L');
+      const rightOut = projecting(ring, 'R');
+      // Corner blocks, two studs square, wherever a neighbouring face steps out.
+      for (const [cx, cz, out] of [
+        [T0 - 1, T0 - 1, leftOut || projecting(ring, 'F')],
+        [T1, T0 - 1, rightOut || projecting(ring, 'F')],
+        [T0 - 1, T1, leftOut || projecting(ring, 'B')],
+        [T1, T1, rightOut || projecting(ring, 'B')],
+      ] as [number, number, boolean][])
+        if (out) add('3022', color, cx, y, cz);
+      for (const face of FACES) {
+        if (projecting(ring, face)) {
+          // The back steps out round the chimney breast: a block on its left, the breast between.
+          if (face === 'B' && ring < 3) {
+            add('3022', color, 6, y, T1);
+            addRun(add, 'plate', color, 'x', 8, y, T1, 2);
+            add('3020', color, 10, y, T1, 90);
+            continue;
+          }
+          for (const u of [6, 10]) {
+            const [x, z] = cell(face, u);
+            if (alongX(face)) add('3020', color, x, y, face === 'F' ? z - 1 : z, 90);
+            else add('3020', color, face === 'L' ? x - 1 : x, y, z, 0);
+          }
+        } else if (alongX(face)) {
+          const from = leftOut || projecting(ring, 'F') ? T0 + 1 : T0;
+          const to = rightOut || projecting(ring, 'F') ? T1 - 1 : T1;
+          // The front's portal lintel stands where the first band would, so it keeps its own.
+          addRun(add, 'plate', color, 'x', from, y, face === 'F' ? T0 : T1, to - from + 1);
+        } else addRun(add, 'plate', color, 'z', face === 'L' ? T0 : T1, y, U0, U1 - U0 + 1);
       }
     }
 
-    // A stone portal round the door: two pillars a stud out from the front corners and a long
-    // lintel over them, clear of the door leaf that stands half a stud proud.
-    for (const x of [5, 10]) {
-      for (let level = 0; level < 6; level++)
-        add('3005', stone(x, level, 3), x, base + 1 + level * 3, 4);
-    }
-    add('3009', LIGHT_STONE, 5, base + 19, 4, 90);
+    // ---- The corbel table: inverted slopes under the overhang on every face, one per two studs.
+    const yCorbel = yOf(cap);
+    for (const face of FACES)
+      for (const u of [6, 8, 10, 12, 13]) {
+        const [x, z] = cell(face, u);
+        if (face === 'F') add('3665a', STONE, x, yCorbel, z - 2, 0);
+        else if (face === 'B') add('3665a', STONE, x, yCorbel, z + 1, 180);
+        else if (face === 'L') add('3665a', STONE, x - 2, yCorbel, z, 90);
+        else add('3665a', STONE, x + 1, yCorbel, z, 270);
+      }
 
-    // Buttresses on the side and back walls: tall stacks of bricks and a sloped cap, a stud proud.
-    for (const [x, z, rotation, along] of [
-      [4, 7, 90, 'z'],
-      [11, 7, 270, 'z'],
-      [7, 11, 180, 'x'],
-    ] as [number, number, Rotation, 'x' | 'z'][]) {
-      for (let level = 0; level < 7; level++)
-        add('3004', stone(x, level + 1, z), x, base + 1 + level * 3, z, along === 'x' ? 90 : 0);
-      // A cheese slope on each of its two studs, leaning outwards.
-      for (let i = 0; i < 2; i++)
-        add(
-          '54200',
-          LIGHT_STONE,
-          along === 'x' ? x + i : x,
-          base + 22,
-          along === 'x' ? z : z + i,
-          rotation,
-        );
-    }
+    // ---- The deck: two layers of one-stud plates across the hollow, the lower along x and the
+    // upper along z so each crosses every run of the other; the walls and corbels carry it.
+    const deck = yCorbel + 3;
+    for (let z = F0; z <= F1; z++) addRun(add, 'plate', DARK_STONE, 'x', F0, deck, z, F1 - F0 + 1);
+    for (let x = F0; x <= F1; x++) addRun(add, 'plate', STONE, 'z', x, deck + 1, F0, F1 - F0 + 1);
+    const top = deck + 2;
 
-    // A stringcourse: a ring of plates two studs wide round the wall above the windows, standing
-    // a stud proud of the face.
-    const string = base + 30;
-    for (const [x, z] of [
-      [4, 4],
-      [10, 4],
-      [4, 10],
-      [10, 10],
-    ])
-      add('3022', LIGHT_STONE, x, string, z);
-    for (const [x, z, rotation] of [
-      [6, 4, 90],
-      [6, 10, 90],
-      [4, 6, 0],
-      [10, 6, 0],
-    ] as [number, number, Rotation][])
-      add('3020', hash(x, z, 4) < 0.7 ? STONE : TAN, x, string, z, rotation);
-
-    // The top: a floor plate over the walls, an overhanging ring of plates, merlons in two
-    // courses with tile caps, and a small round turret with a cone roof and a flagpole.
-    const top = base + courses * 3 + 1;
-    add('41539', DARK_STONE, 4, top, 4);
-    const merlon = (x: number, z: number, along: 'x' | 'z', out: Rotation) => {
-      for (const level of [0, 1])
-        add('3004', stone(x, level + 20, z), x, top + 1 + level * 3, z, along === 'x' ? 90 : 0);
-      // A sloped cap leaning outwards, so each merlon has a pitched top.
-      add('3040b', LIGHT_STONE, x, top + 7, z, out);
+    // Crenellations: merlons in two courses with tile caps, a gap every two studs.
+    const merlons = (face: Face) => {
+      const fixed = face === 'F' ? F0 : face === 'B' ? F1 : face === 'L' ? F0 : F1;
+      const from = alongX(face) ? F0 : F0 + 1;
+      const to = alongX(face) ? F1 : F1 - 1;
+      let u = from;
+      while (u <= to) {
+        if ((u - F0) % 4 > 1) {
+          u++;
+          continue;
+        }
+        const long = u + 1 <= to && (u + 1 - F0) % 4 <= 1 && (u - F0) % 4 === 0;
+        const length = long ? 2 : 1;
+        const [x, z] = alongX(face) ? [u, fixed] : [fixed, u];
+        for (const level of [0, 1])
+          add(
+            length === 2 ? '3004' : '3005',
+            stone(x, level + 20, z),
+            x,
+            top + level * 3,
+            z,
+            alongX(face) && length === 2 ? 90 : 0,
+          );
+        // A cheese slope on each merlon cell, leaning outwards.
+        for (let i = 0; i < length; i++) {
+          const [sx, sz] = alongX(face) ? [x + i, z] : [x, z + i];
+          add('54200', LIGHT_STONE, sx, top + 6, sz, OUTWARD[face]);
+        }
+        u += length;
+      }
     };
-    for (const start of [4, 8]) {
-      merlon(start, 4, 'x', 0);
-      merlon(start, 11, 'x', 180);
-    }
-    for (const start of [6, 9]) {
-      merlon(4, start, 'z', 90);
-      merlon(11, start, 'z', 270);
-    }
+    for (const face of FACES) merlons(face);
+
+    // The roof furniture: a round turret with a cone, a chimney with a pot over the breast, a
+    // flag on a pole in one corner.
     for (let level = 0; level < 4; level++)
-      add('3941', level % 2 ? STONE : DARK_STONE, 7, top + 1 + level * 3, 7);
-    add('3942c', DARK_STONE, 7, top + 13, 7);
-    add('4589', BLACK, 5, top + 1, 5);
-    add('3957a', BLACK, 5, top + 4, 5);
-    add('2335', RED, 5, top + 10, 5, 90);
+      add('3941', level % 2 ? STONE : DARK_STONE, 9, top + level * 3, 8);
+    add('3942c', DARK_STONE, 9, top + 12, 8);
+    for (let level = 0; level < 3; level++)
+      add('3003', level % 2 ? DARK_STONE : STONE, 8, top + level * 3, 12);
+    add('3022', DARK_STONE, 8, top + 9, 12);
+    add('3062b', BLACK, 8, top + 10, 12);
+    add('3062b', BLACK, 9, top + 10, 13);
+    add('4589', BLACK, F0 + 1, top, F0 + 1);
+    add('3957a', BLACK, F0 + 1, top + 3, F0 + 1);
+    add('2335', RED, F0 + 1, top + 9, F0 + 1, 90);
 
-    // A barrel and crates by the door, lampposts on the path.
-    add('3941', EARTH, 12, base, 2);
-    add('3941', DARK_EARTH, 12, base + 3, 2);
-    add('4032a', EARTH, 12, base + 6, 2);
-    add('3022', EARTH, 3, base, 2);
-    add('3022', DARK_EARTH, 3, base + 1, 2);
+    // ---- The yard: a barrel and crates by the door, lampposts on the path, rocks, pines, a few
+    // plants. Kept small so the tower is the build.
+    counted('3941', EARTH, 13, base, 2);
+    counted('3941', DARK_EARTH, 13, base + 3, 2);
+    counted('4032a', EARTH, 13, base + 6, 2);
+    counted('3022', EARTH, 3, base, 2);
+    counted('3022', DARK_EARTH, 3, base + 1, 2);
     for (const [x, z] of [
-      [5, 1],
-      [10, 1],
+      [6, 1],
+      [12, 0],
     ])
-      if (onGround(x, z)) add('2039', BLACK, x, base, z);
-
-    // Rocks round the courtyard and in the back corners: a heavy base block, a lighter block on
-    // top and boulders at the foot, each only where there is ground and room.
+      counted('2039', BLACK, x, base, z);
+    const yard = (partId: string, color: number, x: number, z: number) =>
+      tryAdd(partId, color, x, base, z);
     for (const [x, z, base1, top1] of [
-      [12, 7, '3002', '15068'],
-      [1, 11, '3002', '54200'],
-      [13, 12, '3003', '85984'],
-      [9, 13, '3003', '54200'],
+      [15, 8, '3002', '15068'],
+      [1, 13, '3002', '54200'],
+      [15, 15, '3003', '85984'],
     ] as [number, number, string, string][]) {
       if (!onGround(x, z) || !onGround(x + 1, z + 1) || inTower(x, z)) continue;
-      if (tryAdd(base1, hash(x, z, 2) < 0.5 ? DARK_STONE : STONE, x, base, z))
+      if (yard(base1, hash(x, z, 2) < 0.5 ? DARK_STONE : STONE, x, z))
         tryAdd(top1, LIGHT_STONE, x, base + 3, z);
     }
+    // Pines plug into a stud in the middle of their five-stud base.
     for (const [x, z] of [
-      [11, 12],
-      [3, 12],
-      [14, 6],
-      [0, 9],
+      [2, 6],
+      [18, 6],
+      [4, 18],
     ] as [number, number][])
-      if (onGround(x, z) && !inTower(x, z)) tryAdd('3062b', DARK_STONE, x, base, z);
-
-    // Pines at the back, bushes, ferns and tall grass between studs, and a fence.
-    for (const [x, z, color] of [
-      [14, 3, DARK_GRASS],
-      [0, 7, DARK_GRASS],
-      [3, 14, DARK_GRASS],
-      [10, 14, DARK_GRASS],
-    ] as [number, number, number][])
-      if (onGround(x, z)) tryAdd('3471', color, x, base, z);
-    const plants: [string, number, [number, number], [number, number][]][] = [
-      [
-        '6064',
-        DARK_GRASS,
-        [1.5, 1.5],
-        [
-          [1, 3],
-          [14, 12],
-          [13, 5],
-          [-2, 10],
-        ],
-      ],
-      [
-        '6064',
-        GRASS,
-        [1.5, 1.5],
-        [
-          [3, 9],
-          [15, 8],
-          [-1, 4],
-          [12, 14],
-        ],
-      ],
-      [
-        '6255',
-        OLIVE,
-        [2, 1.5],
-        [
-          [2, 6],
-          [12, 3],
-          [8, 14],
-          [5, 13],
-        ],
-      ],
-      [
-        '6255',
-        DARK_GRASS,
-        [2, 1.5],
-        [
-          [0, 13],
-          [14, 9],
-          [9, 2],
-        ],
-      ],
-      [
-        '30093',
-        OLIVE,
-        [1.5, 0],
-        [
-          [3, 2],
-          [13, 2],
-          [7, 15],
-          [1, 10],
-        ],
-      ],
-      [
-        '30093',
-        GRASS,
-        [1.5, 0],
-        [
-          [15, 5],
-          [2, 12],
-          [10, 13],
-        ],
-      ],
-    ];
-    const scattered: [number, number][] = [];
-    for (let sz = -3; sz < SIZE - OFF - 1; sz++)
-      for (let sx = -3; sx < SIZE - OFF - 1; sx++) scattered.push([sx, sz]);
-    scattered.sort((a, b) => hash(a[0], a[1], 31) - hash(b[0], b[1], 31));
-    const bare = (x: number, z: number) =>
-      onGround(x, z) &&
-      !inTower(x, z) &&
-      !onPath(x, z) &&
-      ['g', 'G', 'e', 'E', 'n'].includes(groundChar(x, z));
-    for (const [part, color, [dx, dz], studs] of plants)
-      for (const [sx, sz] of [...studs, ...scattered])
-        if (bare(sx, sz) && tryAdd(part, color, sx - dx, base, sz - dz)) break;
-    for (const [x, z] of [
-      [1, 6],
-      [1, 5],
-      [14, 8],
-      [13, 9],
-    ] as [number, number][])
-      if (onGround(x, z) && tryAdd('33303', EARTH, x, base, z)) break;
+      if (onGround(x, z)) yard('3471', DARK_GRASS, x - 2, z - 2);
+    // Bushes, ferns and tall grass between the pines, each where it fits on bare ground.
+    const studs: [number, number][] = [];
+    for (let sz = 0; sz < 20; sz++) for (let sx = 0; sx < 20; sx++) studs.push([sx, sz]);
+    studs.sort((a, b) => hash(a[0], a[1], 31) - hash(b[0], b[1], 31));
+    for (const [part, color, [dx, dz], count] of [
+      ['6064', DARK_GRASS, [1.5, 1.5], 3],
+      ['6255', OLIVE, [2, 1.5], 3],
+      ['30093', GRASS, [1.5, 0], 3],
+      ['24866', RED, [0.5, 0.5], 2],
+      ['24866', 14, [0.5, 0.5], 2],
+      ['4727', OLIVE, [0.5, 0.5], 2],
+      ['32607', GRASS, [0, 1], 2],
+    ] as [string, number, [number, number], number][]) {
+      let placed = 0;
+      for (const [sx, sz] of studs) {
+        if (placed >= count) break;
+        if (onGround(sx, sz) && !inTower(sx, sz) && !onPath(sx, sz) && !onPath(sx, sz + 1))
+          if (tryAdd(part, color, sx - dx, base, sz - dz)) placed++;
+      }
+    }
 
     order.flush();
   },

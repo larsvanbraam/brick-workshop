@@ -12,6 +12,9 @@ const GOOD: Score = {
   mainColors: 9,
   platesPerBrick: 1,
   wallRelief: 0.2,
+  plainWall: 0.15,
+  poorestFace: 40,
+  richestFace: 50,
   plantShare: 0.03,
   plantDesigns: 6,
   nearest: { id: 'other', similarity: 0.5 },
@@ -47,15 +50,33 @@ describe('example score', () => {
       detailShare: 0,
       roofSlopes: 0.05,
       wallRelief: 0.02,
+      plainWall: 0.5,
+      poorestFace: 6,
       plantShare: 0,
       plantDesigns: 0,
       nearest: { id: 'other', similarity: 0.95 },
     };
     const failed = CHECKS.filter((check) => check.pass(flat) === false).map((check) => check.key);
-    expect(failed).toEqual(['variety', 'small', 'detail', 'roof', 'relief', 'plants', 'distinct']);
+    expect(failed).toEqual([
+      'variety',
+      'small',
+      'detail',
+      'roof',
+      'relief',
+      'faces',
+      'plain',
+      'plants',
+      'distinct',
+    ]);
     const text = renderScore(flat);
     expect(text).toContain('LOW');
     expect(text).toContain('fix:');
+  });
+
+  it('skips the face checks for small builds', () => {
+    const small = { ...GOOD, pieces: 120, poorestFace: 3, plainWall: 0.9 };
+    for (const key of ['faces', 'plain'])
+      expect(CHECKS.find((check) => check.key === key)!.pass(small)).toBeUndefined();
   });
 
   it('skips the roof check when the build has no real top', () => {

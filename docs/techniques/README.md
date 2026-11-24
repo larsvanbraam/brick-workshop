@@ -9,6 +9,7 @@ subject at a time, with the engine's part IDs.
 | [walls.md](walls.md)                               | stone, brick, half-timber, siding, log, render; depth levels; arches; quoins          |
 | [facades-and-openings.md](facades-and-openings.md) | storeys and bands, windows, doors, bays, awnings, balconies, signs                    |
 | [roofs-and-rooflines.md](roofs-and-rooflines.md)   | roof types, texture, chimneys, dormers, towers, spires, skyline                       |
+| [towers.md](towers.md)                             | towers, keeps, gatehouses: features per face, loopholes, corbels, crenellations       |
 | [flora-and-terrain.md](flora-and-terrain.md)       | ground, trees by species, bushes, flowers, rocks, water, paths, base outlines         |
 | [vehicles.md](vehicles.md)                         | cars, wagons, trains, boats: silhouette, colour, wheels, scenes                       |
 | [fauna.md](fauna.md)                               | animals from catalogue parts, posture, habitat, groups                                |
@@ -24,6 +25,8 @@ subject at a time, with the engine's part IDs.
   or CC BY 4.0). `pnpm omr:fetch topics` downloads them (1 request a second, into the
   Git-ignored `data/omr/`) and `pnpm omr:analyse` keeps statistics only, with every model's
   author and licence credited in the output. No geometry is stored or reproduced.
+  `pnpm omr:excerpt` prints a short layer-by-layer excerpt of one construction from those local
+  models to the terminal, for reference while building; it writes nothing into the repository.
 - **The technique text** is written from established LEGO building practice, checked against
   the engine's catalogue and calibrated with the numbers above ("Measured in official models"
   at the end of each note). It does not reproduce any individual MOC.

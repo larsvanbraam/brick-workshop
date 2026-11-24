@@ -73,14 +73,27 @@ const WINDOW_PARTS = [
   '27b',
 ];
 
-/** Glass that sits in a frame at the same origin (what the LDraw assemblies and OMR models do). */
-const GLASS_FOR: Readonly<Record<string, string>> = {
-  '4862': '2377',
-  '3082': '3081b',
-  '848': '31b',
-  '845': '29b',
-  '846': '27b',
-  '844': '3087b',
+/**
+ * Glass and panes that hang in a frame, with where the piece's own origin sits against the
+ * frame's (LDU, LDraw axes: y down), taken from the OMR models that use both and from the meshes
+ * (a pane whose box matches its frame's glass shares the frame's origin). None means the same origin.
+ */
+const GLASS_FOR: Readonly<
+  Record<string, { frame: string; delta?: readonly [number, number, number] }>
+> = {
+  '4862': { frame: '2377' },
+  '3082': { frame: '3081b' },
+  '848': { frame: '31b' },
+  '845': { frame: '29b' },
+  '846': { frame: '27b' },
+  '844': { frame: '3087b' },
+  // Latticed pane for the 1 x 2 x 2 frame: its box is the glass's.
+  '38320': { frame: '60592' },
+  // The rounded-top panes sit 24 LDU lower and 4 behind their frame's origin (6755, 10185 ...).
+  '30045': { frame: '30044', delta: [0, 24, -4] },
+  '30046': { frame: '30044', delta: [0, 24, -4] },
+  // Opening glass for the 1 x 4 x 3 frame: 8 LDU down, 3 in front (10218).
+  '60603': { frame: '60594', delta: [0, 8, 3] },
 };
 
 async function readCsv(file: string, onRow: (row: Record<string, string>) => void) {
@@ -97,9 +110,11 @@ function usesOf(name: string, family: 'detail' | 'window' = 'detail'): string {
   if (family === 'window')
     return /glass/.test(n)
       ? `glazing: sits in its frame (${name})`
-      : /door frame/.test(n)
-        ? `door openings, entrances, gateways, shop fronts (${name})`
-        : `windows, lattice and glazed openings, facades, arched wall panels (${name})`;
+      : /pane/.test(n)
+        ? `lattice and barred panes for window frames, cottage and castle windows (${name})`
+        : /door frame/.test(n)
+          ? `door openings, entrances, gateways, shop fronts (${name})`
+          : `windows, lattice and glazed openings, facades, arched wall panels (${name})`;
   if (/bracket/.test(n))
     parts.push('side studs, SNOT, sills, signs, shelves, shop fronts, hanging detail');
   if (/clip/.test(n)) parts.push('clips, rails, lamp and detail mounts (not gripping yet)');
@@ -182,7 +197,13 @@ async function main(count: number, skipFile?: string) {
   const uses: string[] = [];
   const skipped: string[] = [];
   const insertFrames: string[] = [];
-  const emit = (id: string, name: string, family: 'detail' | 'window', glassFrame?: string) => {
+  const emit = (
+    id: string,
+    name: string,
+    family: 'detail' | 'window',
+    glass?: { frame: string; delta?: readonly [number, number, number] },
+  ) => {
+    const glassFrame = glass?.frame;
     let data: ReturnType<typeof describe>;
     try {
       // Glass and panes take their frame's size and origin, as the hand-made glass does: the
@@ -191,8 +212,31 @@ async function main(count: number, skipFile?: string) {
     } catch {
       return false;
     }
+    // A hand-made frame may stand turned from its mesh (1 x 2 for a 2 x 1 mesh): the glass follows it.
+    const handFrame = glassFrame ? handMade.find((part) => part.id === glassFrame) : undefined;
+    let rotation = 0;
+    if (handFrame) {
+      rotation = handFrame.ldrawRotation;
+      data = {
+        ...data,
+        width: handFrame.width,
+        depth: handFrame.depth,
+        height: handFrame.height,
+        ldrawCenter: handFrame.ldrawCenter ?? { x: 0, z: 0 },
+        ldrawBaseY: handFrame.ldrawBaseY ?? handFrame.height * 8,
+      };
+    }
     const half = (v: number) => Math.abs(v * 2 - Math.round(v * 2)) < 1e-6;
     // Meshes run a hair off the plate grid (1.94, 1.99, 2.25): snap what is within a rounding of it.
+    if (glass?.delta) {
+      // The piece's origin sits `delta` from the frame's, so the frame's centre and base move by it.
+      const [dx, dy, dz] = glass.delta;
+      data = {
+        ...data,
+        ldrawCenter: { x: data.ldrawCenter.x - dx, z: data.ldrawCenter.z - dz },
+        ldrawBaseY: Math.round((data.ldrawBaseY - dy) * 100) / 100,
+      };
+    }
     // A window frame's height is whole bricks; its mesh can run half a plate over (18.5 for 18).
     const snapped =
       family === 'window' ? Math.floor(data.height + 0.08) : Math.round(data.height * 2) / 2;
@@ -233,7 +277,7 @@ async function main(count: number, skipFile?: string) {
     const top = glassFrame ? '[]' : cells(data.top);
     const receivers = glassFrame ? '[]' : cells(bottom);
     out.push(
-      `  { id: '${id.toLowerCase()}', name: ${JSON.stringify(name)}, width: ${data.width}, depth: ${data.depth}, height: ${data.height}, kind: '${kind}', family: '${family}', shape: 'detail', clearance: 'reserved', ldrawRotation: 0, connections: { topStuds: ${top}, bottomReceivers: ${receivers} }${centre}${base}${sides} },`,
+      `  { id: '${id.toLowerCase()}', name: ${JSON.stringify(name)}, width: ${data.width}, depth: ${data.depth}, height: ${data.height}, kind: '${kind}', family: '${family}', shape: 'detail', clearance: 'reserved', ldrawRotation: ${rotation}, connections: { topStuds: ${top}, bottomReceivers: ${receivers} }${centre}${base}${sides} },`,
     );
     uses.push(`  '${id.toLowerCase()}': ${JSON.stringify(usesOf(name, family))},`);
     if (glassFrame) insertFrames.push(`  '${id.toLowerCase()}': '${glassFrame}',`);
