@@ -2397,22 +2397,73 @@ describe('mixed-part engine builds', () => {
     expect(of('3062b').filter((brick) => brick.color === 2).length).toBeGreaterThan(10);
   });
 
-  it('builds a corner bakery: a two-storey shop with a striped awning on a street plot', () => {
+  it('builds a corner bakery: a Tudor shop with a jettied half-timbered storey, an oriel and a slate roof', () => {
     const assembly = createExampleAssembly('bakery');
     expect(assembly.name).toBe('Corner Bakery');
-    expect(assembly.bricks).toHaveLength(582);
+    expect(assembly.bricks).toHaveLength(1085);
     expect(assembly.buildArea).toBe(32);
     expect(validateAssembly(assembly)).toEqual([]);
     const of = (partId: string) => assembly.bricks.filter((brick) => brick.partId === partId);
-    // A shop door, shop windows and upper windows, all glazed.
-    expect(of('60596')).toHaveLength(1);
+    // A shop door and a back door in their frames, glazed shop windows, the serving hatch, the
+    // oriel's front and a gable window, and casements on every face.
+    expect(of('60596')).toHaveLength(2);
     expect(of('60623')).toHaveLength(1);
-    expect(of('60594')).toHaveLength(2);
-    expect(of('60593').length).toBeGreaterThanOrEqual(8);
-    // A red and white striped awning and a dark red roof of 45 degree slopes.
-    const awning = of('3040b').filter((brick) => brick.y === 21);
+    expect(of('60616a')).toHaveLength(1);
+    expect(of('60594')).toHaveLength(5);
+    expect(of('60593').length).toBeGreaterThanOrEqual(12);
+    expect(of('60592')).toHaveLength(2);
+    // The oriel stands on two round columns; stone piers, corner posts and timber posts are
+    // 1 x 1 x 5 bricks, and a jetty of two plate layers carries the upper storey.
+    expect(of('43888')).toHaveLength(2);
+    expect(of('2453b').length).toBeGreaterThanOrEqual(25);
+    expect(of('3665a').length).toBeGreaterThanOrEqual(4);
+    // Rubble stone below in masonry, grille and log bricks; diagonal timber braces above.
+    expect(of('15533').length + of('98283').length).toBeGreaterThan(10);
+    expect(of('2877')).toHaveLength(2);
+    expect(of('3004').filter((brick) => brick.color === 308).length).toBeGreaterThanOrEqual(9);
+    // A slate roof of 45 degree slopes in two shades, barge boards in dark brown, a strip of
+    // plates on the ridge with two chimneys and cones on the gable ends.
+    const slopes = ['3037', '3038', '3039', '3040b'].flatMap(of);
+    expect(slopes.length).toBeGreaterThan(100);
+    expect(new Set(slopes.filter((brick) => brick.y >= 38).map((brick) => brick.color))).toEqual(
+      new Set([72, 0, 308]),
+    );
+    expect(of('3003').length).toBeGreaterThanOrEqual(14);
+    expect(of('3688')).toHaveLength(1);
+    expect(of('4589').length).toBeGreaterThanOrEqual(6);
+    // A red and white awning over the hatch, a lamppost, a clay oven and a tree.
+    const awning = of('3039').filter((brick) => brick.y === 17 && brick.x === 19);
     expect(new Set(awning.map((brick) => brick.color))).toEqual(new Set([4, 15]));
-    expect(of('3037').length).toBeGreaterThan(10);
+    expect(of('2039')).toHaveLength(1);
+    expect(of('3941').length).toBeGreaterThanOrEqual(5);
+    expect(of('2423').length).toBeGreaterThan(5);
+    // Sills, lanterns, a loaf sign and ivy hang on side studs.
+    expect(assembly.bricks.filter((brick) => brick.facing).length).toBeGreaterThanOrEqual(40);
+    expect(of('87087').length).toBeGreaterThanOrEqual(40);
+    // The bakery is the build: the pieces on and above its ground storey, within its footprint
+    // and its overhangs, make up at least two thirds, leaving ground cover and plants out.
+    const plants = new Set([
+      '6064',
+      '6255',
+      '30093',
+      '24866',
+      '4727',
+      '32607',
+      '2039',
+      '2417',
+      '2423',
+    ]);
+    const subject = assembly.bricks.filter(
+      (brick) =>
+        brick.y >= 2 &&
+        brick.x >= 2 &&
+        brick.x <= 21 &&
+        brick.z >= 5 &&
+        brick.z <= 24 &&
+        !plants.has(brick.partId) &&
+        !(brick.y < 3 && getPart(brick.partId).height <= 1),
+    );
+    expect(subject.length / assembly.bricks.length).toBeGreaterThanOrEqual(2 / 3);
   });
 
   it('builds a wishing well: a rubble rim with ivy on side studs, a thatch gable on posts', () => {
