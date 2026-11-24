@@ -1,4 +1,4 @@
-import { MEASURED_PARTS } from './measured-parts.ts';
+import { MEASURED_INSERT_FRAMES, MEASURED_PARTS } from './measured-parts.ts';
 import { COLORS } from './color-catalog.ts';
 export { COLORS, COLOR_SOURCE } from './color-catalog.ts';
 
@@ -4144,6 +4144,7 @@ export const INSERT_FRAME_PARTS: Readonly<Record<string, string>> = Object.freez
   '3192a': '3579',
   '60616a': '60596',
   '60623': '60596',
+  ...MEASURED_INSERT_FRAMES,
 });
 
 /**

@@ -27,6 +27,62 @@ const NOT_STRUCTURE =
 const SKIP_NAME =
   /Hinge|Technic|Minifig|Sticker|Wheel|Tyre|Tire|Train|Ball|Pin Hole|with Pin|Pin on|Towball|Crosshole|Axle|Socket|Turntable|Magnet|Spring|Chain|Motor|Rubber|Flexible|Hose|String|Cloth|Flag|Antenna|Propeller|Rotor|Lever|Handle Bar|Cylinder|Dish|Cone|Bar |Window|Door|Windscreen|Arch|Minifigure|Hair|Torso|Pr\d|Print|Pattern| Dual |Stud on Side|Duplo|Quatro|Mold|Moulded|Tube|Tank|Plant|Animal/i;
 
+/**
+ * Windows, door frames and window panels, taken by id because the name filter and the structural
+ * categories leave this whole family out. They are whole pieces (frame, lattice or panes in one
+ * mould) that stand on their studs; hinged leaves, shutters and the panes that hang on pins are
+ * not here, since their offsets need measuring against a frame.
+ */
+const WINDOW_PARTS = [
+  '90195',
+  '60032',
+  '61345',
+  '4132',
+  '51239',
+  '73878',
+  '2377',
+  '4863',
+  '6798',
+  '5260',
+  '5259',
+  '42205',
+  '6154',
+  '60599',
+  '4130',
+  '28327',
+  '3417',
+  '4071',
+  '6235',
+  '6236',
+  '60808',
+  '30246',
+  '4444',
+  '48490',
+  '15627',
+  '30288',
+  '22387',
+  '3081a',
+  '3081b',
+  '31a',
+  '31b',
+  '3087a',
+  '3087b',
+  '29a',
+  '29b',
+  '27a',
+  '27b',
+];
+
+/** Glass that sits in a frame at the same origin (what the LDraw assemblies and OMR models do). */
+const GLASS_FOR: Readonly<Record<string, string>> = {
+  '4862': '2377',
+  '3082': '3081b',
+  '848': '31b',
+  '845': '29b',
+  '846': '27b',
+  '844': '3087b',
+};
+
 async function readCsv(file: string, onRow: (row: Record<string, string>) => void) {
   const parser = parse({ bom: true, columns: true, skip_empty_lines: true });
   const done = pipeline(createReadStream(file), createGunzip(), parser);
@@ -35,9 +91,15 @@ async function readCsv(file: string, onRow: (row: Record<string, string>) => voi
 }
 
 /** What a part is for, in a builder's words, from its name. */
-function usesOf(name: string): string {
+function usesOf(name: string, family: 'detail' | 'window' = 'detail'): string {
   const n = name.toLowerCase();
   const parts: string[] = [];
+  if (family === 'window')
+    return /glass/.test(n)
+      ? `glazing: sits in its frame (${name})`
+      : /door frame/.test(n)
+        ? `door openings, entrances, gateways, shop fronts (${name})`
+        : `windows, lattice and glazed openings, facades, arched wall panels (${name})`;
   if (/bracket/.test(n))
     parts.push('side studs, SNOT, sills, signs, shelves, shop fronts, hanging detail');
   if (/clip/.test(n)) parts.push('clips, rails, lamp and detail mounts (not gripping yet)');
@@ -119,44 +181,33 @@ async function main(count: number, skipFile?: string) {
   const out: string[] = [];
   const uses: string[] = [];
   const skipped: string[] = [];
-  for (const [design] of ranked) {
-    // The inventory's own number for the design that has an LDraw file, most used first.
-    const raws = [...byRaw.get(design)!].sort((a, b) => b[1] - a[1]).map(([raw]) => raw);
-    const id = raws.find((raw) => existsSync(join(library, 'parts', `${raw.toLowerCase()}.dat`)));
-    const name = id ? parts.get(id)!.name : design;
-    if (
-      !id ||
-      haveIds.has(id) ||
-      skip.has(id) ||
-      SKIP_NAME.test(name) ||
-      /pr\d|pat\d|^u\d/i.test(id)
-    ) {
-      skipped.push(`${design}${id ? `/${id}` : ''}`);
-      continue;
-    }
+  const insertFrames: string[] = [];
+  const emit = (id: string, name: string, family: 'detail' | 'window', glassFrame?: string) => {
     let data: ReturnType<typeof describe>;
     try {
-      data = describe(measure(id.toLowerCase(), library));
+      // Glass and panes take their frame's size and origin, as the hand-made glass does: the
+      // frame's groove holds them, and their own mesh is smaller than the opening.
+      data = describe(measure((glassFrame ?? id).toLowerCase(), library));
     } catch {
-      skipped.push(`${design}/${id}`);
-      continue;
+      return false;
     }
     const half = (v: number) => Math.abs(v * 2 - Math.round(v * 2)) < 1e-6;
     // Meshes run a hair off the plate grid (1.94, 1.99, 2.25): snap what is within a rounding of it.
-    const snapped = Math.round(data.height * 2) / 2;
-    if (Math.abs(data.height - snapped) <= 0.08 && snapped > 0) data = { ...data, height: snapped };
+    // A window frame's height is whole bricks; its mesh can run half a plate over (18.5 for 18).
+    const snapped =
+      family === 'window' ? Math.floor(data.height + 0.08) : Math.round(data.height * 2) / 2;
+    if (Math.abs(data.height - snapped) <= (family === 'window' ? 0.6 : 0.08) && snapped > 0)
+      data = { ...data, height: snapped };
     if (
       !half(data.width) ||
       !half(data.depth) ||
       data.width > 12 ||
       data.depth > 12 ||
       data.height <= 0 ||
-      data.height > 15 ||
+      data.height > (family === 'window' ? 21 : 15) ||
       !half(data.height)
-    ) {
-      skipped.push(`${design}/${id}`);
-      continue;
-    }
+    )
+      return false;
     const kind = data.height < 3 ? 'plate' : 'brick';
     const base =
       data.ldrawBaseY !== Math.round(data.height * 8 * 100) / 100
@@ -177,13 +228,43 @@ async function main(count: number, skipFile?: string) {
         ? data.top.length
           ? data.top
           : data.bottom
-        : data.bottom.length || data.top.length || kind === 'plate'
-          ? footprint
-          : footprint;
+        : footprint;
+    // Glass holds and receives nothing: its frame's groove holds it.
+    const top = glassFrame ? '[]' : cells(data.top);
+    const receivers = glassFrame ? '[]' : cells(bottom);
     out.push(
-      `  { id: '${id.toLowerCase()}', name: ${JSON.stringify(name)}, width: ${data.width}, depth: ${data.depth}, height: ${data.height}, kind: '${kind}', family: 'detail', shape: 'detail', clearance: 'reserved', ldrawRotation: 0, connections: { topStuds: ${cells(data.top)}, bottomReceivers: ${cells(bottom)} }${centre}${base}${sides} },`,
+      `  { id: '${id.toLowerCase()}', name: ${JSON.stringify(name)}, width: ${data.width}, depth: ${data.depth}, height: ${data.height}, kind: '${kind}', family: '${family}', shape: 'detail', clearance: 'reserved', ldrawRotation: 0, connections: { topStuds: ${top}, bottomReceivers: ${receivers} }${centre}${base}${sides} },`,
     );
-    uses.push(`  '${id.toLowerCase()}': ${JSON.stringify(usesOf(name))},`);
+    uses.push(`  '${id.toLowerCase()}': ${JSON.stringify(usesOf(name, family))},`);
+    if (glassFrame) insertFrames.push(`  '${id.toLowerCase()}': '${glassFrame}',`);
+    return true;
+  };
+  for (const [design] of ranked) {
+    // The inventory's own number for the design that has an LDraw file, most used first.
+    const raws = [...byRaw.get(design)!].sort((a, b) => b[1] - a[1]).map(([raw]) => raw);
+    const id = raws.find((raw) => existsSync(join(library, 'parts', `${raw.toLowerCase()}.dat`)));
+    const name = id ? parts.get(id)!.name : design;
+    if (
+      !id ||
+      haveIds.has(id) ||
+      skip.has(id) ||
+      SKIP_NAME.test(name) ||
+      /pr\d|pat\d|^u\d/i.test(id) ||
+      !emit(id, name, 'detail')
+    )
+      skipped.push(`${design}${id ? `/${id}` : ''}`);
+  }
+  // Windows and their glass, by id (not subject to the structural filters).
+  for (const [id, glassFor] of [
+    ...WINDOW_PARTS.map((id) => [id, undefined] as const),
+    ...Object.entries(GLASS_FOR),
+  ]) {
+    const header = (await readFile(join(library, 'parts', `${id}.dat`), 'utf8').catch(() => ''))
+      .split(/\r?\n/)[0]
+      ?.replace(/^0\s*/, '')
+      .replace(/^~/, '');
+    const name = parts.get(id)?.name ?? (header || id);
+    if (haveIds.has(id) || skip.has(id) || !emit(id, name, 'window', glassFor)) skipped.push(id);
   }
   const text = `import type { Part } from './core.ts';
 
@@ -196,6 +277,11 @@ async function main(count: number, skipFile?: string) {
 export const MEASURED_PARTS: readonly Part[] = [
 ${out.join('\n')}
 ];
+
+/** Glass that sits in a frame, and the frame it fits (merged into INSERT_FRAME_PARTS). */
+export const MEASURED_INSERT_FRAMES: Readonly<Record<string, string>> = {
+${insertFrames.join('\n')}
+};
 
 /** What each measured part is for, in a builder's words (see part-uses.ts). */
 export const MEASURED_PART_USES: Readonly<Record<string, string>> = {

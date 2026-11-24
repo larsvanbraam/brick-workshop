@@ -3,7 +3,10 @@
  * (every instance in the latest inventory of each 150+ piece set since 2000), split by whether the
  * category is structural. Lists the biggest gaps with the reason each is not in.
  *
- *   node apps/brick-studio/tooling/part-coverage.ts [top-gaps]
+ *   node apps/brick-studio/tooling/part-coverage.ts [top-gaps] [category-or-name regex]
+ *
+ * With a regex the gap list covers every category whose name or part name matches it, such as
+ * `Window|Door|Glass|Shutter`.
  */
 import { createReadStream } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -24,7 +27,7 @@ async function readCsv(file: string, onRow: (row: Record<string, string>) => voi
   await done;
 }
 
-async function main(top: number) {
+async function main(top: number, only?: RegExp) {
   const csv = (name: string) => join(resolve('data'), `${name}.csv.gz`);
   const parts = new Map<string, { name: string; category: number }>();
   await readCsv(csv('parts'), (r) =>
@@ -85,18 +88,23 @@ async function main(top: number) {
     'Structural categories',
     rows.filter((r) => r.structural),
   );
-  const sorted = rows.filter((r) => r.structural).sort((a, b) => b.n - a.n);
+  const sorted = rows
+    .filter((r) => (only ? only.test(`${r.cat} | ${r.name}`) : r.structural))
+    .sort((a, b) => b.n - a.n);
   for (const cut of [100, 300, 1000]) {
     const slice = sorted.slice(0, cut);
     console.log(`  top ${cut} structural designs: ${slice.filter((r) => r.have).length} in`);
   }
-  console.log(`\nBiggest structural gaps:`);
+  console.log(`\nBiggest ${only ? 'matching' : 'structural'} gaps:`);
   for (const r of sorted.filter((r) => !r.have).slice(0, top))
     console.log(`  ${r.design.padEnd(10)} ${String(r.n).padStart(7)}  ${r.cat} | ${r.name}`);
   console.log(`\nCatalogue: ${PARTS.length} parts`);
 }
 
-main(Number(process.argv[2] ?? 40)).catch((e) => {
+main(
+  Number(process.argv[2] ?? 40),
+  process.argv[3] ? new RegExp(process.argv[3], 'i') : undefined,
+).catch((e) => {
   console.error(e);
   process.exit(1);
 });

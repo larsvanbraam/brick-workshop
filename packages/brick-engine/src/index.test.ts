@@ -2,6 +2,8 @@ import { MEASURED_PARTS } from './measured-parts.ts';
 import { describe, expect, it } from 'vite-plus/test';
 import {
   PARTS,
+  INSERT_FRAME_PARTS,
+  isMatchingInsertFrame,
   BUILDING_TECHNIQUE_IDS,
   createBuildingTechniqueExample,
   getBuildingTechniques,
@@ -1678,9 +1680,9 @@ describe('upright brick engine', () => {
       ).toEqual(expected);
     }
   });
-  it('contains 686 unique building and foliage parts with explicit connection sites', () => {
-    expect(PARTS).toHaveLength(686);
-    expect(new Set(PARTS.map((part) => part.id)).size).toBe(686);
+  it('contains 729 unique building and foliage parts with explicit connection sites', () => {
+    expect(PARTS).toHaveLength(729);
+    expect(new Set(PARTS.map((part) => part.id)).size).toBe(729);
     expect(PARTS.filter((part) => part.family === 'tall')).toHaveLength(10);
     expect(PARTS.filter((part) => part.family === 'slope')).toHaveLength(35);
     expect(PARTS.filter((part) => part.family === 'round')).toHaveLength(38);
@@ -1689,8 +1691,8 @@ describe('upright brick engine', () => {
       ['baseplate', 2],
       ['cone', 5],
       ['door', 7],
-      ['window', 16],
-      ['detail', 132 + MEASURED_PARTS.length],
+      ['window', 16 + MEASURED_PARTS.filter((part) => part.family === 'window').length],
+      ['detail', 132 + MEASURED_PARTS.filter((part) => part.family === 'detail').length],
       ['foliage', 11],
     ] as const)
       expect(PARTS.filter((part) => part.family === family)).toHaveLength(count);
@@ -2093,7 +2095,7 @@ describe('upright brick engine', () => {
 
 describe('mixed-part engine builds', () => {
   it('lays complete catalogue and tile displays on one larger board without stacking', () => {
-    for (const [id, count] of [['catalog-sampler', 686]] as const) {
+    for (const [id, count] of [['catalog-sampler', 729]] as const) {
       const assembly = createExampleAssembly(id);
       expect(assembly.buildArea).toBe(128);
       expect(assembly.bricks).toHaveLength(count);
@@ -3163,5 +3165,47 @@ describe('pieces mounted on side studs', () => {
     expect(importAssembly(JSON.parse(JSON.stringify(assembly)))).toEqual(assembly);
     expect(() => importAssembly({ ...assembly, bricks: [{ ...tile, facing: 'up' }] })).toThrow();
     expect(getConnectionSites(tile, 'top')).toEqual([]);
+  });
+
+  it("hangs measured glass in the window it fits, at the frame's own origin", () => {
+    for (const [glass, frame] of [
+      ['3082', '3081b'],
+      ['848', '31b'],
+      ['845', '29b'],
+      ['4862', '2377'],
+    ] as const) {
+      expect(INSERT_FRAME_PARTS[glass]).toBe(frame);
+      expect(getPart(glass)).toMatchObject({
+        width: getPart(frame).width,
+        depth: getPart(frame).depth,
+        height: getPart(frame).height,
+        connections: { topStuds: [], bottomReceivers: [] },
+      });
+      const base = {
+        id: 'plate',
+        partId: '3024',
+        color: 4,
+        x: 4,
+        y: 0,
+        z: 4,
+        rotation: 0,
+      } as const;
+      let assembly: Assembly = { name: 'Glazing', bricks: [] };
+      for (const brick of [
+        { ...base, partId: '3031', id: 'floor' },
+        { ...base, partId: frame, id: 'frame', y: 1, x: 4, z: 4 },
+        { ...base, partId: glass, id: 'glass', y: 1, x: 4, z: 4 },
+      ] as Brick[]) {
+        const placed = placeBrick(assembly, brick);
+        expect(placed.ok, `${glass} in ${frame}`).toBe(true);
+        if (placed.ok) assembly = placed.assembly;
+      }
+      expect(
+        isMatchingInsertFrame(
+          assembly.bricks.find((brick) => brick.id === 'glass')!,
+          assembly.bricks.find((brick) => brick.id === 'frame')!,
+        ),
+      ).toBe(true);
+    }
   });
 });
