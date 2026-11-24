@@ -183,6 +183,10 @@ the notes were used and that the build is not a copy of an earlier one.
 3. **Bulk.** Lay floors with `layPlateFloor` (`board.ts`) and walls and slabs with the
    `layout.ts` helpers: `addRun`, `addRing`, `addBondedMap`, `addAreaMap`, `addRowMap`, and
    `glazeWindows` for glass. Keep joints staggered between courses.
+   **Checkpoint review (gate).** Before any detail work, render the bulk (step 7's views) and
+   write the review file (step 8) for silhouette, proportions and palette only. A wrong colour
+   family, a missing signature shape (pointed arches, a crown) or wrong stage proportions are
+   cheap to fix now and expensive after the detail pass.
 4. **Detail.** Procedural loops (hash-patched stone, `addRowMap` runs) are for the plain wall
    only. Everything in the brief's **Faces** table is placed by hand, one face at a time, so
    each face has its own windows, bands, relief and side-stud details. When unsure how a
@@ -198,6 +202,10 @@ the notes were used and that the build is not a copy of an earlier one.
    then hangs on "Preparing build…".
 7. **Look.** Run `pnpm dev:studio`, open the example from **File**, check the badge reads
    "<n> pieces · Valid", and look at it from every side, including the back and from above.
+   **Save real images**: render headlessly (see the end of this file) at a large viewport
+   (about 1600 x 1200) into the scratchpad: front, back, left, right, top and a close-up of
+   the focal point, in the cinematic view. The small browser pane is only for a quick look;
+   never judge a face from it. Open each saved image with Read, next to the reference.
    Judge each face head-on against its row of the Faces table; the front looking good says
    nothing about the others.
    The workshop autosaves the build it shows, so after each change reopen the example from
@@ -206,9 +214,16 @@ the notes were used and that the build is not a copy of an earlier one.
    view washes light colours out, so Light Bluish Grey `71` looks almost white there. To see
    the back head-on, orbit round, or temporarily build without `reflectToFront` if the build
    still validates that way. Restart the dev server after adding parts to the catalogue.
-8. **Compare.** Write a point-by-point diff of the render against the reference and the
-   standard above, fix the biggest silhouette and colour gaps first, and render again. Rework
-   the model itself (roof, windows, towers, steps), not just the scenery around it.
+8. **Compare (a gate, not an option).** Write the review file `<scratchpad>/<id>-review.md`
+   before scoring or calling anything done. If a reference image was given, open it again with
+   Read, and the file starts with a table of what the reference shows (palette and shares,
+   signature shapes such as arch type, roof, crown, silhouette proportions) against what each
+   saved render shows, one row each, with a verdict (matches / off / missing). Then one row per
+   face from the design brief's Faces table, judged head-on. End with the three biggest gaps in
+   silhouette, colour and detail, fix those first, render again and update the file. Rework
+   the model itself (roof, windows, towers, steps), not just the scenery around it. Without
+   this file you may not run step 9, and the summary to the user may not say the build
+   "matches the reference" or "looks right"; if the comparison was not done, say so.
 9. **Score.** Run `pnpm example:score <id>` after the bulk, and again after the detail pass. It
    measures part variety, small-part share, side-mounted detail, sloped top, colours, thin layers,
    wall relief (how much the walls step in and out), planting variety and how alike the build is
@@ -221,14 +236,25 @@ the notes were used and that the build is not a copy of an earlier one.
    colour pairs on the poorest face of the build; a bare back wall fails it. `Plain wall` is
    the share of the visible wall that is a field of one brick and colour. Both are heuristics
    calibrated on the examples: they catch a flat face, not a dull design, so the render
-   comparison in step 8 still decides.
-10. **Verify.** `pnpm test` and `pnpm check`.
+   comparison in step 8 still decides. Never tune the build to turn a score line green: fix
+   the review's gaps, then read the score. Leave a `LOW` only with its reason written in the
+   review file and the summary.
+10. **Verify.** `pnpm test` and `pnpm check`. Add the example's ID to the ID list in
+    `index.test.ts`. Trace every failing test before committing: run it alone, then on a clean
+    checkout if needed, and say in the summary whether it is yours or was already failing.
+    Some tests time out only under a full run; rerun those by name.
 
 ## Before calling an example done
 
 Run the checklist at the end of [docs/build-standard.md](../../../docs/build-standard.md), check
 that the example is deterministic, valid and that `expectedPieceCount` is right, and that
-`pnpm example:score <id>` shows no unexplained `LOW`.
+`pnpm example:score <id>` shows no unexplained `LOW`. Also:
+
+- The review file from step 8 exists, was written from saved renders of all four faces and the
+  top, and its three biggest gaps are fixed or named in the summary.
+- The design brief was built to: palette, signature shapes and props are in the model, or the
+  summary says what changed and why.
+- No failing test is left untraced.
 
 ## Looking at it headlessly
 
