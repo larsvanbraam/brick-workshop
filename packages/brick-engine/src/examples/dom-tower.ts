@@ -1,6 +1,6 @@
-import { footprint, isMatchingInsertFrame, seatOnSideStuds } from '../core.ts';
-import type { Brick, Facing, Rotation } from '../core.ts';
-import { addRowMap, addRun, bottomUp, glazeWindows } from './layout.ts';
+import { footprint, seatOnSideStuds } from '../core.ts';
+import type { Facing, Rotation } from '../core.ts';
+import { addRowMap, addRun, bottomUp } from './layout.ts';
 import { addTree } from './trees.ts';
 import type { ExampleBrickAdder, ExampleDefinition } from './types.ts';
 
@@ -80,6 +80,8 @@ const outward = (face: Face, [x, z]: [number, number], by = 1): [number, number]
 ];
 
 const BASE = 2;
+/** The course the passage's pointed arch springs from. */
+const PASS_C = 9;
 // Stage one: twenty-four courses with a string course under courses 6, 15 and 21.
 const COURSES1 = 24;
 const y1 = (c: number) => BASE + c * 3 + (c >= 6 ? 1 : 0) + (c >= 15 ? 1 : 0) + (c >= 21 ? 1 : 0);
@@ -127,13 +129,12 @@ export const domTower: ExampleDefinition = {
   id: 'dom-tower',
   name: 'Dom Tower',
   tags: ['gothic', 'tower', 'landmark', 'brick', 'sandstone', 'utrecht', 'street', 'spire'],
-  expectedPieceCount: 2222,
+  expectedPieceCount: 2299,
   buildArea: SIZE,
   brickIdPrefix: 'dom',
   build(drawnAdd) {
     const order = bottomUp(drawnAdd);
     const boxes: { u0: number; u1: number; v0: number; v1: number; y0: number; y1: number }[] = [];
-    const glazed = glazeWindows(order.add, 47);
     const add: ExampleBrickAdder = (partId, color, x, y, z, rotation = 0, facing, ...rest) => {
       const size = footprint({
         id: '',
@@ -153,7 +154,14 @@ export const domTower: ExampleDefinition = {
         y0: y,
         y1: y + size.height,
       });
-      glazed(partId, color, x, y + FLOOR - 1, z, rotation, facing, ...rest);
+      order.add(partId, color, x, y + FLOOR - 1, z, rotation, facing, ...rest);
+      // The Dom has no glass: its openings are open, with stone mesh. A four-wide frame gets a pair
+      // of latticed panes in the frame's own stone colour instead of glazing.
+      if (partId === '60594') {
+        const along = rotation === 90 || rotation === 270;
+        order.add('60607', color, along ? x + 2 : x, y + FLOOR - 1, along ? z : z + 2, rotation);
+        order.add('60607', color, x, y + FLOOR - 1, z, rotation, undefined, true);
+      }
     };
     const tryAdd = (partId: string, color: number, x: number, y: number, z: number) => {
       const size = footprint({ id: '', partId, color, x, y, z, rotation: 0 });
@@ -317,27 +325,32 @@ export const domTower: ExampleDefinition = {
 
     // Stage one: where the openings and ribs go, by face. Each panel is two cells wide, with a
     // recess behind the outer wall line, an arch brick across its head and two window frames.
-    const PANELS1: Record<Face, number[]> = { F: [], B: [1, 5], L: [1, 5], R: [] };
+    const PANELS1: Record<Face, number[]> = { F: [], B: [], L: [1, 5], R: [] };
     for (const face of FACES)
       for (const k of PANELS1[face]) {
         claim(1, face, k, k + 1, 3, 14, { kind: 'open' });
         // The arch brick spans k - 1 to k + 2 at course 15.
         claim(1, face, k - 1, k + 2, 15, 15, { kind: 'open' });
       }
-    // The door and the window above it, on the front, under a pointed arch of two quarter arches.
-    claim(1, 'F', 2, 5, 0, 14, { kind: 'open' });
-    claim(1, 'F', 1, 1, 12, 14, { kind: 'open' });
-    claim(1, 'F', 6, 6, 12, 14, { kind: 'open' });
+    // The passage: a pointed arch right through the base, front to back, four cells wide, springing
+    // at course PASS_C. Above its crown a tall recessed window (courses 13 to 20) fills the wall
+    // between the quarter arches' feet: pointed on the front, round-headed on the back.
+    for (const face of ['F', 'B'] as Face[]) {
+      claim(1, face, 2, 5, 0, PASS_C + 2, { kind: 'open' });
+      claim(1, face, 1, 1, PASS_C, PASS_C + 2, { kind: 'open' });
+      claim(1, face, 6, 6, PASS_C, PASS_C + 2, { kind: 'open' });
+    }
+    claim(1, 'F', 2, 5, 13, 20, { kind: 'open' });
+    claim(1, 'F', 1, 1, 18, 20, { kind: 'open' });
+    claim(1, 'F', 6, 6, 18, 20, { kind: 'open' });
+    claim(1, 'B', 3, 4, 13, 19, { kind: 'open' });
+    claim(1, 'B', 2, 5, 20, 20, { kind: 'open' });
     // A tall pointed window on the right face, between two piers.
     claim(1, 'R', 2, 5, 3, 14, { kind: 'open' });
     claim(1, 'R', 1, 1, 12, 14, { kind: 'open' });
     claim(1, 'R', 6, 6, 12, 14, { kind: 'open' });
     // Slits in the piers.
-    const SLITS1: [Face, number, number, number][] = [
-      ['F', 1, 8, 10],
-      ['F', 6, 8, 10],
-      ['L', 3, 2, 4],
-    ];
+    const SLITS1: [Face, number, number, number][] = [['L', 3, 2, 4]];
     for (const [face, k, c0, c1] of SLITS1) claim(1, face, k, k, c0, c1, { kind: 'open' });
 
     // Stage two's windows by face: the left and right faces take one double window between
@@ -392,11 +405,7 @@ export const domTower: ExampleDefinition = {
       for (const k of WINDOWS2[face]) for (const j of [0, 1]) host(2, face, k + j, 1, 'sill');
     }
     for (const k of [2, 3]) for (const c of [6, 7]) host(2, 'F', k, c, 'clock');
-    for (const k of [2, 3]) {
-      host(2, 'F', k, 3, 'shield');
-      host(2, 'F', k, 11, 'shield');
-    }
-    for (const c of [1, 7]) {
+    for (const c of [1, 4]) {
       host(1, 'F', 1, c, 'ivy');
       host(1, 'F', 6, c, 'ivy');
     }
@@ -417,17 +426,19 @@ export const domTower: ExampleDefinition = {
       ['R', 7, 10],
     ] as [Face, number, number][])
       if (!claims.has(key(1, face, k, c))) host(1, face, k, c, c % 2 ? 'ivy' : 'shield');
-    // The lantern: a pair of windows on each of its four faces, courses 1 to 9, a lintel at 10.
+    // The lantern is an open stage: on each face two slender piers stand either side of a two-stud
+    // opening (courses 1 to 8) under a round arch at course 9, and the sky shows through.
     const lanternSkip = new Set<string>();
-    for (const [dx, dz] of [
-      ...[1, 2, 3, 4].flatMap((i) => [
+    for (const i of [1, 2, 3, 4])
+      for (const [dx, dz] of [
         [i, 0],
         [i, 5],
         [0, i],
         [5, i],
-      ]),
-    ] as [number, number][])
-      for (let c = 1; c <= 10; c++) lanternSkip.add(`${dx},${dz},${c}`);
+      ] as [number, number][]) {
+        if (i === 2 || i === 3) for (let c = 1; c <= 8; c++) lanternSkip.add(`${dx},${dz},${c}`);
+        lanternSkip.add(`${dx},${dz},9`);
+      }
 
     const wallPart = (size: number, roll: number) =>
       size === 6
@@ -658,22 +669,43 @@ export const domTower: ExampleDefinition = {
     for (let z = d0; z <= d1; z++) addRun(add, 'plate', DARK_STONE, 'x', c0, DECK3, z, c1 - c0 + 1);
     for (let x = c0; x <= c1; x++) addRun(add, 'plate', STONE, 'z', x, DECK3 + 1, d0, d1 - d0 + 1);
 
-    // The spire: a drum, cones and a gold finial.
-    for (const [x, z] of [
+    // The cap: a bulb that swells from a 4 x 4 neck to a 6 x 6 belly of round bricks and draws in
+    // again, a small open lantern of four posts, a cone, a gold ball, and a vane with a flag.
+    const core: [number, number][] = [
       [14, 15],
       [16, 15],
       [14, 17],
       [16, 17],
+    ];
+    let sy = CROWN;
+    for (const [x, z] of core) add('3003', STONE, x, sy, z);
+    sy += 3;
+    for (const x of [13, 15, 17]) for (const z of [14, 16, 18]) add('3941', DARK_STONE, x, sy, z);
+    sy += 3;
+    for (const [x, z] of core) add('3941', STONE, x, sy, z);
+    sy += 3;
+    add('3031', LIGHT_STONE, 14, sy, 15);
+    sy += 1;
+    for (const [x, z] of [
+      [14, 15],
+      [17, 15],
+      [14, 18],
+      [17, 18],
     ])
-      for (let level = 0; level < 3; level++)
-        add('3003', level % 2 ? DARK_STONE : STONE, x, CROWN + level * 3, z);
-    add('3943b', DARK_STONE, 14, CROWN + 9, 15);
-    for (let level = 0; level < 5; level++)
-      add('3941', level % 2 ? STONE : DARK_STONE, 15, CROWN + 15 + level * 3, 16);
-    add('3942c', DARK_STONE, 15, CROWN + 30, 16);
-    add('59900', GOLD, 15.5, CROWN + 36, 16.5);
-    add('3957a', BLACK, 15.5, CROWN + 39, 16.5);
-    add('2335', RED, 15.5, CROWN + 45, 16.5, 90);
+      for (let level = 0; level < 2; level++) add('3062b', TAN, x, sy + level * 3, z);
+    sy += 6;
+    add('3031', LIGHT_STONE, 14, sy, 15);
+    sy += 1;
+    add('3943b', DARK_STONE, 14, sy, 15);
+    sy += 6;
+    for (let level = 0; level < 2; level++)
+      add('3941', level % 2 ? STONE : DARK_STONE, 15, sy + level * 3, 16);
+    sy += 6;
+    add('3942c', DARK_STONE, 15, sy, 16);
+    sy += 6;
+    add('59900', GOLD, 15.5, sy, 16.5);
+    add('3957a', BLACK, 15.5, sy + 3, 16.5);
+    add('2335', RED, 15.5, sy + 9, 16.5, 90);
 
     // ---- Stage one's recessed windows: a column of brick on the inner line, a band, two window
     // frames, and an arch brick across the head on the wall line.
@@ -707,64 +739,68 @@ export const domTower: ExampleDefinition = {
     };
     for (const [face, k, c0, c1] of SLITS1) for (let c = c0; c <= c1; c++) slit(face, k, c);
 
-    // The front: a door in its frame, a tall window above it under an arch.
-    const frame: Piece = {
-      partId: '60596',
-      color: DARK_STONE,
-      x: 14,
-      y: BASE,
-      z: R1.z0,
-      rotation: 90,
-    };
-    add(frame.partId, frame.color, frame.x, frame.y, frame.z, frame.rotation);
-    let fitted = false;
-    for (const rotation of [90, 270] as Rotation[])
-      for (const dx of [0, -0.5, 0.5, -1, 1])
-        for (const dz of [0, -0.5, 0.5, -1, 1]) {
-          if (fitted) break;
-          const candidate: Brick = {
-            id: 'door',
-            partId: '60616a',
-            color: DARK_BROWN,
-            x: frame.x + dx,
-            y: frame.y,
-            z: frame.z + dz,
-            rotation,
-          };
-          if (isMatchingInsertFrame(candidate, { id: 'frame', ...frame })) {
-            add('60616a', DARK_BROWN, candidate.x, candidate.y, candidate.z, rotation);
-            fitted = true;
-          }
+    // ---- The passage: a pointed arch right through the base, as at the Dom, where the old nave
+    // once ran. Sandstone lining walls under an impost band, a tunnel vault of quarter arches (a
+    // light rib at every other stud), a tiled floor, two wall lamps a side, and over each mouth a
+    // tall recessed window: pointed on the front, round-headed on the back.
+    const PASS_X0 = R1.x0 + 3; // 14, the first open cell
+    const PASS_Z0 = R1.z0;
+    const PASS_Z1 = R1.z1;
+    const lampCells = new Set([`${PASS_Z0 + 3}`, `${PASS_Z0 + 6}`]);
+    for (const [lx, facing] of [
+      [PASS_X0 - 1, '+x'],
+      [PASS_X0 + 4, '-x'],
+    ] as [number, Facing][])
+      for (let c = 0; c < PASS_C; c++)
+        for (let z = PASS_Z0 + 1; z < PASS_Z1; z += c % 2 === 0 && c !== 3 ? 2 : 1) {
+          const y = y1(c);
+          const run = c % 2 === 0 && c !== 3 && z + 1 < PASS_Z1 ? 2 : 1;
+          const color = hash(lx, y, z) < 0.25 ? DARK_TAN : c === 0 ? LIGHT_STONE : TAN;
+          if (c === 3 && lampCells.has(`${z}`)) {
+            const host = sideStud(lx, y, z, facing, color);
+            mount(host, '3062b', LAMP, facing);
+          } else add(run === 2 ? '3004' : '3005', color, lx, y, z, 0);
         }
-    if (!fitted) throw new Error('No fit for the door.');
-    // The window is recessed a stud: a hidden column of brick behind the door, then a band, three
-    // frames and a closing course on the inner line, under the arch on the wall line.
-    for (let c = 0; c <= 5; c++) add('3010', BRICK, 14, y1(c), R1.z0 + 1, 90);
-    addRun(add, 'plate', TAN, 'x', 14, y1(6) - 1, R1.z0 + 1, 4);
-    for (const c of [6, 9]) add('60594', DARK_STONE, 14, y1(c), R1.z0 + 1, 90);
-    for (const c of [12, 13, 14]) add('3010', BRICK, 14, y1(c), R1.z0 + 1, 90);
-    // The pointed head: two quarter arches, one standing on each leg, meeting over the opening.
-    add('13965', TAN, 13, y1(12), R1.z0, 90);
-    add('13965', TAN, 16, y1(12), R1.z0, 270);
+    for (const lx of [PASS_X0 - 1, PASS_X0 + 4])
+      addRun(add, 'plate', LIGHT_STONE, 'z', lx, y1(6) - 1, PASS_Z0 + 1, PASS_Z1 - PASS_Z0 - 1);
+    for (let z = PASS_Z0; z <= PASS_Z1; z++) {
+      const rib = (z - PASS_Z0) % 2 === 0;
+      const color = rib ? LIGHT_STONE : TAN;
+      add('13965', color, PASS_X0 - 1, y1(PASS_C), z, 90);
+      add('13965', color, PASS_X0 + 2, y1(PASS_C), z, 270);
+    }
+    // The floor runs out under the arch: tan tiles with a dark course every third row.
+    for (let z = PASS_Z0 - 3; z <= PASS_Z1 + 3; z++)
+      addRun(add, 'tile', (z - PASS_Z0 + 3) % 3 === 2 ? DARK_TAN : TAN, 'x', PASS_X0, BASE, z, 4);
+    // The windows above the mouths, recessed a stud behind the wall line.
+    for (const face of ['F', 'B'] as Face[]) {
+      const wz = face === 'F' ? R1.z0 + 1 : R1.z1 - 1;
+      const edge = face === 'F' ? R1.z0 : R1.z1;
+      add('3010', DARK_TAN, PASS_X0, y1(PASS_C + 3), wz, 90);
+      for (const c of [13, 16]) add('60594', LIGHT_STONE, PASS_X0, y1(c), wz, 90);
+      addRun(add, 'plate', TAN, 'x', PASS_X0, y1(13) + 9, wz, 4);
+      for (const c of [19, 20]) add('3010', DARK_TAN, PASS_X0, y1(c), wz, 90);
+      if (face === 'F') {
+        add('13965', LIGHT_STONE, PASS_X0 - 1, y1(18), edge, 90);
+        add('13965', LIGHT_STONE, PASS_X0 + 2, y1(18), edge, 270);
+      } else add('3659', LIGHT_STONE, PASS_X0, y1(20), edge, 90);
+    }
     // The tall pointed window on the right: the same construction turned to face +x.
     {
       const ix = R1.x1 - 1;
       for (let c = 0; c <= 5; c++) add('3010', BRICK, ix, y1(c), R1.z0 + 3, 0);
       addRun(add, 'plate', TAN, 'z', ix, y1(6) - 1, R1.z0 + 3, 4);
-      for (const c of [6, 9]) add('60594', DARK_STONE, ix, y1(c), R1.z0 + 3, 0);
+      for (const c of [6, 9]) add('60594', LIGHT_STONE, ix, y1(c), R1.z0 + 3, 0);
       for (const c of [12, 13, 14]) add('3010', BRICK, ix, y1(c), R1.z0 + 3, 0);
       add('13965', TAN, R1.x1, y1(12), R1.z0 + 2, 0);
       add('13965', TAN, R1.x1, y1(12), R1.z0 + 5, 180);
     }
-    // A landing before the door.
-    addRun(add, 'tile', TAN, 'x', 14, BASE, R1.z0 - 2, 4);
-    addRun(add, 'tile', DARK_TAN, 'x', 14, BASE, R1.z0 - 3, 4);
-
     // The plinth: plates a stud out from the wall in runs, left open at the door and the turret.
     for (const face of FACES) {
       const n = cells(R1, face);
       const skip = (k: number) =>
-        (face === 'F' && k >= 2 && k <= 5) || (face === 'L' && (k === 3 || k === 4));
+        ((face === 'F' || face === 'B') && k >= 2 && k <= 5) ||
+        (face === 'L' && (k === 3 || k === 4));
       let k = 0;
       while (k < n) {
         if (skip(k)) {
@@ -799,20 +835,14 @@ export const domTower: ExampleDefinition = {
         }
       }
 
-    // ---- The lantern's windows: a pair on each face, two frames tall, a lintel across the four.
+    // ---- The lantern's arches: one round arch across each face, bearing on the two piers.
     for (const [dx, dz, rot] of [
       [1, 0, 90],
       [1, 5, 90],
       [0, 1, 0],
       [5, 1, 0],
-    ] as [number, number, Rotation][]) {
-      for (const half of [0, 2]) {
-        const x = LANTERN_X + dx + (rot === 90 ? half : 0);
-        const z = LANTERN_Z + dz + (rot === 0 ? half : 0);
-        for (const c of [1, 4, 7]) order.add('60593', DARK_STONE, x, y3(c) + FLOOR - 1, z, rot);
-      }
-      add('3010', LIGHT_STONE, LANTERN_X + dx, y3(10), LANTERN_Z + dz, rot);
-    }
+    ] as [number, number, Rotation][])
+      add('3659', LIGHT_STONE, LANTERN_X + dx, y3(9), LANTERN_Z + dz, rot);
 
     // ---- Relief on stage one: ribs, pilasters, a buttress and a round stair turret, each stacked
     // a course at a time on the plinth and capped with cheese slopes under the corbel table.
@@ -874,7 +904,6 @@ export const domTower: ExampleDefinition = {
     pilaster('F', 7, 1, 0, 22);
     pilaster('B', 0, 1, 0, 22);
     pilaster('B', 7, 1, 0, 22);
-    pilaster('B', 3, 2, 0, 22);
     // The right: a pilaster in the middle two cells, stepped out two studs.
 
     // The left: a round stair turret of 2 x 2 bricks, standing out two studs from the wall and
@@ -889,10 +918,24 @@ export const domTower: ExampleDefinition = {
     // rib, pilaster or the turret stands.
     const standsOut = (face: Face, k: number) =>
       (face === 'F' && (k === 0 || k === 7)) ||
-      (face === 'B' && (k === 0 || k === 7 || k === 3 || k === 4)) ||
+      (face === 'B' && (k === 0 || k === 7)) ||
       (face === 'L' && (k === 3 || k === 4));
     for (const c of [6, 15, 21])
-      for (const face of FACES)
+      for (const face of FACES) {
+        // On the front and back the passage and its window leave only the piers at both ends.
+        if ((face === 'F' || face === 'B') && c !== 21) {
+          for (const k0 of [0, 6]) {
+            const [wx, wz] = cellOf(R1, face, k0);
+            addRun(add, 'plate', c === 15 ? TAN : LIGHT_STONE, 'x', wx, y1(c) - 1, wz, 2);
+          }
+          // The back's jambs beside its slim window carry the course above on a plate each.
+          if (face === 'B' && c === 15)
+            for (const k of [2, 5]) {
+              const [wx, wz] = cellOf(R1, face, k);
+              add('3024', TAN, wx, y1(c) - 1, wz);
+            }
+          continue;
+        }
         for (const k0 of [0, 4]) {
           const color = c === 15 ? TAN : LIGHT_STONE;
           const [wx, wz] = cellOf(R1, face, k0);
@@ -905,6 +948,7 @@ export const domTower: ExampleDefinition = {
           else if (face === 'L') add('3020', color, wx - 1, y1(c) - 1, wz, 0);
           else add('3020', color, wx, y1(c) - 1, wz, 0);
         }
+      }
     // Stage two: a two-wide pilaster at the middle of the back, ribs beside the windows of the
     // left and right faces, and a cap of cheese slopes under the corbels.
     const stack2 = (face: Face, k: number, width: 1 | 2) => {
