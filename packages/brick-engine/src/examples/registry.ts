@@ -16,6 +16,7 @@ import { steamTrain } from './steam-train-example.ts';
 import { trainTrackYard } from './train-track-yard.ts';
 import { westernTown } from './western-town.ts';
 import { domTower } from './dom-tower.ts';
+import { academiegebouw } from './academiegebouw.ts';
 
 export function createExampleRegistry(definitions: readonly ExampleDefinition[]) {
   const byId = new Map<string, ExampleDefinition>();
@@ -121,6 +122,7 @@ const registry = createExampleRegistry([
   trainTrackYard,
   steamTrain,
   domTower,
+  academiegebouw,
 ]);
 export const EXAMPLES = registry.examples;
 export const createExampleAssembly = registry.createAssembly;

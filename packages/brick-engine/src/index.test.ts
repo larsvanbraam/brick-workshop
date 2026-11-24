@@ -2569,6 +2569,7 @@ describe('mixed-part engine builds', () => {
       'train-track-yard',
       'steam-train',
       'dom-tower',
+      'academiegebouw',
     ]);
     expect(new Set(EXAMPLES.map((example) => example.id)).size).toBe(EXAMPLES.length);
     for (const example of SMALL_EXAMPLES) {
