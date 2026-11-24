@@ -191,12 +191,16 @@ for (const w of WINDOWS) {
     open([c], [[x, z]]);
   }
 }
-/** Lanterns either side of the entrance in the bay, on side studs, as cells and facings. */
-const LANTERNS: { x: number; z: number; facing: Facing }[] = [
-  { x: 29, z: 28, facing: '-z' },
-  { x: 34, z: 23, facing: '-x' },
-];
-for (const l of LANTERNS) open([3], [[l.x, l.z]]);
+// Stone headers that stick out of the two wing walls beside the bay carry the balcony.
+open(
+  [6],
+  [
+    [28, 28],
+    [29, 28],
+    [34, 22],
+    [34, 23],
+  ],
+);
 
 /** What stands in wall cell (x, z) on course c: a character for `addBondedMap`. */
 function wallChar(c: number, x: number, z: number): string {
@@ -256,7 +260,7 @@ export const academiegebouw: ExampleDefinition = {
   id: 'academiegebouw',
   name: 'Academiegebouw',
   tags: ['neo-renaissance', 'town', 'landmark', 'brick', 'sandstone', 'utrecht', 'square', 'tower'],
-  expectedPieceCount: 3464,
+  expectedPieceCount: 3468,
   buildArea: SIZE,
   brickIdPrefix: 'aca',
   build(drawnAdd) {
@@ -479,11 +483,19 @@ export const academiegebouw: ExampleDefinition = {
         c,
       );
       const color =
-        c <= 1 ? STONE : c <= 5 ? DARK_BROWN : c === 7 || c === 14 || c === 19 ? WHITE : TAN;
-      // Course 6 of the bay is the balcony floor instead (plates, below); the facets above it
-      // stand two plates lower, on the balcony floor.
+        c <= 1
+          ? STONE
+          : c <= 5
+            ? DARK_BROWN
+            : c >= 8 && c <= 10
+              ? DARK_STONE
+              : c === 11 || c === 14 || c === 19
+                ? WHITE
+                : TAN;
+      // Course 6 of the bay is the balcony's wedge brick instead (below), with a plate on top;
+      // the facets above them stand a plate higher.
       if (c <= 14 && c !== 6)
-        for (const [fx, fz] of FACETS) add('87620', color, fx, y(c) - (c > 6 ? 2 : 0), fz, 90);
+        for (const [fx, fz] of FACETS) add('87620', color, fx, y(c) + (c > 6 ? 1 : 0), fz, 90);
     }
 
     // ---- Windows: a frame on the wall line, with an arched head of tan stone, and a sill header.
@@ -545,48 +557,46 @@ export const academiegebouw: ExampleDefinition = {
     addAreaMap(
       add,
       plan((x, z) => (inBay(x, z) ? 's' : ' ')),
-      EAVES - 2,
+      EAVES + 1,
       { s: ['plate', TAN] },
       (x, z) => STUD_CELLS.some(([sx, sz]) => sx === x && sz === z),
     );
-    for (const [bx, bz] of STUD_CELLS) add('3062b', LIGHT_STONE, bx, EAVES - 1, bz);
-    // The balcony in the centre of the bend, over the entrance in the bay's diagonal face: two
-    // plates that step along the diagonal, held only by the studs of the facet bricks below
-    // (the facet course here is plates), with a balustrade of posts and handrails. No columns.
-    add('3020', TAN, 28, y(6), 26, 90);
-    add('3031', TAN, 29, y(6), 22, 0);
+    for (const [bx, bz] of STUD_CELLS) add('3062b', LIGHT_STONE, bx, EAVES + 2, bz);
+    // The balcony in the centre of the bend, over the entrance in the bay's diagonal face. It is
+    // tied to the building three ways: stone headers that stick out of the two wing walls, the
+    // studs of the facet bricks, and a top deck over them all (the facet course here is plates).
+    // The cut-corner plate has its diagonal edge on the line of the facet faces. No columns.
+    for (const hx of [28, 29]) add('3004', TAN, hx, y(6), 27, 0);
+    for (const hz of [22, 23]) add('3004', TAN, 33, y(6), hz, 90);
+    // A solid angled brick under the cut-corner plate makes the balcony a thick stone slab.
+    add('14413', TAN, 30, y(6), 24, 90);
+    add('30503', TAN, 30, y(7), 24, 270);
+    add('3020', TAN, 28, y(7), 24, 0);
+    add('3020', TAN, 30, y(7), 22, 90);
+    add('3031', TAN, 28, y(7) + 1, 22, 0);
+    add('3022', TAN, 32, y(7) + 1, 22, 0);
     for (const [bx, bz] of [
-      [28, 26],
-      [28, 27],
+      [28, 22],
       [29, 22],
-      [29, 23],
-      [29, 24],
-      [29, 25],
       [30, 22],
       [31, 22],
       [32, 22],
-      [32, 23],
+      [33, 22],
+      [28, 23],
+      [28, 24],
+      [28, 25],
+      [33, 23],
     ])
-      add('3062b', WHITE, bx, y(6) + 1, bz);
-    add('3023b', TAN, 28, y(6) + 4, 26, 0);
-    add('3623', TAN, 29, y(6) + 4, 23, 0);
-    add('3710', TAN, 29, y(6) + 4, 22, 90);
-    add('3024', TAN, 32, y(6) + 4, 23);
-    for (const { x, z, facing } of LANTERNS) mountOn(x, 3, z, facing, '3062b', TRANS_YELLOW);
-    for (const { x, z, c, facing } of SHIELDS) {
-      const roll = hash(x, z, 77 + c);
-      mountOn(x, c, z, facing, '6141', roll < 0.4 ? RED : roll < 0.7 ? WHITE : GOLD);
-    }
+      add('3062b', WHITE, bx, y(7) + 2, bz);
+    add('3009', TAN, 28, y(7) + 5, 22, 90);
+    add('3623', TAN, 28, y(7) + 5, 23, 0);
+    add('3024', TAN, 33, y(7) + 5, 23);
+    // Stone bosses on the piers, on side studs, in the sandstone of the bands.
+    for (const { x, z, c, facing } of SHIELDS) mountOn(x, c, z, facing, '6141', TAN);
+    // Cheese slopes in the wall's own brick colours: texture, not decoration.
     for (const { x, z, c, facing } of IVY) {
       const roll = hash(x, z, 131 + c);
-      mountOn(
-        x,
-        c,
-        z,
-        facing,
-        roll < 0.5 ? '6141' : '54200',
-        roll < 0.25 ? DARK_GRASS : roll < 0.6 ? GRASS : BRIGHT_GREEN,
-      );
+      mountOn(x, c, z, facing, '54200', roll < 0.4 ? DARK_RED : roll < 0.75 ? BRICK : DARK_ORANGE);
     }
     const half = (cx: number, cz: number) => {
       add('43888', TAN, cx, BASE + 1, cz, 0);
@@ -898,8 +908,12 @@ export const academiegebouw: ExampleDefinition = {
       for (const [lx, lz] of [
         [22, 28],
         [30, 27],
-      ])
+      ]) {
         add('2039', BLACK, lx, BASE, lz);
+        // The bulb on the post's top stud, in the middle of its 2 x 2, with a black cap.
+        add('3062b', TRANS_YELLOW, lx + 0.5, BASE + 21, lz + 0.5);
+        add('98138', BLACK, lx + 0.5, BASE + 24, lz + 0.5);
+      }
       const bench = (bx: number, bz: number) => {
         add('3005', DARK_BROWN, bx, BASE, bz);
         add('3005', DARK_BROWN, bx + 3, BASE, bz);
