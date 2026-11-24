@@ -179,6 +179,18 @@ for (const w of WINDOWS) {
     open([c], [[x, z]]);
   }
 }
+/** Ivy on the piers, on side studs: a pier cell, its course and the way it faces. */
+const IVY: { x: number; z: number; c: number; facing: Facing }[] = [];
+for (const w of WINDOWS) {
+  const [x, z] = cellOf(w, 2);
+  if (!isShell(5, x, z) || outsideCount(5, x, z) > 1 || inFacetBox(x, z)) continue;
+  if (Math.abs(x - 31) <= 4 && Math.abs(z - 26) <= 4) continue;
+  for (const c of [2, 7, 9]) {
+    if (OPEN.has(key(c, x, z))) continue;
+    IVY.push({ x, z, c, facing: outward(w) });
+    open([c], [[x, z]]);
+  }
+}
 /** Lanterns either side of the entrance in the bay, on side studs, as cells and facings. */
 const LANTERNS: { x: number; z: number; facing: Facing }[] = [
   { x: 29, z: 28, facing: '-z' },
@@ -244,7 +256,7 @@ export const academiegebouw: ExampleDefinition = {
   id: 'academiegebouw',
   name: 'Academiegebouw',
   tags: ['neo-renaissance', 'town', 'landmark', 'brick', 'sandstone', 'utrecht', 'square', 'tower'],
-  expectedPieceCount: 2995,
+  expectedPieceCount: 3464,
   buildArea: SIZE,
   brickIdPrefix: 'aca',
   build(drawnAdd) {
@@ -429,36 +441,32 @@ export const academiegebouw: ExampleDefinition = {
     const inBuilding = (x: number, z: number) => lowerPoly(x, z) || inFacetBox(x, z);
     const lawn = (x: number, z: number) =>
       (x >= 14 && x <= 19 && z >= 33 && z <= 38) || (x >= 27 && x <= 32 && z >= 20 && z <= 25);
-    addAreaMap(
-      addAbs,
-      plan((x, z) => {
-        if (inBuilding(x, z - DZ)) return 'f';
-        if (z < 8) return hash(x, z, 3) < 0.12 ? 'R' : 'r';
-        if (z === 8) return 'k';
-        if (z <= 10) return 's';
-        if (z === 63 || x === 0 || x === 63) return 'k';
-        // Tan carpets from the two doors, with grey edges.
-        // A tan carpet from the entrance at the bend, with grey edges.
-        if (x >= 28 && x <= 31 && z >= 26 && z <= 34) return x === 28 || x === 31 ? 'k' : 't';
-        if (lawn(x, z)) return hash(x, z, 4) < 0.3 ? 'G' : 'g';
-        const roll = hash(Math.floor(x / 8), Math.floor(z / 8), 9);
-        return roll < 0.1 ? 'v' : roll > 0.9 ? 'w' : 'u';
-      }),
-      1,
-      {
-        f: ['plate', DARK_STONE],
-        r: ['plate', DARK_STONE],
-        R: ['plate', STONE],
-        k: ['plate', STONE],
-        s: ['plate', LIGHT_STONE],
-        u: ['plate', BRICK],
-        v: ['plate', DARK_BROWN],
-        w: ['plate', 84],
-        t: ['plate', TAN],
-        g: ['plate', GRASS],
-        G: ['plate', DARK_GRASS],
-      },
-    );
+    const groundChar = (x: number, z: number): string => {
+      if (inBuilding(x, z - DZ)) return 'f';
+      if (z < 8) return hash(x, z, 3) < 0.12 ? 'R' : 'r';
+      if (z === 8) return 'k';
+      if (z <= 10) return 's';
+      if (z === 63 || x === 0 || x === 63) return 'k';
+      // Tan carpets from the two doors, with grey edges.
+      // A tan carpet from the entrance at the bend, with grey edges.
+      if (x >= 28 && x <= 31 && z >= 26 && z <= 34) return x === 28 || x === 31 ? 'k' : 't';
+      if (lawn(x, z)) return hash(x, z, 4) < 0.3 ? 'G' : 'g';
+      const roll = hash(Math.floor(x / 8), Math.floor(z / 8), 9);
+      return roll < 0.1 ? 'v' : roll > 0.9 ? 'w' : 'u';
+    };
+    addAreaMap(addAbs, plan(groundChar), 1, {
+      f: ['plate', DARK_STONE],
+      r: ['plate', DARK_STONE],
+      R: ['plate', STONE],
+      k: ['plate', STONE],
+      s: ['plate', LIGHT_STONE],
+      u: ['plate', BRICK],
+      v: ['plate', DARK_BROWN],
+      w: ['plate', 84],
+      t: ['plate', TAN],
+      g: ['plate', GRASS],
+      G: ['plate', DARK_GRASS],
+    });
 
     // ---- The walls: one bonded course at a time from a character map, and two facet bricks a
     // course that make the diagonal face. The lower four courses of the face are a dark door.
@@ -568,6 +576,17 @@ export const academiegebouw: ExampleDefinition = {
     for (const { x, z, c, facing } of SHIELDS) {
       const roll = hash(x, z, 77 + c);
       mountOn(x, c, z, facing, '6141', roll < 0.4 ? RED : roll < 0.7 ? WHITE : GOLD);
+    }
+    for (const { x, z, c, facing } of IVY) {
+      const roll = hash(x, z, 131 + c);
+      mountOn(
+        x,
+        c,
+        z,
+        facing,
+        roll < 0.5 ? '6141' : '54200',
+        roll < 0.25 ? DARK_GRASS : roll < 0.6 ? GRASS : BRIGHT_GREEN,
+      );
     }
     const half = (cx: number, cz: number) => {
       add('43888', TAN, cx, BASE + 1, cz, 0);
@@ -692,21 +711,34 @@ export const academiegebouw: ExampleDefinition = {
         const zF = face ? RZ1 - 2 : RZ0 + 2;
         const zStand = face ? zF - 1 : zF;
         const zBack = face ? zF - 2 : zF + 1;
-        for (const dx of [0, 1]) addA('3004', DARK_STONE, a + dx, dy, zStand, 0);
+        // A base four studs wide, the window in the middle two and a slate cheek either side that
+        // closes the gap against the slope; the ring above stands on hidden bricks behind.
+        for (const dx of [-1, 0, 1, 2]) addA('3004', DARK_STONE, a + dx, dy, zStand, 0);
         addRedA('60592', WHITE, a, dy + 3, zF, 90);
+        // The lower cheek brick is three studs long so the ring above has studs behind it.
+        for (const dx of [-1, 2]) {
+          addA('3622', DARK_STONE, a + dx, dy + 3, face ? zStand - 1 : zStand, 0);
+          addA('3004', DARK_STONE, a + dx, dy + 6, zStand, 0);
+        }
         for (const dx of [0, 1]) addA('3004', DARK_STONE, a + dx, dy + 3, zBack, 0);
         addA('3043', DARK_STONE, a, dy + 9, zStand, 0);
+        for (const dx of [-1, 2]) addA('3023b', STONE, a + dx, dy + 9, zStand, 0);
       };
-      for (const a of [10, 16, 22, 28]) dormer(a, true);
-      for (const a of [10, 16, 22]) dormer(a, false);
+      for (const a of [12, 18, 24, 30]) dormer(a, true);
+      for (const a of [12, 18, 24]) dormer(a, false);
       // A dormer on the hipped end too, in the same ring.
       const dormerEnd = (a: number) => {
         const dy = ringY(2);
         const xF = RX0 + 2;
-        for (const dz of [0, 1]) addA('3004', DARK_STONE, xF, dy, a + dz, 90);
+        for (const dz of [-1, 0, 1, 2]) addA('3004', DARK_STONE, xF, dy, a + dz, 90);
         addRedA('60592', WHITE, xF, dy + 3, a, 0);
+        for (const dz of [-1, 2]) {
+          addA('3622', DARK_STONE, xF, dy + 3, a + dz, 90);
+          addA('3004', DARK_STONE, xF, dy + 6, a + dz, 90);
+        }
         for (const dz of [0, 1]) addA('3004', DARK_STONE, xF + 1, dy + 3, a + dz, 90);
         addA('3043', DARK_STONE, xF, dy + 9, a, 90);
+        for (const dz of [-1, 2]) addA('3023b', STONE, xF, dy + 9, a + dz, 90);
       };
       dormerEnd(33);
       // Where the bay's terrace and its back wall stand, hidden bricks carry ring 1.
@@ -970,6 +1002,46 @@ export const academiegebouw: ExampleDefinition = {
         foot: false,
         radii: [2.4, 3, 2.7, 2],
       });
+
+      // ---- Street furniture: picket fences round the lawns, a post box, a bin, barrels, drains and
+      // a manhole in the road.
+      for (const [fx, fz, rot] of [
+        [14, 33, 90],
+        [18, 33, 90],
+        [14, 34, 0],
+        [14, 37, 0],
+        [27, 20, 0],
+        [28, 20, 90],
+        [32, 21, 0],
+      ] as [number, number, Rotation][])
+        tryAdd('33303', WHITE, fx, BASE, fz, rot);
+      if (tryAdd('3941', RED, 25, BASE, 32)) add('3022', BLACK, 25, BASE + 3, 32);
+      tryAdd('3062b', DARK_GRASS, 9, BASE, 36);
+      for (const [bx, bz] of [
+        [21, 36],
+        [23, 36],
+      ])
+        tryAdd('3941', DARK_BROWN, bx, BASE, bz);
+      for (const dx of [8, 24, 40, 56]) add('2412b', BLACK, dx, BASE, 5, 90);
+      for (const dx of [16, 48]) add('98138', STONE, dx, BASE, 4);
+
+      // ---- Tile paving over the plain brick of the square, in three browns, 2 x 2 where it fits.
+      for (let tz = 12; tz <= 44; tz += 2)
+        for (let tx = 6; tx <= 36; tx += 2) {
+          const plain = [
+            [0, 0],
+            [1, 0],
+            [0, 1],
+            [1, 1],
+          ].every(([dx, dz]) => 'uvw'.includes(groundChar(tx + dx, tz + dz)));
+          if (!plain) continue;
+          const roll = hash(tx, tz, 61);
+          const color = roll < 0.55 ? BRICK : DARK_RED;
+          if (tryAdd('3068b', color, tx, BASE, tz, 0)) continue;
+          for (const dz of [0, 1])
+            if (!tryAdd('3069b', color, tx, BASE, tz + dz, 90))
+              for (const dx of [0, 1]) tryAdd('3070b', color, tx + dx, BASE, tz + dz, 0);
+        }
     }
     order.flush();
   },
