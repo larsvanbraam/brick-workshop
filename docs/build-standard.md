@@ -225,6 +225,32 @@ lamppost and bench, a fountain, barrels and crates, a sign over the door, a flag
   `30055`), flags on antennas (`2335` on `3957a`), barrels from round bricks (`3941`),
   crates, benches, buckets and pots.
 
+**Design beyond part count.** More bricks do not make a build more interesting; these choices
+do, and most cost few or no extra pieces.
+
+- _Silhouette before surface._ Break the outline with setbacks, an offset upper storey, a corner
+  tower, chimneys, dormers or an uneven eave line. The build should still read as itself as a
+  black shape at thumbnail size; a plain box with fine surface detail is still a box.
+- _Hero zone and quiet zone._ Concentrate detail at the entrance, the corner and the roof edge,
+  and let some walls stay plain. Detail spread evenly reads as noise.
+- _Wear through colour._ Mix two or three near colours in a wall (patches or vertical streaks),
+  darken the bricks under sills and eaves, lighten where sun hits, and add moss, a cracked
+  brick or a mismatched repair. This changes colours, not the piece count.
+- _Asymmetry with a reason._ A door off the axis, one window of another size, a lean-to that
+  reads as a later extension. Every off-axis choice has a reason a viewer can guess.
+- _Light as a material._ Trans yellow or orange behind a window, in a lantern or at a hearth;
+  one visible light source with an interior behind it gives mood for a handful of pieces.
+- _Repetition with a break._ A row of identical windows or arches with one that differs
+  (shuttered, open, a flower box): the rhythm makes the exception read as deliberate.
+- _Scale tricks._ Taper towers course by course, use smaller parts higher up, and let part size
+  act as texture (big slopes at the base, small ones near the top).
+- _Negative space._ Open lanterns, arcades, visible roof timbers, a gap between neighbours:
+  not everything is solid.
+- _Colour blocking._ Two or three dominant colours plus one accent, with a transition band (tan,
+  white or dark grey) where two colours meet.
+- _Micro-scenes._ A ladder against a wall, laundry on a line, a cat on a roof: small, specific
+  and a little unexpected, a few pieces each.
+
 **Realistic colour combinations.**
 
 Pick a small palette per material and use it in shades, the way sets do: about 70% base,

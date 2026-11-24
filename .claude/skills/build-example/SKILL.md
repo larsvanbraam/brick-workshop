@@ -153,6 +153,14 @@ the notes were used and that the build is not a copy of an earlier one.
   details. No cell is empty and no two rows match. The back is where builds go bare, so write
   it first. Subject notes may give the columns in more detail (towers.md).
 - **Props and story**: at least eight props from four or more groups, and what is going on.
+- **Beyond bricks** (design choices that cost few or no extra pieces; see "Design beyond part
+  count" in the build standard): the silhouette (what breaks the outline: setback, offset
+  storey, chimney, dormer, uneven eave, and whether it holds as a black shape); the hero zone
+  where detail concentrates and the quiet zone that stays plain; the wear plan (which walls mix
+  two or three near colours, where shadow shades sit under sills and eaves, which bricks are
+  moss, cracked or mended); one planned asymmetry and its reason; one light source (trans
+  parts behind a window, lantern or hearth); one repetition with a break; one micro-scene (a
+  ladder, laundry, a cat on a roof).
 - **Palette**: the colour IDs with rough shares, base, shadow and highlight per material.
 - **Targets**: expected piece count, small-part share (benchmark 40-56%), and the share built
   sideways (benchmark 5-10%), and the split of pieces between subject and scenery (subject at
@@ -219,7 +227,10 @@ the notes were used and that the build is not a copy of an earlier one.
    Read, and the file starts with a table of what the reference shows (palette and shares,
    signature shapes such as arch type, roof, crown, silhouette proportions) against what each
    saved render shows, one row each, with a verdict (matches / off / missing). Then one row per
-   face from the design brief's Faces table, judged head-on. End with the three biggest gaps in
+   face from the design brief's Faces table, judged head-on, and one row for each "Beyond
+   bricks" line of the brief (silhouette, hero and quiet zone, wear, asymmetry, light,
+   repetition with a break, micro-scene), each marked present / weak / missing in the renders.
+   End with the three biggest gaps in
    silhouette, colour and detail, fix those first, render again and update the file. Rework
    the model itself (roof, windows, towers, steps), not just the scenery around it. Without
    this file you may not run step 9, and the summary to the user may not say the build
@@ -254,6 +265,8 @@ that the example is deterministic, valid and that `expectedPieceCount` is right,
   top, and its three biggest gaps are fixed or named in the summary.
 - The design brief was built to: palette, signature shapes and props are in the model, or the
   summary says what changed and why.
+- Every "Beyond bricks" line of the brief is visible in the renders, or the summary says which
+  is not and why.
 - No failing test is left untraced.
 
 ## Looking at it headlessly
