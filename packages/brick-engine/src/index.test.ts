@@ -2631,8 +2631,9 @@ describe('mixed-part engine builds', () => {
       }
       expect(remaining.bricks).toHaveLength(0);
     },
-    // Disassembly replays every removal, so the largest small examples need the headroom.
-    40_000,
+    // Disassembly replays every removal, so the largest small examples need the headroom;
+    // the Train Track Yard alone takes ~35s locally and ~41s on CI.
+    120_000,
   );
 
   it('samples every supported design exactly once and demonstrates every supported tile size', () => {
