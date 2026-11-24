@@ -123,6 +123,35 @@ For a rework, ask which example instead and read its file first. If the user sai
 pick the direction yourself, make it differ from the existing examples' walls and roofs, and
 state it in one line.
 
+### Study the reference's shape (when a reference image is given)
+
+A reference photo is the spec for the **layout**, not just the mood. Before the notes and the
+brief, open each image with Read and work out the building's shape, then write it down:
+
+- **Footprint and massing.** Is it a rectangle, an L, a U round a courtyard, a T, a tower on a
+  block? How many wings, and how do they meet (flush, stepped back, at an angle)? Which part is
+  tallest? Count the storeys of each volume.
+- **Proportions.** Width to height of each volume, the ratio of tower or wing to the main block,
+  bays per facade (count them), and where the entrance sits (centred, offset, in a corner).
+- **Roofline.** Roof type per volume, ridge direction relative to the front, pitch, and what
+  breaks it (gables, turrets, chimneys, a dome, a pediment).
+- **Which faces you can see.** A photo shows one or two faces. Mark what is visible and what you
+  would have to infer (the back, the far side, the depth of wings, the inside of a courtyard).
+- **Symmetry.** Strictly symmetric, or deliberately not? Note every deviation.
+
+Post this as a short "Reference reading" (a top-down sketch in characters of the footprint plus
+the facts above) before the design brief, and base the layer plans on it. Every reading must say
+how the photo was used: measured from it, or inferred.
+
+**Ask when unsure.** Do not guess the shape. If the photo leaves the footprint, the depth of a
+wing, the number of storeys, the hidden faces or the scale unclear, or two readings are both
+plausible (L or U? flat roof or hidden pitched one? one tower or two?), ask the user with
+`AskUserQuestion` before planning: state what you see, offer the plausible readings as options,
+and say which you would pick. Also ask when the photo conflicts with the chosen style direction or
+the piece budget (a footprint that cannot fit `buildArea` at the chosen scale, say), and how to
+proceed (simplify, shrink the scale, drop a wing). Ask once with everything bundled, and then
+build to the answers. When several images are given, say which one governs which face.
+
 ### Read the notes (required, not optional)
 
 Before planning, open these files with the Read tool; do not write code until you have. The
@@ -146,6 +175,9 @@ wagon, train or boat, and fauna when it has animals.
 Post this brief to the user (short, concrete, no code), then build to it. It is the check that
 the notes were used and that the build is not a copy of an earlier one.
 
+- **Reference reading** (only with a reference image): footprint sketch, massing, bays,
+  roofline, visible versus inferred faces, and the answers to any shape questions. The layout in
+  the brief must match it; list each deliberate deviation and why.
 - **Direction** chosen and why.
 - **Walls**: material per storey (at least two), the depth levels used (recess, proud headers,
   side-stud bricks, piers), quoins, bands, plinth.
@@ -184,6 +216,9 @@ the notes were used and that the build is not a copy of an earlier one.
    roads from tiles (kept as plates where props stand, since tiles have no studs) and build
    cacti from round bricks with arms on rounded plates (`35480`). `western-town.ts` is the
    worked desert setting, with a wagon on `4624c01` wheels and `4600` pin plates.
+   With a reference image, the footprint and massing come from the "Reference reading" in
+   intake, not from a stock layout. Re-check the plan against the photo (bay count, wing
+   positions, tower placement, entrance) before the bulk, and ask the user if it cannot be settled.
 2. **Plan.** Draw top-down character maps per layer (see `SQUARE` in `flower-stall.ts` and
    the castle's plans), with the front at high z and x running left to right as seen from the
    front. Wrap `add` in `reflectToFront` (`layout.ts`) so the front faces the default camera
@@ -199,7 +234,9 @@ the notes were used and that the build is not a copy of an earlier one.
    `layout.ts` helpers: `addRun`, `addRing`, `addBondedMap`, `addAreaMap`, `addRowMap`, and
    `glazeWindows` for glass. Keep joints staggered between courses.
    **Checkpoint review (gate).** Before any detail work, render the bulk (step 7's views) and
-   write the review file (step 8) for silhouette, proportions and palette only. A wrong colour
+   write the review file (step 8) for silhouette, proportions and palette only. With a reference,
+   compare the footprint and massing (wings, bay count, volume heights, entrance position) from the
+   matching angle against the photo, and fix any mismatch now. A wrong colour
    family, a missing signature shape (pointed arches, a crown) or wrong stage proportions are
    cheap to fix now and expensive after the detail pass.
 4. **Detail.** Procedural loops (hash-patched stone, `addRowMap` runs) are for the plain wall
