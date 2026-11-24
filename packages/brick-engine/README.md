@@ -91,7 +91,7 @@ rendering and export. Families:
 - Bars: the rigid parts of LDraw's Bar category, meaning rods with a bar to clip onto, studded
   and clip bars, towball bars, grilles, gates, fences and barred windows. Only the clips of `11090` and
   `3628` grip; the other clip, hub and ball-joint ends are not modelled yet.
-- Measured parts: 177 of the pieces official sets use most that the hand-made catalogue lacked,
+- Measured parts: 328 of the pieces official sets use most that the hand-made catalogue lacked,
   such as brackets, special plates and tiles, wedge plates and curved and sloped bricks, with
   envelopes, stud cells and side studs measured from their LDraw meshes by
   `apps/brick-studio/tooling/generate-measured-parts.ts` (`measured-parts.ts`; do not edit by

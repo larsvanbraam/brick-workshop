@@ -25,7 +25,7 @@ import { createCanonical, suffixRelationships, toRebrickablePart } from './rebri
 const NOT_STRUCTURE =
   /^(Minifig|Technic|Stickers|Electric|Duplo|Mechanical|Non-LEGO|Bulk|Magnet|Pneumatic|Tools|Containers|Plants|Animals|Baseplates|Windows|Wheels|Tyres|Hinges|Train|Transportation|Vehicle|Panels|Cockpit|Rock|Brick Round|Large Figure|Flags|Hose|String|Bar)/i;
 const SKIP_NAME =
-  /Hinge|Technic|Minifig|Sticker|Wheel|Tyre|Tire|Train|Pin|Axle|Ball|Socket|Turntable|Magnet|Spring|Chain|Motor|Rubber|Flexible|Hose|String|Cloth|Flag|Antenna|Propeller|Rotor|Lever|Handle Bar|Cylinder|Dish|Cone|Bar |Window|Door|Windscreen|Arch|Inverted|Minifigure|Hair|Torso|Pr\d|Print|Pattern| Dual |Stud on Side|Duplo|Quatro|Mold|Moulded|Tube|Tank|Plant|Animal/i;
+  /Hinge|Technic|Minifig|Sticker|Wheel|Tyre|Tire|Train|Ball|Pin Hole|with Pin|Pin on|Towball|Crosshole|Axle|Socket|Turntable|Magnet|Spring|Chain|Motor|Rubber|Flexible|Hose|String|Cloth|Flag|Antenna|Propeller|Rotor|Lever|Handle Bar|Cylinder|Dish|Cone|Bar |Window|Door|Windscreen|Arch|Minifigure|Hair|Torso|Pr\d|Print|Pattern| Dual |Stud on Side|Duplo|Quatro|Mold|Moulded|Tube|Tank|Plant|Animal/i;
 
 async function readCsv(file: string, onRow: (row: Record<string, string>) => void) {
   const parser = parse({ bom: true, columns: true, skip_empty_lines: true });
@@ -134,7 +134,7 @@ async function main(count: number, skipFile?: string) {
       skipped.push(`${design}${id ? `/${id}` : ''}`);
       continue;
     }
-    let data;
+    let data: ReturnType<typeof describe>;
     try {
       data = describe(measure(id.toLowerCase(), library));
     } catch {
@@ -142,6 +142,9 @@ async function main(count: number, skipFile?: string) {
       continue;
     }
     const half = (v: number) => Math.abs(v * 2 - Math.round(v * 2)) < 1e-6;
+    // Meshes run a hair off the plate grid (1.94, 1.99, 2.25): snap what is within a rounding of it.
+    const snapped = Math.round(data.height * 2) / 2;
+    if (Math.abs(data.height - snapped) <= 0.08 && snapped > 0) data = { ...data, height: snapped };
     if (
       !half(data.width) ||
       !half(data.depth) ||

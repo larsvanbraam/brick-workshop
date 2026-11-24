@@ -1678,9 +1678,9 @@ describe('upright brick engine', () => {
       ).toEqual(expected);
     }
   });
-  it('contains 535 unique building and foliage parts with explicit connection sites', () => {
-    expect(PARTS).toHaveLength(535);
-    expect(new Set(PARTS.map((part) => part.id)).size).toBe(535);
+  it('contains 686 unique building and foliage parts with explicit connection sites', () => {
+    expect(PARTS).toHaveLength(686);
+    expect(new Set(PARTS.map((part) => part.id)).size).toBe(686);
     expect(PARTS.filter((part) => part.family === 'tall')).toHaveLength(10);
     expect(PARTS.filter((part) => part.family === 'slope')).toHaveLength(35);
     expect(PARTS.filter((part) => part.family === 'round')).toHaveLength(38);
@@ -2093,7 +2093,7 @@ describe('upright brick engine', () => {
 
 describe('mixed-part engine builds', () => {
   it('lays complete catalogue and tile displays on one larger board without stacking', () => {
-    for (const [id, count] of [['catalog-sampler', 535]] as const) {
+    for (const [id, count] of [['catalog-sampler', 686]] as const) {
       const assembly = createExampleAssembly(id);
       expect(assembly.buildArea).toBe(128);
       expect(assembly.bricks).toHaveLength(count);

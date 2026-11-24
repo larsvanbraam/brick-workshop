@@ -2,7 +2,7 @@ import { PARTS } from '../core.ts';
 import { createShowcase } from './showcase.ts';
 import type { ExampleDefinition } from './types.ts';
 
-const showcase = createShowcase(PARTS, 128, 1);
+const showcase = createShowcase(PARTS, 128, 0.5);
 
 export const catalogSampler: ExampleDefinition = {
   id: 'catalog-sampler',
