@@ -27,7 +27,10 @@ No window is a plain hole. Each gets all of:
 - **A sill**: a 1 x 2 or 1 x 4 plate / tile one stud proud under the opening, ideally one
   stud wider each side.
 - **A head**: lintel brick of stone or dark colour, a slope hood (`3040b` low side out), or an
-  arch from `3659` / `4490`.
+  arch from `3659` / `4490`. The window must fit its arch: under a `3659` use the rounded-top
+  `30044` with a `30045` / `30046` pane, its head rising into the arch's curve (the engine allows
+  it); under a `15254` use the half-round `20309`. A square frame under a wider arch leaves a gap
+  at its top corners that shows the interior or the sky.
 - **Dressing**: shutters (1 x 2 panels `4865b` or `30413` on side studs), a flower box with
   `32607` sprigs and `24866` flowers on the sill, a curtain (a coloured 1 x 2 tile behind glass).
 

@@ -24,17 +24,17 @@ boardwalk (`70` / `308` plates, posts, a step).
 
 ## Street furniture
 
-| Group     | Items and recipes                                                                    |
-| --------- | ------------------------------------------------------------------------------------ |
-| Lighting  | lamppost `2039`; wall lantern: `99780` bracket + a trans 1 x 1; string lights across |
-| Seating   | bench: two `3710` plates on 1 x 1 supports, back from a tile; café chairs and tables |
-| Planting  | tree pit with a tree, planter box (`3004` ring + soil + flowers), hanging baskets    |
-| Post      | post box `4` with a `3622` brick and a round top; bin; hydrant; phone box            |
-| Fences    | `33303`, `3185`, `3633`, `30055`, `15332`; bollards from `3062b`; a chain between    |
-| Signs     | a board on a pole, a hanging shop sign on a bracket, a menu board A-frame            |
-| Transport | bike rack with a bike, a parked cart, a market barrow, a street-sweeper broom        |
-| Utilities | a manhole (round tile), drains, a water pump, a well, a wooden trough                |
-| Markets   | stalls with striped awnings, crates of fruit, barrels, flower buckets, sacks         |
+| Group     | Items and recipes                                                                                                                                                                                                        |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Lighting  | lamppost `2039` on the pavement along the curb, 12 to 16 studs apart and 3+ studs from any wall or window, with a trans-yellow bulb on its top stud; wall lantern: `99780` bracket + a trans 1 x 1; string lights across |
+| Seating   | bench: two `3710` plates on 1 x 1 supports, back from a tile; café chairs and tables                                                                                                                                     |
+| Planting  | tree pit with a tree, planter box (`3004` ring + soil + flowers), hanging baskets                                                                                                                                        |
+| Post      | post box `4` with a `3622` brick and a round top; bin; hydrant; phone box                                                                                                                                                |
+| Fences    | `33303`, `3185`, `3633`, `30055`, `15332`; bollards from `3062b`; a chain between                                                                                                                                        |
+| Signs     | a board on a pole, a hanging shop sign on a bracket, a menu board A-frame                                                                                                                                                |
+| Transport | bike rack with a bike, a parked cart, a market barrow, a street-sweeper broom                                                                                                                                            |
+| Utilities | a manhole (round tile), drains, a water pump, a well, a wooden trough                                                                                                                                                    |
+| Markets   | stalls with striped awnings, crates of fruit, barrels, flower buckets, sacks                                                                                                                                             |
 
 ## Spills: things that come out of doors
 
@@ -104,8 +104,9 @@ its own dormer layout, its own chimneys.
 
 ## Lighting the scene
 
-- Wall lanterns at doors, a lamppost at each corner, lit windows (trans yellow `14` /
-  trans orange `25` panes), a glowing fireplace.
+- Wall lanterns at doors, lampposts along the road (on the pavement by the curb, never beside a
+  window or against a wall), lit windows (trans yellow `14` / trans orange `25` panes), a
+  glowing fireplace.
 - Tiny warm accents against cool grey stone read as life.
 
 ## Checklist

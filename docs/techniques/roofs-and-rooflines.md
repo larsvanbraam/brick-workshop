@@ -41,7 +41,11 @@ A roof with nothing on it is unfinished. Add at least three:
   per roof section; vary heights.
 - **Dormers**: a small gabled box (two walls, a 1 x 2 x 2 window, a mini gable of `3040b`) on
   the slope, sitting on plates that follow the pitch (`3040b` rows give the 45°), with its own
-  roof ridge. Space them irregularly.
+  roof ridge. Space them irregularly. A dormer always connects to the roof: it replaces the
+  slope course it stands in with stand-in bricks bonded to the studs below, and it has cheeks
+  (a brick either side of the window) that close the gap against the slopes beside it, so it
+  reads as part of the roof and not a box stuck on. Hidden bricks behind it carry the courses
+  above. Check it in a zoomed render, from the side as well.
 - **Skylights** in transparent plates; a roof hatch with a door; a dormer with a hoist.
 - **Ridge furniture**: finials `4589`, weathervane (antenna `3957a` with a 1 x 1 plate),
   decorative end caps `3048b`.
@@ -71,6 +75,9 @@ different heights and two different roof shapes.
   lantern on top for cathedral and civic towers.
 - Tower silhouette: base wider than the shaft (battered or buttressed), shaft with a
   string course every 12 to 15 plates, a belfry with arches `3659` and louvres, then roof.
+- Do not finish a civic or church tower with a plain cone on a square block. Use the stage
+  table in `towers.md` ("Tiered towers"): open arcades, a balcony, a bulb cap, a lantern, a
+  finial. A bare cone is for round stair turrets and castle corner towers only.
 
 ## Roof colour palettes
 

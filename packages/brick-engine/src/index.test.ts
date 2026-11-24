@@ -1337,6 +1337,33 @@ describe('architectural part families', () => {
     const order = steps.flatMap((step) => step.brickIds);
     expect(order.indexOf('fanlight')).toBeLessThan(order.indexOf('arch'));
   });
+  it('lets a rounded-top window and its lattice pane rise into a 1 x 4 arch', () => {
+    const jambs = [0, 3].flatMap((x) =>
+      [0, 3, 6].map((y) => ({ ...base, id: `jamb-${x}-${y}`, partId: '3005', x, y })),
+    );
+    const sill = { ...base, id: 'sill', partId: '3004', x: 1, rotation: 90 as const };
+    const casement = {
+      ...base,
+      id: 'casement',
+      partId: '30044',
+      x: 1,
+      y: 3,
+      rotation: 90 as const,
+    };
+    const pane = { ...casement, id: 'pane', partId: '30046' };
+    const arch = { ...base, id: 'arch', partId: '3659', y: 9, rotation: 90 as const };
+    const bricks = [...jambs, sill, casement, pane, arch];
+    expect(validateAssembly({ ...empty, bricks })).toEqual([]);
+    // A window that does not reach the arch, or that rises past it, is not an infill.
+    const lowered = [...jambs, sill, { ...casement, y: 1 }, { ...pane, y: 1 }, arch];
+    expect(validateAssembly({ ...empty, bricks: lowered })).not.toEqual([]);
+    const crossed = [...jambs, sill, casement, pane, { ...arch, y: 6 }];
+    expect(validateAssembly({ ...empty, bricks: crossed })).not.toEqual([]);
+    // The arch comes down over the window and its pane.
+    const order = planInstructionSteps({ ...empty, bricks }).flatMap((step) => step.brickIds);
+    expect(order.indexOf('casement')).toBeLessThan(order.indexOf('arch'));
+    expect(order.indexOf('pane')).toBeLessThan(order.indexOf('arch'));
+  });
   it('glazes the three-light 1 x 4 x 6 frame', () => {
     const support = { ...base, partId: '3010', rotation: 90 as const };
     const frame = { ...base, id: 'frame', partId: '57894', y: 3, rotation: 90 as const };

@@ -68,8 +68,9 @@ const COURSES = 15;
 const EAVES = y(COURSES);
 /** The pavilion's walls run on above the wings' eaves to this course. */
 const PAV_TOP = 24;
-/** How far the building is set back on the board, so the wings can reach forward. */
-const DZ = 12;
+/** How far the building is set into the far corner of the board, so the square can be big. */
+const DZ = 20;
+const DX = 14;
 
 // The plan. Wing A runs along x, wing B along z; the corner pavilion is the square both run
 // into. In the corner between the wings a bay is cut diagonally by two facet bricks, along the
@@ -191,17 +192,6 @@ for (const w of WINDOWS) {
     open([c], [[x, z]]);
   }
 }
-// Stone headers that stick out of the two wing walls beside the bay carry the balcony.
-open(
-  [6],
-  [
-    [28, 28],
-    [29, 28],
-    [34, 22],
-    [34, 23],
-  ],
-);
-
 /** What stands in wall cell (x, z) on course c: a character for `addBondedMap`. */
 function wallChar(c: number, x: number, z: number): string {
   if (OPEN.has(key(c, x, z))) return ' ';
@@ -260,7 +250,7 @@ export const academiegebouw: ExampleDefinition = {
   id: 'academiegebouw',
   name: 'Academiegebouw',
   tags: ['neo-renaissance', 'town', 'landmark', 'brick', 'sandstone', 'utrecht', 'square', 'tower'],
-  expectedPieceCount: 3468,
+  expectedPieceCount: 3676,
   buildArea: SIZE,
   brickIdPrefix: 'aca',
   build(drawnAdd) {
@@ -299,44 +289,56 @@ export const academiegebouw: ExampleDefinition = {
         y1: py + size.height,
       });
     };
-    // The building is drawn in its own coordinates and set DZ studs back on the board; the ground
-    // and the props on it are drawn in board coordinates (`addAbs`, `tryAbs`).
+    // The building is drawn in its own coordinates and set DX and DZ studs into the far corner of
+    // the board; the ground and the props on it are drawn in board coordinates (`addAbs`,
+    // `tryAbs`).
     const makeAdd =
-      (target: ExampleBrickAdder, dz: number): ExampleBrickAdder =>
+      (target: ExampleBrickAdder, dx: number, dz: number): ExampleBrickAdder =>
       (partId, color, x, py, z, rotation = 0, facing, ...rest) => {
-        track(partId, color, x, py, z + dz, rotation, facing);
-        target(partId, color, x, py, z + dz, rotation, facing, ...rest);
+        track(partId, color, x + dx, py, z + dz, rotation, facing);
+        target(partId, color, x + dx, py, z + dz, rotation, facing, ...rest);
       };
-    const add = makeAdd(glazeWindows(front, 47), DZ);
+    const add = makeAdd(glazeWindows(front, 47), DX, DZ);
     /** Adds with red panes in any window frame, for the dormers. */
-    const addRed = makeAdd(glazeWindows(front, TRANS_RED), DZ);
-    const addGlow = makeAdd(glazeWindows(front, TRANS_YELLOW), DZ);
-    const addAbs = makeAdd(glazeWindows(front, 47), 0);
+    const addRed = makeAdd(glazeWindows(front, TRANS_RED), DX, DZ);
+    const addGlow = makeAdd(glazeWindows(front, TRANS_YELLOW), DX, DZ);
+    const addAbs = makeAdd(glazeWindows(front, 47), 0, 0);
+    /** Adds without the plain glass, for frames that take a latticed pane instead. */
+    const addUnglazed = makeAdd(front, DX, DZ);
     const blocked = (x0: number, x1: number, z0: number, z1: number, y0: number, y1: number) =>
       boxes.some(
         (box) =>
           box.u0 < x1 && x0 < box.u1 && box.v0 < z1 && z0 < box.v1 && box.y0 < y1 && y0 < box.y1,
       );
     const tryWith =
-      (adder: ExampleBrickAdder, dz: number) =>
+      (adder: ExampleBrickAdder, dx: number, dz: number) =>
       (partId: string, color: number, x: number, py: number, z: number, rotation: Rotation = 0) => {
-        const size = footprint({ id: '', partId, color, x, y: py, z: z + dz, rotation });
-        if (blocked(x, x + size.width, z + dz, z + dz + size.depth, py, py + size.height))
+        const size = footprint({ id: '', partId, color, x: x + dx, y: py, z: z + dz, rotation });
+        if (blocked(x + dx, x + dx + size.width, z + dz, z + dz + size.depth, py, py + size.height))
           return false;
         adder(partId, color, x, py, z, rotation);
         return true;
       };
-    const tryAdd = tryWith(add, DZ);
-    const tryAbs = tryWith(addAbs, 0);
+    const tryAdd = tryWith(add, DX, DZ);
+    const tryAbs = tryWith(addAbs, 0, 0);
     const mount = (host: Piece, partId: string, color: number, facing: Facing) => {
       // Seated on the board, where the plan is set back: a cell near the plan's edge would
       // otherwise lie outside the area.
       const seated = seatOnSideStuds(
-        { id: 'mount', partId, color, x: host.x, y: host.y, z: host.z + DZ, rotation: 0, facing },
-        { id: 'host', ...host, z: host.z + DZ },
+        {
+          id: 'mount',
+          partId,
+          color,
+          x: host.x + DX,
+          y: host.y,
+          z: host.z + DZ,
+          rotation: 0,
+          facing,
+        },
+        { id: 'host', ...host, x: host.x + DX, z: host.z + DZ },
       );
       if (!seated) throw new Error(`Nothing to mount ${partId} at ${host.x},${host.y},${host.z}.`);
-      add(partId, color, seated.x, seated.y, seated.z - DZ, seated.rotation, seated.facing);
+      add(partId, color, seated.x - DX, seated.y, seated.z - DZ, seated.rotation, seated.facing);
     };
     /** A side-stud brick whose studs face `facing`, standing in a wall cell. */
     const sideStud = (x: number, py: number, z: number, facing: Facing, color: number): Piece => {
@@ -358,7 +360,7 @@ export const academiegebouw: ExampleDefinition = {
           if (!body) continue;
           const probe = seatOnSideStuds(
             { id: 'p', partId: '3024', color, x: 0, y: py, z: 0, rotation: 0, facing },
-            { id: 'h', ...host, z: host.z + DZ },
+            { id: 'h', ...host, x: host.x + DX, z: host.z + DZ },
           );
           if (!probe) continue;
           add(host.partId, color, host.x, host.y, host.z, host.rotation);
@@ -378,7 +380,7 @@ export const academiegebouw: ExampleDefinition = {
       partId: string,
       color: number,
     ) => {
-      const xWorld = SIZE - 1 - x;
+      const xWorld = SIZE - 1 - (x + DX);
       const worldFacing = facing === '+x' ? '-x' : '+x';
       for (const rotation of [0, 90, 180, 270] as Rotation[])
         for (const dx of [0, -0.5]) {
@@ -414,9 +416,9 @@ export const academiegebouw: ExampleDefinition = {
             { id: 'h', ...host },
           );
           if (!probe || !seated) continue;
-          track(host.partId, BRICK, x, py, z + DZ, host.rotation);
+          track(host.partId, BRICK, x + DX, py, z + DZ, host.rotation);
           order.add(host.partId, BRICK, host.x, py, host.z, host.rotation);
-          track(partId, color, x, seated.y, z + DZ, seated.rotation, facing);
+          track(partId, color, x + DX, seated.y, z + DZ, seated.rotation, facing);
           order.add(partId, color, seated.x, seated.y, seated.z, seated.rotation, seated.facing);
           return;
         }
@@ -444,16 +446,17 @@ export const academiegebouw: ExampleDefinition = {
       for (let gz = 0; gz < SIZE; gz += 16) front('91405', DARK_STONE, gx, 0, gz, 0);
     const inBuilding = (x: number, z: number) => lowerPoly(x, z) || inFacetBox(x, z);
     const lawn = (x: number, z: number) =>
-      (x >= 14 && x <= 19 && z >= 33 && z <= 38) || (x >= 27 && x <= 32 && z >= 20 && z <= 25);
+      (x >= 28 && x <= 33 && z >= 41 && z <= 46) || (x >= 41 && x <= 46 && z >= 28 && z <= 33);
     const groundChar = (x: number, z: number): string => {
-      if (inBuilding(x, z - DZ)) return 'f';
-      if (z < 8) return hash(x, z, 3) < 0.12 ? 'R' : 'r';
-      if (z === 8) return 'k';
-      if (z <= 10) return 's';
-      if (z === 63 || x === 0 || x === 63) return 'k';
-      // Tan carpets from the two doors, with grey edges.
+      if (inBuilding(x - DX, z - DZ)) return 'f';
+      // The road runs along the low-x edge, below the square, with a curb and a pavement.
+      if (x < 8) return hash(x, z, 3) < 0.12 ? 'R' : 'r';
+      if (x === 8) return 'k';
+      if (x <= 10) return 's';
+      if (z === 63 || z === 0 || x === 63) return 'k';
       // A tan carpet from the entrance at the bend, with grey edges.
-      if (x >= 28 && x <= 31 && z >= 26 && z <= 34) return x === 28 || x === 31 ? 'k' : 't';
+      if (x >= 42 && x <= 45 && z >= 34 && z <= 43)
+        return z <= 43 && (x === 42 || x === 45) ? 'k' : 't';
       if (lawn(x, z)) return hash(x, z, 4) < 0.3 ? 'G' : 'g';
       const roll = hash(Math.floor(x / 8), Math.floor(z / 8), 9);
       return roll < 0.1 ? 'v' : roll > 0.9 ? 'w' : 'u';
@@ -500,11 +503,22 @@ export const academiegebouw: ExampleDefinition = {
 
     // ---- Windows: a frame on the wall line, with an arched head of tan stone, and a sill header.
     const rotOf = (o: Opening): Rotation => (o.axis === 'x' ? 90 : 0);
+    /**
+     * A window that fits an arch: a rounded-top frame with a lattice pane in it, its head rising
+     * into the arch's curve (the engine lets it), so no square frame leaves a gap under the arch.
+     */
+    const archedWindow = (x: number, py: number, z: number, rot: Rotation) => {
+      add('30044', WHITE, x, py, z, rot);
+      add('30046', 47, x, py, z, rot);
+    };
     for (const w of WINDOWS) {
       const [x, z] = cellOf(w, 0);
-      add('60593', WHITE, x, y(3), z, rotOf(w));
-      add('60592', WHITE, x, y(9), z, rotOf(w));
-      add('60592', WHITE, x, y(11), z, rotOf(w));
+      add('3004', WHITE, x, y(3), z, rotOf(w));
+      archedWindow(x, y(3) + 3, z, rotOf(w));
+      // The lower frame takes the same latticed glass as the arched window above it.
+      addUnglazed('60592', WHITE, x, y(9), z, rotOf(w));
+      addUnglazed('38320', 47, x, y(9), z, rotOf(w));
+      archedWindow(x, y(11), z, rotOf(w));
       for (const c of [6, 13]) {
         const [ax, az] = cellOf(w, -1);
         add('3659', TAN, ax, y(c), az, rotOf(w));
@@ -531,7 +545,8 @@ export const academiegebouw: ExampleDefinition = {
     }
     for (const w of UPPER_WINDOWS) {
       const [x, z] = cellOf(w, 0);
-      add('60593', WHITE, x, y(17), z, rotOf(w));
+      add('3004', WHITE, x, y(17), z, rotOf(w));
+      archedWindow(x, y(17) + 3, z, rotOf(w));
       const [ax, az] = cellOf(w, -1);
       add('3659', TAN, ax, y(20), az, rotOf(w));
     }
@@ -562,35 +577,39 @@ export const academiegebouw: ExampleDefinition = {
       (x, z) => STUD_CELLS.some(([sx, sz]) => sx === x && sz === z),
     );
     for (const [bx, bz] of STUD_CELLS) add('3062b', LIGHT_STONE, bx, EAVES + 2, bz);
-    // The balcony in the centre of the bend, over the entrance in the bay's diagonal face. It is
-    // tied to the building three ways: stone headers that stick out of the two wing walls, the
-    // studs of the facet bricks, and a top deck over them all (the facet course here is plates).
-    // The cut-corner plate has its diagonal edge on the line of the facet faces. No columns.
-    for (const hx of [28, 29]) add('3004', TAN, hx, y(6), 27, 0);
-    for (const hz of [22, 23]) add('3004', TAN, 33, y(6), hz, 90);
-    // A solid angled brick under the cut-corner plate makes the balcony a thick stone slab.
-    add('14413', TAN, 30, y(6), 24, 90);
-    add('30503', TAN, 30, y(7), 24, 270);
-    add('3020', TAN, 28, y(7), 24, 0);
-    add('3020', TAN, 30, y(7), 22, 90);
-    add('3031', TAN, 28, y(7) + 1, 22, 0);
-    add('3022', TAN, 32, y(7) + 1, 22, 0);
-    for (const [bx, bz] of [
-      [28, 22],
-      [29, 22],
-      [30, 22],
-      [31, 22],
-      [32, 22],
-      [33, 22],
-      [28, 23],
-      [28, 24],
-      [28, 25],
-      [33, 23],
-    ])
-      add('3062b', WHITE, bx, y(7) + 2, bz);
-    add('3009', TAN, 28, y(7) + 5, 22, 90);
-    add('3623', TAN, 28, y(7) + 5, 23, 0);
-    add('3024', TAN, 33, y(7) + 5, 23);
+    // The balcony in the centre of the bend, over the entrance in the bay's diagonal face: a
+    // quarter circle of round corner plates (6 x 6) whose two straight edges lie against the two
+    // wing walls and whose arc sweeps from one wing to the other. Three plates fill the course
+    // under it, resting on the studs of the facet bricks, and a deck plate tops them, so the
+    // slab reads as a thick curved stone floor. Round bricks and a round-plate rail follow the arc.
+    // The plate's corner is at (33, 27): turned a quarter so its arc faces away from the bend.
+    for (const [layer, color] of [
+      [y(6), DARK_TAN],
+      [y(6) + 1, TAN],
+      [y(6) + 2, TAN],
+      [y(7), TAN],
+    ] as [number, number][])
+      add('6003', color, 28, layer, 22, 90);
+    // The studs of the plate, as rows of its own layout, turned the same quarter.
+    const DECK_ROWS: [number, number][] = [
+      [0, 2],
+      [0, 4],
+      [0, 4],
+      [0, 5],
+      [0, 5],
+      [0, 5],
+    ];
+    const deck = new Set<string>();
+    DECK_ROWS.forEach(([from, to], row) => {
+      for (let col = from; col <= to; col++) deck.add(`${28 + row},${22 + 5 - col}`);
+    });
+    for (const cell of deck) {
+      const [dx, dz] = cell.split(',').map(Number);
+      const onArc = !deck.has(`${dx - 1},${dz}`) || !deck.has(`${dx},${dz - 1}`);
+      if (!onArc || dx + dz >= BAY_LINE || inFacetBox(dx, dz)) continue;
+      add('3062b', WHITE, dx, y(7) + 1, dz);
+      add('6141', TAN, dx, y(7) + 4, dz);
+    }
     // Stone bosses on the piers, on side studs, in the sandstone of the bands.
     for (const { x, z, c, facing } of SHIELDS) mountOn(x, c, z, facing, '6141', TAN);
     // Cheese slopes in the wall's own brick colours: texture, not decoration.
@@ -849,7 +868,8 @@ export const academiegebouw: ExampleDefinition = {
     stage(37, 42, 31, 36, TY, 8, towerGaps);
     for (const face of towerFaces) {
       const [fx, fz, rot] = face;
-      add('60593', WHITE, fx, TY + 6, fz, rot);
+      add('3004', WHITE, fx, TY + 6, fz, rot);
+      archedWindow(fx, TY + 9, fz, rot);
       const [ax, az] = cellAt(face, -1);
       add('3659', TAN, ax, TY + 15, az, rot);
     }
@@ -897,17 +917,20 @@ export const academiegebouw: ExampleDefinition = {
         add('3062b', 378, sx, t + 9, sz);
         add('4589', 288, sx, t + 12, sz);
       };
-      statue(14, 22);
+      statue(28, 30);
       for (const [bx, bz] of [
-        [11, 20],
-        [17, 20],
-        [11, 25],
-        [17, 25],
+        [25, 28],
+        [31, 28],
+        [25, 33],
+        [31, 33],
       ])
         add('3062b', STONE, bx, BASE, bz);
+      // Street lamps stand on the pavement along the road's curb, clear of the facades.
       for (const [lx, lz] of [
-        [22, 28],
-        [30, 27],
+        [9, 8],
+        [9, 24],
+        [9, 40],
+        [9, 54],
       ]) {
         add('2039', BLACK, lx, BASE, lz);
         // The bulb on the post's top stud, in the middle of its 2 x 2, with a black cap.
@@ -919,8 +942,8 @@ export const academiegebouw: ExampleDefinition = {
         add('3005', DARK_BROWN, bx + 3, BASE, bz);
         add('3710', BRICK, bx, BASE + 3, bz, 90);
       };
-      bench(16, 16);
-      bench(2, 38);
+      bench(30, 24);
+      bench(16, 46);
       const bike = (bx: number, bz: number) => {
         add('3062b', BLACK, bx, BASE, bz);
         add('3062b', BLACK, bx + 3, BASE, bz);
@@ -928,17 +951,17 @@ export const academiegebouw: ExampleDefinition = {
         add('3024', BLACK, bx + 3, BASE + 4, bz);
         add('3024', BROWN_SEAT, bx, BASE + 4, bz);
       };
-      for (let i = 0; i < 5; i++) bike(2, 27 + i * 2);
+      for (let i = 0; i < 5; i++) bike(14, 35 + i * 2);
       const clump = (color: number, fx: number, fz: number) => {
         if (blocked(fx, fx + 1, fz, fz + 1, BASE, BASE + 9)) return;
         add('18674', GRASS, fx, BASE, fz);
         add('4727', GRASS, fx, BASE + 1, fz);
         add('24866', color, fx, BASE + 4, fz);
       };
-      clump(RED, 15, 34);
-      clump(YELLOW, 18, 37);
-      clump(WHITE, 28, 21);
-      clump(RED, 31, 24);
+      clump(RED, 29, 42);
+      clump(YELLOW, 32, 45);
+      clump(WHITE, 42, 29);
+      clump(RED, 45, 32);
       // Plants on the two lawn beds: a plant plugs into one stud by a receiver off its corner.
       const beds: [number, number][] = [];
       for (let sz = 0; sz < SIZE; sz++)
@@ -958,103 +981,71 @@ export const academiegebouw: ExampleDefinition = {
           if (tryAdd(part, color, sx - dx, BASE, sz - dz)) placed++;
         }
       }
-      // A dashed white centre line on the back road.
-      for (let dx = 1; dx + 3 <= 63; dx += 8) addRun(add, 'tile', WHITE, 'x', dx, BASE, 3, 3);
+      // A dashed white centre line down the road.
+      for (let dz = 1; dz + 3 <= 63; dz += 8) addRun(add, 'tile', WHITE, 'z', 3, BASE, dz, 3);
 
-      // ---- The church gate to the left: a brick block with a pointed portal of two quarter arches,
-      // a stone cap and pinnacles.
-      const GATE = { x0: 1, x1: 8, z0: 56, z1: 60 };
-      const inGate = (x: number, z: number) =>
-        x >= GATE.x0 &&
-        x <= GATE.x1 &&
-        z >= GATE.z0 &&
-        z <= GATE.z1 &&
-        (x === GATE.x0 || x === GATE.x1 || z === GATE.z0 || z === GATE.z1);
-      const gateOpen = (c: number, x: number, z: number) =>
-        z === GATE.z1 && ((c <= 5 && x >= 3 && x <= 6) || (c >= 6 && c <= 8 && x >= 2 && x <= 7));
-      for (let c = 0; c <= 9; c++)
-        addBondedMap(
-          add,
-          plan((x, z) => {
-            if (!inGate(x, z) || gateOpen(c, x, z)) return ' ';
-            if (c <= 1) return hash(x, z, 5) < 0.4 ? 'g' : 'h';
-            if (c === 9 && z === GATE.z1 && x >= 2 && x <= 7) return 'W';
-            const corner = (x === GATE.x0 || x === GATE.x1) && (z === GATE.z0 || z === GATE.z1);
-            if (corner) return 'T';
-            const roll = hash(Math.floor((x + 3 * (c % 2)) / 6), Math.floor(c / 2), z);
-            return roll < 0.2 ? 'a' : roll < 0.45 ? 'r' : roll < 0.6 ? 'm' : 'b';
-          }),
-          y(c),
-          WALL_LEGEND,
-          c,
-        );
-      for (let c = 0; c <= 5; c++) add('3010', BLACK, 3, y(c), GATE.z1 - 1, 90);
-      add('13965', TAN, 2, y(6), GATE.z1, 90);
-      add('13965', TAN, 5, y(6), GATE.z1, 270);
-      addAreaMap(
-        add,
-        plan((x, z) => (inGate(x, z) ? 'c' : ' ')),
-        y(10),
-        { c: ['plate', LIGHT_STONE] },
-      );
-      for (const [gx, gz] of [
-        [GATE.x0, GATE.z1],
-        [GATE.x1, GATE.z1],
-      ]) {
-        add('3062b', TAN, gx, y(10) + 1, gz);
-        add('3062b', TAN, gx, y(11) + 1, gz);
-        add('4589', GOLD, gx, y(12) + 1, gz);
-      }
-
-      // ---- Two trees at the edges of the square.
-      addTree(add, 10, 31, BASE, [DARK_GRASS, GRASS, BRIGHT_GREEN], DARK_BROWN, 9, 5, boxes, {
+      // ---- A tree on the square.
+      addTree(add, 24, 39, BASE, [DARK_GRASS, GRASS, BRIGHT_GREEN], DARK_BROWN, 9, 5, boxes, {
         foot: false,
         gnarled: true,
         radii: [2.4, 3, 2.8, 2.1],
-      });
-      addTree(add, 52, 44, BASE, [DARK_GRASS, GRASS, BRIGHT_GREEN], DARK_BROWN, 5, 11, boxes, {
-        foot: false,
-        radii: [2.4, 3, 2.7, 2],
       });
 
       // ---- Street furniture: picket fences round the lawns, a post box, a bin, barrels, drains and
       // a manhole in the road.
       for (const [fx, fz, rot] of [
-        [14, 33, 90],
-        [18, 33, 90],
-        [14, 34, 0],
-        [14, 37, 0],
-        [27, 20, 0],
-        [28, 20, 90],
-        [32, 21, 0],
+        [28, 41, 90],
+        [32, 41, 90],
+        [28, 42, 0],
+        [28, 45, 0],
+        [41, 28, 0],
+        [42, 28, 90],
+        [46, 29, 0],
       ] as [number, number, Rotation][])
         tryAdd('33303', WHITE, fx, BASE, fz, rot);
-      if (tryAdd('3941', RED, 25, BASE, 32)) add('3022', BLACK, 25, BASE + 3, 32);
-      tryAdd('3062b', DARK_GRASS, 9, BASE, 36);
+      if (tryAdd('3941', RED, 39, BASE, 40)) add('3022', BLACK, 39, BASE + 3, 40);
+      tryAdd('3062b', DARK_GRASS, 23, BASE, 44);
       for (const [bx, bz] of [
-        [21, 36],
-        [23, 36],
+        [35, 44],
+        [37, 44],
       ])
         tryAdd('3941', DARK_BROWN, bx, BASE, bz);
-      for (const dx of [8, 24, 40, 56]) add('2412b', BLACK, dx, BASE, 5, 90);
-      for (const dx of [16, 48]) add('98138', STONE, dx, BASE, 4);
+      for (const dz of [8, 24, 40, 56]) add('2412b', BLACK, 5, BASE, dz, 0);
+      for (const dz of [16, 48]) add('98138', STONE, 4, BASE, dz);
 
-      // ---- Tile paving over the plain brick of the square, in three browns, 2 x 2 where it fits.
-      for (let tz = 12; tz <= 44; tz += 2)
-        for (let tx = 6; tx <= 36; tx += 2) {
-          const plain = [
-            [0, 0],
-            [1, 0],
-            [0, 1],
-            [1, 1],
-          ].every(([dx, dz]) => 'uvw'.includes(groundChar(tx + dx, tz + dz)));
-          if (!plain) continue;
-          const roll = hash(tx, tz, 61);
-          const color = roll < 0.55 ? BRICK : DARK_RED;
-          if (tryAdd('3068b', color, tx, BASE, tz, 0)) continue;
-          for (const dz of [0, 1])
-            if (!tryAdd('3069b', color, tx, BASE, tz + dz, 90))
-              for (const dx of [0, 1]) tryAdd('3070b', color, tx + dx, BASE, tz + dz, 0);
+      // ---- Tile paving over the whole square and the pavement: everything that is not road, building
+      // or lawn is tiled, with the biggest tile that fits and is free (props stand on bare studs).
+      const tileColor = (ch: string, tx: number, tz: number) =>
+        ch === 'k'
+          ? STONE
+          : ch === 't'
+            ? TAN
+            : ch === 's'
+              ? LIGHT_STONE
+              : hash(Math.floor(tx / 2), Math.floor(tz / 2), 61) < 0.55
+                ? BRICK
+                : DARK_RED;
+      const tileable = (ch: string) => 'kstuvw'.includes(ch);
+      const shapes: [string, number, number, Rotation][] = [
+        ['87079', 2, 4, 0],
+        ['87079', 4, 2, 90],
+        ['3068b', 2, 2, 0],
+        ['3069b', 1, 2, 0],
+        ['3069b', 2, 1, 90],
+        ['3070b', 1, 1, 0],
+      ];
+      for (let tz = 0; tz < SIZE; tz++)
+        for (let tx = 0; tx < SIZE; tx++) {
+          const ch = groundChar(tx, tz);
+          if (!tileable(ch)) continue;
+          for (const [part, w, d, rot] of shapes) {
+            if (tx + w > SIZE || tz + d > SIZE) continue;
+            let fits = true;
+            for (let dx = 0; dx < w && fits; dx++)
+              for (let dz = 0; dz < d && fits; dz++)
+                if (groundChar(tx + dx, tz + dz) !== ch) fits = false;
+            if (fits && tryAdd(part, tileColor(ch, tx, tz), tx, BASE, tz, rot)) break;
+          }
         }
     }
     order.flush();

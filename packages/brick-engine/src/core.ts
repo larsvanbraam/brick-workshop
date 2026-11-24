@@ -4162,18 +4162,35 @@ export const INSERT_FRAME_PARTS: Readonly<Record<string, string>> = Object.freez
  */
 export const ARCH_INFILL_PARTS: Readonly<Record<string, string>> = Object.freeze({
   '20309': '15254',
+  // Rounded-top windows and their panes under a 1 x 4 arch.
+  '30044': '3659',
+  '30045': '3659',
+  '30046': '3659',
 });
 
-/** Whether `infill` fills the opening of `arch`: level with it and centred between its legs. */
+/**
+ * Infills whose rounded head rises into the arch's curve from below: they stand lower than the
+ * arch and stop within its height, where the others stand level with it.
+ */
+const ARCH_NESTING_PARTS: ReadonlySet<string> = new Set(['30044', '30045', '30046']);
+
+/**
+ * Whether `infill` fills the opening of `arch`, centred between its legs: level with it, or for
+ * a rounded-top window, rising into its curve from below.
+ */
 export function isArchInfill(infill: Brick, arch: Brick): boolean {
   if (
     ARCH_INFILL_PARTS[infill.partId] !== arch.partId ||
-    infill.y !== arch.y ||
     infill.rotation % 180 !== arch.rotation % 180 ||
     infill.facing ||
     arch.facing
   )
     return false;
+  const top = infill.y + getPart(infill.partId).height;
+  const fits = ARCH_NESTING_PARTS.has(infill.partId)
+    ? infill.y < arch.y && top > arch.y && top <= arch.y + getPart(arch.partId).height
+    : infill.y === arch.y;
+  if (!fits) return false;
   const along = footprint(arch).width > footprint(arch).depth;
   return along
     ? infill.x === arch.x + 1 && infill.z === arch.z

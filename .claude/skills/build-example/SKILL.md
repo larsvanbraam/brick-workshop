@@ -63,6 +63,29 @@ In code, the standard maps onto these helpers:
 - A gabled roof of 45° slope courses needs one more course on each side than the gable wall
   has, or the two faces stop a stud short of the ridge. Ridge pieces (`3043`) have no studs, so
   nothing stands on them.
+- **Dormers always connect to the roof.** A dormer is part of the roof, never a box set on it:
+  it stands on stand-in bricks that bond to the studs of the slope course it replaces (and take
+  that course's cells, so nothing else is cut away), its window sits on that base, and it has
+  cheeks, side bricks as wide as the slope needs, so no gap shows between its sides and the
+  slopes beside it. The courses above it keep their studs through hidden bricks behind the
+  window, and a gable or cap closes the top. Place dormers before the slope runs that skip
+  collisions (`tryAdd`), keep them clear of hip corners, and check the result in a zoomed
+  render of the roof, from the side too, before calling the roof done. `academiegebouw.ts`
+  (`dormer`, `dormerEnd`) is the worked recipe.
+- **Arches and windows fit each other.** When an arch brick (`3659`, `4490`, `3455` and the
+  like) sits over a window or door, the opening under its curve is filled. The engine knows two
+  pairs (`ARCH_INFILL_PARTS` in `core.ts`): the rounded-top frame `30044` with a lattice pane
+  (`30045` / `30046`) under a `3659` arch, stacked so its head rises into the curve (the frame
+  stops within the arch's height), and the half-round `20309` under the `15254` arch, level
+  with it. A square frame under a wider arch leaves a gap at the top that the sky or the
+  interior shows through. Look at a zoomed render of every arch type in the build, from the
+  front and at an angle, before calling the facade done.
+- **Street lamps stand along the road, not on the facade.** Put lampposts (`2039`) on the
+  pavement beside the curb, spaced out along the road (about every 12 to 16 studs) and at
+  least 3 studs from any wall, window or door, the way they stand in a real street. Never
+  tuck one beside a window or against a wall, and put the bulb (a trans-yellow round brick with a
+  black cap) on its top stud. Light on a facade comes from wall lanterns on side studs or lit
+  panes behind glass.
 - Tiles hold nothing: keep plates (open studs) under every post, prop, plant and furniture
   piece, and a window frame with two centre studs (`60594`) needs a lintel brick that spans them.
 - Tall doors are `60596` frames (4 wide, 6 bricks) with `60623` or `60616a` leaves; fit the
@@ -191,6 +214,13 @@ the notes were used and that the build is not a copy of an earlier one.
   face (front, back, left, right) and columns for openings, relief, bands, material and side-stud
   details. No cell is empty and no two rows match. The back is where builds go bare, so write
   it first. Subject notes may give the columns in more detail (towers.md).
+- **Towers and spires** (any tower, belfry, turret or steeple): a tower is never a plain shaft
+  with a cone on it. Plan it as a **stage table** (see "Tiered towers" in towers.md): a solid
+  base, two or more open or arcaded stages narrowing as they rise, a balcony or cornice at every
+  change of stage, then a swelling cap, a lantern and a finial with a vane or flag. At least one
+  stage is open (arches you can see through, columns between them), each stage differs from the
+  one below in width, shape (square, octagon, round) and opening, and the skyline shows five or
+  more distinct levels. Look at the reference's tower first and list its stages.
 - **Props and story**: at least eight props from four or more groups, and what is going on.
 - **Beyond bricks** (design choices that cost few or no extra pieces; see "Design beyond part
   count" in the build standard): the silhouette (what breaks the outline: setback, offset
