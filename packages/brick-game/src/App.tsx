@@ -158,6 +158,8 @@ const PANEL_REPEAT = new Set<PadButton>(['up', 'down', 'left', 'right', 'lt', 'r
 const DIRECTIONS = ['up', 'down', 'left', 'right'] as const;
 /** How fast the camera turns behind the title screen, in radians a second, and its ease in. */
 const TITLE_TURN = 0.04;
+/** How long the splash waits for the first view once world and parts are in, before lifting anyway. */
+const FIRST_VIEW_TIMEOUT = 15_000;
 const TITLE_EASE = 3;
 
 export function App() {
@@ -1188,6 +1190,17 @@ function Game({
   // when its first chunks are drawn and the minifigure is standing there.
   const [firstView, setFirstView] = useState(false);
   const onFirstView = useCallback(() => setFirstView(true), []);
+  // A safety net: if the first view never reports (a chunk that never counts as drawn, a shader
+  // compile that never resolves), the splash lifts anyway rather than hanging for good.
+  const bootDone = !booting;
+  useEffect(() => {
+    if (!bootDone || firstView) return;
+    const timer = setTimeout(() => {
+      console.warn('The first view did not report in time; lifting the splash anyway.');
+      setFirstView(true);
+    }, FIRST_VIEW_TIMEOUT);
+    return () => clearTimeout(timer);
+  }, [bootDone, firstView]);
   useEffect(() => {
     if (!booting && firstView) dismissSplash();
     else if (!ready)
